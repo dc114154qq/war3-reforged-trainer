@@ -928,6 +928,7 @@ class War3Trainer:
     KNOWN_SELECTED_HANDLE_ADDRESSES = (
         0x80001F3845,
         0x80001F3495,
+        0x80001F30F4,
         0x80001F2EC4,
         0x80001F2F23,
         0x80001F2F31,
@@ -937,6 +938,31 @@ class War3Trainer:
     KNOWN_SELECTED_REGION_OFFSETS = tuple(
         (address & 0xFFFFF) - 0xBF000
         for address in KNOWN_SELECTED_HANDLE_ADDRESSES
+        if (address & 0xFFFFF) >= 0xBF000
+    )
+    KNOWN_SELECTED_UNIT_POINTER_ADDRESSES = (
+        0x80001F2700,
+        0x80001F2710,
+        0x80001F27C8,
+        0x80001F27D0,
+        0x80001F29C0,
+        0x80001F29D0,
+        0x80001F2A00,
+        0x80001F2A68,
+        0x80001F2A90,
+        0x80001F2AA0,
+        0x80001F2AE8,
+        0x80001F2AF8,
+        0x80001F2B20,
+        0x80001F2D68,
+        0x80001F2DB0,
+        0x80001F2DD0,
+        0x80001F2F00,
+        0x80001F2F10,
+    )
+    KNOWN_SELECTED_UNIT_POINTER_REGION_OFFSETS = tuple(
+        (address & 0xFFFFF) - 0xBF000
+        for address in KNOWN_SELECTED_UNIT_POINTER_ADDRESSES
         if (address & 0xFFFFF) >= 0xBF000
     )
     HERO_SKILL_SLOT_COUNT = 5
@@ -962,6 +988,7 @@ class War3Trainer:
         self.hwnd, self.pid = find_war3(pid)
         self._unit_owner_index: dict[int, int] = {}
         self._selected_handle_addresses = list(self.KNOWN_SELECTED_HANDLE_ADDRESSES)
+        self._item_object_cache: dict[int, int] = {}
         self._native_handlers: dict[str, NativeHandler] = {}
 
     def refresh_window(self, allow_pid_change: bool = False) -> None:
@@ -972,6 +999,7 @@ class War3Trainer:
         if self.pid != old_pid:
             self._unit_owner_index = {}
             self._selected_handle_addresses = list(self.KNOWN_SELECTED_HANDLE_ADDRESSES)
+            self._item_object_cache = {}
             self._native_handlers = {}
 
     def focus(self) -> None:
@@ -1696,13 +1724,15 @@ class War3Trainer:
         index = self._build_unit_owner_index(pm)
         return index.get(handle)
 
-    def _build_unit_object_index(self, pm: ProcessMemory) -> dict[int, tuple[int, int]]:
+    def _build_unit_object_index(self, pm: ProcessMemory, force_refresh: bool = False) -> dict[int, tuple[int, int]]:
         unit_index: dict[int, tuple[int, int]] = {}
-        owners = self._unit_owner_index or self._build_unit_owner_index(pm)
+        owners = self._build_unit_owner_index(pm) if force_refresh or not self._unit_owner_index else self._unit_owner_index
         for handle, owner in owners.items():
             unit = self._unit_object_from_owner(pm, owner, handle)
             if unit:
                 unit_index[unit] = (handle, owner)
+        if not unit_index and self._unit_owner_index and not force_refresh:
+            return self._build_unit_object_index(pm, force_refresh=True)
         return unit_index
 
     def _score_selected_handle_address(self, pm: ProcessMemory, address: int, handle: int, owner: int) -> int:
@@ -1784,6 +1814,24 @@ class War3Trainer:
                     add(region.base + offset)
         return candidates
 
+    def _known_selected_unit_pointer_address_candidates(self, pm: ProcessMemory) -> list[int]:
+        candidates: list[int] = []
+        seen: set[int] = set()
+
+        def add(address: int) -> None:
+            if address not in seen:
+                seen.add(address)
+                candidates.append(address)
+
+        for address in self.KNOWN_SELECTED_UNIT_POINTER_ADDRESSES:
+            add(address)
+
+        for region in self._selection_state_regions(pm, preferred_only=True):
+            for offset in self.KNOWN_SELECTED_UNIT_POINTER_REGION_OFFSETS:
+                if 0 <= offset <= region.size - 8:
+                    add(region.base + offset)
+        return candidates
+
     def _discover_selected_handle_addresses(self, pm: ProcessMemory) -> list[int]:
         owners = self._unit_owner_index or self._build_unit_owner_index(pm)
         if not owners:
@@ -1818,7 +1866,7 @@ class War3Trainer:
         return addresses
 
     def _locate_selected_unit_by_unit_pointer(self, pm: ProcessMemory) -> UnitCandidate | None:
-        unit_index = self._build_unit_object_index(pm)
+        unit_index = self._build_unit_object_index(pm, force_refresh=True)
         if not unit_index:
             return None
 
@@ -1868,6 +1916,77 @@ class War3Trainer:
             return None
         return candidate
 
+    def _locate_selected_unit_by_known_unit_pointer(self, pm: ProcessMemory) -> UnitCandidate | None:
+        unit_index = self._build_unit_object_index(pm, force_refresh=True)
+        if not unit_index:
+            return None
+        regions = pm.regions()
+        known_offsets = set(self.KNOWN_SELECTED_UNIT_POINTER_REGION_OFFSETS)
+        groups: dict[tuple[int, int], list[int]] = {}
+
+        def add_pointer(address: int, unit: int) -> None:
+            if unit not in unit_index:
+                return
+            region = self._region_for_address(regions, address)
+            region_base = region.base if region is not None else address & ~0xFFFFF
+            groups.setdefault((region_base, unit), []).append(address)
+
+        for address in self._known_selected_unit_pointer_address_candidates(pm):
+            try:
+                add_pointer(address, pm.read_u64(address))
+            except OSError:
+                continue
+
+        for region in self._selection_state_regions(pm, preferred_only=True):
+            try:
+                data = pm.read(region.base, region.size)
+            except OSError:
+                continue
+            for offset in range(0, max(0, len(data) - 7), 8):
+                unit = struct.unpack_from("<Q", data, offset)[0]
+                if unit in unit_index:
+                    add_pointer(region.base + offset, unit)
+
+        if not groups:
+            return None
+
+        def group_rank(item: tuple[tuple[int, int], list[int]]) -> tuple[int, int, int, int]:
+            (region_base, _unit), addresses = item
+            unique_addresses = set(addresses)
+            known_hits = sum(1 for address in unique_addresses if (address - region_base) in known_offsets)
+            return known_hits, len(unique_addresses), -region_base, -min(unique_addresses)
+
+        ranked = sorted(
+            groups.items(),
+            key=group_rank,
+            reverse=True,
+        )
+        (region_base, unit), addresses = ranked[0]
+        unique_addresses = sorted(set(addresses))
+        known_hits = sum(1 for address in unique_addresses if (address - region_base) in known_offsets)
+        if known_hits < 2 and len(unique_addresses) < 4:
+            return None
+        if len(ranked) > 1 and group_rank(ranked[1])[:2] == group_rank(ranked[0])[:2] and ranked[1][0][1] != unit:
+            return None
+
+        handle, owner = unit_index[unit]
+        slot_address = min(unique_addresses)
+        candidate = self._candidate_from_owner(
+            pm,
+            owner,
+            870 + known_hits * 20 + min(len(unique_addresses), 20) * 5,
+            (
+                f"selected_unit_slot=0x{unit:x} region=0x{region_base:x} "
+                f"refs={len(unique_addresses)} known={known_hits} slot=0x{slot_address:x}"
+            ),
+            handle,
+            "memory",
+            slot_address,
+        )
+        if candidate is not None and candidate.unit_address == unit:
+            return candidate
+        return None
+
     def _locate_selected_unit_by_panel(self, pm: ProcessMemory) -> UnitCandidate:
         raise RuntimeError("OCR/面板数值定位已禁用；当前选中单位只能通过内存 selected-handle 定位")
 
@@ -1885,7 +2004,7 @@ class War3Trainer:
             last_error: str | None = None
             tried: set[int] = set()
 
-            def try_slot(address: int) -> UnitCandidate | None:
+            def try_slot(address: int, min_score: int = 0) -> UnitCandidate | None:
                 nonlocal last_error
                 tried.add(address)
                 try:
@@ -1900,10 +2019,14 @@ class War3Trainer:
                 if owner is None:
                     last_error = f"0x{handle:x} 没有匹配单位对象"
                     return None
+                score = self._score_selected_handle_address(pm, address, handle, owner)
+                if score < min_score:
+                    last_error = f"0x{address:x} 像历史选择槽，不是当前选择槽"
+                    return None
                 candidate = self._candidate_from_owner(
                     pm,
                     owner,
-                    900,
+                    900 + score,
                     f"selected_handle=0x{handle:x} slot=0x{address:x}",
                     handle,
                     "memory",
@@ -1917,26 +2040,34 @@ class War3Trainer:
                 self._selected_handle_addresses.insert(0, address)
                 return candidate
 
-            for address in self._known_selected_handle_address_candidates(pm):
-                candidate = try_slot(address)
-                if candidate is not None:
-                    return candidate
-            for address in list(dict.fromkeys(self._selected_handle_addresses)):
-                if address in tried:
-                    continue
-                candidate = try_slot(address)
-                if candidate is not None:
-                    return candidate
+            retry_delays = (0.0, 0.08, 0.20, 0.45, 0.90, 1.60) if allow_deep_scan else (0.0,)
+            for delay in retry_delays:
+                if delay:
+                    time.sleep(delay)
+                tried.clear()
+                unit_pointer_candidate = self._locate_selected_unit_by_known_unit_pointer(pm)
+                if unit_pointer_candidate is not None:
+                    return unit_pointer_candidate
+                for address in self._known_selected_handle_address_candidates(pm):
+                    candidate = try_slot(address, min_score=120 if allow_deep_scan else 0)
+                    if candidate is not None:
+                        return candidate
+                for address in list(dict.fromkeys(self._selected_handle_addresses)):
+                    if address in tried:
+                        continue
+                    candidate = try_slot(address, min_score=120 if allow_deep_scan else 0)
+                    if candidate is not None:
+                        return candidate
             if allow_deep_scan:
+                # Last resort only. Reforged can leave old selection handles in
+                # this state block after switching units, so fixed slots above are
+                # trusted before broad handle discovery.
                 for address in self._discover_selected_handle_addresses(pm):
                     if address in tried:
                         continue
-                    candidate = try_slot(address)
+                    candidate = try_slot(address, min_score=120)
                     if candidate is not None:
                         return candidate
-                unit_pointer_candidate = self._locate_selected_unit_by_unit_pointer(pm)
-                if unit_pointer_candidate is not None:
-                    return unit_pointer_candidate
             detail = f"；最后错误：{last_error}" if last_error else ""
             raise RuntimeError(f"没有找到当前选中单位 handle，请在游戏里左键选中一个单位后重试{detail}")
         finally:
@@ -2048,7 +2179,7 @@ class War3Trainer:
         pm: ProcessMemory,
         owner: int,
     ) -> Iterable[tuple[str, int, int]]:
-        for offset in range(0, 0x1800, 8):
+        for offset in range(-0x8000, 0x1800, 8):
             wrapper = owner + offset
             try:
                 vtable = pm.read_u64(wrapper)
@@ -2172,7 +2303,7 @@ class War3Trainer:
             return []
         component_rawcodes = {tag >> 32 for tag in self.COMPONENT_TAGS.values()}
         instances: list[AbilityInstance] = []
-        for offset in range(0, 0x10000, 8):
+        for offset in range(-0x8000, 0x10000, 8):
             wrapper = candidate.owner_address + offset
             try:
                 vtable = pm.read_u64(wrapper)
@@ -2249,7 +2380,7 @@ class War3Trainer:
         if not handle or handle == 0xFFFFFFFFFFFFFFFF:
             return 0
         if owner:
-            for offset in range(0, 0x8000, 8):
+            for offset in range(-0x8000, 0x8000, 8):
                 wrapper = owner + offset
                 try:
                     if pm.read_u64(wrapper + 0x18) != self.ITEM_OWNER_TAG:
@@ -2275,6 +2406,73 @@ class War3Trainer:
                 continue
         return 0
 
+    def _item_objects_from_handles(self, pm: ProcessMemory, handles: Iterable[int]) -> dict[int, int]:
+        wanted = {
+            int(handle)
+            for handle in handles
+            if int(handle) and int(handle) != 0xFFFFFFFFFFFFFFFF
+        }
+        if not wanted:
+            return {}
+        found: dict[int, int] = {}
+        for handle in list(wanted):
+            item = self._item_object_cache.get(handle, 0)
+            if not item:
+                continue
+            try:
+                if self._looks_like_vtable(pm.read_u64(item)) and pm.read_u64(item + 0x18) == handle:
+                    found[handle] = item
+                else:
+                    self._item_object_cache.pop(handle, None)
+            except OSError:
+                self._item_object_cache.pop(handle, None)
+        missing = wanted.difference(found)
+        if not missing:
+            return found
+        patterns = {struct.pack("<Q", handle): handle for handle in missing}
+        tail_len = 7
+        for region in pm.regions():
+            if len(found) == len(wanted):
+                break
+            if region.typ != MEM_PRIVATE or region.size > 1024 * 1024:
+                continue
+            offset = 0
+            tail = b""
+            while offset < region.size and len(found) < len(wanted):
+                size = min(4 * 1024 * 1024, region.size - offset)
+                try:
+                    data = tail + pm.read(region.base + offset, size)
+                except OSError:
+                    offset += size
+                    tail = b""
+                    continue
+                base = region.base + offset - len(tail)
+                for pattern, handle in patterns.items():
+                    if handle in found:
+                        continue
+                    start = 0
+                    while True:
+                        idx = data.find(pattern, start)
+                        if idx < 0:
+                            break
+                        address = base + idx
+                        if address >= region.base:
+                            item = address - 0x18
+                            try:
+                                if (
+                                    self._looks_like_vtable(pm.read_u64(item))
+                                    and pm.read_u64(item + 0x18) == handle
+                                ):
+                                    found[handle] = item
+                                    self._item_object_cache[handle] = item
+                                    break
+                            except OSError:
+                                pass
+                        start = idx + 1
+                tail = data[-tail_len:]
+                offset += size
+        return found
+
     def _inventory_items_from_candidate(
         self,
         pm: ProcessMemory,
@@ -2291,13 +2489,17 @@ class War3Trainer:
             return []
 
         items: list[InventoryItem] = []
+        slot_handles: list[tuple[int, int, int]] = []
         for index in range(6):
             handle_address = record + 0xD4 + index * 0x0C
             try:
                 handle = pm.read_u64(handle_address)
             except OSError:
                 handle = 0
-            item_address = self._item_object_from_handle(pm, candidate.owner_address, handle)
+            slot_handles.append((index, handle_address, handle))
+        item_by_handle = self._item_objects_from_handles(pm, (handle for _index, _address, handle in slot_handles))
+        for index, handle_address, handle in slot_handles:
+            item_address = item_by_handle.get(handle, 0)
             rawcode = 0
             rawcode_address = 0
             mirror_rawcode = 0
@@ -2968,24 +3170,32 @@ class War3Trainer:
     ) -> UnitCandidate:
         with ProcessMemory(self.pid, write=True) as pm:
             candidate = self.locate_selected_unit_by_handle(pm, allow_deep_scan=True)
-            if target_hp is not None:
-                target_hp_f = float(target_hp)
+            if max_hp is not None or target_hp is not None:
                 try:
-                    old_hp = pm.read_f32(candidate.hp_current_address)
+                    old_max_hp = pm.read_f32(candidate.hp_max_address)
                 except OSError:
-                    old_hp = target_hp_f
-                if target_hp_f >= old_hp:
-                    pm.write_f32(candidate.hp_max_address, target_hp_f)
-                    pm.write_f32(candidate.hp_current_address, target_hp_f)
-                else:
-                    pm.write_f32(candidate.hp_current_address, target_hp_f)
-                    pm.write_f32(candidate.hp_max_address, target_hp_f)
-            if target_mp is not None:
+                    old_max_hp = float(target_hp) if target_hp is not None else 0.0
+                target_max_hp = float(max_hp) if max_hp is not None else old_max_hp
+                if target_hp is not None and float(target_hp) > target_max_hp:
+                    target_max_hp = float(target_hp)
+                if target_max_hp > 0:
+                    pm.write_f32(candidate.hp_max_address, target_max_hp)
+                if target_hp is not None:
+                    pm.write_f32(candidate.hp_current_address, float(target_hp))
+            if max_mp is not None or target_mp is not None:
                 if not candidate.mp_current_address or not candidate.mp_max_address:
                     raise RuntimeError("当前选中单位没有可写的魔法属性")
-                target_mp_f = float(target_mp)
-                pm.write_f32(candidate.mp_max_address, target_mp_f)
-                pm.write_f32(candidate.mp_current_address, target_mp_f)
+                try:
+                    old_max_mp = pm.read_f32(candidate.mp_max_address)
+                except OSError:
+                    old_max_mp = float(target_mp) if target_mp is not None else 0.0
+                target_max_mp = float(max_mp) if max_mp is not None else old_max_mp
+                if target_mp is not None and float(target_mp) > target_max_mp:
+                    target_max_mp = float(target_mp)
+                if target_max_mp >= 0:
+                    pm.write_f32(candidate.mp_max_address, target_max_mp)
+                if target_mp is not None:
+                    pm.write_f32(candidate.mp_current_address, float(target_mp))
             if target_hp_regen is not None:
                 if not candidate.hp_regen_address:
                     raise RuntimeError("当前选中单位没有可写的 HP 回复率属性")
@@ -3098,12 +3308,12 @@ def run_gui() -> None:
         else:
             assert isinstance(obj, War3Trainer)
             obj.refresh_window(allow_pid_change=True)
-        pid_var.set(str(obj.pid))
+        root.after(0, pid_var.set, str(obj.pid))
         return obj
 
     def connect() -> str:
         state["trainer"] = War3Trainer()
-        pid_var.set(str(state["trainer"].pid))
+        root.after(0, pid_var.set, str(state["trainer"].pid))
         return f"已连接 Warcraft III，PID {state['trainer'].pid}"
 
     def resource_iid(cache: ResourceCache) -> str:
@@ -3283,10 +3493,86 @@ def run_gui() -> None:
                 ),
             )
 
+    def clear_selected_unit_readout() -> None:
+        for var in (
+            hp_current,
+            hp_max_current,
+            hp_regen_current,
+            mp_current,
+            mp_max_current,
+            mp_regen_current,
+            hp_target,
+            mp_target,
+            hp_regen_target,
+            mp_regen_target,
+            x_current,
+            y_current,
+            x_target,
+            y_target,
+            unit_field_target,
+        ):
+            var.set("")
+        state["selected_unit_identity"] = None
+        state["unit_fields"] = {}
+        try:
+            unit_field_tree.delete(*unit_field_tree.get_children())
+        except NameError:
+            pass
+
+    def populate_selected_unit_readout(
+        panel: VisibleUnitPanel,
+        cand: UnitCandidate,
+        fields: list[UnitMemoryField],
+        force_targets: bool = False,
+    ) -> None:
+        field_by_key = {field.key: field for field in fields}
+        identity = (cand.handle, cand.owner_address, cand.unit_address)
+        reset_targets = force_targets or state.get("selected_unit_identity") != identity
+        state["selected_unit_identity"] = identity
+
+        hp_current.set(str(panel.current_hp))
+        hp_max_current.set(str(panel.max_hp))
+        mp_current.set(str(panel.current_mp))
+        mp_max_current.set(str(panel.max_mp))
+
+        hp_regen_field = field_by_key.get("hp_regen")
+        mp_regen_field = field_by_key.get("mp_regen")
+        hp_regen_current.set(hp_regen_field.value_text() if hp_regen_field is not None else "")
+        mp_regen_current.set(mp_regen_field.value_text() if mp_regen_field is not None else "")
+
+        x_field = field_by_key.get("x")
+        y_field = field_by_key.get("y")
+        if x_field is not None and y_field is not None:
+            pos_x = float(x_field.value)
+            pos_y = float(y_field.value)
+            x_current.set(f"{pos_x:.3f}")
+            y_current.set(f"{pos_y:.3f}")
+            if reset_targets:
+                x_target.set(f"{pos_x:.3f}")
+                y_target.set(f"{pos_y:.3f}")
+        else:
+            x_current.set("")
+            y_current.set("")
+            if reset_targets:
+                x_target.set("")
+                y_target.set("")
+
+        if reset_targets:
+            hp_target.set(str(panel.current_hp))
+            mp_target.set(str(panel.current_mp) if panel.max_mp or panel.current_mp else "")
+            hp_regen_target.set(hp_regen_current.get())
+            mp_regen_target.set(mp_regen_current.get())
+
+        populate_unit_fields(fields)
+
     def read_unit_fields() -> str:
-        t = trainer()
-        panel, cand, fields = t.read_selected_unit_fields()
-        root.after(0, populate_unit_fields, fields)
+        try:
+            t = trainer()
+            panel, cand, fields = t.read_selected_unit_fields()
+        except Exception:
+            root.after(0, clear_selected_unit_readout)
+            raise
+        root.after(0, populate_selected_unit_readout, panel, cand, fields, True)
         return (
             f"选中单位字段：HP {panel.hp_text}，MP {panel.mp_text}；"
             f"source={cand.selection_source or 'unknown'} owner=0x{cand.owner_address:x} "
@@ -3313,8 +3599,8 @@ def run_gui() -> None:
         if not value:
             raise ValueError("请填写目标值")
         written = trainer().write_selected_unit_field(field.key, value)
-        _panel, _cand, fields = trainer().read_selected_unit_fields()
-        root.after(0, populate_unit_fields, fields)
+        panel, cand, fields = trainer().read_selected_unit_fields()
+        root.after(0, populate_selected_unit_readout, panel, cand, fields, False)
         note = f"；{written.note}" if written.note else ""
         return f"{written.label} 已写入 {written.value_text()}{note}"
 
@@ -3471,41 +3757,21 @@ def run_gui() -> None:
             hp_regen_new,
             mp_regen_new,
         )
+        panel, cand_after, fields = t.read_selected_unit_fields()
+        root.after(0, populate_selected_unit_readout, panel, cand_after, fields, True)
         return (
             f"选中单位已写入；source={cand.selection_source or 'unknown'} "
             f"base=0x{cand.base:x} unit=0x{cand.unit_address:x} {cand.note}"
         )
 
     def read_unit() -> str:
-        t = trainer()
-        panel, cand, fields = t.read_selected_unit_fields()
-        field_by_key = {field.key: field for field in fields}
-        root.after(0, populate_unit_fields, fields)
-        hp_current.set(str(panel.current_hp))
-        hp_max_current.set(str(panel.max_hp))
-        mp_current.set(str(panel.current_mp))
-        mp_max_current.set(str(panel.max_mp))
-        if "hp_regen" in field_by_key:
-            hp_regen_current.set(field_by_key["hp_regen"].value_text())
-        if "mp_regen" in field_by_key:
-            mp_regen_current.set(field_by_key["mp_regen"].value_text())
-        if "x" in field_by_key and "y" in field_by_key:
-            pos_x = float(field_by_key["x"].value)
-            pos_y = float(field_by_key["y"].value)
-            x_current.set(f"{pos_x:.3f}")
-            y_current.set(f"{pos_y:.3f}")
-            if not x_target.get().strip():
-                x_target.set(f"{pos_x:.3f}")
-            if not y_target.get().strip():
-                y_target.set(f"{pos_y:.3f}")
-        if not hp_target.get().strip():
-            hp_target.set(str(panel.current_hp))
-        if not mp_target.get().strip():
-            mp_target.set(str(panel.current_mp))
-        if cand.hp_regen_address and not hp_regen_target.get().strip():
-            hp_regen_target.set(hp_regen_current.get())
-        if cand.mp_regen_address and not mp_regen_target.get().strip():
-            mp_regen_target.set(mp_regen_current.get())
+        try:
+            t = trainer()
+            panel, cand, fields = t.read_selected_unit_fields()
+        except Exception:
+            root.after(0, clear_selected_unit_readout)
+            raise
+        root.after(0, populate_selected_unit_readout, panel, cand, fields, True)
         return (
             f"选中单位：HP {panel.hp_text}，MP {panel.mp_text}；"
             f"source={cand.selection_source or 'unknown'} base=0x{cand.base:x} unit=0x{cand.unit_address:x}"
@@ -3879,6 +4145,7 @@ def run_cli(args: argparse.Namespace) -> int:
                 and cand.owner_address != 0
                 and cand.unit_address != 0
                 and cand.selection_source == "memory"
+                and (cand.note.startswith("selected_handle=") or cand.note.startswith("selected_unit_slot="))
             )
         print(
             f"selection_locator={'OK' if status else 'FAILED'} "

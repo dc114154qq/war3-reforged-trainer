@@ -9,20 +9,14 @@ This replaces the old 32-bit game.dll trainer path with verified Reforged routes
 from __future__ import annotations
 
 import argparse
-import base64
 import ctypes
 import math
-import os
-import shutil
 import struct
 import sys
-import tempfile
 import threading
 import time
 from dataclasses import dataclass, replace
 from typing import Callable, Iterable
-
-from PIL import Image
 
 
 if sys.platform == "win32":
@@ -34,7 +28,6 @@ if sys.platform == "win32":
 
 
 PROCESS_QUERY_INFORMATION = 0x0400
-PROCESS_CREATE_THREAD = 0x0002
 PROCESS_VM_READ = 0x0010
 PROCESS_VM_WRITE = 0x0020
 PROCESS_VM_OPERATION = 0x0008
@@ -53,11 +46,6 @@ PAGE_EXECUTE_READWRITE = 0x40
 PAGE_EXECUTE_WRITECOPY = 0x80
 READABLE_PROTECTS = {0x02, 0x04, 0x08, 0x20, 0x40, 0x80}
 EXECUTABLE_PROTECTS = {PAGE_EXECUTE, PAGE_EXECUTE_READ, PAGE_EXECUTE_READWRITE, PAGE_EXECUTE_WRITECOPY}
-WAIT_OBJECT_0 = 0
-WAIT_TIMEOUT = 0x102
-WAIT_FAILED = 0xFFFFFFFF
-INFINITE = 0xFFFFFFFF
-
 WM_KEYDOWN = 0x0100
 WM_KEYUP = 0x0101
 WM_CHAR = 0x0102
@@ -71,33 +59,6 @@ SWP_NOSIZE = 0x0001
 
 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 user32 = ctypes.WinDLL("user32", use_last_error=True)
-gdi32 = ctypes.WinDLL("gdi32", use_last_error=True)
-
-kernel32.VirtualAllocEx.restype = ctypes.c_void_p
-kernel32.VirtualAllocEx.argtypes = [
-    ctypes.c_void_p,
-    ctypes.c_void_p,
-    ctypes.c_size_t,
-    ctypes.c_ulong,
-    ctypes.c_ulong,
-]
-kernel32.VirtualFreeEx.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_ulong]
-kernel32.VirtualFreeEx.restype = ctypes.c_bool
-kernel32.CreateRemoteThread.restype = ctypes.c_void_p
-kernel32.CreateRemoteThread.argtypes = [
-    ctypes.c_void_p,
-    ctypes.c_void_p,
-    ctypes.c_size_t,
-    ctypes.c_void_p,
-    ctypes.c_void_p,
-    ctypes.c_ulong,
-    ctypes.POINTER(ctypes.c_ulong),
-]
-kernel32.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
-kernel32.WaitForSingleObject.restype = ctypes.c_ulong
-kernel32.GetExitCodeThread.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_ulong)]
-kernel32.GetExitCodeThread.restype = ctypes.c_bool
-
 
 class MEMORY_BASIC_INFORMATION64(ctypes.Structure):
     _fields_ = [
@@ -224,6 +185,10 @@ class InventoryItem:
     item_address: int = 0
     rawcode: int = 0
     rawcode_address: int = 0
+    mirror_rawcode: int = 0
+    mirror_rawcode_address: int = 0
+    ability_rawcode: int = 0
+    ability_rawcode_address: int = 0
     charges: int = 0
     charges_address: int = 0
 
@@ -246,6 +211,8 @@ class AbilityInstance:
     rawcode: int
     rawcode_address: int
     mirror_rawcode_address: int = 0
+    data_cache_address: int = 0
+    data_cache_pointer: int = 0
 
     @property
     def class_text(self) -> str:
@@ -272,13 +239,13 @@ class NativeHandler:
 
 
 @dataclass(frozen=True)
-class NativeOpRequest:
-    kind: int
-    handler: str
-    rawcode: int = 0
-    arg0: int = 0
-    arg1: int = 0
-
+class NativeAbilityInternals:
+    find_address: int
+    begin_address: int
+    add_address: int
+    end_address: int
+    refresh_address: int
+    remove_address: int
 
 def format_rawcode(raw: int) -> str:
     raw &= 0xFFFFFFFF
@@ -349,54 +316,7 @@ def _make_dpi_aware() -> None:
 
 
 def capture_physical_screen_image() -> Image.Image:
-    _make_dpi_aware()
-    left = user32.GetSystemMetrics(76)
-    top = user32.GetSystemMetrics(77)
-    width = user32.GetSystemMetrics(78)
-    height = user32.GetSystemMetrics(79)
-    hdc_screen = user32.GetDC(None)
-    hdc_mem = gdi32.CreateCompatibleDC(hdc_screen)
-    hbmp = gdi32.CreateCompatibleBitmap(hdc_screen, width, height)
-    old = gdi32.SelectObject(hdc_mem, hbmp)
-    try:
-        if not gdi32.BitBlt(hdc_mem, 0, 0, width, height, hdc_screen, left, top, 0x00CC0020):
-            raise ctypes.WinError(ctypes.get_last_error())
-
-        class BITMAPINFOHEADER(ctypes.Structure):
-            _fields_ = [
-                ("biSize", ctypes.c_uint32),
-                ("biWidth", ctypes.c_int32),
-                ("biHeight", ctypes.c_int32),
-                ("biPlanes", ctypes.c_uint16),
-                ("biBitCount", ctypes.c_uint16),
-                ("biCompression", ctypes.c_uint32),
-                ("biSizeImage", ctypes.c_uint32),
-                ("biXPelsPerMeter", ctypes.c_int32),
-                ("biYPelsPerMeter", ctypes.c_int32),
-                ("biClrUsed", ctypes.c_uint32),
-                ("biClrImportant", ctypes.c_uint32),
-            ]
-
-        class BITMAPINFO(ctypes.Structure):
-            _fields_ = [("bmiHeader", BITMAPINFOHEADER), ("bmiColors", ctypes.c_uint32 * 3)]
-
-        bmi = BITMAPINFO()
-        bmi.bmiHeader.biSize = ctypes.sizeof(BITMAPINFOHEADER)
-        bmi.bmiHeader.biWidth = width
-        bmi.bmiHeader.biHeight = -height
-        bmi.bmiHeader.biPlanes = 1
-        bmi.bmiHeader.biBitCount = 32
-        bmi.bmiHeader.biCompression = 0
-        buf = ctypes.create_string_buffer(width * height * 4)
-        lines = gdi32.GetDIBits(hdc_mem, hbmp, 0, height, buf, ctypes.byref(bmi), 0)
-        if lines != height:
-            raise ctypes.WinError(ctypes.get_last_error())
-        return Image.frombuffer("RGBA", (width, height), buf, "raw", "BGRA", 0, 1).convert("RGB")
-    finally:
-        gdi32.SelectObject(hdc_mem, old)
-        gdi32.DeleteObject(hbmp)
-        gdi32.DeleteDC(hdc_mem)
-        user32.ReleaseDC(None, hdc_screen)
+    raise RuntimeError("OCR/截图读取已禁用；当前选中目标只允许从内存 selected-handle 读取")
 
 
 def _is_green_digit(rgb: tuple[int, int, int]) -> bool:
@@ -598,17 +518,7 @@ _OCR_TEMPLATES: list[tuple[str, bytes]] | None = None
 
 
 def _ocr_templates() -> list[tuple[str, bytes]]:
-    global _OCR_TEMPLATES
-    if _OCR_TEMPLATES is None:
-        raw = base64.b64decode(OCR_TEMPLATE_DATA_B64)
-        expected = len(OCR_TEMPLATE_CHARS) * OCR_TEMPLATE_BYTES
-        if len(raw) != expected:
-            raise RuntimeError("内置 OCR 模板损坏")
-        _OCR_TEMPLATES = [
-            (char, raw[idx * OCR_TEMPLATE_BYTES : (idx + 1) * OCR_TEMPLATE_BYTES])
-            for idx, char in enumerate(OCR_TEMPLATE_CHARS)
-        ]
-    return _OCR_TEMPLATES
+    raise RuntimeError("OCR 模板已禁用；当前选中目标只允许从内存 selected-handle 读取")
 
 
 def _bit_distance(left: bytes, right: bytes) -> float:
@@ -705,7 +615,7 @@ class ProcessMemory:
     def __init__(self, pid: int, write: bool = False):
         access = PROCESS_QUERY_INFORMATION | PROCESS_VM_READ
         if write:
-            access |= PROCESS_CREATE_THREAD | PROCESS_VM_WRITE | PROCESS_VM_OPERATION
+            access |= PROCESS_VM_WRITE | PROCESS_VM_OPERATION
         self.handle = kernel32.OpenProcess(access, False, pid)
         if not self.handle:
             raise ctypes.WinError(ctypes.get_last_error())
@@ -799,94 +709,6 @@ class ProcessMemory:
         )
         if not ok or written.value != len(data):
             raise ctypes.WinError(ctypes.get_last_error())
-
-    def alloc(self, size: int, protect: int = PAGE_EXECUTE_READWRITE) -> int:
-        address = kernel32.VirtualAllocEx(
-            self.handle,
-            None,
-            int(size),
-            MEM_COMMIT | MEM_RESERVE,
-            protect,
-        )
-        if not address:
-            raise ctypes.WinError(ctypes.get_last_error())
-        return int(address)
-
-    def free(self, address: int) -> None:
-        if not address:
-            return
-        ok = kernel32.VirtualFreeEx(self.handle, ctypes.c_void_p(address), 0, MEM_RELEASE)
-        if not ok:
-            raise ctypes.WinError(ctypes.get_last_error())
-
-    def call_remote_function_1(self, function_address: int, parameter: int, timeout_ms: int = 5000) -> int:
-        thread_id = ctypes.c_ulong()
-        thread = kernel32.CreateRemoteThread(
-            self.handle,
-            None,
-            0,
-            ctypes.c_void_p(int(function_address)),
-            ctypes.c_void_p(int(parameter)),
-            0,
-            ctypes.byref(thread_id),
-        )
-        if not thread:
-            raise ctypes.WinError(ctypes.get_last_error())
-        try:
-            wait = kernel32.WaitForSingleObject(thread, int(timeout_ms))
-            if wait == WAIT_TIMEOUT:
-                raise RuntimeError("远程函数调用超时")
-            if wait == WAIT_FAILED:
-                raise ctypes.WinError(ctypes.get_last_error())
-            exit_code = ctypes.c_ulong()
-            if not kernel32.GetExitCodeThread(thread, ctypes.byref(exit_code)):
-                raise ctypes.WinError(ctypes.get_last_error())
-            return int(exit_code.value)
-        finally:
-            kernel32.CloseHandle(thread)
-
-    def load_remote_library(self, dll_path: str, timeout_ms: int = 5000) -> int:
-        data = (dll_path + "\0").encode("utf-16-le")
-        remote = self.alloc(len(data), PAGE_READWRITE)
-        try:
-            self.write_bytes(remote, data)
-            load_library = ctypes.cast(kernel32.LoadLibraryW, ctypes.c_void_p).value
-            if not load_library:
-                raise RuntimeError("无法取得 LoadLibraryW 地址")
-            return self.call_remote_function_1(load_library, remote, timeout_ms)
-        finally:
-            self.free(remote)
-
-    def run_remote_code(self, code: bytes, timeout_ms: int = 5000) -> int:
-        remote = self.alloc(len(code))
-        thread = None
-        try:
-            self.write_bytes(remote, code)
-            thread_id = ctypes.c_ulong()
-            thread = kernel32.CreateRemoteThread(
-                self.handle,
-                None,
-                0,
-                ctypes.c_void_p(remote),
-                None,
-                0,
-                ctypes.byref(thread_id),
-            )
-            if not thread:
-                raise ctypes.WinError(ctypes.get_last_error())
-            wait = kernel32.WaitForSingleObject(thread, int(timeout_ms))
-            if wait == WAIT_TIMEOUT:
-                raise RuntimeError("远程调用超时")
-            if wait == WAIT_FAILED:
-                raise ctypes.WinError(ctypes.get_last_error())
-            exit_code = ctypes.c_ulong()
-            if not kernel32.GetExitCodeThread(thread, ctypes.byref(exit_code)):
-                raise ctypes.WinError(ctypes.get_last_error())
-            return int(exit_code.value)
-        finally:
-            if thread:
-                kernel32.CloseHandle(thread)
-            self.free(remote)
 
     def scan_bytes(self, pattern: bytes, max_region_size: int = 256 * 1024 * 1024) -> list[tuple[int, int, int]]:
         hits: list[tuple[int, int, int]] = []
@@ -1104,6 +926,7 @@ class War3Trainer:
     # Reforged keeps the current selection handle in this mapped game-state block.
     # The value is validated through the live unit-owner index before any write.
     KNOWN_SELECTED_HANDLE_ADDRESSES = (
+        0x80001F3845,
         0x80001F3495,
         0x80001F2EC4,
         0x80001F2F23,
@@ -1134,24 +957,6 @@ class War3Trainer:
         "GetUnitTypeId",
         "UnitInventorySize",
     )
-    NATIVE_CMD_MAGIC = 0x33524757
-    NATIVE_CMD_VERSION = 2
-    NATIVE_CMD_STATUS_PENDING = 1
-    NATIVE_CMD_STATUS_OK = 2
-    NATIVE_CMD_STATUS_FAILED = 3
-    NATIVE_MAX_OPS = 16
-    NATIVE_OP_ADD = 1
-    NATIVE_OP_REMOVE = 2
-    NATIVE_OP_UNIT_ADD_ITEM_TO_SLOT_BY_ID = 10
-    NATIVE_OP_UNIT_ITEM_IN_SLOT = 11
-    NATIVE_OP_REMOVE_ITEM = 12
-    NATIVE_OP_UNIT_REMOVE_ITEM = 13
-    NATIVE_OP_SET_ITEM_CHARGES = 14
-    NATIVE_OP_GET_ITEM_TYPE_ID = 15
-    NATIVE_OP_GET_UNIT_TYPE_ID = 20
-    NATIVE_OP_UNIT_INVENTORY_SIZE = 21
-    NATIVE_CMD_HEADER = "<IIIIQII"
-    NATIVE_CMD_OP = "<IIQQQQII"
 
     def __init__(self, pid: int | None = None):
         self.hwnd, self.pid = find_war3(pid)
@@ -1176,9 +981,9 @@ class War3Trainer:
         post_cheat(self.hwnd, text)
 
     def read_selected_panel(self) -> VisibleUnitPanel:
-        self.focus()
-        time.sleep(0.25)
-        return read_selected_panel_from_image(capture_physical_screen_image())
+        with ProcessMemory(self.pid) as pm:
+            candidate = self.locate_selected_unit_by_handle(pm, allow_deep_scan=True)
+            return self._panel_from_candidate(pm, candidate)
 
     @staticmethod
     def _region_for_address(regions: list[Region], address: int) -> Region | None:
@@ -1280,204 +1085,41 @@ class War3Trainer:
         with ProcessMemory(self.pid) as pm:
             return self._discover_native_handlers(pm, self.NATIVE_HANDLER_NAMES)
 
-    @classmethod
-    def _native_command_size(cls) -> int:
-        return struct.calcsize(cls.NATIVE_CMD_HEADER) + cls.NATIVE_MAX_OPS * struct.calcsize(cls.NATIVE_CMD_OP)
-
-    def _native_command_path(self) -> str:
-        return os.path.join(tempfile.gettempdir(), f"war3_reforged_native_{self.pid}.bin")
-
     @staticmethod
-    def _native_helper_path() -> str:
-        names = ["war3_native_helper.dll", os.path.join("tools", "war3_native_helper.dll")]
-        bases = []
-        meipass = getattr(sys, "_MEIPASS", "")
-        if meipass:
-            bases.append(str(meipass))
-        bases.append(os.path.dirname(os.path.abspath(__file__)))
-        for base in bases:
-            for name in names:
-                path = os.path.join(base, name)
-                if os.path.exists(path):
-                    return path
-        raise RuntimeError("缺少 war3_native_helper.dll，请重新打包修改器")
+    def _read_rel32_call(pm: ProcessMemory, address: int) -> int:
+        data = pm.read(address, 5)
+        if len(data) != 5 or data[0] != 0xE8:
+            raise RuntimeError(f"0x{address:x} 不是预期的 call rel32 指令")
+        rel = struct.unpack_from("<i", data, 1)[0]
+        return address + 5 + rel
 
-    def _pack_native_command(
-        self,
-        unit_handle: int,
-        handlers: dict[str, NativeHandler],
-        ops: list[NativeOpRequest],
-    ) -> bytes:
-        if len(ops) > self.NATIVE_MAX_OPS:
-            raise ValueError("native 操作数量过多")
-        header = struct.pack(
-            self.NATIVE_CMD_HEADER,
-            self.NATIVE_CMD_MAGIC,
-            self.NATIVE_CMD_VERSION,
-            self.NATIVE_CMD_STATUS_PENDING,
-            len(ops),
-            int(unit_handle) & 0xFFFFFFFFFFFFFFFF,
-            0,
-            0,
+    def _discover_native_ability_internals(self, pm: ProcessMemory) -> NativeAbilityInternals:
+        handlers = self._discover_native_handlers(pm, ("UnitAddAbility", "UnitRemoveAbility"))
+        add_handler = handlers["UnitAddAbility"].handler_address
+        remove_handler = handlers["UnitRemoveAbility"].handler_address
+        internals = NativeAbilityInternals(
+            find_address=self._read_rel32_call(pm, add_handler + 0x33),
+            begin_address=self._read_rel32_call(pm, add_handler + 0x45),
+            add_address=self._read_rel32_call(pm, add_handler + 0x5F),
+            end_address=self._read_rel32_call(pm, add_handler + 0x73),
+            refresh_address=self._read_rel32_call(pm, add_handler + 0x7E),
+            remove_address=self._read_rel32_call(pm, remove_handler + 0x43),
         )
-        body = bytearray()
-        for op in ops:
-            handler = handlers.get(op.handler)
-            if handler is None:
-                raise RuntimeError(f"未找到 native handler：{op.handler}")
-            body += struct.pack(
-                self.NATIVE_CMD_OP,
-                int(op.kind),
-                int(op.rawcode) & 0xFFFFFFFF,
-                int(handler.handler_address) & 0xFFFFFFFFFFFFFFFF,
-                int(op.arg0) & 0xFFFFFFFFFFFFFFFF,
-                int(op.arg1) & 0xFFFFFFFFFFFFFFFF,
-                0,
-                0,
-                0,
-            )
-        while len(body) < self.NATIVE_MAX_OPS * struct.calcsize(self.NATIVE_CMD_OP):
-            body += struct.pack(self.NATIVE_CMD_OP, 0, 0, 0, 0, 0, 0, 0, 0)
-        return header + bytes(body)
-
-    def _read_native_command(self) -> tuple[int, int, list[int]]:
-        path = self._native_command_path()
-        with open(path, "rb") as f:
-            data = f.read(self._native_command_size())
-        if len(data) < struct.calcsize(self.NATIVE_CMD_HEADER):
-            raise RuntimeError("native helper 返回数据不完整")
-        (
-            magic,
-            version,
-            status,
-            op_count,
-            _unit_handle,
-            last_error,
-            _reserved,
-        ) = struct.unpack_from(self.NATIVE_CMD_HEADER, data, 0)
-        if magic != self.NATIVE_CMD_MAGIC or version != self.NATIVE_CMD_VERSION:
-            raise RuntimeError("native helper 返回数据格式错误")
-        results: list[int] = []
-        offset = struct.calcsize(self.NATIVE_CMD_HEADER)
-        op_size = struct.calcsize(self.NATIVE_CMD_OP)
-        for index in range(min(op_count, self.NATIVE_MAX_OPS)):
-            _kind, _rawcode, _handler, _arg0, _arg1, result, _op_error, _op_reserved = struct.unpack_from(
-                self.NATIVE_CMD_OP, data, offset + index * op_size
-            )
-            results.append(int(result))
-        return int(status), int(last_error), results
-
-    def _invoke_native_helper(
-        self,
-        pm: ProcessMemory,
-        unit_handle: int,
-        ops: list[NativeOpRequest],
-    ) -> list[int]:
-        handler_names = tuple(sorted({op.handler for op in ops if op.handler}))
-        handlers = self._discover_native_handlers(pm, handler_names) if handler_names else {}
-        command_path = self._native_command_path()
-        helper_path = self._native_helper_path()
-        unique_helper = os.path.join(
-            tempfile.gettempdir(),
-            f"war3_native_helper_{self.pid}_{time.time_ns()}.dll",
-        )
-        data = self._pack_native_command(
-            unit_handle or 1,
-            handlers,
-            ops,
-        )
-        with open(command_path, "wb") as f:
-            f.write(data)
-        shutil.copyfile(helper_path, unique_helper)
-        try:
-            pm.load_remote_library(unique_helper)
-            deadline = time.time() + 5.0
-            while time.time() < deadline:
-                status, last_error, results = self._read_native_command()
-                if status == self.NATIVE_CMD_STATUS_PENDING:
-                    time.sleep(0.05)
-                    continue
-                if status == self.NATIVE_CMD_STATUS_OK:
-                    return results
-                raise RuntimeError(f"native helper 执行失败，错误码 {last_error}")
-            raise RuntimeError("native helper 执行超时")
-        finally:
-            try:
-                os.remove(command_path)
-            except OSError:
-                pass
-            try:
-                os.remove(unique_helper)
-            except OSError:
-                pass
-
-    def verify_remote_call_stub(self) -> int:
-        with ProcessMemory(self.pid, write=True) as pm:
-            self._invoke_native_helper(pm, 1, [])
-            return 42
-
-    def verify_native_ability_call(self) -> int:
-        with ProcessMemory(self.pid, write=True) as pm:
-            candidate = self.locate_selected_unit_by_handle(pm, allow_panel_fallback=False)
-            results = self._invoke_native_helper(
-                pm,
-                candidate.handle,
-                [NativeOpRequest(self.NATIVE_OP_ADD, "UnitAddAbility", rawcode=0x30303030)],
-            )
-            return results[0] if results else -1
-
-    def verify_native_unit_handle(self) -> tuple[int, ...]:
-        with ProcessMemory(self.pid, write=True) as pm:
-            candidate = self.locate_selected_unit_by_handle(pm, allow_panel_fallback=False)
-            variants = (
-                candidate.handle,
-                candidate.handle & 0xFFFFFFFF,
-                (candidate.handle >> 32) & 0xFFFFFFFF,
-            )
-            expected = 0
-            if candidate.unit_address:
-                try:
-                    expected = pm.read_u32(candidate.unit_address + 0x70)
-                except OSError:
-                    expected = 0
-            values: list[int] = []
-            for handle in variants:
-                results = self._invoke_native_helper(
-                    pm,
-                    handle,
-                    [
-                        NativeOpRequest(self.NATIVE_OP_GET_UNIT_TYPE_ID, "GetUnitTypeId"),
-                        NativeOpRequest(self.NATIVE_OP_UNIT_INVENTORY_SIZE, "UnitInventorySize"),
-                    ],
-                )
-                unit_type = results[0] if len(results) > 0 else 0
-                inventory_size = results[1] if len(results) > 1 else 0
-                values.extend([unit_type & 0xFFFFFFFF, inventory_size])
-            return (expected, *values)
-
-    @staticmethod
-    def _remote_call_u64_u32_bool(
-        pm: ProcessMemory,
-        handler: int,
-        arg1: int,
-        arg2: int,
-    ) -> int:
-        code = b"".join(
-            (
-                b"\x48\xb9",
-                struct.pack("<Q", int(arg1) & 0xFFFFFFFFFFFFFFFF),
-                b"\xba",
-                struct.pack("<I", int(arg2) & 0xFFFFFFFF),
-                b"\x48\xb8",
-                struct.pack("<Q", int(handler) & 0xFFFFFFFFFFFFFFFF),
-                b"\x48\x83\xec\x28",
-                b"\xff\xd0",
-                b"\x48\x83\xc4\x28",
-                b"\x0f\xb6\xc0",
-                b"\xc3",
-            )
-        )
-        return pm.run_remote_code(code)
+        remove_find = self._read_rel32_call(pm, remove_handler + 0x33)
+        if remove_find != internals.find_address:
+            raise RuntimeError("UnitAddAbility/UnitRemoveAbility 使用的内部查找函数不一致")
+        regions = pm.regions()
+        for name, address in (
+            ("find", internals.find_address),
+            ("begin", internals.begin_address),
+            ("add", internals.add_address),
+            ("end", internals.end_address),
+            ("refresh", internals.refresh_address),
+            ("remove", internals.remove_address),
+        ):
+            if not self._is_executable_image_address(regions, address):
+                raise RuntimeError(f"内部 ability 函数 {name} 地址不可执行：0x{address:x}")
+        return internals
 
     def _iter_resource_properties(self, pm: ProcessMemory) -> Iterable[ResourceProperty]:
         tag = struct.pack("<Q", self.RESOURCE_PROP_TAG)
@@ -2081,12 +1723,29 @@ class War3Trainer:
         return score
 
     def _remember_selected_handle_addresses(self, pm: ProcessMemory, handle: int, owner: int) -> None:
-        hits = pm.scan_bytes_private(struct.pack("<Q", handle))
-        scored = [
-            (self._score_selected_handle_address(pm, address, handle, owner), address)
-            for address in hits
-            if 0x8000000000 <= address <= 0xFFFFFFFFFF
-        ]
+        pattern = struct.pack("<Q", handle)
+        scored: list[tuple[int, int]] = []
+
+        def collect_from_regions(regions: list[Region]) -> None:
+            for region in regions:
+                try:
+                    data = pm.read(region.base, region.size)
+                except OSError:
+                    continue
+                start = 0
+                while True:
+                    offset = data.find(pattern, start)
+                    if offset < 0:
+                        break
+                    address = region.base + offset
+                    score = self._score_selected_handle_address(pm, address, handle, owner)
+                    if score > 0:
+                        scored.append((score, address))
+                    start = offset + 1
+
+        collect_from_regions(self._selection_state_regions(pm, preferred_only=True))
+        if not scored:
+            collect_from_regions(self._selection_state_regions(pm, preferred_only=False))
         scored.sort(reverse=True)
         for score, address in scored[:8]:
             if score <= 0:
@@ -2210,89 +1869,13 @@ class War3Trainer:
         return candidate
 
     def _locate_selected_unit_by_panel(self, pm: ProcessMemory) -> UnitCandidate:
-        self.focus()
-        time.sleep(0.25)
-        panel = read_selected_panel_loose_from_image(capture_physical_screen_image())
-        if panel.max_hp <= 0:
-            raise RuntimeError("无法从游戏面板读取当前选中单位生命值")
-        has_mp = bool(panel.mp_text)
-        owners = self._unit_owner_index or self._build_unit_owner_index(pm)
-        matches: list[UnitCandidate] = []
-        loose_matches: list[UnitCandidate] = []
-        for handle, owner in owners.items():
-            candidate = self._candidate_from_owner(
-                pm,
-                owner,
-                500,
-                f"panel_unique_match hp={panel.hp_text} mp={panel.mp_text}",
-                handle,
-                "panel",
-            )
-            if candidate is None:
-                continue
-            try:
-                candidate_panel = self._panel_from_candidate(pm, candidate)
-            except OSError:
-                continue
-            if (
-                candidate_panel.current_hp == panel.current_hp
-                and candidate_panel.max_hp == panel.max_hp
-                and (
-                    not has_mp
-                    or (
-                        candidate_panel.current_mp == panel.current_mp
-                        and candidate_panel.max_mp == panel.max_mp
-                    )
-                )
-            ):
-                matches.append(candidate)
-                continue
-            if (
-                candidate_panel.current_hp == panel.current_hp
-                and candidate_panel.max_hp == panel.max_hp
-                and has_mp
-                and candidate_panel.current_mp == panel.current_mp
-                and abs(candidate_panel.max_mp - panel.max_mp) <= 10
-            ):
-                loose_matches.append(candidate)
-        if len(matches) == 1:
-            return matches[0]
-        if not matches and len(loose_matches) == 1:
-            match = loose_matches[0]
-            return UnitCandidate(
-                base=match.base,
-                score=match.score,
-                hp_current_address=match.hp_current_address,
-                hp_max_address=match.hp_max_address,
-                mp_current_address=match.mp_current_address,
-                mp_max_address=match.mp_max_address,
-                note=match.note + " loose_mp_max",
-                hp_regen_address=match.hp_regen_address,
-                mp_regen_address=match.mp_regen_address,
-                owner_address=match.owner_address,
-                handle=match.handle,
-                unit_address=match.unit_address,
-                x_address=match.x_address,
-                y_address=match.y_address,
-                position_property_address=match.position_property_address,
-                selection_source=match.selection_source,
-                selection_slot_address=match.selection_slot_address,
-            )
-        if matches:
-            raise RuntimeError(
-                f"面板数值匹配到 {len(matches)} 个单位；请单选目标或切换目标后重试，避免误改同属性单位"
-            )
-        if loose_matches:
-            raise RuntimeError(
-                f"面板数值宽松匹配到 {len(loose_matches)} 个单位；请单选目标或切换目标后重试，避免误改同属性单位"
-            )
-        mp_note = f"，MP {panel.mp_text}" if has_mp else ""
-        raise RuntimeError(f"没有单位匹配当前面板数值：HP {panel.hp_text}{mp_note}")
+        raise RuntimeError("OCR/面板数值定位已禁用；当前选中单位只能通过内存 selected-handle 定位")
 
     def locate_selected_unit_by_handle(
         self,
         pm: ProcessMemory | None = None,
         allow_panel_fallback: bool = False,
+        allow_deep_scan: bool = False,
     ) -> UnitCandidate:
         close_pm = False
         if pm is None:
@@ -2338,26 +1921,22 @@ class War3Trainer:
                 candidate = try_slot(address)
                 if candidate is not None:
                     return candidate
-            for address in self._discover_selected_handle_addresses(pm):
-                if address in tried:
-                    continue
-                candidate = try_slot(address)
-                if candidate is not None:
-                    return candidate
             for address in list(dict.fromkeys(self._selected_handle_addresses)):
                 if address in tried:
                     continue
                 candidate = try_slot(address)
                 if candidate is not None:
                     return candidate
-            unit_pointer_candidate = self._locate_selected_unit_by_unit_pointer(pm)
-            if unit_pointer_candidate is not None:
-                return unit_pointer_candidate
-            if allow_panel_fallback:
-                try:
-                    return self._locate_selected_unit_by_panel(pm)
-                except Exception as exc:
-                    last_error = f"{last_error}; 面板兜底失败：{exc}" if last_error else f"面板兜底失败：{exc}"
+            if allow_deep_scan:
+                for address in self._discover_selected_handle_addresses(pm):
+                    if address in tried:
+                        continue
+                    candidate = try_slot(address)
+                    if candidate is not None:
+                        return candidate
+                unit_pointer_candidate = self._locate_selected_unit_by_unit_pointer(pm)
+                if unit_pointer_candidate is not None:
+                    return unit_pointer_candidate
             detail = f"；最后错误：{last_error}" if last_error else ""
             raise RuntimeError(f"没有找到当前选中单位 handle，请在游戏里左键选中一个单位后重试{detail}")
         finally:
@@ -2576,6 +2155,14 @@ class War3Trainer:
         data = struct.pack(">I", value & 0xFFFFFFFF)
         return all(32 <= byte < 127 for byte in data) and any(65 <= byte <= 90 for byte in data)
 
+    @staticmethod
+    def _looks_like_item_rawcode(value: int) -> bool:
+        data = struct.pack(">I", value & 0xFFFFFFFF)
+        return all(
+            48 <= byte <= 57 or 65 <= byte <= 90 or 97 <= byte <= 122
+            for byte in data
+        )
+
     def _ability_instances_from_candidate(
         self,
         pm: ProcessMemory,
@@ -2585,7 +2172,6 @@ class War3Trainer:
             return []
         component_rawcodes = {tag >> 32 for tag in self.COMPONENT_TAGS.values()}
         instances: list[AbilityInstance] = []
-        seen_data: set[int] = set()
         for offset in range(0, 0x10000, 8):
             wrapper = candidate.owner_address + offset
             try:
@@ -2599,8 +2185,6 @@ class War3Trainer:
                 continue
             if not self._looks_like_vtable(vtable) or not self._sane_heap_ptr(data):
                 continue
-            if data in seen_data:
-                continue
             class_rawcode = (tag >> 32) & 0xFFFFFFFF
             if class_rawcode in component_rawcodes:
                 continue
@@ -2612,6 +2196,7 @@ class War3Trainer:
                 rawcode = pm.read_u32(data + 0x70)
                 mirror_rawcode = pm.read_u32(data + 0x78)
                 handle = pm.read_u64(wrapper + 0x20)
+                data_cache_pointer = pm.read_u64(data + 0xA0)
             except OSError:
                 continue
             if not self._looks_like_vtable(data_vtable):
@@ -2620,7 +2205,6 @@ class War3Trainer:
                 continue
             if rawcode != mirror_rawcode or not self._looks_like_rawcode(rawcode):
                 continue
-            seen_data.add(data)
             instances.append(
                 AbilityInstance(
                     slot=len(instances) + 1,
@@ -2635,6 +2219,8 @@ class War3Trainer:
                     rawcode=rawcode,
                     rawcode_address=data + 0x70,
                     mirror_rawcode_address=data + 0x78,
+                    data_cache_address=data + 0xA0,
+                    data_cache_pointer=data_cache_pointer if self._sane_heap_ptr(data_cache_pointer) else 0,
                 )
             )
         return instances
@@ -2660,7 +2246,7 @@ class War3Trainer:
         return 0
 
     def _item_object_from_handle(self, pm: ProcessMemory, owner: int, handle: int) -> int:
-        if not handle:
+        if not handle or handle == 0xFFFFFFFFFFFFFFFF:
             return 0
         if owner:
             for offset in range(0, 0x8000, 8):
@@ -2714,6 +2300,10 @@ class War3Trainer:
             item_address = self._item_object_from_handle(pm, candidate.owner_address, handle)
             rawcode = 0
             rawcode_address = 0
+            mirror_rawcode = 0
+            mirror_rawcode_address = 0
+            ability_rawcode = 0
+            ability_rawcode_address = 0
             charges = 0
             charges_address = 0
             if item_address:
@@ -2723,6 +2313,24 @@ class War3Trainer:
                 except OSError:
                     rawcode = 0
                     rawcode_address = 0
+                mirror_rawcode_address = item_address + 0x178
+                try:
+                    mirror_rawcode = pm.read_u32(mirror_rawcode_address)
+                    if not self._looks_like_rawcode(mirror_rawcode):
+                        mirror_rawcode = 0
+                        mirror_rawcode_address = 0
+                except OSError:
+                    mirror_rawcode = 0
+                    mirror_rawcode_address = 0
+                ability_rawcode_address = item_address + 0x1B8
+                try:
+                    ability_rawcode = pm.read_u32(ability_rawcode_address)
+                    if not self._looks_like_rawcode(ability_rawcode):
+                        ability_rawcode = 0
+                        ability_rawcode_address = 0
+                except OSError:
+                    ability_rawcode = 0
+                    ability_rawcode_address = 0
                 charges_address = item_address + self.ITEM_CHARGES_OFFSET
                 try:
                     charges = pm.read_i32(charges_address)
@@ -2740,6 +2348,10 @@ class War3Trainer:
                     item_address=item_address,
                     rawcode=rawcode,
                     rawcode_address=rawcode_address,
+                    mirror_rawcode=mirror_rawcode,
+                    mirror_rawcode_address=mirror_rawcode_address,
+                    ability_rawcode=ability_rawcode,
+                    ability_rawcode_address=ability_rawcode_address,
                     charges=charges,
                     charges_address=charges_address,
                 )
@@ -2798,7 +2410,10 @@ class War3Trainer:
             self._append_unit_field(pm, fields, "strength_growth", "力量成长/级", "f32", data + 0x188, "英雄", note=growth_note)
             self._append_unit_field(pm, fields, "intelligence_growth", "智力成长/级", "f32", data + 0x198, "英雄", note=growth_note)
             self._append_unit_field(pm, fields, "agility_growth", "敏捷成长/级", "f32", data + 0x1A8, "英雄", note=growth_note)
-            skill_name_note = "英雄技能配置 rawcode；写入时切换到当前单位已存在的运行时能力实例"
+            skill_name_note = (
+                "英雄技能栏 rawcode；只读展示。实际换技能必须走游戏 native add/remove/create 路径，"
+                "不能复制已有 ability payload"
+            )
             skill_cache_note = "旧版候选/运行时缓存；单改这里通常不改变已学技能效果"
             for index in range(self.HERO_SKILL_SLOT_COUNT):
                 config_address = data + 0x204 + index * 4
@@ -2808,15 +2423,15 @@ class War3Trainer:
                     current_config_rawcode = 0
                 hero_skill_config_rawcodes.append(current_config_rawcode)
             skill_instance_by_index: dict[int, AbilityInstance] = {}
-            used_skill_instance_data: set[int] = set()
+            used_skill_instance_wrappers: set[int] = set()
             for index, rawcode in enumerate(hero_skill_config_rawcodes):
                 if not rawcode:
                     continue
                 for instance in ability_by_rawcode.get(rawcode, []):
-                    if instance.data_address in used_skill_instance_data:
+                    if instance.wrapper_address in used_skill_instance_wrappers:
                         continue
                     skill_instance_by_index[index] = instance
-                    used_skill_instance_data.add(instance.data_address)
+                    used_skill_instance_wrappers.add(instance.wrapper_address)
                     break
             for index in range(self.HERO_SKILL_SLOT_COUNT):
                 number = index + 1
@@ -2831,8 +2446,8 @@ class War3Trainer:
                     "rawcode",
                     config_address,
                     "技能",
+                    writable=False,
                     note=skill_name_note,
-                    extra_writes=tuple(extra_writes),
                 )
                 self._append_unit_field(
                     pm,
@@ -2842,6 +2457,7 @@ class War3Trainer:
                     "rawcode",
                     cache_address,
                     "技能",
+                    writable=False,
                     note=skill_cache_note,
                 )
                 self._append_unit_field(
@@ -2866,16 +2482,16 @@ class War3Trainer:
                 )
 
         if hero_skill_config_rawcodes:
-            used_instance_data: set[int] = set()
+            used_instance_wrappers: set[int] = set()
             skill_instance_by_index = {}
             for index, rawcode in enumerate(hero_skill_config_rawcodes):
                 if not rawcode:
                     continue
                 for instance in ability_by_rawcode.get(rawcode, []):
-                    if instance.data_address in used_instance_data:
+                    if instance.wrapper_address in used_instance_wrappers:
                         continue
                     skill_instance_by_index[index] = instance
-                    used_instance_data.add(instance.data_address)
+                    used_instance_wrappers.add(instance.wrapper_address)
                     break
             for index, rawcode in enumerate(hero_skill_config_rawcodes):
                 if not rawcode:
@@ -2935,11 +2551,24 @@ class War3Trainer:
                         note="只读：能力实例数据对象虚表；不同效果类通常不同",
                     )
                 )
+                fields.append(
+                    UnitMemoryField(
+                        key=f"skill{number}_data_cache",
+                        label=f"技能{number}数据缓存",
+                        value_type="ptr",
+                        value=instance.data_cache_pointer,
+                        address=instance.data_cache_address,
+                        category="技能",
+                        write_address=0,
+                        write_type="",
+                        note="只读：疑似 AbilDataCacheNode 指针；实际技能数据不只由 rawcode/cache 字段决定",
+                    )
+                )
         else:
-            used_instance_data = set()
+            used_instance_wrappers = set()
 
         for instance in ability_instances:
-            if instance.data_address in used_instance_data:
+            if instance.wrapper_address in used_instance_wrappers:
                 continue
             mirror = (
                 ((instance.mirror_rawcode_address, "rawcode"),)
@@ -2992,6 +2621,19 @@ class War3Trainer:
                     note="只读：能力实例数据对象虚表；不同效果类通常不同",
                 )
             )
+            fields.append(
+                UnitMemoryField(
+                    key=f"ability_{instance.slot:02d}_data_cache",
+                    label=f"能力{instance.slot:02d}数据缓存",
+                    value_type="ptr",
+                    value=instance.data_cache_pointer,
+                    address=instance.data_cache_address,
+                    category="能力实例",
+                    write_address=0,
+                    write_type="",
+                    note="只读：疑似 AbilDataCacheNode 指针",
+                )
+            )
 
         attack = components.get("attack")
         if attack is not None:
@@ -3014,11 +2656,12 @@ class War3Trainer:
                         value=item.rawcode,
                         address=item.rawcode_address,
                         category="物品栏",
-                        write_address=item.handle_address,
+                        write_address=item.rawcode_address,
                         write_type="rawcode",
                         note=(
                             f"handle=0x{item.handle:x} item=0x{item.item_address:x}; "
-                            "写入时与当前背包内同 rawcode 物品实例交换，避免只改 rawcode 的无效写入"
+                            f"mirror=0x{item.mirror_rawcode_address:x} ability={format_rawcode(item.ability_rawcode) if item.ability_rawcode else '0'}; "
+                            "写入时直接修改本槽 item 对象，不交换其他物品槽"
                         ),
                     )
                 )
@@ -3032,9 +2675,9 @@ class War3Trainer:
                         value=0,
                         address=item.handle_address,
                         category="物品栏",
-                        write_address=item.handle_address,
-                        write_type="rawcode",
-                        note=note + "；写入 rawcode 会从当前背包内移动/交换同 rawcode 物品实例",
+                        write_address=0,
+                        write_type="",
+                        note=note + "；空槽没有可直接改写的 item 对象",
                     )
                 )
             fields.append(
@@ -3058,7 +2701,7 @@ class War3Trainer:
 
     def read_selected_unit_fields(self) -> tuple[VisibleUnitPanel, UnitCandidate, list[UnitMemoryField]]:
         with ProcessMemory(self.pid) as pm:
-            candidate = self.locate_selected_unit_by_handle(pm)
+            candidate = self.locate_selected_unit_by_handle(pm, allow_deep_scan=True)
             panel = self._panel_from_candidate(pm, candidate)
             return panel, candidate, self._unit_fields_from_candidate(pm, candidate)
 
@@ -3090,15 +2733,15 @@ class War3Trainer:
         for instance in ability_instances:
             ability_by_rawcode.setdefault(instance.rawcode, []).append(instance)
         mapped: dict[int, AbilityInstance] = {}
-        used_data: set[int] = set()
+        used_wrappers: set[int] = set()
         for index, rawcode in enumerate(configs):
             if not rawcode:
                 continue
             for instance in ability_by_rawcode.get(rawcode, []):
-                if instance.data_address in used_data:
+                if instance.wrapper_address in used_wrappers:
                     continue
                 mapped[index] = instance
-                used_data.add(instance.data_address)
+                used_wrappers.add(instance.wrapper_address)
                 break
         return configs, mapped, ability_instances
 
@@ -3112,74 +2755,14 @@ class War3Trainer:
         index = self._skill_index_from_field_key(field.key)
         if index is None:
             raise RuntimeError(f"不是英雄技能名称字段：{field.key}")
-        components = self._selected_components(pm, candidate.owner_address)
-        hero = components.get("hero")
-        if hero is None:
-            raise RuntimeError("当前选中单位没有英雄技能组件")
-        _hero_wrapper, hero_data = hero
-        configs, mapped, ability_instances = self._hero_skill_instance_map(pm, candidate, hero_data)
-        old_rawcode = configs[index] if index < len(configs) else 0
         new_rawcode = int(self._coerce_memory_value("rawcode", value)) & 0xFFFFFFFF
         if not self._looks_like_rawcode(new_rawcode):
             raise ValueError(f"技能 rawcode 无效：{format_rawcode(new_rawcode)}")
-
-        slot_instance = mapped.get(index)
-        rawcode_counts: dict[int, int] = {}
-        for instance in ability_instances:
-            rawcode_counts[instance.rawcode] = rawcode_counts.get(instance.rawcode, 0) + 1
-        planned_configs = list(configs)
-        planned_configs[index] = new_rawcode
-        old_needed_elsewhere = any(
-            rawcode == old_rawcode
-            for other_index, rawcode in enumerate(planned_configs)
-            if other_index != index
-        )
-        new_present = any(instance.rawcode == new_rawcode for instance in ability_instances)
-
-        actions: list[str] = []
-        needs_add = not new_present
-        needs_cleanup = (
-            bool(slot_instance)
-            and old_rawcode != new_rawcode
-            and rawcode_counts.get(old_rawcode, 0) == 1
-            and not old_needed_elsewhere
-        )
-
-        if needs_add:
-            raise RuntimeError(
-                f"当前单位没有 {format_rawcode(new_rawcode)} 的运行时能力实例；"
-                "Reforged native handler 不能直接创建能力，已拒绝只改配置的无效写入"
-            )
-        if slot_instance and old_rawcode != new_rawcode:
-            actions.append(f"切换到已有实例 {format_rawcode(new_rawcode)}")
-            if needs_cleanup:
-                actions.append(f"旧实例 {format_rawcode(old_rawcode)} 保留为未分配能力")
-        elif slot_instance and old_rawcode == new_rawcode:
-            actions.append("rawcode 未变化；重复实例状态下不强制移除，避免误删其他技能")
-        elif slot_instance:
-            actions.append(f"旧实例 {format_rawcode(old_rawcode)} 因重复或仍被其他技能使用而保留")
-        else:
-            actions.append("未发现已学实例，仅写英雄技能配置/缓存")
-
-        self._write_memory_value(pm, field.write_address, field.write_type, new_rawcode)
-        for extra_address, extra_type in field.extra_writes:
-            self._write_memory_value(pm, extra_address, extra_type, new_rawcode)
-        new_value = self._read_memory_value(pm, field.address, field.value_type)
-        note = field.note
-        if actions:
-            note = (note + "；" if note else "") + "；".join(actions)
-        return UnitMemoryField(
-            key=field.key,
-            label=field.label,
-            value_type=field.value_type,
-            value=new_value,
-            address=field.address,
-            category=field.category,
-            write_address=field.write_address,
-            write_type=field.write_type,
-            write_base=field.write_base,
-            note=note,
-            extra_writes=field.extra_writes,
+        raise RuntimeError(
+            f"技能{index + 1}写入 {format_rawcode(new_rawcode)} 已禁用："
+            "Reforged 的已学技能效果绑定在运行时 ability 实例/数据对象上，"
+            "单写技能栏 rawcode 或复制已有实例 payload 已验证会导致技能消失或游戏崩溃；"
+            "当前版本只读展示这些字段，等找到稳定的游戏线程内 ability 创建/替换路径后再开放写入"
         )
 
     def _inventory_slot_index_from_field_key(self, key: str) -> int | None:
@@ -3194,105 +2777,6 @@ class War3Trainer:
             return None
         return index
 
-    def _native_unit_item_in_slot(self, pm: ProcessMemory, unit_handle: int, slot_index: int) -> int:
-        results = self._invoke_native_helper(
-            pm,
-            unit_handle,
-            [
-                NativeOpRequest(
-                    self.NATIVE_OP_UNIT_ITEM_IN_SLOT,
-                    "UnitItemInSlot",
-                    arg0=slot_index,
-                )
-            ],
-        )
-        return results[0] if results else 0
-
-    def _native_get_item_type_id(self, pm: ProcessMemory, unit_handle: int, item_handle: int) -> int:
-        if not item_handle:
-            return 0
-        results = self._invoke_native_helper(
-            pm,
-            unit_handle,
-            [
-                NativeOpRequest(
-                    self.NATIVE_OP_GET_ITEM_TYPE_ID,
-                    "GetItemTypeId",
-                    arg0=item_handle,
-                )
-            ],
-        )
-        return (results[0] & 0xFFFFFFFF) if results else 0
-
-    def _native_set_item_charges(
-        self,
-        pm: ProcessMemory,
-        unit_handle: int,
-        item_handle: int,
-        charges: int,
-    ) -> None:
-        if not item_handle or charges <= 0:
-            return
-        self._invoke_native_helper(
-            pm,
-            unit_handle,
-            [
-                NativeOpRequest(
-                    self.NATIVE_OP_SET_ITEM_CHARGES,
-                    "SetItemCharges",
-                    arg0=item_handle,
-                    arg1=charges,
-                )
-            ],
-        )
-
-    def _native_remove_item(self, pm: ProcessMemory, unit_handle: int, item_handle: int) -> None:
-        if not item_handle:
-            return
-        self._invoke_native_helper(
-            pm,
-            unit_handle,
-            [
-                NativeOpRequest(
-                    self.NATIVE_OP_UNIT_REMOVE_ITEM,
-                    "UnitRemoveItem",
-                    arg0=item_handle,
-                )
-            ],
-        )
-        self._invoke_native_helper(
-            pm,
-            unit_handle,
-            [
-                NativeOpRequest(
-                    self.NATIVE_OP_REMOVE_ITEM,
-                    "RemoveItem",
-                    arg0=item_handle,
-                )
-            ],
-        )
-
-    def _native_add_item_to_slot(
-        self,
-        pm: ProcessMemory,
-        unit_handle: int,
-        rawcode: int,
-        slot_index: int,
-    ) -> int:
-        results = self._invoke_native_helper(
-            pm,
-            unit_handle,
-            [
-                NativeOpRequest(
-                    self.NATIVE_OP_UNIT_ADD_ITEM_TO_SLOT_BY_ID,
-                    "UnitAddItemToSlotById",
-                    rawcode=rawcode,
-                    arg0=slot_index,
-                )
-            ],
-        )
-        return results[0] if results else 0
-
     def _inventory_slot_snapshot(
         self,
         pm: ProcessMemory,
@@ -3303,40 +2787,6 @@ class War3Trainer:
             if item.slot == slot_index + 1:
                 return item
         return None
-
-    def _read_inventory_slot_after_native(
-        self,
-        pm: ProcessMemory,
-        candidate: UnitCandidate,
-        slot_index: int,
-    ) -> tuple[int, int, InventoryItem | None]:
-        handle = self._native_unit_item_in_slot(pm, candidate.handle, slot_index)
-        rawcode = self._native_get_item_type_id(pm, candidate.handle, handle)
-        snapshot = self._inventory_slot_snapshot(pm, candidate, slot_index)
-        if not self._looks_like_rawcode(rawcode) and snapshot is not None:
-            rawcode = snapshot.rawcode
-        return rawcode, handle, snapshot
-
-    def _restore_inventory_slot(
-        self,
-        pm: ProcessMemory,
-        candidate: UnitCandidate,
-        slot_index: int,
-        old_rawcode: int,
-        old_charges: int,
-    ) -> str:
-        if not old_rawcode:
-            return "旧槽位为空，无需恢复"
-        try:
-            restored = self._native_add_item_to_slot(pm, candidate.handle, old_rawcode, slot_index)
-            time.sleep(0.05)
-            restored_handle = self._native_unit_item_in_slot(pm, candidate.handle, slot_index)
-            if restored and restored_handle:
-                self._native_set_item_charges(pm, candidate.handle, restored_handle, old_charges)
-                return f"已恢复旧物品 {format_rawcode(old_rawcode)}"
-            return f"恢复旧物品 {format_rawcode(old_rawcode)} 失败"
-        except Exception as exc:
-            return f"恢复旧物品 {format_rawcode(old_rawcode)} 异常：{exc}"
 
     def _write_inventory_slot_field(
         self,
@@ -3349,7 +2799,7 @@ class War3Trainer:
         if slot_index is None:
             raise RuntimeError(f"不是物品槽字段：{field.key}")
         new_rawcode = int(self._coerce_memory_value("rawcode", value)) & 0xFFFFFFFF
-        if not self._looks_like_rawcode(new_rawcode):
+        if not self._looks_like_item_rawcode(new_rawcode):
             raise ValueError(f"物品 rawcode 无效：{format_rawcode(new_rawcode)}")
 
         components = self._selected_components(pm, candidate.owner_address)
@@ -3358,31 +2808,57 @@ class War3Trainer:
 
         items = self._inventory_items_from_candidate(pm, candidate, components)
         old_snapshot = next((item for item in items if item.slot == slot_index + 1), None)
+        before_by_slot = {item.slot: item.rawcode for item in items}
+        if old_snapshot is None or not old_snapshot.item_address or not old_snapshot.rawcode_address:
+            raise RuntimeError(
+                f"物品槽{slot_index + 1}为空或未解析 item 对象；"
+                "当前实现只直接修改已有槽位对象，不用不安全 native 创建新物品"
+            )
         old_rawcode = old_snapshot.rawcode if old_snapshot is not None else 0
         actions: list[str] = []
         if old_rawcode == new_rawcode:
             actions.append("物品 rawcode 未变化")
         else:
-            source = next(
+            template = next(
                 (
                     item
                     for item in items
-                    if item.slot != slot_index + 1 and item.rawcode == new_rawcode and item.handle
+                    if item.slot != slot_index + 1 and item.rawcode == new_rawcode and item.item_address
                 ),
                 None,
             )
-            if source is None:
-                raise RuntimeError(
-                    f"当前背包里没有可交换的 {format_rawcode(new_rawcode)} 实例；"
-                    "Reforged native handler 不能直接创建物品，已拒绝只改 rawcode 的无效写入"
-                )
-            target_handle = old_snapshot.handle if old_snapshot is not None else 0
-            pm.write_bytes(field.write_address, struct.pack("<Q", source.handle))
-            pm.write_bytes(source.handle_address, struct.pack("<Q", target_handle))
-            actions.append(f"与物品槽{source.slot}交换实例 {format_rawcode(new_rawcode)}")
+            if template is not None:
+                for offset, size in (
+                    (0x38, 4),
+                    (0x58, 0x40),
+                    (0x178, 4),
+                    (0x1B8, 4),
+                ):
+                    pm.write_bytes(
+                        old_snapshot.item_address + offset,
+                        pm.read(template.item_address + offset, size),
+                    )
+                actions.append(f"从物品槽{template.slot}复制 {format_rawcode(new_rawcode)} 类型元数据")
+            else:
+                actions.append("未找到同 rawcode 物品模板，仅写本槽 item type rawcode/镜像")
+            pm.write_u32(old_snapshot.rawcode_address, new_rawcode)
+            if old_snapshot.mirror_rawcode_address:
+                pm.write_u32(old_snapshot.mirror_rawcode_address, new_rawcode)
+            actions.append("未交换其他物品槽")
 
         time.sleep(0.05)
-        final_snapshot = self._inventory_slot_snapshot(pm, candidate, slot_index)
+        after_items = self._inventory_items_from_candidate(pm, candidate, components)
+        after_by_slot = {item.slot: item.rawcode for item in after_items}
+        changed_other_slots = [
+            slot
+            for slot, before_rawcode in before_by_slot.items()
+            if slot != slot_index + 1 and after_by_slot.get(slot, before_rawcode) != before_rawcode
+        ]
+        if changed_other_slots:
+            raise RuntimeError(
+                "物品写入影响了非目标槽：" + ", ".join(str(slot) for slot in changed_other_slots)
+            )
+        final_snapshot = next((item for item in after_items if item.slot == slot_index + 1), None)
         final_rawcode = final_snapshot.rawcode if final_snapshot is not None else 0
         final_handle = final_snapshot.handle if final_snapshot is not None else 0
         if final_rawcode != new_rawcode:
@@ -3396,7 +2872,9 @@ class War3Trainer:
         if final_snapshot is not None:
             note = (
                 f"handle=0x{final_snapshot.handle:x} item=0x{final_snapshot.item_address:x}; "
-                "写入时与当前背包内同 rawcode 物品实例交换，避免只改 rawcode 的无效写入"
+                f"mirror=0x{final_snapshot.mirror_rawcode_address:x} "
+                f"ability={format_rawcode(final_snapshot.ability_rawcode) if final_snapshot.ability_rawcode else '0'}; "
+                "直接修改本槽 item 对象，未交换其他物品槽"
             )
         else:
             note = field.note
@@ -3424,7 +2902,7 @@ class War3Trainer:
         if not specs:
             return []
         with ProcessMemory(self.pid, write=True) as pm:
-            candidate = self.locate_selected_unit_by_handle(pm)
+            candidate = self.locate_selected_unit_by_handle(pm, allow_deep_scan=True)
             fields = self._unit_fields_from_candidate(pm, candidate)
             by_key = {field.key: field for field in fields}
             by_label = {field.label: field for field in fields}
@@ -3472,7 +2950,7 @@ class War3Trainer:
 
     def locate_current_selected_unit(self) -> tuple[VisibleUnitPanel, UnitCandidate]:
         with ProcessMemory(self.pid) as pm:
-            candidate = self.locate_selected_unit_by_handle(pm)
+            candidate = self.locate_selected_unit_by_handle(pm, allow_deep_scan=True)
             return self._panel_from_candidate(pm, candidate), candidate
 
     def set_selected_unit(
@@ -3489,7 +2967,7 @@ class War3Trainer:
         target_mp_regen: float | None = None,
     ) -> UnitCandidate:
         with ProcessMemory(self.pid, write=True) as pm:
-            candidate = self.locate_selected_unit_by_handle(pm)
+            candidate = self.locate_selected_unit_by_handle(pm, allow_deep_scan=True)
             if target_hp is not None:
                 target_hp_f = float(target_hp)
                 try:
@@ -4247,10 +3725,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--read-selected", action="store_true", help="Read current selected unit through the selection handle")
     parser.add_argument("--read-selected-fields", action="store_true", help="Read all supported fields from the current selected unit")
     parser.add_argument("--verify-selection-locator", action="store_true", help="Verify selected-unit locator uses handle -> owner -> unit chain")
-    parser.add_argument("--verify-native-handlers", action="store_true", help="Verify Warcraft III native handler table discovery")
-    parser.add_argument("--verify-remote-call", action="store_true", help="Verify temporary remote-thread stub execution")
-    parser.add_argument("--verify-native-ability-call", action="store_true", help="Verify harmless UnitAddAbility failure call")
-    parser.add_argument("--verify-native-unit-handle", action="store_true", help="Verify selected unit handle variants against read-only natives")
     parser.add_argument("--set-unit-field", action="append", default=[], metavar="KEY=VALUE", help="Write a supported selected-unit field by key")
     parser.add_argument("--set-xp", type=int)
     parser.add_argument("--set-skill-points", type=int)
@@ -4372,7 +3846,7 @@ def run_cli(args: argparse.Namespace) -> int:
         if pos is not None:
             pos_text = f" x={pos[0]:.3f} y={pos[1]:.3f}"
         print(
-            f"selected panel hp={panel.hp_text} mp={panel.mp_text} "
+            f"selected memory hp={panel.hp_text} mp={panel.mp_text} "
             f"base=0x{cand.base:x} unit=0x{cand.unit_address:x} hp_cur=0x{cand.hp_current_address:x} "
             f"hp_max=0x{cand.hp_max_address:x} hp_regen_addr=0x{cand.hp_regen_address:x} "
             f"mp_cur=0x{cand.mp_current_address:x} mp_max=0x{cand.mp_max_address:x} "
@@ -4395,7 +3869,7 @@ def run_cli(args: argparse.Namespace) -> int:
             )
     if args.verify_selection_locator:
         with ProcessMemory(t.pid) as pm:
-            cand = t.locate_selected_unit_by_handle(pm, allow_panel_fallback=False)
+            cand = t.locate_selected_unit_by_handle(pm, allow_deep_scan=True)
             owner_handle = pm.read_u64(cand.owner_address + 0x20) if cand.owner_address else 0
             unit_handle = pm.read_u64(cand.unit_address + 0x18) if cand.unit_address else 0
             status = (
@@ -4416,42 +3890,6 @@ def run_cli(args: argparse.Namespace) -> int:
         )
         if not status:
             raise RuntimeError("选中单位定位链验证失败")
-    if args.verify_native_handlers:
-        handlers = t.verify_native_handlers()
-        print("native_handlers=OK")
-        for name in t.NATIVE_HANDLER_NAMES:
-            handler = handlers[name]
-            print(
-                f"native {name} record=0x{handler.record_address:x} "
-                f"handler=0x{handler.handler_address:x}"
-            )
-    if args.verify_remote_call:
-        exit_code = t.verify_remote_call_stub()
-        print(f"remote_call_stub={'OK' if exit_code == 42 else 'FAILED'} exit_code={exit_code}")
-        if exit_code != 42:
-            raise RuntimeError("远程调用桩验证失败")
-    if args.verify_native_ability_call:
-        result = t.verify_native_ability_call()
-        print(f"native_ability_call={'OK' if result == 0 else 'FAILED'} UnitAddAbility(0000)={result}")
-        if result != 0:
-            raise RuntimeError("native ability 调用验证失败")
-    if args.verify_native_unit_handle:
-        (
-            expected,
-            full_type,
-            full_inv,
-            low_type,
-            low_inv,
-            high_type,
-            high_inv,
-        ) = t.verify_native_unit_handle()
-        print(
-            "native_unit_handle "
-            f"expected={format_rawcode(expected) if expected else '0'} "
-            f"full_type={format_rawcode(full_type) if full_type else '0'} full_inventory={full_inv} "
-            f"low_type={format_rawcode(low_type) if low_type else '0'} low_inventory={low_inv} "
-            f"high_type={format_rawcode(high_type) if high_type else '0'} high_inventory={high_inv}"
-        )
     if (
         args.set_hp is not None
         or args.set_mp is not None
@@ -4549,10 +3987,6 @@ def main(argv: Iterable[str] | None = None) -> int:
             args.read_selected,
             args.read_selected_fields,
             args.verify_selection_locator,
-            args.verify_native_handlers,
-            args.verify_remote_call,
-            args.verify_native_ability_call,
-            args.verify_native_unit_handle,
             args.set_hp is not None,
             args.set_mp is not None,
             args.set_hp_regen is not None,

@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+
+build/
+.codex/
+
+*.bak-*
+*.log
+*.tmp
+*.dmp
+
+dist/*
+!dist/
+!dist/魔兽争霸3重制版修改器.exe
+
+魔兽争霸3修改器_new.exe

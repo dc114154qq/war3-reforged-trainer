@@ -244,6 +244,8 @@ def selection_confidence_text(summary: "UnitSelectionSummary") -> str:
         return "已验证"
     if note.startswith("selected_handle=") or note.startswith("selected_unit_slot=") or summary.known_hits >= 2:
         return "强"
+    if note.startswith("global_unit_scan"):
+        return "扫描"
     return "候选"
 
 
@@ -2151,15 +2153,19 @@ class War3Trainer:
         refs: int,
         known_hits: int,
         region_base: int,
+        components: dict[str, tuple[int, int]] | None = None,
+        include_inventory: bool = True,
+        include_abilities: bool = True,
     ) -> UnitSelectionSummary:
         panel = self._panel_from_candidate(pm, candidate)
         position = self._position_from_candidate(pm, candidate)
-        components = self._selected_components(pm, candidate.owner_address)
+        components = components if components is not None else self._selected_components(pm, candidate.owner_address)
         inventory: list[str] = []
-        for item in self._inventory_items_from_candidate(pm, candidate, components):
-            if item.rawcode:
-                inventory.append(f"{item.slot}:{item.rawcode_text}")
-        ability_count = len(self._ability_instances_from_candidate(pm, candidate))
+        if include_inventory:
+            for item in self._inventory_items_from_candidate(pm, candidate, components):
+                if item.rawcode:
+                    inventory.append(f"{item.slot}:{item.rawcode_text}")
+        ability_count = len(self._ability_instances_from_candidate(pm, candidate)) if include_abilities else 0
         return UnitSelectionSummary(
             candidate=candidate,
             refs=refs,
@@ -2194,21 +2200,68 @@ class War3Trainer:
                 raise RuntimeError("候选单位已经失效，请重新读取候选列表")
             return self._selection_summary_from_candidate(pm, candidate, refs=0, known_hits=2, region_base=0)
 
+    @staticmethod
+    def _selection_summary_priority(summary: UnitSelectionSummary) -> tuple[int, int, int, int, int]:
+        note = summary.candidate.note
+        if note.startswith("remembered_identity=") or note.startswith("manual_candidate"):
+            base = 100000
+        elif note.startswith("selected_handle=") or note.startswith("selected_unit_slot=") or summary.known_hits >= 2:
+            base = 90000
+        elif note.startswith("global_unit_scan"):
+            base = 20000
+        else:
+            base = 30000
+        if summary.hero:
+            base += 30000
+        if "inventory" in summary.components:
+            base += 10000
+        if "move" in summary.components:
+            base += 500
+        return (
+            base,
+            len(summary.inventory),
+            summary.known_hits,
+            summary.refs,
+            summary.candidate.score,
+        )
+
     def list_selection_candidates(
         self,
-        limit: int = 12,
+        limit: int = 80,
         extra_identities: Iterable[tuple[int, int, int]] | None = None,
     ) -> list[UnitSelectionSummary]:
         with ProcessMemory(self.pid) as pm:
             unit_index = self._build_unit_object_index(pm, force_refresh=True)
-            summaries: list[UnitSelectionSummary] = []
-            seen_units: set[int] = set()
+            summary_by_unit: dict[int, UnitSelectionSummary] = {}
 
-            def append_candidate(candidate: UnitCandidate, refs: int, known_hits: int, region_base: int) -> None:
-                if candidate.unit_address in seen_units:
+            def append_summary(summary: UnitSelectionSummary) -> None:
+                existing = summary_by_unit.get(summary.candidate.unit_address)
+                if existing is None or self._selection_summary_priority(summary) > self._selection_summary_priority(existing):
+                    summary_by_unit[summary.candidate.unit_address] = summary
+
+            def append_candidate(
+                candidate: UnitCandidate,
+                refs: int,
+                known_hits: int,
+                region_base: int,
+                components: dict[str, tuple[int, int]] | None = None,
+                include_inventory: bool = True,
+                include_abilities: bool = True,
+            ) -> None:
+                if not candidate.unit_address:
                     return
-                summaries.append(self._selection_summary_from_candidate(pm, candidate, refs, known_hits, region_base))
-                seen_units.add(candidate.unit_address)
+                append_summary(
+                    self._selection_summary_from_candidate(
+                        pm,
+                        candidate,
+                        refs,
+                        known_hits,
+                        region_base,
+                        components,
+                        include_inventory,
+                        include_abilities,
+                    )
+                )
 
             if extra_identities is not None:
                 for handle, owner, unit in extra_identities:
@@ -2222,8 +2275,6 @@ class War3Trainer:
                     )
                     if candidate is not None:
                         append_candidate(candidate, 0, 2, 0)
-                    if len(summaries) >= limit:
-                        return summaries
 
             try:
                 strong_candidate = self.locate_selected_unit_by_handle(pm, allow_deep_scan=False)
@@ -2236,12 +2287,8 @@ class War3Trainer:
                     2 if strong_candidate.note.startswith("selected_handle=") else 0,
                     0,
                 )
-                if len(summaries) >= limit:
-                    return summaries
 
             for (region_base, unit), addresses, known_hits in self._selection_unit_pointer_groups(pm):
-                if unit in seen_units:
-                    continue
                 entry = unit_index.get(unit)
                 if entry is None:
                     continue
@@ -2260,9 +2307,56 @@ class War3Trainer:
                 )
                 if candidate is not None:
                     append_candidate(candidate, len(addresses), known_hits, region_base)
-                if len(summaries) >= limit:
-                    break
-            return summaries
+
+            owners = self._build_unit_owner_index(pm)
+            components_by_owner = self._component_map_for_owners(pm, set(owners.values()))
+            for handle, owner in owners.items():
+                candidate = self._candidate_from_owner(
+                    pm,
+                    owner,
+                    500,
+                    f"global_unit_scan handle=0x{handle:x}",
+                    handle,
+                    "scan",
+                    0,
+                )
+                if candidate is not None and candidate.unit_address:
+                    components = components_by_owner.get(owner, {})
+                    append_candidate(
+                        candidate,
+                        0,
+                        0,
+                        0,
+                        components=components,
+                        include_inventory=False,
+                        include_abilities=False,
+                    )
+
+            summaries = sorted(
+                summary_by_unit.values(),
+                key=self._selection_summary_priority,
+                reverse=True,
+            )
+            final: list[UnitSelectionSummary] = []
+            for summary in summaries[:limit]:
+                if summary.candidate.note.startswith("global_unit_scan") and (
+                    summary.hero or "inventory" in summary.components
+                ):
+                    final.append(
+                        self._selection_summary_from_candidate(
+                            pm,
+                            summary.candidate,
+                            summary.refs,
+                            summary.known_hits,
+                            summary.region_base,
+                            components=components_by_owner.get(summary.candidate.owner_address),
+                            include_inventory=True,
+                            include_abilities=False,
+                        )
+                    )
+                else:
+                    final.append(summary)
+            return final
 
     def selection_candidate_line(self, summary: UnitSelectionSummary, index: int) -> str:
         pos = summary.position
@@ -2403,7 +2497,42 @@ class War3Trainer:
             return components
         for name, wrapper, data in self._iter_owner_component_wrappers(pm, owner):
             components.setdefault(name, (wrapper, data))
+        if not {"hero", "inventory", "attack", "move"}.issubset(components):
+            for name, pair in self._component_map_for_owners(pm, {owner}).get(owner, {}).items():
+                components.setdefault(name, pair)
         return components
+
+    def _component_map_for_owners(
+        self,
+        pm: ProcessMemory,
+        owners: set[int],
+    ) -> dict[int, dict[str, tuple[int, int]]]:
+        components_by_owner: dict[int, dict[str, tuple[int, int]]] = {}
+        if not owners:
+            return components_by_owner
+        for tag, name in self.COMPONENT_NAMES.items():
+            pattern = struct.pack("<Q", tag)
+            for tag_address in pm.scan_bytes_private(pattern, max_region_size=16 * 1024 * 1024):
+                wrapper = tag_address - 0x18
+                try:
+                    vtable = pm.read_u64(wrapper)
+                    wrapper_tag = pm.read_u64(wrapper + 0x18)
+                    owner = pm.read_u64(wrapper + 0x50)
+                    data = pm.read_u64(wrapper + 0x90)
+                except OSError:
+                    continue
+                if wrapper_tag != tag or owner not in owners:
+                    continue
+                if not self._looks_like_vtable(vtable) or not self._sane_heap_ptr(data):
+                    continue
+                try:
+                    data_vtable = pm.read_u64(data)
+                except OSError:
+                    continue
+                if not self._looks_like_vtable(data_vtable):
+                    continue
+                components_by_owner.setdefault(owner, {}).setdefault(name, (wrapper, data))
+        return components_by_owner
 
     def _append_unit_field(
         self,
@@ -3931,14 +4060,12 @@ def run_gui() -> None:
     def refresh_unit_candidates() -> str:
         summaries = trainer().list_selection_candidates(extra_identities=remembered_unit_identities())
         root.after(0, populate_selection_candidates, summaries)
-        return f"已列出 {len(summaries)} 个候选单位；自动定位弱时请选择带 hero/inventory/物品槽的行"
+        return f"已列出 {len(summaries)} 个候选单位；慢速扫描结果请选择 HP/MP、坐标、组件和物品槽匹配的行"
 
     def populate_recovery_candidates(t: War3Trainer | None = None) -> None:
         remembered = remembered_unit_identities()
-        if not remembered:
-            return
         try:
-            summaries = (t or trainer()).list_selection_candidates(extra_identities=remembered)
+            summaries = (t or trainer()).list_selection_candidates(extra_identities=remembered or None)
         except Exception:
             return
         root.after(0, populate_selection_candidates, summaries)
@@ -4050,10 +4177,10 @@ def run_gui() -> None:
         try:
             t = trainer()
             panel, cand, fields = t.read_selected_unit_fields()
-        except Exception:
+        except Exception as exc:
             populate_recovery_candidates(t if "t" in locals() else None)
             root.after(0, clear_selected_unit_readout)
-            raise
+            raise RuntimeError(f"{exc}；已尝试列出候选单位，请在候选表选择目标后点击“读取所选候选”") from exc
         root.after(0, populate_auto_selected_unit_readout, panel, cand, fields, True)
         return (
             f"选中单位字段：HP {panel.hp_text}，MP {panel.mp_text}；"
@@ -4287,10 +4414,10 @@ def run_gui() -> None:
         try:
             t = trainer()
             panel, cand, fields = t.read_selected_unit_fields()
-        except Exception:
+        except Exception as exc:
             populate_recovery_candidates(t if "t" in locals() else None)
             root.after(0, clear_selected_unit_readout)
-            raise
+            raise RuntimeError(f"{exc}；已尝试列出候选单位，请在候选表选择目标后点击“读取所选候选”") from exc
         root.after(0, populate_auto_selected_unit_readout, panel, cand, fields, True)
         return (
             f"选中单位：HP {panel.hp_text}，MP {panel.mp_text}；"

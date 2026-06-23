@@ -224,6 +224,21 @@ class AbilityInstance:
 
 
 @dataclass(frozen=True)
+class UnitSelectionSummary:
+    candidate: UnitCandidate
+    refs: int
+    known_hits: int
+    region_base: int
+    hp_text: str
+    mp_text: str
+    position: tuple[float, float] | None
+    components: tuple[str, ...]
+    inventory: tuple[str, ...]
+    ability_count: int
+    hero: bool
+
+
+@dataclass(frozen=True)
 class MemoryWriteSpec:
     label: str
     address: int
@@ -1916,10 +1931,13 @@ class War3Trainer:
             return None
         return candidate
 
-    def _locate_selected_unit_by_known_unit_pointer(self, pm: ProcessMemory) -> UnitCandidate | None:
+    def _selection_unit_pointer_groups(
+        self,
+        pm: ProcessMemory,
+    ) -> list[tuple[tuple[int, int], list[int], int]]:
         unit_index = self._build_unit_object_index(pm, force_refresh=True)
         if not unit_index:
-            return None
+            return []
         regions = pm.regions()
         known_offsets = set(self.KNOWN_SELECTED_UNIT_POINTER_REGION_OFFSETS)
         groups: dict[tuple[int, int], list[int]] = {}
@@ -1948,25 +1966,32 @@ class War3Trainer:
                     add_pointer(region.base + offset, unit)
 
         if not groups:
-            return None
+            return []
 
-        def group_rank(item: tuple[tuple[int, int], list[int]]) -> tuple[int, int, int, int]:
-            (region_base, _unit), addresses = item
-            unique_addresses = set(addresses)
+        ranked: list[tuple[tuple[int, int], list[int], int]] = []
+        for key, addresses in groups.items():
+            region_base, _unit = key
+            unique_addresses = sorted(set(addresses))
             known_hits = sum(1 for address in unique_addresses if (address - region_base) in known_offsets)
-            return known_hits, len(unique_addresses), -region_base, -min(unique_addresses)
-
-        ranked = sorted(
-            groups.items(),
-            key=group_rank,
+            ranked.append((key, unique_addresses, known_hits))
+        ranked.sort(
+            key=lambda item: (item[2], len(item[1]), -item[0][0], -min(item[1])),
             reverse=True,
         )
-        (region_base, unit), addresses = ranked[0]
-        unique_addresses = sorted(set(addresses))
-        known_hits = sum(1 for address in unique_addresses if (address - region_base) in known_offsets)
-        if known_hits < 2 and len(unique_addresses) < 4:
+        return ranked
+
+    def _locate_selected_unit_by_known_unit_pointer(self, pm: ProcessMemory) -> UnitCandidate | None:
+        unit_index = self._build_unit_object_index(pm, force_refresh=True)
+        if not unit_index:
             return None
-        if len(ranked) > 1 and group_rank(ranked[1])[:2] == group_rank(ranked[0])[:2] and ranked[1][0][1] != unit:
+
+        ranked = self._selection_unit_pointer_groups(pm)
+        if not ranked:
+            return None
+        (region_base, unit), unique_addresses, known_hits = ranked[0]
+        if known_hits < 2:
+            return None
+        if len(ranked) > 1 and ranked[1][2] == known_hits and len(ranked[1][1]) == len(unique_addresses) and ranked[1][0][1] != unit:
             return None
 
         handle, owner = unit_index[unit]
@@ -2085,6 +2110,98 @@ class War3Trainer:
         # from HP/MP/stat values. Identical units and changing hero stats must
         # still resolve through the live selected-unit handle.
         return self.locate_selected_unit_by_handle(allow_panel_fallback=False)
+
+    def _candidate_from_identity(
+        self,
+        pm: ProcessMemory,
+        handle: int,
+        owner: int,
+        unit: int,
+        note: str,
+        score: int = 0,
+        selection_slot_address: int = 0,
+    ) -> UnitCandidate | None:
+        try:
+            if pm.read_u64(owner + 0x20) != handle:
+                return None
+            if pm.read_u64(owner + 0x90) != unit:
+                return None
+            if pm.read_u64(unit + 0x18) != handle:
+                return None
+        except OSError:
+            return None
+        candidate = self._candidate_from_owner(pm, owner, score, note, handle, "memory", selection_slot_address)
+        if candidate is None or candidate.unit_address != unit:
+            return None
+        return candidate
+
+    def list_selection_candidates(self, limit: int = 12) -> list[UnitSelectionSummary]:
+        with ProcessMemory(self.pid) as pm:
+            unit_index = self._build_unit_object_index(pm, force_refresh=True)
+            summaries: list[UnitSelectionSummary] = []
+            seen_units: set[int] = set()
+            for (region_base, unit), addresses, known_hits in self._selection_unit_pointer_groups(pm):
+                if unit in seen_units:
+                    continue
+                entry = unit_index.get(unit)
+                if entry is None:
+                    continue
+                handle, owner = entry
+                candidate = self._candidate_from_identity(
+                    pm,
+                    handle,
+                    owner,
+                    unit,
+                    (
+                        f"selection_candidate=0x{unit:x} region=0x{region_base:x} "
+                        f"refs={len(addresses)} known={known_hits} slot=0x{min(addresses):x}"
+                    ),
+                    800 + known_hits * 20 + min(len(addresses), 20) * 5,
+                    min(addresses),
+                )
+                if candidate is None:
+                    continue
+                panel = self._panel_from_candidate(pm, candidate)
+                position = self._position_from_candidate(pm, candidate)
+                components = self._selected_components(pm, owner)
+                inventory: list[str] = []
+                for item in self._inventory_items_from_candidate(pm, candidate, components):
+                    if item.rawcode:
+                        inventory.append(f"{item.slot}:{item.rawcode_text}")
+                ability_count = len(self._ability_instances_from_candidate(pm, candidate))
+                summaries.append(
+                    UnitSelectionSummary(
+                        candidate=candidate,
+                        refs=len(addresses),
+                        known_hits=known_hits,
+                        region_base=region_base,
+                        hp_text=panel.hp_text,
+                        mp_text=panel.mp_text,
+                        position=position,
+                        components=tuple(sorted(components)),
+                        inventory=tuple(inventory),
+                        ability_count=ability_count,
+                        hero="hero" in components,
+                    )
+                )
+                seen_units.add(unit)
+                if len(summaries) >= limit:
+                    break
+            return summaries
+
+    def selection_candidate_line(self, summary: UnitSelectionSummary, index: int) -> str:
+        pos = summary.position
+        pos_text = f" x={pos[0]:.1f} y={pos[1]:.1f}" if pos is not None else ""
+        components = ",".join(summary.components) if summary.components else "-"
+        inventory = ",".join(summary.inventory) if summary.inventory else "-"
+        confidence = "强" if summary.known_hits >= 2 else "候选"
+        return (
+            f"#{index} [{confidence}] hp={summary.hp_text} mp={summary.mp_text}{pos_text} "
+            f"refs={summary.refs} known={summary.known_hits} "
+            f"handle=0x{summary.candidate.handle:x} owner=0x{summary.candidate.owner_address:x} "
+            f"unit=0x{summary.candidate.unit_address:x} components={components} "
+            f"abilities={summary.ability_count} inventory={inventory} note={summary.candidate.note}"
+        )
 
     @staticmethod
     def _sane_heap_ptr(value: int) -> bool:
@@ -2907,6 +3024,26 @@ class War3Trainer:
             panel = self._panel_from_candidate(pm, candidate)
             return panel, candidate, self._unit_fields_from_candidate(pm, candidate)
 
+    def read_unit_fields_by_identity(
+        self,
+        handle: int,
+        owner: int,
+        unit: int,
+    ) -> tuple[VisibleUnitPanel, UnitCandidate, list[UnitMemoryField]]:
+        with ProcessMemory(self.pid) as pm:
+            candidate = self._candidate_from_identity(
+                pm,
+                handle,
+                owner,
+                unit,
+                f"manual_candidate handle=0x{handle:x} owner=0x{owner:x} unit=0x{unit:x}",
+                850,
+            )
+            if candidate is None:
+                raise RuntimeError("候选单位已经失效，请重新读取候选列表")
+            panel = self._panel_from_candidate(pm, candidate)
+            return panel, candidate, self._unit_fields_from_candidate(pm, candidate)
+
     def _skill_index_from_field_key(self, key: str) -> int | None:
         if not key.startswith("skill") or not key.endswith("_name"):
             return None
@@ -3099,61 +3236,149 @@ class War3Trainer:
             extra_writes=field.extra_writes,
         )
 
+    def _write_unit_fields_to_candidate(
+        self,
+        pm: ProcessMemory,
+        candidate: UnitCandidate,
+        specs: Iterable[MemoryWriteSpec],
+    ) -> list[UnitMemoryField]:
+        specs = list(specs)
+        if not specs:
+            return []
+        fields = self._unit_fields_from_candidate(pm, candidate)
+        by_key = {field.key: field for field in fields}
+        by_label = {field.label: field for field in fields}
+        written: list[UnitMemoryField] = []
+        for spec in specs:
+            field = (
+                by_key.get(spec.label)
+                or by_key.get(self.FIELD_KEY_ALIASES.get(spec.label, ""))
+                or by_label.get(spec.label)
+            )
+            if field is None:
+                raise RuntimeError(f"当前选中单位没有字段：{spec.label}")
+            if not field.writable:
+                raise RuntimeError(f"字段不可写：{field.label}")
+            if self._skill_index_from_field_key(field.key) is not None:
+                written.append(self._write_hero_skill_name_field(pm, candidate, field, spec.value))
+                continue
+            if self._inventory_slot_index_from_field_key(field.key) is not None:
+                written.append(self._write_inventory_slot_field(pm, candidate, field, spec.value))
+                continue
+            self._write_memory_value(pm, field.write_address, field.write_type, spec.value)
+            for extra_address, extra_type in field.extra_writes:
+                self._write_memory_value(pm, extra_address, extra_type, spec.value)
+            new_value = self._read_memory_value(pm, field.address, field.value_type)
+            written.append(
+                UnitMemoryField(
+                    key=field.key,
+                    label=field.label,
+                    value_type=field.value_type,
+                    value=new_value,
+                    address=field.address,
+                    category=field.category,
+                    write_address=field.write_address,
+                    write_type=field.write_type,
+                    write_base=field.write_base,
+                    note=field.note,
+                    extra_writes=field.extra_writes,
+                )
+            )
+        return written
+
     def write_selected_unit_fields(self, specs: Iterable[MemoryWriteSpec]) -> list[UnitMemoryField]:
         specs = list(specs)
         if not specs:
             return []
         with ProcessMemory(self.pid, write=True) as pm:
             candidate = self.locate_selected_unit_by_handle(pm, allow_deep_scan=True)
-            fields = self._unit_fields_from_candidate(pm, candidate)
-            by_key = {field.key: field for field in fields}
-            by_label = {field.label: field for field in fields}
-            written: list[UnitMemoryField] = []
-            for spec in specs:
-                field = (
-                    by_key.get(spec.label)
-                    or by_key.get(self.FIELD_KEY_ALIASES.get(spec.label, ""))
-                    or by_label.get(spec.label)
-                )
-                if field is None:
-                    raise RuntimeError(f"当前选中单位没有字段：{spec.label}")
-                if not field.writable:
-                    raise RuntimeError(f"字段不可写：{field.label}")
-                if self._skill_index_from_field_key(field.key) is not None:
-                    written.append(self._write_hero_skill_name_field(pm, candidate, field, spec.value))
-                    continue
-                if self._inventory_slot_index_from_field_key(field.key) is not None:
-                    written.append(self._write_inventory_slot_field(pm, candidate, field, spec.value))
-                    continue
-                self._write_memory_value(pm, field.write_address, field.write_type, spec.value)
-                for extra_address, extra_type in field.extra_writes:
-                    self._write_memory_value(pm, extra_address, extra_type, spec.value)
-                new_value = self._read_memory_value(pm, field.address, field.value_type)
-                written.append(
-                    UnitMemoryField(
-                        key=field.key,
-                        label=field.label,
-                        value_type=field.value_type,
-                        value=new_value,
-                        address=field.address,
-                        category=field.category,
-                        write_address=field.write_address,
-                        write_type=field.write_type,
-                        write_base=field.write_base,
-                        note=field.note,
-                        extra_writes=field.extra_writes,
-                    )
-                )
-            return written
+            return self._write_unit_fields_to_candidate(pm, candidate, specs)
 
     def write_selected_unit_field(self, key: str, value: int | float | str) -> UnitMemoryField:
         fields = self.write_selected_unit_fields([MemoryWriteSpec(key, 0, "", value)])
         return fields[0]
 
+    def write_unit_field_by_identity(
+        self,
+        handle: int,
+        owner: int,
+        unit: int,
+        key: str,
+        value: int | float | str,
+    ) -> UnitMemoryField:
+        with ProcessMemory(self.pid, write=True) as pm:
+            candidate = self._candidate_from_identity(
+                pm,
+                handle,
+                owner,
+                unit,
+                f"manual_candidate handle=0x{handle:x} owner=0x{owner:x} unit=0x{unit:x}",
+                850,
+            )
+            if candidate is None:
+                raise RuntimeError("候选单位已经失效，请重新读取候选列表")
+            return self._write_unit_fields_to_candidate(pm, candidate, [MemoryWriteSpec(key, 0, "", value)])[0]
+
     def locate_current_selected_unit(self) -> tuple[VisibleUnitPanel, UnitCandidate]:
         with ProcessMemory(self.pid) as pm:
             candidate = self.locate_selected_unit_by_handle(pm, allow_deep_scan=True)
             return self._panel_from_candidate(pm, candidate), candidate
+
+    def _write_basic_unit_values_to_candidate(
+        self,
+        pm: ProcessMemory,
+        candidate: UnitCandidate,
+        target_hp: float | None,
+        target_mp: float | None,
+        max_hp: float | None = None,
+        max_mp: float | None = None,
+        target_x: float | None = None,
+        target_y: float | None = None,
+        target_hp_regen: float | None = None,
+        target_mp_regen: float | None = None,
+    ) -> None:
+        if max_hp is not None or target_hp is not None:
+            try:
+                old_max_hp = pm.read_f32(candidate.hp_max_address)
+            except OSError:
+                old_max_hp = float(target_hp) if target_hp is not None else 0.0
+            target_max_hp = float(max_hp) if max_hp is not None else old_max_hp
+            if target_hp is not None and float(target_hp) > target_max_hp:
+                target_max_hp = float(target_hp)
+            if target_max_hp > 0:
+                pm.write_f32(candidate.hp_max_address, target_max_hp)
+            if target_hp is not None:
+                pm.write_f32(candidate.hp_current_address, float(target_hp))
+        if max_mp is not None or target_mp is not None:
+            if not candidate.mp_current_address or not candidate.mp_max_address:
+                raise RuntimeError("当前单位没有可写的魔法属性")
+            try:
+                old_max_mp = pm.read_f32(candidate.mp_max_address)
+            except OSError:
+                old_max_mp = float(target_mp) if target_mp is not None else 0.0
+            target_max_mp = float(max_mp) if max_mp is not None else old_max_mp
+            if target_mp is not None and float(target_mp) > target_max_mp:
+                target_max_mp = float(target_mp)
+            if target_max_mp >= 0:
+                pm.write_f32(candidate.mp_max_address, target_max_mp)
+            if target_mp is not None:
+                pm.write_f32(candidate.mp_current_address, float(target_mp))
+        if target_hp_regen is not None:
+            if not candidate.hp_regen_address:
+                raise RuntimeError("当前单位没有可写的 HP 回复率属性")
+            pm.write_f32(candidate.hp_regen_address, float(target_hp_regen))
+        if target_mp_regen is not None:
+            if not candidate.mp_regen_address:
+                raise RuntimeError("当前单位没有可写的 MP 回复率属性")
+            pm.write_f32(candidate.mp_regen_address, float(target_mp_regen))
+        if target_x is not None:
+            if not candidate.x_address:
+                raise RuntimeError("当前单位没有可写的 X 坐标属性")
+            pm.write_f32(candidate.x_address, float(target_x))
+        if target_y is not None:
+            if not candidate.y_address:
+                raise RuntimeError("当前单位没有可写的 Y 坐标属性")
+            pm.write_f32(candidate.y_address, float(target_y))
 
     def set_selected_unit(
         self,
@@ -3170,49 +3395,60 @@ class War3Trainer:
     ) -> UnitCandidate:
         with ProcessMemory(self.pid, write=True) as pm:
             candidate = self.locate_selected_unit_by_handle(pm, allow_deep_scan=True)
-            if max_hp is not None or target_hp is not None:
-                try:
-                    old_max_hp = pm.read_f32(candidate.hp_max_address)
-                except OSError:
-                    old_max_hp = float(target_hp) if target_hp is not None else 0.0
-                target_max_hp = float(max_hp) if max_hp is not None else old_max_hp
-                if target_hp is not None and float(target_hp) > target_max_hp:
-                    target_max_hp = float(target_hp)
-                if target_max_hp > 0:
-                    pm.write_f32(candidate.hp_max_address, target_max_hp)
-                if target_hp is not None:
-                    pm.write_f32(candidate.hp_current_address, float(target_hp))
-            if max_mp is not None or target_mp is not None:
-                if not candidate.mp_current_address or not candidate.mp_max_address:
-                    raise RuntimeError("当前选中单位没有可写的魔法属性")
-                try:
-                    old_max_mp = pm.read_f32(candidate.mp_max_address)
-                except OSError:
-                    old_max_mp = float(target_mp) if target_mp is not None else 0.0
-                target_max_mp = float(max_mp) if max_mp is not None else old_max_mp
-                if target_mp is not None and float(target_mp) > target_max_mp:
-                    target_max_mp = float(target_mp)
-                if target_max_mp >= 0:
-                    pm.write_f32(candidate.mp_max_address, target_max_mp)
-                if target_mp is not None:
-                    pm.write_f32(candidate.mp_current_address, float(target_mp))
-            if target_hp_regen is not None:
-                if not candidate.hp_regen_address:
-                    raise RuntimeError("当前选中单位没有可写的 HP 回复率属性")
-                pm.write_f32(candidate.hp_regen_address, float(target_hp_regen))
-            if target_mp_regen is not None:
-                if not candidate.mp_regen_address:
-                    raise RuntimeError("当前选中单位没有可写的 MP 回复率属性")
-                pm.write_f32(candidate.mp_regen_address, float(target_mp_regen))
-            if target_x is not None:
-                if not candidate.x_address:
-                    raise RuntimeError("当前选中单位没有可写的 X 坐标属性")
-                pm.write_f32(candidate.x_address, float(target_x))
-            if target_y is not None:
-                if not candidate.y_address:
-                    raise RuntimeError("当前选中单位没有可写的 Y 坐标属性")
-                pm.write_f32(candidate.y_address, float(target_y))
+            self._write_basic_unit_values_to_candidate(
+                pm,
+                candidate,
+                target_hp,
+                target_mp,
+                max_hp,
+                max_mp,
+                target_x,
+                target_y,
+                target_hp_regen,
+                target_mp_regen,
+            )
         return candidate
+
+    def set_unit_by_identity(
+        self,
+        handle: int,
+        owner: int,
+        unit: int,
+        current_hp: float,
+        current_mp: float | None,
+        target_hp: float | None,
+        target_mp: float | None,
+        max_hp: float | None = None,
+        max_mp: float | None = None,
+        target_x: float | None = None,
+        target_y: float | None = None,
+        target_hp_regen: float | None = None,
+        target_mp_regen: float | None = None,
+    ) -> UnitCandidate:
+        with ProcessMemory(self.pid, write=True) as pm:
+            candidate = self._candidate_from_identity(
+                pm,
+                handle,
+                owner,
+                unit,
+                f"manual_candidate handle=0x{handle:x} owner=0x{owner:x} unit=0x{unit:x}",
+                850,
+            )
+            if candidate is None:
+                raise RuntimeError("候选单位已经失效，请重新读取候选列表")
+            self._write_basic_unit_values_to_candidate(
+                pm,
+                candidate,
+                target_hp,
+                target_mp,
+                max_hp,
+                max_mp,
+                target_x,
+                target_y,
+                target_hp_regen,
+                target_mp_regen,
+            )
+            return candidate
 
 
 def close_float(a: float, b: float, tolerance: float = 0.01) -> bool:
@@ -3233,14 +3469,45 @@ def parse_float(text: str, name: str) -> float:
         raise ValueError(f"{name} 必须是数字") from exc
 
 
+def parse_unit_identity(text: str) -> tuple[int, int, int]:
+    raw_parts = [part.strip() for part in text.replace(";", ",").split(",") if part.strip()]
+    values: dict[str, int] = {}
+    positional: list[int] = []
+    for part in raw_parts:
+        if "=" in part:
+            key, value = part.split("=", 1)
+            key = key.strip().lower()
+            if key in {"h", "handle"}:
+                key = "handle"
+            elif key in {"o", "owner"}:
+                key = "owner"
+            elif key in {"u", "unit"}:
+                key = "unit"
+            else:
+                raise ValueError(f"未知单位身份字段：{key}")
+            values[key] = int(value.strip(), 0)
+        else:
+            positional.append(int(part, 0))
+    if positional:
+        if len(positional) != 3:
+            raise ValueError("--unit-identity 位置格式应为 HANDLE,OWNER,UNIT")
+        values.setdefault("handle", positional[0])
+        values.setdefault("owner", positional[1])
+        values.setdefault("unit", positional[2])
+    missing = [key for key in ("handle", "owner", "unit") if key not in values]
+    if missing:
+        raise ValueError("--unit-identity 缺少：" + ",".join(missing))
+    return values["handle"], values["owner"], values["unit"]
+
+
 def run_gui() -> None:
     import tkinter as tk
     from tkinter import messagebox, ttk
 
     root = tk.Tk()
     root.title("魔兽争霸3重制版修改器")
-    root.geometry("1060x720")
-    root.minsize(980, 640)
+    root.geometry("1180x780")
+    root.minsize(1040, 700)
 
     status = tk.StringVar(value="正在连接 Warcraft III...")
     pid_var = tk.StringVar(value="")
@@ -3276,6 +3543,9 @@ def run_gui() -> None:
         "resource_labels": {},
         "selected_resource_iid": "",
         "unit_fields": {},
+        "selected_unit_identity": None,
+        "selection_candidates": {},
+        "manual_unit_identity": None,
         "locks": {},
         "lock_busy": False,
     }
@@ -3493,6 +3763,106 @@ def run_gui() -> None:
                 ),
             )
 
+    def unit_identity(candidate: UnitCandidate) -> tuple[int, int, int]:
+        return candidate.handle, candidate.owner_address, candidate.unit_address
+
+    def current_manual_unit_identity() -> tuple[int, int, int] | None:
+        identity = state.get("manual_unit_identity")
+        if (
+            isinstance(identity, tuple)
+            and len(identity) == 3
+            and all(isinstance(value, int) for value in identity)
+        ):
+            return identity
+        return None
+
+    def populate_selection_candidates(summaries: list[UnitSelectionSummary]) -> None:
+        candidate_map: dict[str, UnitSelectionSummary] = {}
+        candidate_tree.delete(*candidate_tree.get_children())
+        preferred_identity = state.get("manual_unit_identity") or state.get("selected_unit_identity")
+        selected_iid = ""
+        for index, summary in enumerate(summaries, 1):
+            iid = str(index)
+            candidate_map[iid] = summary
+            candidate = summary.candidate
+            confidence = "强" if summary.known_hits >= 2 else "候选"
+            pos = summary.position
+            pos_text = f"{pos[0]:.0f},{pos[1]:.0f}" if pos is not None else ""
+            components = ",".join(summary.components) if summary.components else "-"
+            inventory = ",".join(summary.inventory) if summary.inventory else "-"
+            candidate_tree.insert(
+                "",
+                "end",
+                iid=iid,
+                values=(
+                    index,
+                    confidence,
+                    summary.hp_text,
+                    summary.mp_text,
+                    pos_text,
+                    f"{summary.refs}/{summary.known_hits}",
+                    components,
+                    inventory,
+                    f"0x{candidate.handle:x}",
+                    f"0x{candidate.owner_address:x}",
+                    f"0x{candidate.unit_address:x}",
+                ),
+            )
+            if unit_identity(candidate) == preferred_identity:
+                selected_iid = iid
+            elif not selected_iid and summary.known_hits >= 2:
+                selected_iid = iid
+        state["selection_candidates"] = candidate_map
+        if selected_iid:
+            candidate_tree.selection_set(selected_iid)
+            candidate_tree.focus(selected_iid)
+
+    def selected_selection_candidate() -> UnitSelectionSummary:
+        selection = candidate_tree.selection()
+        if not selection:
+            raise ValueError("请先在候选单位表选择一行")
+        candidates = state.get("selection_candidates", {})
+        if not isinstance(candidates, dict):
+            raise ValueError("候选单位表尚未刷新")
+        summary = candidates.get(str(selection[0]))
+        if not isinstance(summary, UnitSelectionSummary):
+            raise ValueError("候选单位表尚未刷新")
+        return summary
+
+    def refresh_unit_candidates() -> str:
+        summaries = trainer().list_selection_candidates()
+        root.after(0, populate_selection_candidates, summaries)
+        return f"已列出 {len(summaries)} 个候选单位；自动定位弱时请选择带 hero/inventory/物品槽的行"
+
+    def populate_auto_selected_unit_readout(
+        panel: VisibleUnitPanel,
+        cand: UnitCandidate,
+        fields: list[UnitMemoryField],
+        force_targets: bool = False,
+    ) -> None:
+        state["manual_unit_identity"] = None
+        populate_selected_unit_readout(panel, cand, fields, force_targets)
+
+    def populate_manual_candidate_readout(
+        panel: VisibleUnitPanel,
+        cand: UnitCandidate,
+        fields: list[UnitMemoryField],
+        force_targets: bool = False,
+    ) -> None:
+        state["manual_unit_identity"] = unit_identity(cand)
+        populate_selected_unit_readout(panel, cand, fields, force_targets)
+
+    def read_selection_candidate_fields() -> str:
+        summary = selected_selection_candidate()
+        identity = unit_identity(summary.candidate)
+        t = trainer()
+        panel, cand, fields = t.read_unit_fields_by_identity(*identity)
+        root.after(0, populate_manual_candidate_readout, panel, cand, fields, True)
+        return (
+            f"已读取所选候选：HP {panel.hp_text}，MP {panel.mp_text}；"
+            f"owner=0x{cand.owner_address:x} handle=0x{cand.handle:x} unit=0x{cand.unit_address:x}"
+        )
+
     def clear_selected_unit_readout() -> None:
         for var in (
             hp_current,
@@ -3513,6 +3883,7 @@ def run_gui() -> None:
         ):
             var.set("")
         state["selected_unit_identity"] = None
+        state["manual_unit_identity"] = None
         state["unit_fields"] = {}
         try:
             unit_field_tree.delete(*unit_field_tree.get_children())
@@ -3572,7 +3943,7 @@ def run_gui() -> None:
         except Exception:
             root.after(0, clear_selected_unit_readout)
             raise
-        root.after(0, populate_selected_unit_readout, panel, cand, fields, True)
+        root.after(0, populate_auto_selected_unit_readout, panel, cand, fields, True)
         return (
             f"选中单位字段：HP {panel.hp_text}，MP {panel.mp_text}；"
             f"source={cand.selection_source or 'unknown'} owner=0x{cand.owner_address:x} "
@@ -3598,9 +3969,16 @@ def run_gui() -> None:
         value = unit_field_target.get().strip()
         if not value:
             raise ValueError("请填写目标值")
-        written = trainer().write_selected_unit_field(field.key, value)
-        panel, cand, fields = trainer().read_selected_unit_fields()
-        root.after(0, populate_selected_unit_readout, panel, cand, fields, False)
+        t = trainer()
+        manual_identity = current_manual_unit_identity()
+        if manual_identity is not None:
+            written = t.write_unit_field_by_identity(*manual_identity, field.key, value)
+            panel, cand, fields = t.read_unit_fields_by_identity(*manual_identity)
+            root.after(0, populate_manual_candidate_readout, panel, cand, fields, False)
+        else:
+            written = t.write_selected_unit_field(field.key, value)
+            panel, cand, fields = t.read_selected_unit_fields()
+            root.after(0, populate_auto_selected_unit_readout, panel, cand, fields, False)
         note = f"；{written.note}" if written.note else ""
         return f"{written.label} 已写入 {written.value_text()}{note}"
 
@@ -3745,6 +4123,27 @@ def run_gui() -> None:
         y_new = parse_float(y_target.get(), "目标 Y") if y_target.get().strip() else None
         if hp_new is None and mp_new is None and hp_regen_new is None and mp_regen_new is None and x_new is None and y_new is None:
             raise ValueError("至少填写一个目标生命、魔法、回复率或坐标")
+        manual_identity = current_manual_unit_identity()
+        if manual_identity is not None:
+            cand = t.set_unit_by_identity(
+                *manual_identity,
+                hp_now,
+                mp_now,
+                hp_new,
+                mp_new,
+                hp_max_now,
+                mp_max_now,
+                x_new,
+                y_new,
+                hp_regen_new,
+                mp_regen_new,
+            )
+            panel, cand_after, fields = t.read_unit_fields_by_identity(*manual_identity)
+            root.after(0, populate_manual_candidate_readout, panel, cand_after, fields, True)
+            return (
+                f"候选单位已写入；source={cand.selection_source or 'manual'} "
+                f"base=0x{cand.base:x} unit=0x{cand.unit_address:x} {cand.note}"
+            )
         cand = t.set_selected_unit(
             hp_now,
             mp_now,
@@ -3758,7 +4157,7 @@ def run_gui() -> None:
             mp_regen_new,
         )
         panel, cand_after, fields = t.read_selected_unit_fields()
-        root.after(0, populate_selected_unit_readout, panel, cand_after, fields, True)
+        root.after(0, populate_auto_selected_unit_readout, panel, cand_after, fields, True)
         return (
             f"选中单位已写入；source={cand.selection_source or 'unknown'} "
             f"base=0x{cand.base:x} unit=0x{cand.unit_address:x} {cand.note}"
@@ -3771,7 +4170,7 @@ def run_gui() -> None:
         except Exception:
             root.after(0, clear_selected_unit_readout)
             raise
-        root.after(0, populate_selected_unit_readout, panel, cand, fields, True)
+        root.after(0, populate_auto_selected_unit_readout, panel, cand, fields, True)
         return (
             f"选中单位：HP {panel.hp_text}，MP {panel.mp_text}；"
             f"source={cand.selection_source or 'unknown'} base=0x{cand.base:x} unit=0x{cand.unit_address:x}"
@@ -3883,9 +4282,48 @@ def run_gui() -> None:
     ttk.Button(unit, text="读取当前选中单位", command=lambda: call_async(read_unit)).grid(row=6, column=0, pady=12, sticky="w")
     ttk.Button(unit, text="写入选中单位", command=lambda: call_async(set_unit)).grid(row=6, column=1, pady=12, sticky="w")
     ttk.Button(unit, text="刷新字段表", command=lambda: call_async(read_unit_fields)).grid(row=6, column=2, pady=12, sticky="w")
+    ttk.Button(unit, text="列出候选单位", command=lambda: call_async(refresh_unit_candidates)).grid(row=6, column=3, pady=12, sticky="w")
+    ttk.Button(unit, text="读取所选候选", command=lambda: call_async(read_selection_candidate_fields)).grid(row=6, column=4, pady=12, sticky="w")
+
+    candidate_frame = ttk.Frame(unit)
+    candidate_frame.grid(row=7, column=0, columnspan=7, sticky="nsew", pady=(0, 8))
+    candidate_columns = (
+        "index",
+        "confidence",
+        "hp",
+        "mp",
+        "position",
+        "evidence",
+        "components",
+        "inventory",
+        "handle",
+        "owner",
+        "unit",
+    )
+    candidate_tree = ttk.Treeview(candidate_frame, columns=candidate_columns, show="headings", height=5)
+    for column, heading, width in (
+        ("index", "#", 36),
+        ("confidence", "可信度", 56),
+        ("hp", "生命", 86),
+        ("mp", "魔法", 86),
+        ("position", "坐标", 90),
+        ("evidence", "refs/known", 82),
+        ("components", "组件", 170),
+        ("inventory", "物品槽", 220),
+        ("handle", "handle", 132),
+        ("owner", "owner", 132),
+        ("unit", "unit", 132),
+    ):
+        candidate_tree.heading(column, text=heading)
+        candidate_tree.column(column, width=width, anchor="w", stretch=(column in {"components", "inventory"}))
+    candidate_scroll = ttk.Scrollbar(candidate_frame, orient="vertical", command=candidate_tree.yview)
+    candidate_tree.configure(yscrollcommand=candidate_scroll.set)
+    candidate_tree.pack(side="left", fill="both", expand=True)
+    candidate_scroll.pack(side="right", fill="y")
+    candidate_tree.bind("<Double-1>", lambda _event: call_async(read_selection_candidate_fields))
 
     unit_field_frame = ttk.Frame(unit)
-    unit_field_frame.grid(row=7, column=0, columnspan=7, sticky="nsew", pady=(4, 0))
+    unit_field_frame.grid(row=8, column=0, columnspan=7, sticky="nsew", pady=(4, 0))
     unit_field_columns = ("category", "label", "value", "type", "address", "note")
     unit_field_tree = ttk.Treeview(unit_field_frame, columns=unit_field_columns, show="headings", height=11)
     for column, heading, width in (
@@ -3913,13 +4351,13 @@ def run_gui() -> None:
 
     unit_field_tree.bind("<<TreeviewSelect>>", on_unit_field_select)
 
-    ttk.Label(unit, text="字段目标值").grid(row=8, column=0, sticky="w", pady=(8, 0))
-    ttk.Entry(unit, textvariable=unit_field_target, width=16).grid(row=8, column=1, sticky="w", pady=(8, 0))
-    ttk.Button(unit, text="写入字段", command=lambda: call_async(set_advanced_unit_field)).grid(row=8, column=2, sticky="w", pady=(8, 0))
-    ttk.Button(unit, text="锁定字段", command=lambda: call_async(add_unit_lock)).grid(row=8, column=3, sticky="w", pady=(8, 0))
+    ttk.Label(unit, text="字段目标值").grid(row=9, column=0, sticky="w", pady=(8, 0))
+    ttk.Entry(unit, textvariable=unit_field_target, width=16).grid(row=9, column=1, sticky="w", pady=(8, 0))
+    ttk.Button(unit, text="写入字段", command=lambda: call_async(set_advanced_unit_field)).grid(row=9, column=2, sticky="w", pady=(8, 0))
+    ttk.Button(unit, text="锁定字段", command=lambda: call_async(add_unit_lock)).grid(row=9, column=3, sticky="w", pady=(8, 0))
     for col in range(7):
         unit.columnconfigure(col, weight=1 if col == 6 else 0)
-    unit.rowconfigure(7, weight=1)
+    unit.rowconfigure(8, weight=1)
 
     locks_tab = ttk.Frame(notebook, padding=10)
     notebook.add(locks_tab, text="锁定列表")
@@ -3990,6 +4428,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--set-y", type=float)
     parser.add_argument("--read-selected", action="store_true", help="Read current selected unit through the selection handle")
     parser.add_argument("--read-selected-fields", action="store_true", help="Read all supported fields from the current selected unit")
+    parser.add_argument("--list-selection-candidates", action="store_true", help="List plausible selected-unit candidates with full clues")
+    parser.add_argument("--unit-identity", help="Manual candidate identity: HANDLE,OWNER,UNIT or handle=...,owner=...,unit=...")
     parser.add_argument("--verify-selection-locator", action="store_true", help="Verify selected-unit locator uses handle -> owner -> unit chain")
     parser.add_argument("--set-unit-field", action="append", default=[], metavar="KEY=VALUE", help="Write a supported selected-unit field by key")
     parser.add_argument("--set-xp", type=int)
@@ -4015,6 +4455,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 def run_cli(args: argparse.Namespace) -> int:
     t = War3Trainer(args.pid)
+    manual_identity = parse_unit_identity(args.unit_identity) if args.unit_identity else None
     print(f"Warcraft III PID={t.pid} HWND=0x{t.hwnd:x}")
     if args.focus:
         t.focus()
@@ -4100,7 +4541,10 @@ def run_cli(args: argparse.Namespace) -> int:
             f"source={cache.source}"
         )
     if args.read_selected:
-        panel, cand = t.locate_current_selected_unit()
+        if manual_identity is not None:
+            panel, cand, _fields = t.read_unit_fields_by_identity(*manual_identity)
+        else:
+            panel, cand = t.locate_current_selected_unit()
         pos_text = ""
         with ProcessMemory(t.pid) as pm:
             pos = t._position_from_candidate(pm, cand)
@@ -4120,7 +4564,10 @@ def run_cli(args: argparse.Namespace) -> int:
             f"source={cand.selection_source or 'unknown'} note={cand.note}"
         )
     if args.read_selected_fields:
-        panel, cand, fields = t.read_selected_unit_fields()
+        if manual_identity is not None:
+            panel, cand, fields = t.read_unit_fields_by_identity(*manual_identity)
+        else:
+            panel, cand, fields = t.read_selected_unit_fields()
         print(
             f"selected fields hp={panel.hp_text} mp={panel.mp_text} "
             f"owner=0x{cand.owner_address:x} handle=0x{cand.handle:x} "
@@ -4133,6 +4580,11 @@ def run_cli(args: argparse.Namespace) -> int:
                 f"{field.key} [{field.category}] {field.label}={field.value_text()} "
                 f"type={field.value_type} addr=0x{field.address:x} {writable}{note}"
             )
+    if args.list_selection_candidates:
+        summaries = t.list_selection_candidates()
+        print(f"selection_candidates count={len(summaries)}")
+        for index, summary in enumerate(summaries, 1):
+            print(t.selection_candidate_line(summary, index))
     if args.verify_selection_locator:
         with ProcessMemory(t.pid) as pm:
             cand = t.locate_selected_unit_by_handle(pm, allow_deep_scan=True)
@@ -4165,7 +4617,22 @@ def run_cli(args: argparse.Namespace) -> int:
         or args.set_x is not None
         or args.set_y is not None
     ):
-        if args.current_hp is None:
+        if manual_identity is not None:
+            panel, _cand, _fields = t.read_unit_fields_by_identity(*manual_identity)
+            cand = t.set_unit_by_identity(
+                *manual_identity,
+                args.current_hp if args.current_hp is not None else panel.current_hp,
+                args.current_mp if args.current_mp is not None else panel.current_mp,
+                args.set_hp,
+                args.set_mp,
+                args.current_hp_max if args.current_hp_max is not None else panel.max_hp,
+                args.current_mp_max if args.current_mp_max is not None else panel.max_mp,
+                args.set_x,
+                args.set_y,
+                args.set_hp_regen,
+                args.set_mp_regen,
+            )
+        elif args.current_hp is None:
             panel, cand = t.locate_current_selected_unit()
             cand = t.set_selected_unit(
                 panel.current_hp,
@@ -4225,7 +4692,13 @@ def run_cli(args: argparse.Namespace) -> int:
             raise ValueError("--set-unit-field 缺少字段名")
         unit_specs.append(MemoryWriteSpec(key, 0, "", value))
     if unit_specs:
-        written = t.write_selected_unit_fields(unit_specs)
+        if manual_identity is not None:
+            written = [
+                t.write_unit_field_by_identity(*manual_identity, spec.label, spec.value)
+                for spec in unit_specs
+            ]
+        else:
+            written = t.write_selected_unit_fields(unit_specs)
         for field in written:
             note = f" note={field.note}" if field.note else ""
             print(
@@ -4253,6 +4726,8 @@ def main(argv: Iterable[str] | None = None) -> int:
             args.set_food_cap is not None,
             args.read_selected,
             args.read_selected_fields,
+            args.list_selection_candidates,
+            bool(args.unit_identity),
             args.verify_selection_locator,
             args.set_hp is not None,
             args.set_mp is not None,

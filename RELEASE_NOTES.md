@@ -1,13 +1,15 @@
 # 发布说明
 
-## v0.2.1
+## v0.2.2
 
-本版本用于发布当前稳定状态：除任意技能替换外，资源、当前选中单位字段和物品栏功能按现有实现保留。
+本版本用于发布当前稳定状态：除任意技能替换外，资源、当前选中单位字段、候选单位读取和物品栏功能按现有实现保留。
 
 ### 变更
 
 - 当前选中单位定位改为纯内存 selected-handle / selected-unit 路径，不再使用 OCR 截图识别面板数值，也不再用全内存单位指针引用数猜目标。
-- selected-unit 定位新增选择状态区动态扫描、多地址一致性投票和短重试，降低游戏窗口失焦或新局初始化后读到上一个目标/临时空槽的概率。
+- selected-unit 定位新增选择状态区动态扫描、多地址一致性投票和短重试；弱证据结果不再自动采用，避免把历史目标、临时对象或 500/500 旁路单位当成当前选择。
+- `选中单位` 页新增候选单位表，展示 HP/MP、坐标、refs/known、组件、物品槽、handle/owner/unit。自动定位证据不足时，用户可以选择候选并固定读取/写入这个单位。
+- 命令行新增 `--list-selection-candidates` 和 `--unit-identity HANDLE,OWNER,UNIT`，便于复现 GUI 候选读取和按候选身份写入字段。
 - 选中单位字段表按实际组件动态显示；非英雄、无技能或无物品栏单位不会因为缺少这些组件而被当成无效目标。
 - 移除公开 native handler 验证入口，打包产物不再携带 `war3_native_helper.dll`。
 - 去掉远程线程、DLL 注入、native 调用实验路径。
@@ -24,10 +26,15 @@
 ### 已验证
 
 - `python -m py_compile .\war3_reforged_trainer.py .\tools\war3_selected_probe.py .\tools\war3_disasm_native.py`
+- `python -m py_compile .\war3_reforged_trainer.py`
 - `python -m PyInstaller .\魔兽争霸3重制版修改器.spec --noconfirm`
-- `dist\魔兽争霸3重制版修改器.exe` PE 子系统为 Windows GUI
+- `dist\魔兽争霸3重制版修改器.exe` PE 子系统为 Windows GUI，文件大小约 11.2 MB
+- 打包 exe 启动烟测：进程启动并响应，测试后关闭
 - `python .\war3_reforged_trainer.py --verify-selection-locator`
 - `python .\war3_reforged_trainer.py --read-selected-fields`
+- `python .\war3_reforged_trainer.py --list-selection-candidates`
+- `python .\war3_reforged_trainer.py --unit-identity 0xa81400006f34,0x202baf6e618,0x202ace2e430 --read-selected-fields`
+- `python .\war3_reforged_trainer.py --unit-identity 0xa81400006f34,0x202baf6e618,0x202ace2e430 --set-unit-field inventory_slot_1=ofir`
 
 ### 未完成
 

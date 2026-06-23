@@ -4,7 +4,7 @@
 
 ## 下载和运行
 
-从 GitHub Release 下载 `War3ReforgedTrainer-v0.2.1.exe`，直接双击运行即可。Release 页面里它的显示标签是 `魔兽争霸3重制版修改器.exe`。这是 PyInstaller 打包的单文件 GUI 程序，不会额外弹出终端窗口，也不需要安装 Python。
+从 GitHub Release 下载 `War3ReforgedTrainer-v0.2.2.exe`，直接双击运行即可。Release 页面里它的显示标签是 `魔兽争霸3重制版修改器.exe`。这是 PyInstaller 打包的单文件 GUI 程序，不会额外弹出终端窗口，也不需要安装 Python。
 
 运行前请先启动《魔兽争霸 III：重制版》，进入地图并选中目标单位。修改器会自动查找正在运行的 `Warcraft III.exe`。
 
@@ -18,6 +18,7 @@
 
 - 玩家资源：读取多个阵营/玩家资源组，修改金币、木材、人口。
 - 当前选中单位：读取并修改 HP、MP、回复、坐标、经验、技能点、三围、护甲、移动速度、攻击相关字段等。非英雄或无背包单位会只显示实际存在的组件字段，缺少英雄/技能/物品栏组件不是读取失败。
+- 候选单位列表：当 Reforged 当前选择状态里同时存在历史目标、临时对象或多个单位引用时，可以列出候选单位，并显示 HP/MP、坐标、refs/known、组件、物品槽、handle/owner/unit，由用户选择最符合当前游戏画面的单位。
 - 物品栏：在 `选中单位` 页面的字段表里读取 `物品槽1..6` 和 `物品槽N数量`，通过 `字段目标值` + `写入字段` 修改目标槽。当前实现只修改目标槽对应的 item 对象，不通过交换两个槽位来伪装修改。
 - 技能信息：读取英雄技能栏 rawcode、运行时 ability 实例 rawcode、效果类、data vtable、data cache 等诊断信息。
 
@@ -27,11 +28,13 @@
 - 本版本不会写入 `skill*_name`、`skill*_cache_rawcode`、`skill*_instance_rawcode`、`skill*_effect_class` 等技能字段。旧的 rawcode/cache 写法会显示变了但实际效果不变，复制 ability payload 还可能导致技能消失或游戏崩溃，所以已经禁用。
 - 修改器不会修改游戏文件、存档或地图文件。
 - 修改器不使用 OCR 截图识别当前目标；当前选中单位只通过内存中的 selected-handle / selected-unit 槽定位。selected-unit 会动态扫描选择状态区，并按多个地址一致指向同一个 unit 对象投票；新局初始化时会短暂重试。找不到可验证的当前选择槽时会报错，而不会按面板数值或全内存单位指针引用次数猜目标。
+- 纯外部读内存不能保证 100% 自动识别当前选中单位。Reforged 会在选择状态区保留历史目标、旁路对象或临时对象；本修改器只把强证据结果用于自动读取，弱证据只进入候选表，让用户按组件和物品槽线索手动选择。
 - 修改器不再注入 DLL、不创建远程线程、不调用 Warcraft III native handler。之前的实验路径已移除，避免再次导致游戏崩溃。
 
 ## 界面说明
 
 - `读取当前选中单位` 和 `刷新字段表` 都会重新读取当前游戏选中的单位，并刷新上方生命/魔法/坐标输入框，避免换过单位后继续显示旧单位数值。
+- `列出候选单位` 会显示当前选择状态区里所有可解释的候选。`refs/known` 越高证据越强；英雄通常会有 `hero,inventory` 组件和物品槽列表，小兵可能只有 `attack,move` 等组件。选中表格行后点 `读取所选候选`，后续 `写入选中单位` 和 `写入字段` 会固定写这个候选的 handle/owner/unit，直到再次自动读取或重新选候选。
 - `写入选中单位` 会按界面字段分别写入当前生命、生命上限、当前魔法、魔法上限、回复率和坐标；当前值高于上限时才会自动抬高上限。
 - 装备/物品修改沿用经典修改器的字段表路径：在 `选中单位` 页面的字段表选择 `物品槽N` 或 `物品槽N数量`，填写 `字段目标值` 后点击 `写入字段`。空槽没有可直接改写的 item 对象时会报错。
 - 如果本轮没有找到可验证的当前选中单位，界面会清空旧的单位/物品栏读数并报错，不再保留上一个单位的显示值。
@@ -50,15 +53,25 @@
 
 如果这些条件满足，别人拿到 Release 里的 exe 应该可以直接运行。若暴雪更新导致内存布局变化，选中单位或字段地址可能需要重新适配。
 
+也不能承诺每一次都自动读到正确单位。自动读取只接受 selected-handle 或已知 selected-unit 槽这类强证据；证据不足时请使用候选单位表，按 HP/MP、坐标、组件、物品栏和 handle/owner/unit 线索选择目标。
+
 ## 开发自检
 
 ```powershell
 python .\war3_reforged_trainer.py --read-selected
 python .\war3_reforged_trainer.py --read-selected-fields
+python .\war3_reforged_trainer.py --list-selection-candidates
 python .\war3_reforged_trainer.py --verify-selection-locator
 ```
 
-这些自检只用于开发时确认进程查找和当前选中单位定位。`--read-selected`、`--read-selected-fields`、`--verify-selection-locator` 是只读操作。Release 里的 exe 是无终端 GUI 版本，不适合作为命令行工具查看输出。
+这些自检只用于开发时确认进程查找和当前选中单位定位。`--read-selected`、`--read-selected-fields`、`--list-selection-candidates`、`--verify-selection-locator` 是只读操作。Release 里的 exe 是无终端 GUI 版本，不适合作为命令行工具查看输出。
+
+候选表打印出的 `handle,owner,unit` 三元组也可以用于固定读取或同值写入验证：
+
+```powershell
+python .\war3_reforged_trainer.py --unit-identity 0xHANDLE,0xOWNER,0xUNIT --read-selected-fields
+python .\war3_reforged_trainer.py --unit-identity 0xHANDLE,0xOWNER,0xUNIT --set-unit-field inventory_slot_1=ofir
+```
 
 ## 开发说明
 

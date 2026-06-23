@@ -238,6 +238,15 @@ class UnitSelectionSummary:
     hero: bool
 
 
+def selection_confidence_text(summary: "UnitSelectionSummary") -> str:
+    note = summary.candidate.note
+    if note.startswith("remembered_identity=") or note.startswith("manual_candidate"):
+        return "已验证"
+    if note.startswith("selected_handle=") or note.startswith("selected_unit_slot=") or summary.known_hits >= 2:
+        return "强"
+    return "候选"
+
+
 @dataclass(frozen=True)
 class MemoryWriteSpec:
     label: str
@@ -2135,11 +2144,101 @@ class War3Trainer:
             return None
         return candidate
 
-    def list_selection_candidates(self, limit: int = 12) -> list[UnitSelectionSummary]:
+    def _selection_summary_from_candidate(
+        self,
+        pm: ProcessMemory,
+        candidate: UnitCandidate,
+        refs: int,
+        known_hits: int,
+        region_base: int,
+    ) -> UnitSelectionSummary:
+        panel = self._panel_from_candidate(pm, candidate)
+        position = self._position_from_candidate(pm, candidate)
+        components = self._selected_components(pm, candidate.owner_address)
+        inventory: list[str] = []
+        for item in self._inventory_items_from_candidate(pm, candidate, components):
+            if item.rawcode:
+                inventory.append(f"{item.slot}:{item.rawcode_text}")
+        ability_count = len(self._ability_instances_from_candidate(pm, candidate))
+        return UnitSelectionSummary(
+            candidate=candidate,
+            refs=refs,
+            known_hits=known_hits,
+            region_base=region_base,
+            hp_text=panel.hp_text,
+            mp_text=panel.mp_text,
+            position=position,
+            components=tuple(sorted(components)),
+            inventory=tuple(inventory),
+            ability_count=ability_count,
+            hero="hero" in components,
+        )
+
+    def selection_summary_from_identity(
+        self,
+        handle: int,
+        owner: int,
+        unit: int,
+        note: str = "",
+    ) -> UnitSelectionSummary:
+        with ProcessMemory(self.pid) as pm:
+            candidate = self._candidate_from_identity(
+                pm,
+                handle,
+                owner,
+                unit,
+                note or f"remembered_identity=0x{handle:x},0x{owner:x},0x{unit:x}",
+                860,
+            )
+            if candidate is None:
+                raise RuntimeError("候选单位已经失效，请重新读取候选列表")
+            return self._selection_summary_from_candidate(pm, candidate, refs=0, known_hits=2, region_base=0)
+
+    def list_selection_candidates(
+        self,
+        limit: int = 12,
+        extra_identities: Iterable[tuple[int, int, int]] | None = None,
+    ) -> list[UnitSelectionSummary]:
         with ProcessMemory(self.pid) as pm:
             unit_index = self._build_unit_object_index(pm, force_refresh=True)
             summaries: list[UnitSelectionSummary] = []
             seen_units: set[int] = set()
+
+            def append_candidate(candidate: UnitCandidate, refs: int, known_hits: int, region_base: int) -> None:
+                if candidate.unit_address in seen_units:
+                    return
+                summaries.append(self._selection_summary_from_candidate(pm, candidate, refs, known_hits, region_base))
+                seen_units.add(candidate.unit_address)
+
+            if extra_identities is not None:
+                for handle, owner, unit in extra_identities:
+                    candidate = self._candidate_from_identity(
+                        pm,
+                        handle,
+                        owner,
+                        unit,
+                        f"remembered_identity=0x{handle:x},0x{owner:x},0x{unit:x}",
+                        860,
+                    )
+                    if candidate is not None:
+                        append_candidate(candidate, 0, 2, 0)
+                    if len(summaries) >= limit:
+                        return summaries
+
+            try:
+                strong_candidate = self.locate_selected_unit_by_handle(pm, allow_deep_scan=False)
+            except Exception:
+                strong_candidate = None
+            if strong_candidate is not None:
+                append_candidate(
+                    strong_candidate,
+                    1,
+                    2 if strong_candidate.note.startswith("selected_handle=") else 0,
+                    0,
+                )
+                if len(summaries) >= limit:
+                    return summaries
+
             for (region_base, unit), addresses, known_hits in self._selection_unit_pointer_groups(pm):
                 if unit in seen_units:
                     continue
@@ -2159,32 +2258,8 @@ class War3Trainer:
                     800 + known_hits * 20 + min(len(addresses), 20) * 5,
                     min(addresses),
                 )
-                if candidate is None:
-                    continue
-                panel = self._panel_from_candidate(pm, candidate)
-                position = self._position_from_candidate(pm, candidate)
-                components = self._selected_components(pm, owner)
-                inventory: list[str] = []
-                for item in self._inventory_items_from_candidate(pm, candidate, components):
-                    if item.rawcode:
-                        inventory.append(f"{item.slot}:{item.rawcode_text}")
-                ability_count = len(self._ability_instances_from_candidate(pm, candidate))
-                summaries.append(
-                    UnitSelectionSummary(
-                        candidate=candidate,
-                        refs=len(addresses),
-                        known_hits=known_hits,
-                        region_base=region_base,
-                        hp_text=panel.hp_text,
-                        mp_text=panel.mp_text,
-                        position=position,
-                        components=tuple(sorted(components)),
-                        inventory=tuple(inventory),
-                        ability_count=ability_count,
-                        hero="hero" in components,
-                    )
-                )
-                seen_units.add(unit)
+                if candidate is not None:
+                    append_candidate(candidate, len(addresses), known_hits, region_base)
                 if len(summaries) >= limit:
                     break
             return summaries
@@ -2194,7 +2269,7 @@ class War3Trainer:
         pos_text = f" x={pos[0]:.1f} y={pos[1]:.1f}" if pos is not None else ""
         components = ",".join(summary.components) if summary.components else "-"
         inventory = ",".join(summary.inventory) if summary.inventory else "-"
-        confidence = "强" if summary.known_hits >= 2 else "候选"
+        confidence = selection_confidence_text(summary)
         return (
             f"#{index} [{confidence}] hp={summary.hp_text} mp={summary.mp_text}{pos_text} "
             f"refs={summary.refs} known={summary.known_hits} "
@@ -3544,6 +3619,7 @@ def run_gui() -> None:
         "selected_resource_iid": "",
         "unit_fields": {},
         "selected_unit_identity": None,
+        "last_verified_unit_identity": None,
         "selection_candidates": {},
         "manual_unit_identity": None,
         "locks": {},
@@ -3776,6 +3852,29 @@ def run_gui() -> None:
             return identity
         return None
 
+    def current_display_unit_identity() -> tuple[int, int, int] | None:
+        identity = state.get("selected_unit_identity")
+        if (
+            isinstance(identity, tuple)
+            and len(identity) == 3
+            and all(isinstance(value, int) for value in identity)
+        ):
+            return identity
+        return None
+
+    def remembered_unit_identities() -> list[tuple[int, int, int]]:
+        remembered: list[tuple[int, int, int]] = []
+        for key in ("manual_unit_identity", "selected_unit_identity", "last_verified_unit_identity"):
+            identity = state.get(key)
+            if (
+                isinstance(identity, tuple)
+                and len(identity) == 3
+                and all(isinstance(value, int) for value in identity)
+                and identity not in remembered
+            ):
+                remembered.append(identity)
+        return remembered
+
     def populate_selection_candidates(summaries: list[UnitSelectionSummary]) -> None:
         candidate_map: dict[str, UnitSelectionSummary] = {}
         candidate_tree.delete(*candidate_tree.get_children())
@@ -3785,7 +3884,7 @@ def run_gui() -> None:
             iid = str(index)
             candidate_map[iid] = summary
             candidate = summary.candidate
-            confidence = "强" if summary.known_hits >= 2 else "候选"
+            confidence = selection_confidence_text(summary)
             pos = summary.position
             pos_text = f"{pos[0]:.0f},{pos[1]:.0f}" if pos is not None else ""
             components = ",".join(summary.components) if summary.components else "-"
@@ -3830,9 +3929,19 @@ def run_gui() -> None:
         return summary
 
     def refresh_unit_candidates() -> str:
-        summaries = trainer().list_selection_candidates()
+        summaries = trainer().list_selection_candidates(extra_identities=remembered_unit_identities())
         root.after(0, populate_selection_candidates, summaries)
         return f"已列出 {len(summaries)} 个候选单位；自动定位弱时请选择带 hero/inventory/物品槽的行"
+
+    def populate_recovery_candidates(t: War3Trainer | None = None) -> None:
+        remembered = remembered_unit_identities()
+        if not remembered:
+            return
+        try:
+            summaries = (t or trainer()).list_selection_candidates(extra_identities=remembered)
+        except Exception:
+            return
+        root.after(0, populate_selection_candidates, summaries)
 
     def populate_auto_selected_unit_readout(
         panel: VisibleUnitPanel,
@@ -3900,6 +4009,7 @@ def run_gui() -> None:
         identity = (cand.handle, cand.owner_address, cand.unit_address)
         reset_targets = force_targets or state.get("selected_unit_identity") != identity
         state["selected_unit_identity"] = identity
+        state["last_verified_unit_identity"] = identity
 
         hp_current.set(str(panel.current_hp))
         hp_max_current.set(str(panel.max_hp))
@@ -3941,6 +4051,7 @@ def run_gui() -> None:
             t = trainer()
             panel, cand, fields = t.read_selected_unit_fields()
         except Exception:
+            populate_recovery_candidates(t if "t" in locals() else None)
             root.after(0, clear_selected_unit_readout)
             raise
         root.after(0, populate_auto_selected_unit_readout, panel, cand, fields, True)
@@ -3970,10 +4081,10 @@ def run_gui() -> None:
         if not value:
             raise ValueError("请填写目标值")
         t = trainer()
-        manual_identity = current_manual_unit_identity()
-        if manual_identity is not None:
-            written = t.write_unit_field_by_identity(*manual_identity, field.key, value)
-            panel, cand, fields = t.read_unit_fields_by_identity(*manual_identity)
+        target_identity = current_display_unit_identity()
+        if target_identity is not None:
+            written = t.write_unit_field_by_identity(*target_identity, field.key, value)
+            panel, cand, fields = t.read_unit_fields_by_identity(*target_identity)
             root.after(0, populate_manual_candidate_readout, panel, cand, fields, False)
         else:
             written = t.write_selected_unit_field(field.key, value)
@@ -4014,6 +4125,7 @@ def run_gui() -> None:
             "key": field.key,
             "label": field.label,
             "value": value,
+            "unit_identity": current_display_unit_identity(),
         }
         root.after(0, populate_locks)
         return f"已锁定选中单位字段：{field.label}={value}"
@@ -4070,7 +4182,15 @@ def run_gui() -> None:
             key = str(item.get("key", ""))
             value = str(item.get("value", ""))
             if kind == "unit":
-                t.write_selected_unit_field(key, value)
+                identity = item.get("unit_identity")
+                if (
+                    isinstance(identity, tuple)
+                    and len(identity) == 3
+                    and all(isinstance(part, int) for part in identity)
+                ):
+                    t.write_unit_field_by_identity(*identity, key, value)
+                else:
+                    t.write_selected_unit_field(key, value)
                 continue
             if kind != "resource":
                 continue
@@ -4123,10 +4243,10 @@ def run_gui() -> None:
         y_new = parse_float(y_target.get(), "目标 Y") if y_target.get().strip() else None
         if hp_new is None and mp_new is None and hp_regen_new is None and mp_regen_new is None and x_new is None and y_new is None:
             raise ValueError("至少填写一个目标生命、魔法、回复率或坐标")
-        manual_identity = current_manual_unit_identity()
-        if manual_identity is not None:
+        target_identity = current_display_unit_identity()
+        if target_identity is not None:
             cand = t.set_unit_by_identity(
-                *manual_identity,
+                *target_identity,
                 hp_now,
                 mp_now,
                 hp_new,
@@ -4138,7 +4258,7 @@ def run_gui() -> None:
                 hp_regen_new,
                 mp_regen_new,
             )
-            panel, cand_after, fields = t.read_unit_fields_by_identity(*manual_identity)
+            panel, cand_after, fields = t.read_unit_fields_by_identity(*target_identity)
             root.after(0, populate_manual_candidate_readout, panel, cand_after, fields, True)
             return (
                 f"候选单位已写入；source={cand.selection_source or 'manual'} "
@@ -4168,6 +4288,7 @@ def run_gui() -> None:
             t = trainer()
             panel, cand, fields = t.read_selected_unit_fields()
         except Exception:
+            populate_recovery_candidates(t if "t" in locals() else None)
             root.after(0, clear_selected_unit_readout)
             raise
         root.after(0, populate_auto_selected_unit_readout, panel, cand, fields, True)
@@ -4581,7 +4702,9 @@ def run_cli(args: argparse.Namespace) -> int:
                 f"type={field.value_type} addr=0x{field.address:x} {writable}{note}"
             )
     if args.list_selection_candidates:
-        summaries = t.list_selection_candidates()
+        summaries = t.list_selection_candidates(
+            extra_identities=[manual_identity] if manual_identity is not None else None
+        )
         print(f"selection_candidates count={len(summaries)}")
         for index, summary in enumerate(summaries, 1):
             print(t.selection_candidate_line(summary, index))

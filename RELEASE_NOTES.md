@@ -1,5 +1,24 @@
 # 发布说明
 
+## v0.2.3
+
+本版本修复 v0.2.2 中“修改装备后 selected-handle 槽临时失效，导致自动读取失败且候选表缺少刚才那个英雄”的问题。
+
+### 变更
+
+- 字段表写入、上方生命/魔法/坐标写入和字段锁定现在优先固定到当前字段表对应的 handle/owner/unit，而不是写完后重新自动猜当前选择槽。
+- GUI 保留 `last_verified_unit_identity`。自动定位失败时不会丢掉这个恢复线索，候选表会把上一次已验证单位列为 `已验证` 候选。
+- 候选列表新增 remembered identity 合并路径；即使 selected-unit 指针组里只剩 500/500 等弱候选，也能通过已验证身份重新读回英雄和完整物品栏。
+- CLI 的 `--list-selection-candidates` 在同时提供 `--unit-identity HANDLE,OWNER,UNIT` 时，会把该单位列为第一行 `已验证` 候选，便于复现 GUI 兜底路径。
+
+### 已验证
+
+- `python -m py_compile .\war3_reforged_trainer.py`
+- 自动定位当前失败场景下，`python .\war3_reforged_trainer.py --list-selection-candidates` 不再被当作成功依据，只显示弱候选。
+- `python .\war3_reforged_trainer.py --unit-identity 0xa81400006f34,0x202baf6e618,0x202ace2e430 --list-selection-candidates` 将英雄列为第 1 行 `已验证`，并显示完整 `hero,inventory` 组件和 6 个物品槽。
+- `python .\war3_reforged_trainer.py --unit-identity 0xa81400006f34,0x202baf6e618,0x202ace2e430 --set-unit-field inventory_slot_5=brag`
+- `python .\war3_reforged_trainer.py --unit-identity 0xa81400006f34,0x202baf6e618,0x202ace2e430 --read-selected-fields`
+
 ## v0.2.2
 
 本版本用于发布当前稳定状态：除任意技能替换外，资源、当前选中单位字段、候选单位读取和物品栏功能按现有实现保留。

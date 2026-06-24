@@ -50,6 +50,7 @@ WM_KEYDOWN = 0x0100
 WM_KEYUP = 0x0101
 WM_CHAR = 0x0102
 VK_RETURN = 0x0D
+VK_F1 = 0x70
 SW_RESTORE = 9
 HWND_TOPMOST = -1
 HWND_NOTOPMOST = -2
@@ -992,7 +993,12 @@ class War3Trainer:
         if (address & 0xFFFFF) >= 0xBF000
     )
     HERO_SKILL_SLOT_COUNT = 5
-    ITEM_CHARGES_OFFSET = 0x1C0
+    ABILITY_WRAPPER_SCAN_BACK = 0x70000
+    ABILITY_WRAPPER_SCAN_FORWARD = 0x12000
+    ABILITY_RUNTIME_TEMPLATE_QWORD_OFFSETS = (0x0, 0x70, 0x78, 0xA0, 0x148)
+    ITEM_CHARGES_OFFSET = 0x8D0
+    ITEM_CHARGES_FLAG_OFFSET = 0x38
+    ITEM_CHARGES_EMPTY_FLAG = 0x1000
     SELECTED_HP_VALUE_OFFSET = 0xD0
     NATIVE_HANDLER_NAMES = (
         "UnitAddAbility",
@@ -1016,6 +1022,7 @@ class War3Trainer:
         self._selected_handle_addresses = list(self.KNOWN_SELECTED_HANDLE_ADDRESSES)
         self._item_object_cache: dict[int, int] = {}
         self._native_handlers: dict[str, NativeHandler] = {}
+        self._ability_runtime_templates: dict[tuple[int, int, int], dict[str, object]] = {}
 
     def refresh_window(self, allow_pid_change: bool = False) -> None:
         if is_war3_window(self.hwnd, self.pid):
@@ -1027,12 +1034,24 @@ class War3Trainer:
             self._selected_handle_addresses = list(self.KNOWN_SELECTED_HANDLE_ADDRESSES)
             self._item_object_cache = {}
             self._native_handlers = {}
+            self._ability_runtime_templates = {}
 
     def focus(self) -> None:
         focus_window(self.hwnd)
 
     def send_cheat(self, text: str) -> None:
         post_cheat(self.hwnd, text)
+
+    def _refresh_selected_hero_command_card(self) -> bool:
+        try:
+            focus_window(self.hwnd)
+            user32.PostMessageW(self.hwnd, WM_KEYDOWN, VK_F1, 0x003B0001)
+            time.sleep(0.04)
+            user32.PostMessageW(self.hwnd, WM_KEYUP, VK_F1, 0xC03B0001)
+            time.sleep(0.12)
+            return True
+        except Exception:
+            return False
 
     def read_selected_panel(self) -> VisibleUnitPanel:
         with ProcessMemory(self.pid) as pm:
@@ -2624,7 +2643,7 @@ class War3Trainer:
             return []
         component_rawcodes = {tag >> 32 for tag in self.COMPONENT_TAGS.values()}
         instances: list[AbilityInstance] = []
-        for offset in range(-0x8000, 0x10000, 8):
+        for offset in range(-self.ABILITY_WRAPPER_SCAN_BACK, self.ABILITY_WRAPPER_SCAN_FORWARD, 8):
             wrapper = candidate.owner_address + offset
             try:
                 vtable = pm.read_u64(wrapper)
@@ -2907,9 +2926,6 @@ class War3Trainer:
             self._append_unit_field(pm, fields, "armor_type", "护甲类型", "i32", candidate.unit_address + 0x2F0, "防御")
 
         ability_instances = self._ability_instances_from_candidate(pm, candidate)
-        ability_by_rawcode: dict[int, list[AbilityInstance]] = {}
-        for instance in ability_instances:
-            ability_by_rawcode.setdefault(instance.rawcode, []).append(instance)
 
         hero_skill_config_rawcodes: list[int] = []
         hero = components.get("hero")
@@ -2933,10 +2949,7 @@ class War3Trainer:
             self._append_unit_field(pm, fields, "strength_growth", "力量成长/级", "f32", data + 0x188, "英雄", note=growth_note)
             self._append_unit_field(pm, fields, "intelligence_growth", "智力成长/级", "f32", data + 0x198, "英雄", note=growth_note)
             self._append_unit_field(pm, fields, "agility_growth", "敏捷成长/级", "f32", data + 0x1A8, "英雄", note=growth_note)
-            skill_name_note = (
-                "英雄技能栏 rawcode；只读展示。实际换技能必须走游戏 native add/remove/create 路径，"
-                "不能复制已有 ability payload"
-            )
+            skill_name_note = "英雄技能栏 rawcode；写入已学技能时会使用现有运行时模板同步实例并刷新命令卡"
             skill_cache_note = "旧版候选/运行时缓存；单改这里通常不改变已学技能效果"
             for index in range(self.HERO_SKILL_SLOT_COUNT):
                 config_address = data + 0x204 + index * 4
@@ -2947,11 +2960,21 @@ class War3Trainer:
                 hero_skill_config_rawcodes.append(current_config_rawcode)
             skill_instance_by_index: dict[int, AbilityInstance] = {}
             used_skill_instance_wrappers: set[int] = set()
+            ordered_skill_instances = sorted(
+                (
+                    instance
+                    for instance in ability_instances
+                    if instance.rawcode in set(hero_skill_config_rawcodes)
+                ),
+                key=lambda instance: (instance.handle, instance.wrapper_address),
+            )
             for index, rawcode in enumerate(hero_skill_config_rawcodes):
                 if not rawcode:
                     continue
-                for instance in ability_by_rawcode.get(rawcode, []):
+                for instance in ordered_skill_instances:
                     if instance.wrapper_address in used_skill_instance_wrappers:
+                        continue
+                    if instance.rawcode != rawcode:
                         continue
                     skill_instance_by_index[index] = instance
                     used_skill_instance_wrappers.add(instance.wrapper_address)
@@ -2969,8 +2992,8 @@ class War3Trainer:
                     "rawcode",
                     config_address,
                     "技能",
-                    writable=False,
                     note=skill_name_note,
+                    extra_writes=tuple(extra_writes),
                 )
                 self._append_unit_field(
                     pm,
@@ -3007,11 +3030,21 @@ class War3Trainer:
         if hero_skill_config_rawcodes:
             used_instance_wrappers: set[int] = set()
             skill_instance_by_index = {}
+            ordered_skill_instances = sorted(
+                (
+                    instance
+                    for instance in ability_instances
+                    if instance.rawcode in set(hero_skill_config_rawcodes)
+                ),
+                key=lambda instance: (instance.handle, instance.wrapper_address),
+            )
             for index, rawcode in enumerate(hero_skill_config_rawcodes):
                 if not rawcode:
                     continue
-                for instance in ability_by_rawcode.get(rawcode, []):
+                for instance in ordered_skill_instances:
                     if instance.wrapper_address in used_instance_wrappers:
+                        continue
+                    if instance.rawcode != rawcode:
                         continue
                     skill_instance_by_index[index] = instance
                     used_instance_wrappers.add(instance.wrapper_address)
@@ -3272,21 +3305,152 @@ class War3Trainer:
             except OSError:
                 configs.append(0)
         ability_instances = self._ability_instances_from_candidate(pm, candidate)
-        ability_by_rawcode: dict[int, list[AbilityInstance]] = {}
-        for instance in ability_instances:
-            ability_by_rawcode.setdefault(instance.rawcode, []).append(instance)
+        ordered_skill_instances = sorted(
+            (instance for instance in ability_instances if instance.rawcode in set(configs)),
+            key=lambda instance: (instance.handle, instance.wrapper_address),
+        )
         mapped: dict[int, AbilityInstance] = {}
         used_wrappers: set[int] = set()
         for index, rawcode in enumerate(configs):
             if not rawcode:
                 continue
-            for instance in ability_by_rawcode.get(rawcode, []):
+            for instance in ordered_skill_instances:
                 if instance.wrapper_address in used_wrappers:
+                    continue
+                if instance.rawcode != rawcode:
                     continue
                 mapped[index] = instance
                 used_wrappers.add(instance.wrapper_address)
                 break
         return configs, mapped, ability_instances
+
+    def _ability_runtime_template_from_instance(
+        self,
+        pm: ProcessMemory,
+        instance: AbilityInstance,
+    ) -> dict[str, object]:
+        return {
+            "class_rawcode": instance.class_rawcode,
+            "fields": {
+                offset: pm.read(instance.data_address + offset, 8)
+                for offset in self.ABILITY_RUNTIME_TEMPLATE_QWORD_OFFSETS
+            },
+        }
+
+    def _write_ability_runtime_template(
+        self,
+        pm: ProcessMemory,
+        instance: AbilityInstance,
+        rawcode: int,
+        template: dict[str, object],
+    ) -> int:
+        class_rawcode = int(template.get("class_rawcode", rawcode)) & 0xFFFFFFFF
+        fields = template.get("fields")
+        if not isinstance(fields, dict):
+            raise RuntimeError("技能运行时模板缺少字段快照")
+        for offset in self.ABILITY_RUNTIME_TEMPLATE_QWORD_OFFSETS:
+            data = fields.get(offset)
+            if not isinstance(data, (bytes, bytearray)) or len(data) != 8:
+                raise RuntimeError(f"技能运行时模板字段 0x{offset:x} 无效")
+            pm.write_bytes(instance.data_address + offset, bytes(data))
+        pm.write_u32(instance.rawcode_address, rawcode)
+        if instance.mirror_rawcode_address:
+            pm.write_u32(instance.mirror_rawcode_address, rawcode)
+        old_tag = pm.read_u64(instance.wrapper_tag_address)
+        pm.write_bytes(
+            instance.wrapper_tag_address,
+            struct.pack("<Q", ((class_rawcode & 0xFFFFFFFF) << 32) | (old_tag & 0xFFFFFFFF)),
+        )
+        return class_rawcode
+
+    def _ability_template_source_is_live(
+        self,
+        pm: ProcessMemory,
+        owner: int,
+        unit: int,
+    ) -> bool:
+        if not self._sane_heap_ptr(owner) or not self._sane_heap_ptr(unit):
+            return False
+        source = self._candidate_from_owner(pm, owner, 0, "ability_template_source")
+        if source is None or source.unit_address != unit:
+            return False
+        try:
+            current_hp = pm.read_f32(source.hp_current_address)
+            max_hp = pm.read_f32(source.hp_max_address)
+        except OSError:
+            return False
+        return self._valid_current_limit(current_hp, max_hp) and current_hp > 0.0 and max_hp > 0.0
+
+    def _find_ability_runtime_template(
+        self,
+        pm: ProcessMemory,
+        rawcode: int,
+        *,
+        excluded_wrappers: set[int] | None = None,
+        excluded_data: set[int] | None = None,
+    ) -> AbilityInstance | None:
+        excluded_wrappers = excluded_wrappers or set()
+        excluded_data = excluded_data or set()
+        component_rawcodes = {tag >> 32 for tag in self.COMPONENT_TAGS.values()}
+        seen_data: set[int] = set()
+        seen_wrappers: set[int] = set()
+        rawcode_pattern = struct.pack("<I", rawcode & 0xFFFFFFFF)
+        for rawcode_address in pm.scan_bytes_private(rawcode_pattern, max_region_size=8 * 1024 * 1024):
+            data = rawcode_address - 0x70
+            if data in seen_data or data in excluded_data:
+                continue
+            seen_data.add(data)
+            try:
+                data_vtable = pm.read_u64(data)
+                unit = pm.read_u64(data + 0x68)
+                data_rawcode = pm.read_u32(data + 0x70)
+                mirror_rawcode = pm.read_u32(data + 0x78)
+                data_cache_pointer = pm.read_u64(data + 0xA0)
+            except OSError:
+                continue
+            if data_rawcode != rawcode or mirror_rawcode != rawcode:
+                continue
+            if not self._looks_like_vtable(data_vtable) or not self._sane_heap_ptr(unit):
+                continue
+            for data_ref in pm.scan_bytes_private(struct.pack("<Q", data), max_region_size=8 * 1024 * 1024):
+                wrapper = data_ref - 0x90
+                if wrapper in seen_wrappers or wrapper in excluded_wrappers:
+                    continue
+                seen_wrappers.add(wrapper)
+                try:
+                    wrapper_vtable = pm.read_u64(wrapper)
+                    tag = pm.read_u64(wrapper + 0x18)
+                    owner = pm.read_u64(wrapper + 0x50)
+                    wrapper_data = pm.read_u64(wrapper + 0x90)
+                    handle = pm.read_u64(wrapper + 0x20)
+                except OSError:
+                    continue
+                if wrapper_data != data:
+                    continue
+                if not self._looks_like_vtable(wrapper_vtable) or not self._sane_heap_ptr(owner):
+                    continue
+                if not self._ability_template_source_is_live(pm, owner, unit):
+                    continue
+                class_rawcode = (tag >> 32) & 0xFFFFFFFF
+                if class_rawcode in component_rawcodes or not self._looks_like_rawcode(class_rawcode):
+                    continue
+                return AbilityInstance(
+                    slot=0,
+                    wrapper_address=wrapper,
+                    data_address=data,
+                    wrapper_vtable=wrapper_vtable,
+                    data_vtable=data_vtable,
+                    wrapper_tag_address=wrapper + 0x18,
+                    wrapper_tag=tag,
+                    handle=handle,
+                    class_rawcode=class_rawcode,
+                    rawcode=rawcode,
+                    rawcode_address=data + 0x70,
+                    mirror_rawcode_address=data + 0x78,
+                    data_cache_address=data + 0xA0,
+                    data_cache_pointer=data_cache_pointer if self._sane_heap_ptr(data_cache_pointer) else 0,
+                )
+        return None
 
     def _write_hero_skill_name_field(
         self,
@@ -3301,11 +3465,158 @@ class War3Trainer:
         new_rawcode = int(self._coerce_memory_value("rawcode", value)) & 0xFFFFFFFF
         if not self._looks_like_rawcode(new_rawcode):
             raise ValueError(f"技能 rawcode 无效：{format_rawcode(new_rawcode)}")
-        raise RuntimeError(
-            f"技能{index + 1}写入 {format_rawcode(new_rawcode)} 已禁用："
-            "Reforged 的已学技能效果绑定在运行时 ability 实例/数据对象上，"
-            "单写技能栏 rawcode 或复制已有实例 payload 已验证会导致技能消失或游戏崩溃；"
-            "当前版本只读展示这些字段，等找到稳定的游戏线程内 ability 创建/替换路径后再开放写入"
+        components = self._selected_components(pm, candidate.owner_address)
+        hero = components.get("hero")
+        if hero is None:
+            raise RuntimeError("当前选中单位没有英雄组件，不能写入英雄技能")
+        _hero_wrapper, hero_data = hero
+        config_address = hero_data + 0x204 + index * 4
+        cache_address = hero_data + 0x1BC + index * 4
+        configs, mapped, ability_instances = self._hero_skill_instance_map(pm, candidate, hero_data)
+        old_rawcode = configs[index] if index < len(configs) else 0
+        instance = mapped.get(index)
+        if old_rawcode != new_rawcode:
+            if not old_rawcode:
+                raise RuntimeError(
+                    f"技能{index + 1}当前没有已学技能 rawcode，"
+                    "没有可替换的运行时 ability 实例；为避免命令卡空格，本次不写入。"
+                )
+            source_skill_slots = [
+                other_index + 1
+                for other_index, rawcode in enumerate(configs)
+                if rawcode == old_rawcode
+            ]
+            source_ability_slots = [
+                other.slot
+                for other in ability_instances
+                if other.rawcode == old_rawcode
+            ]
+            if len(source_skill_slots) != 1 or len(source_ability_slots) != 1 or instance is None:
+                details: list[str] = []
+                if source_skill_slots:
+                    details.append("技能栏" + ",".join(str(slot) for slot in source_skill_slots))
+                if source_ability_slots:
+                    details.append("能力实例" + ",".join(str(slot) for slot in source_ability_slots))
+                raise RuntimeError(
+                    f"技能{index + 1}当前 {format_rawcode(old_rawcode)} "
+                    + ("同时出现在" + "；".join(details) if details else "没有匹配的运行时实例")
+                    + "，无法唯一定位要替换的 ability 实例；为避免写错实例导致命令卡空格，本次不写入。"
+                )
+            duplicate_skill_slots = [
+                other_index + 1
+                for other_index, rawcode in enumerate(configs)
+                if other_index != index and rawcode == new_rawcode
+            ]
+            duplicate_ability_slots = [
+                other.slot
+                for other in ability_instances
+                if (instance is None or other.wrapper_address != instance.wrapper_address)
+                and other.rawcode == new_rawcode
+            ]
+            if duplicate_skill_slots or duplicate_ability_slots:
+                details: list[str] = []
+                if duplicate_skill_slots:
+                    details.append(
+                        "技能栏" + ",".join(str(slot) for slot in duplicate_skill_slots)
+                    )
+                if duplicate_ability_slots:
+                    details.append(
+                        "能力实例" + ",".join(str(slot) for slot in duplicate_ability_slots)
+                    )
+                raise RuntimeError(
+                    f"{format_rawcode(new_rawcode)} 已存在于当前单位的" + "；".join(details) + "。"
+                    "Warcraft III 的同 rawcode 已学技能不会生成第二个命令卡按钮，"
+                    "强写会表现为目标格技能消失；请先把已有同名技能改成其它 rawcode。"
+                )
+        runtime_template: dict[str, object] | None = None
+        runtime_template_source = ""
+        if instance is not None and old_rawcode != new_rawcode:
+            old_template_key = (candidate.handle, instance.wrapper_address, old_rawcode)
+            self._ability_runtime_templates.setdefault(
+                old_template_key,
+                self._ability_runtime_template_from_instance(pm, instance),
+            )
+            new_template_key = (candidate.handle, instance.wrapper_address, new_rawcode)
+            cached_template = self._ability_runtime_templates.get(new_template_key)
+            if cached_template is not None:
+                runtime_template = cached_template
+                runtime_template_source = "cached"
+            else:
+                template_instance = self._find_ability_runtime_template(
+                    pm,
+                    new_rawcode,
+                    excluded_wrappers={instance.wrapper_address},
+                    excluded_data={instance.data_address},
+                )
+                if template_instance is None:
+                    raise RuntimeError(
+                        f"未找到 {format_rawcode(new_rawcode)} 的存活单位运行时技能模板，"
+                        "为避免命令卡空格，本次不写入。请确认地图中已有单位拥有该技能后再改。"
+                    )
+                runtime_template = self._ability_runtime_template_from_instance(pm, template_instance)
+                runtime_template_source = (
+                    f"template wrapper=0x{template_instance.wrapper_address:x} "
+                    f"class={template_instance.class_text}"
+                )
+
+        pm.write_u32(config_address, new_rawcode)
+        pm.write_u32(cache_address, new_rawcode)
+        actions = [
+            f"config/cache {format_rawcode(old_rawcode)}->{format_rawcode(new_rawcode)}",
+        ]
+        if instance is not None:
+            if runtime_template is not None:
+                class_rawcode = self._write_ability_runtime_template(pm, instance, new_rawcode, runtime_template)
+                actions.append(
+                    f"runtime wrapper=0x{instance.wrapper_address:x} "
+                    f"{instance.rawcode_text}->{format_rawcode(new_rawcode)} "
+                    f"class={format_rawcode(class_rawcode)} source={runtime_template_source}"
+                )
+            else:
+                old_tag = pm.read_u64(instance.wrapper_tag_address)
+                new_tag = ((new_rawcode & 0xFFFFFFFF) << 32) | (old_tag & 0xFFFFFFFF)
+                pm.write_bytes(instance.wrapper_tag_address, struct.pack("<Q", new_tag))
+                pm.write_u32(instance.rawcode_address, new_rawcode)
+                if instance.mirror_rawcode_address:
+                    pm.write_u32(instance.mirror_rawcode_address, new_rawcode)
+                actions.append(
+                    f"runtime wrapper=0x{instance.wrapper_address:x} "
+                    f"{instance.rawcode_text}->{format_rawcode(new_rawcode)}"
+                )
+        else:
+            actions.append("未找到已学 ability 实例，仅更新英雄技能栏配置")
+
+        time.sleep(0.05)
+        final_config = pm.read_u32(config_address)
+        final_cache = pm.read_u32(cache_address)
+        if final_config != new_rawcode or final_cache != new_rawcode:
+            raise RuntimeError(
+                f"技能{index + 1}写入后读回 config={format_rawcode(final_config)} "
+                f"cache={format_rawcode(final_cache)}，不是 {format_rawcode(new_rawcode)}"
+            )
+        if instance is not None:
+            final_rawcode = pm.read_u32(instance.rawcode_address)
+            if final_rawcode != new_rawcode:
+                raise RuntimeError(
+                    f"技能{index + 1}运行时实例读回 {format_rawcode(final_rawcode)}，"
+                    f"不是 {format_rawcode(new_rawcode)}"
+                )
+
+        if self._refresh_selected_hero_command_card():
+            actions.append("已触发英雄选择刷新")
+        else:
+            actions.append("写入成功；如游戏命令卡未立即刷新，请重新选择该英雄")
+        return UnitMemoryField(
+            key=field.key,
+            label=field.label,
+            value_type="rawcode",
+            value=final_config,
+            address=config_address,
+            category=field.category,
+            write_address=config_address,
+            write_type="rawcode",
+            note="；".join(actions),
+            extra_writes=((cache_address, "rawcode"),),
         )
 
     def _inventory_slot_index_from_field_key(self, key: str) -> int | None:
@@ -3313,6 +3624,19 @@ class War3Trainer:
         if not key.startswith(prefix) or key.endswith("_charges"):
             return None
         slot_text = key[len(prefix) :]
+        if not slot_text.isdigit():
+            return None
+        index = int(slot_text) - 1
+        if not 0 <= index < 6:
+            return None
+        return index
+
+    def _inventory_slot_charges_index_from_field_key(self, key: str) -> int | None:
+        prefix = "inventory_slot_"
+        suffix = "_charges"
+        if not key.startswith(prefix) or not key.endswith(suffix):
+            return None
+        slot_text = key[len(prefix) : -len(suffix)]
         if not slot_text.isdigit():
             return None
         index = int(slot_text) - 1
@@ -3440,6 +3764,82 @@ class War3Trainer:
             extra_writes=field.extra_writes,
         )
 
+    def _write_inventory_slot_charges_field(
+        self,
+        pm: ProcessMemory,
+        candidate: UnitCandidate,
+        field: UnitMemoryField,
+        value: int | float | str,
+    ) -> UnitMemoryField:
+        slot_index = self._inventory_slot_charges_index_from_field_key(field.key)
+        if slot_index is None:
+            raise RuntimeError(f"不是物品数量字段：{field.key}")
+        new_charges = int(self._coerce_memory_value("i32", value))
+        if new_charges < 0:
+            new_charges = 0
+        if new_charges > 999:
+            raise ValueError("物品数量不能超过 999")
+
+        components = self._selected_components(pm, candidate.owner_address)
+        if "inventory" not in components:
+            raise RuntimeError("当前选中单位没有物品栏组件")
+        snapshot = next(
+            (
+                item
+                for item in self._inventory_items_from_candidate(pm, candidate, components)
+                if item.slot == slot_index + 1
+            ),
+            None,
+        )
+        if snapshot is None or not snapshot.item_address or not snapshot.charges_address:
+            raise RuntimeError(f"物品槽{slot_index + 1}为空或未解析 item 对象，不能写数量")
+
+        old_flags = pm.read_u32(snapshot.item_address + self.ITEM_CHARGES_FLAG_OFFSET)
+        if new_charges == 0:
+            new_flags = old_flags | self.ITEM_CHARGES_EMPTY_FLAG
+        else:
+            new_flags = old_flags & ~self.ITEM_CHARGES_EMPTY_FLAG
+        pm.write_u32(snapshot.item_address + self.ITEM_CHARGES_FLAG_OFFSET, new_flags)
+        pm.write_i32(snapshot.charges_address, new_charges)
+        time.sleep(0.05)
+
+        final_snapshot = next(
+            (
+                item
+                for item in self._inventory_items_from_candidate(pm, candidate, components)
+                if item.slot == slot_index + 1
+            ),
+            None,
+        )
+        final_charges = final_snapshot.charges if final_snapshot is not None else -1
+        if final_charges != new_charges:
+            raise RuntimeError(
+                f"物品槽{slot_index + 1}数量写入后读回 {final_charges}，不是 {new_charges}"
+            )
+        refresh_note = ""
+        if "hero" in components:
+            if self._refresh_selected_hero_command_card():
+                refresh_note = "; 已触发英雄选择刷新"
+            else:
+                refresh_note = "; 写入成功，如物品栏未立即刷新请重新选择该英雄"
+        return UnitMemoryField(
+            key=field.key,
+            label=field.label,
+            value_type=field.value_type,
+            value=final_charges,
+            address=field.address,
+            category=field.category,
+            write_address=field.write_address,
+            write_type=field.write_type,
+            write_base=field.write_base,
+            note=(
+                f"item charges native offset=0x{self.ITEM_CHARGES_OFFSET:x}; "
+                f"flags 0x{old_flags:x}->0x{new_flags:x}"
+                f"{refresh_note}"
+            ),
+            extra_writes=field.extra_writes,
+        )
+
     def _write_unit_fields_to_candidate(
         self,
         pm: ProcessMemory,
@@ -3465,6 +3865,9 @@ class War3Trainer:
                 raise RuntimeError(f"字段不可写：{field.label}")
             if self._skill_index_from_field_key(field.key) is not None:
                 written.append(self._write_hero_skill_name_field(pm, candidate, field, spec.value))
+                continue
+            if self._inventory_slot_charges_index_from_field_key(field.key) is not None:
+                written.append(self._write_inventory_slot_charges_field(pm, candidate, field, spec.value))
                 continue
             if self._inventory_slot_index_from_field_key(field.key) is not None:
                 written.append(self._write_inventory_slot_field(pm, candidate, field, spec.value))

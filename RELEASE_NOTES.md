@@ -1,20 +1,30 @@
 # 发布说明
 
-## v0.2.4
+## v0.25
 
-本版本修复 selected-handle 槽长期失效后，“切换目标也读不出来，候选表里没有真实英雄/物品栏单位”的问题。
+本版本修复英雄技能替换和物品栏数量写入后不刷新的问题，并保留上一版的候选单位兜底读取逻辑。
 
 ### 变更
 
-- 候选单位表新增慢速全局扫描：从 unit owner 索引和组件 tag 索引枚举实际存在的单位，不依赖 selected-handle / selected-unit 状态槽仍然有效。
-- 全局扫描候选显示为 `扫描`，并展示 HP/MP、坐标、组件、物品槽、handle/owner/unit。英雄/物品栏单位会排在 500/500 等弱 selected-state 候选前面。
-- 字段读取的组件识别也接入全局组件 tag fallback，修复全局候选能看到 `hero/inventory`，但读入字段表时装备栏缺失的问题。
-- `读取当前选中单位` / `刷新字段表` 自动定位失败时，会尝试填充候选表，并提示用户选择候选后点击 `读取所选候选`。
-- 全局候选扫描做了两阶段优化：先快速建 owner->组件索引并排序，只对靠前候选补物品细节，避免逐单位大范围盲扫。
+- 英雄技能栏字段重新开放写入：写入已学技能时会同步英雄技能配置、运行时 ability 实例 rawcode、镜像 rawcode、效果类和必要运行时模板字段。
+- 技能替换会拒绝当前单位已有的重复 rawcode，避免 Warcraft III 不生成第二个命令卡按钮导致目标技能格看起来消失。
+- 技能替换只使用地图中存活单位上的目标技能运行时模板；找不到模板或只能找到死亡单位模板时会拒绝写入，避免命令卡空格和崩溃。
+- 技能写入成功后会触发一次英雄选择刷新，让命令卡立即更新。
+- 物品槽数量改为使用 Warcraft III native 使用的 item 数量字段 `item+0x8D0`，并同步 `item+0x38` 的 `0x1000` 数量标志位。
+- 物品槽数量写入成功后会触发一次英雄选择刷新，修复内存读回已变化但物品栏右下角数字仍停留在旧值的问题。
+- 保留上一版 selected-handle 失效时的候选单位全局扫描和按 handle/owner/unit 固定写入逻辑。
 
 ### 已验证
 
-- 当前 selected-handle 失败场景下，`python .\war3_reforged_trainer.py --list-selection-candidates` 能在约 46-50 秒返回 80 个候选。
-- 候选前列包含 `扫描` 的 `attack,hero,inventory,move` 英雄；带 6 个物品槽的目标显示为 `inventory=1:ofir,2:I61V,3:I61D,4:brag,5:rde1,6:rat9`。
-- `python .\war3_reforged_trainer.py --unit-identity 0xa82800007d5f,0x202e3f23ea0,0x7ff4edd42728 --read-selected-fields` 能读到完整 6 个物品槽。
-- `python .\war3_reforged_trainer.py --unit-identity 0xa82800007d5f,0x202e3f23ea0,0x7ff4edd42728 --set-unit-field inventory_slot_5=rde1` 同值写入成功，未交换其他槽位。
+- `python -m py_compile .\war3_reforged_trainer.py`
+- 四个英雄技能槽分别替换为地图中已有存活模板技能后，命令卡图标可见并能施放；重复 rawcode 和死亡模板目标会被拒绝写入。
+- 反汇编确认 `GetItemCharges` 读取 `item+0x8D0`，`SetItemCharges` 写入 `item+0x8D0` 并更新 `item+0x38` 的 `0x1000` 标志位。
+- 当前英雄第 1 物品槽 `sreg` 从 `1` 写到 `3` 后，内存读回 `3`，游戏 UI 显示 `3`；恢复到 `1` 后，内存和 UI 都显示 `1`。
+- 重新打包后的 `dist\魔兽争霸3重制版修改器.exe` 用同一路径写入第 1 物品槽数量 `2` 并恢复 `1`，退出码为 `0`，游戏 UI 同步显示正确数值。
+- 打包 exe 启动烟测通过，窗口标题为 `魔兽争霸3重制版修改器`。
+
+### 限制
+
+- 技能替换仍依赖当前地图中存在存活单位持有目标技能，不能凭空创建一个没有运行时模板的技能。
+- 同一个单位上不能写入重复技能 rawcode；需要先把已有同名技能改成其他 rawcode。
+- 不注入 DLL、不创建远程线程、不调用 Warcraft III native handler。

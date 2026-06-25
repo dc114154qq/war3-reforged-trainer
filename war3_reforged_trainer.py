@@ -11,11 +11,13 @@ from __future__ import annotations
 import argparse
 import ctypes
 import math
+import tempfile
 import struct
 import sys
 import threading
 import time
 from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import Callable, Iterable
 
 
@@ -33,8 +35,6 @@ PROCESS_VM_WRITE = 0x0020
 PROCESS_VM_OPERATION = 0x0008
 
 MEM_COMMIT = 0x1000
-MEM_RESERVE = 0x2000
-MEM_RELEASE = 0x8000
 MEM_PRIVATE = 0x20000
 MEM_IMAGE = 0x1000000
 PAGE_NOACCESS = 0x01
@@ -49,6 +49,7 @@ EXECUTABLE_PROTECTS = {PAGE_EXECUTE, PAGE_EXECUTE_READ, PAGE_EXECUTE_READWRITE, 
 WM_KEYDOWN = 0x0100
 WM_KEYUP = 0x0101
 WM_CHAR = 0x0102
+WM_NULL = 0x0000
 VK_RETURN = 0x0D
 VK_F1 = 0x70
 SW_RESTORE = 9
@@ -56,10 +57,41 @@ HWND_TOPMOST = -1
 HWND_NOTOPMOST = -2
 SWP_NOMOVE = 0x0002
 SWP_NOSIZE = 0x0001
+WH_CALLWNDPROC = 4
+SMTO_ABORTIFHUNG = 0x0002
 
 
 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 user32 = ctypes.WinDLL("user32", use_last_error=True)
+
+kernel32.OpenProcess.restype = ctypes.c_void_p
+kernel32.LoadLibraryW.argtypes = (ctypes.c_wchar_p,)
+kernel32.LoadLibraryW.restype = ctypes.c_void_p
+kernel32.GetProcAddress.argtypes = (ctypes.c_void_p, ctypes.c_char_p)
+kernel32.GetProcAddress.restype = ctypes.c_void_p
+kernel32.FreeLibrary.argtypes = (ctypes.c_void_p,)
+kernel32.FreeLibrary.restype = ctypes.c_bool
+user32.SetWindowsHookExW.argtypes = (
+    ctypes.c_int,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_ulong,
+)
+user32.SetWindowsHookExW.restype = ctypes.c_void_p
+user32.UnhookWindowsHookEx.argtypes = (ctypes.c_void_p,)
+user32.UnhookWindowsHookEx.restype = ctypes.c_bool
+user32.SendMessageW.argtypes = (ctypes.c_void_p, ctypes.c_uint, ctypes.c_void_p, ctypes.c_void_p)
+user32.SendMessageW.restype = ctypes.c_void_p
+user32.SendMessageTimeoutW.argtypes = (
+    ctypes.c_void_p,
+    ctypes.c_uint,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_uint,
+    ctypes.c_uint,
+    ctypes.POINTER(ctypes.c_void_p),
+)
+user32.SendMessageTimeoutW.restype = ctypes.c_void_p
 
 class MEMORY_BASIC_INFORMATION64(ctypes.Structure):
     _fields_ = [
@@ -273,6 +305,14 @@ class NativeAbilityInternals:
     end_address: int
     refresh_address: int
     remove_address: int
+
+
+@dataclass(frozen=True)
+class NativeHelperOpResult:
+    kind: int
+    result: int
+    last_error: int = 0
+
 
 def format_rawcode(raw: int) -> str:
     raw &= 0xFFFFFFFF
@@ -1015,6 +1055,19 @@ class War3Trainer:
         "GetUnitTypeId",
         "UnitInventorySize",
     )
+    NATIVE_HELPER_MAGIC = 0x33524757
+    NATIVE_HELPER_VERSION = 3
+    NATIVE_HELPER_STATUS_PENDING = 1
+    NATIVE_HELPER_STATUS_OK = 2
+    NATIVE_HELPER_MAX_OPS = 16
+    NATIVE_HELPER_OP_STRUCT = struct.Struct("<IIQQQQII")
+    NATIVE_HELPER_HEADER_STRUCT = struct.Struct("<IIIIQII")
+    NATIVE_HELPER_OP_INTERNAL_ABILITY_BEGIN = 30
+    NATIVE_HELPER_OP_INTERNAL_ABILITY_FIND = 31
+    NATIVE_HELPER_OP_INTERNAL_ABILITY_ADD = 32
+    NATIVE_HELPER_OP_INTERNAL_ABILITY_END = 33
+    NATIVE_HELPER_OP_INTERNAL_ABILITY_REFRESH = 34
+    NATIVE_HELPER_OP_INTERNAL_ABILITY_REMOVE = 35
 
     def __init__(self, pid: int | None = None):
         self.hwnd, self.pid = find_war3(pid)
@@ -1023,6 +1076,7 @@ class War3Trainer:
         self._item_object_cache: dict[int, int] = {}
         self._native_handlers: dict[str, NativeHandler] = {}
         self._ability_runtime_templates: dict[tuple[int, int, int], dict[str, object]] = {}
+        self._ability_instance_by_data: dict[tuple[int, int, int], AbilityInstance] = {}
 
     def refresh_window(self, allow_pid_change: bool = False) -> None:
         if is_war3_window(self.hwnd, self.pid):
@@ -1035,6 +1089,7 @@ class War3Trainer:
             self._item_object_cache = {}
             self._native_handlers = {}
             self._ability_runtime_templates = {}
+            self._ability_instance_by_data = {}
 
     def focus(self) -> None:
         focus_window(self.hwnd)
@@ -1044,7 +1099,6 @@ class War3Trainer:
 
     def _refresh_selected_hero_command_card(self) -> bool:
         try:
-            focus_window(self.hwnd)
             user32.PostMessageW(self.hwnd, WM_KEYDOWN, VK_F1, 0x003B0001)
             time.sleep(0.04)
             user32.PostMessageW(self.hwnd, WM_KEYUP, VK_F1, 0xC03B0001)
@@ -1166,21 +1220,54 @@ class War3Trainer:
         rel = struct.unpack_from("<i", data, 1)[0]
         return address + 5 + rel
 
+    def _rel32_calls_in_function(
+        self,
+        pm: ProcessMemory,
+        address: int,
+        *,
+        max_bytes: int = 0xC0,
+    ) -> list[int]:
+        regions = pm.regions()
+        code = pm.read(address, max_bytes)
+        calls: list[int] = []
+        for offset in range(0, max(0, len(code) - 4)):
+            opcode = code[offset]
+            if opcode == 0xE8:
+                rel = struct.unpack_from("<i", code, offset + 1)[0]
+                target = address + offset + 5 + rel
+                if self._is_executable_image_address(regions, target):
+                    calls.append(target)
+            if opcode == 0xC3 and offset > 0x10:
+                break
+        return calls
+
     def _discover_native_ability_internals(self, pm: ProcessMemory) -> NativeAbilityInternals:
         handlers = self._discover_native_handlers(pm, ("UnitAddAbility", "UnitRemoveAbility"))
         add_handler = handlers["UnitAddAbility"].handler_address
         remove_handler = handlers["UnitRemoveAbility"].handler_address
+        add_calls = self._rel32_calls_in_function(pm, add_handler)
+        remove_calls = self._rel32_calls_in_function(pm, remove_handler)
+        if len(add_calls) < 6:
+            raise RuntimeError(
+                f"UnitAddAbility 内部调用数量异常：{len(add_calls)}，不能安全创建技能"
+            )
+        if len(remove_calls) < 4:
+            raise RuntimeError(
+                f"UnitRemoveAbility 内部调用数量异常：{len(remove_calls)}，不能安全删除技能"
+            )
         internals = NativeAbilityInternals(
-            find_address=self._read_rel32_call(pm, add_handler + 0x33),
-            begin_address=self._read_rel32_call(pm, add_handler + 0x45),
-            add_address=self._read_rel32_call(pm, add_handler + 0x5F),
-            end_address=self._read_rel32_call(pm, add_handler + 0x73),
-            refresh_address=self._read_rel32_call(pm, add_handler + 0x7E),
-            remove_address=self._read_rel32_call(pm, remove_handler + 0x43),
+            find_address=add_calls[1],
+            begin_address=add_calls[2],
+            add_address=add_calls[3],
+            end_address=add_calls[4],
+            refresh_address=add_calls[5],
+            remove_address=remove_calls[2],
         )
-        remove_find = self._read_rel32_call(pm, remove_handler + 0x33)
+        remove_find = remove_calls[1]
         if remove_find != internals.find_address:
             raise RuntimeError("UnitAddAbility/UnitRemoveAbility 使用的内部查找函数不一致")
+        if remove_calls[3] != internals.refresh_address:
+            raise RuntimeError("UnitAddAbility/UnitRemoveAbility 使用的刷新函数不一致")
         regions = pm.regions()
         for name, address in (
             ("find", internals.find_address),
@@ -1193,6 +1280,399 @@ class War3Trainer:
             if not self._is_executable_image_address(regions, address):
                 raise RuntimeError(f"内部 ability 函数 {name} 地址不可执行：0x{address:x}")
         return internals
+
+    @classmethod
+    def _native_helper_command_size(cls) -> int:
+        return (
+            cls.NATIVE_HELPER_HEADER_STRUCT.size
+            + cls.NATIVE_HELPER_OP_STRUCT.size * cls.NATIVE_HELPER_MAX_OPS
+        )
+
+    def _native_helper_dll_path(self) -> Path:
+        base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+        candidates = (
+            base / "tools" / "war3_native_helper.dll",
+            base / "war3_native_helper.dll",
+            Path(__file__).resolve().parent / "tools" / "war3_native_helper.dll",
+        )
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate
+        raise RuntimeError("缺少 native helper DLL：tools\\war3_native_helper.dll")
+
+    def _native_helper_command_path(self) -> Path:
+        return Path(tempfile.gettempdir()) / f"war3_reforged_native_{self.pid}.bin"
+
+    def _pack_native_helper_command(
+        self,
+        unit_address: int,
+        ops: Iterable[tuple[int, int, int, int, int]],
+    ) -> bytes:
+        op_list = list(ops)
+        if not 0 < len(op_list) <= self.NATIVE_HELPER_MAX_OPS:
+            raise RuntimeError("native helper 操作数量无效")
+        payload = bytearray(
+            self.NATIVE_HELPER_HEADER_STRUCT.pack(
+                self.NATIVE_HELPER_MAGIC,
+                self.NATIVE_HELPER_VERSION,
+                self.NATIVE_HELPER_STATUS_PENDING,
+                len(op_list),
+                unit_address & 0xFFFFFFFFFFFFFFFF,
+                0,
+                0,
+            )
+        )
+        for kind, rawcode, handler, arg0, arg1 in op_list:
+            payload += self.NATIVE_HELPER_OP_STRUCT.pack(
+                kind & 0xFFFFFFFF,
+                rawcode & 0xFFFFFFFF,
+                handler & 0xFFFFFFFFFFFFFFFF,
+                arg0 & 0xFFFFFFFFFFFFFFFF,
+                arg1 & 0xFFFFFFFFFFFFFFFF,
+                0,
+                0,
+                0,
+            )
+        payload += b"\x00" * (
+            self.NATIVE_HELPER_OP_STRUCT.size * (self.NATIVE_HELPER_MAX_OPS - len(op_list))
+        )
+        return bytes(payload)
+
+    def _parse_native_helper_results(self, data: bytes, op_count: int) -> list[NativeHelperOpResult]:
+        if len(data) < self._native_helper_command_size():
+            raise RuntimeError("native helper 返回数据长度异常")
+        magic, version, status, actual_count, _unit, last_error, _reserved = (
+            self.NATIVE_HELPER_HEADER_STRUCT.unpack_from(data, 0)
+        )
+        if magic != self.NATIVE_HELPER_MAGIC or version != self.NATIVE_HELPER_VERSION:
+            raise RuntimeError("native helper 返回协议不匹配")
+        if status != self.NATIVE_HELPER_STATUS_OK:
+            raise RuntimeError(f"native helper 执行失败：status={status} last_error={last_error}")
+        if actual_count != op_count:
+            raise RuntimeError(f"native helper 返回操作数量异常：{actual_count}!={op_count}")
+        results: list[NativeHelperOpResult] = []
+        base = self.NATIVE_HELPER_HEADER_STRUCT.size
+        for index in range(op_count):
+            offset = base + index * self.NATIVE_HELPER_OP_STRUCT.size
+            kind, _rawcode, _handler, _arg0, _arg1, result, op_error, _reserved = (
+                self.NATIVE_HELPER_OP_STRUCT.unpack_from(data, offset)
+            )
+            if op_error:
+                raise RuntimeError(f"native helper 操作 {index + 1} 失败：error={op_error}")
+            results.append(NativeHelperOpResult(kind=kind, result=result, last_error=op_error))
+        return results
+
+    def _run_native_helper_ops(
+        self,
+        unit_address: int,
+        ops: Iterable[tuple[int, int, int, int, int]],
+        *,
+        timeout_ms: int = 1000,
+    ) -> list[NativeHelperOpResult]:
+        if not unit_address:
+            raise RuntimeError("当前单位缺少运行时 unit 指针，不能调用 native helper")
+        op_list = list(ops)
+        allowed_kinds = {
+            self.NATIVE_HELPER_OP_INTERNAL_ABILITY_BEGIN,
+            self.NATIVE_HELPER_OP_INTERNAL_ABILITY_FIND,
+            self.NATIVE_HELPER_OP_INTERNAL_ABILITY_ADD,
+            self.NATIVE_HELPER_OP_INTERNAL_ABILITY_END,
+            self.NATIVE_HELPER_OP_INTERNAL_ABILITY_REFRESH,
+            self.NATIVE_HELPER_OP_INTERNAL_ABILITY_REMOVE,
+        }
+        if any(kind not in allowed_kinds for kind, _rawcode, _handler, _arg0, _arg1 in op_list):
+            raise RuntimeError("native helper 仅允许结构化验证后的内部 ability 操作")
+        command_path = self._native_helper_command_path()
+        command_path.write_bytes(self._pack_native_helper_command(unit_address, op_list))
+        dll_path = self._native_helper_dll_path()
+        module = kernel32.LoadLibraryW(str(dll_path))
+        if not module:
+            raise ctypes.WinError(ctypes.get_last_error())
+        hook = None
+        try:
+            proc = kernel32.GetProcAddress(module, b"War3HookProc")
+            if not proc:
+                raise ctypes.WinError(ctypes.get_last_error())
+            pid = ctypes.c_ulong()
+            tid = user32.GetWindowThreadProcessId(ctypes.c_void_p(self.hwnd), ctypes.byref(pid))
+            if not tid or int(pid.value) != self.pid:
+                raise RuntimeError("Warcraft III 窗口线程已失效")
+            hook = user32.SetWindowsHookExW(
+                WH_CALLWNDPROC,
+                ctypes.c_void_p(proc),
+                ctypes.c_void_p(module),
+                int(tid),
+            )
+            if not hook:
+                raise ctypes.WinError(ctypes.get_last_error())
+            deadline = time.monotonic() + (timeout_ms / 1000.0)
+            last_status = self.NATIVE_HELPER_STATUS_PENDING
+            while time.monotonic() < deadline:
+                message_result = ctypes.c_void_p()
+                sent = user32.SendMessageTimeoutW(
+                    ctypes.c_void_p(self.hwnd),
+                    WM_NULL,
+                    None,
+                    None,
+                    SMTO_ABORTIFHUNG,
+                    150,
+                    ctypes.byref(message_result),
+                )
+                if not sent:
+                    raise TimeoutError("Warcraft III 窗口线程未响应 native helper 消息")
+                data = command_path.read_bytes()
+                last_status = struct.unpack_from("<I", data, 8)[0]
+                if last_status != self.NATIVE_HELPER_STATUS_PENDING:
+                    return self._parse_native_helper_results(data, len(op_list))
+                time.sleep(0.02)
+            raise TimeoutError(f"native helper 执行超时：status={last_status}")
+        finally:
+            if hook:
+                user32.UnhookWindowsHookEx(hook)
+            kernel32.FreeLibrary(module)
+
+    @staticmethod
+    def _scan_bytes_private_between(
+        pm: ProcessMemory,
+        pattern: bytes,
+        start_address: int,
+        end_address: int,
+    ) -> list[int]:
+        if not pattern or end_address <= start_address:
+            return []
+        hits: list[int] = []
+        tail_len = max(0, len(pattern) - 1)
+        for region in pm.regions():
+            if region.typ != MEM_PRIVATE:
+                continue
+            start = max(region.base, start_address)
+            end = min(region.base + region.size, end_address)
+            if end <= start:
+                continue
+            offset = start - region.base
+            limit = end - region.base
+            tail = b""
+            while offset < limit:
+                size = min(4 * 1024 * 1024, limit - offset)
+                try:
+                    data = tail + pm.read(region.base + offset, size)
+                except OSError:
+                    offset += size
+                    tail = b""
+                    continue
+                base = region.base + offset - len(tail)
+                search = 0
+                while True:
+                    index = data.find(pattern, search)
+                    if index < 0:
+                        break
+                    address = base + index
+                    if start_address <= address < end_address:
+                        hits.append(address)
+                    search = index + 1
+                tail = data[-tail_len:] if tail_len else b""
+                offset += size
+        return hits
+
+    def _ability_instance_from_data_for_candidate(
+        self,
+        pm: ProcessMemory,
+        candidate: UnitCandidate,
+        data_address: int,
+        rawcode: int,
+    ) -> AbilityInstance | None:
+        if not self._sane_heap_ptr(data_address):
+            return None
+        try:
+            if pm.read_u64(data_address + 0x68) != candidate.unit_address:
+                return None
+            if pm.read_u32(data_address + 0x70) != rawcode:
+                return None
+            if pm.read_u32(data_address + 0x78) != rawcode:
+                return None
+        except OSError:
+            return None
+        component_rawcodes = {tag >> 32 for tag in self.COMPONENT_TAGS.values()}
+        cache_key = (candidate.handle, data_address, rawcode)
+        cached = self._ability_instance_by_data.get(cache_key)
+        if cached is not None:
+            refreshed = self._ability_instance_from_wrapper(
+                pm,
+                candidate,
+                cached.wrapper_address,
+                component_rawcodes,
+            )
+            if (
+                refreshed is not None
+                and refreshed.data_address == data_address
+                and refreshed.rawcode == rawcode
+            ):
+                return replace(refreshed, slot=cached.slot)
+            self._ability_instance_by_data.pop(cache_key, None)
+
+        data_pattern = struct.pack("<Q", data_address)
+        near_start = max(0, candidate.owner_address - 0x05000000)
+        near_end = candidate.owner_address + 0x00800000
+        near_refs = self._scan_bytes_private_between(pm, data_pattern, near_start, near_end)
+        all_refs = near_refs or pm.scan_bytes_private(data_pattern, max_region_size=8 * 1024 * 1024)
+        for data_ref in all_refs:
+            wrapper = data_ref - 0x90
+            instance = self._ability_instance_from_wrapper(pm, candidate, wrapper, component_rawcodes)
+            if instance is None:
+                continue
+            if instance.data_address == data_address and instance.rawcode == rawcode:
+                self._ability_instance_by_data[cache_key] = instance
+                return instance
+        return None
+
+    def _create_engine_ability_instance(
+        self,
+        pm: ProcessMemory,
+        candidate: UnitCandidate,
+        rawcode: int,
+        *,
+        refresh_after_add: bool = True,
+    ) -> AbilityInstance:
+        if not candidate.unit_address:
+            raise RuntimeError("当前单位缺少运行时 unit 指针，不能从资源创建技能模板")
+        internals = self._discover_native_ability_internals(pm)
+        existing_data = self._find_engine_ability_data(pm, candidate, rawcode)
+        if existing_data:
+            instance = self._ability_instance_from_data_for_candidate(
+                pm,
+                candidate,
+                existing_data,
+                rawcode,
+            )
+            if instance is not None:
+                return instance
+            raise RuntimeError(
+                f"当前单位已存在 {format_rawcode(rawcode)}，但无法安全映射到运行时实例"
+            )
+        results = self._run_native_helper_ops(
+            candidate.unit_address,
+            (
+                (self.NATIVE_HELPER_OP_INTERNAL_ABILITY_BEGIN, 0, internals.begin_address, 0, 0),
+                (self.NATIVE_HELPER_OP_INTERNAL_ABILITY_ADD, rawcode, internals.add_address, 0, 0),
+                (self.NATIVE_HELPER_OP_INTERNAL_ABILITY_END, 0, internals.end_address, 0, 0),
+            ),
+        )
+        data_address = results[1].result if len(results) >= 2 else 0
+        if not data_address:
+            raise RuntimeError(f"引擎未能从资源创建 {format_rawcode(rawcode)} 运行时技能实例")
+        if refresh_after_add:
+            self._run_native_helper_ops(
+                candidate.unit_address,
+                (
+                    (
+                        self.NATIVE_HELPER_OP_INTERNAL_ABILITY_REFRESH,
+                        0,
+                        internals.refresh_address,
+                        0,
+                        0,
+                    ),
+                ),
+            )
+        time.sleep(0.05)
+        instance = self._ability_instance_from_data_for_candidate(
+            pm,
+            candidate,
+            data_address,
+            rawcode,
+        )
+        if instance is None:
+            current_instances = self._ability_instances_from_candidate(
+                pm,
+                candidate,
+                required_rawcodes={rawcode},
+                allow_global_scan=True,
+            )
+            if len(current_instances) == 1:
+                instance = current_instances[0]
+        if instance is None:
+            try:
+                self._remove_engine_ability_instance(pm, candidate, data_address)
+            except Exception:
+                pass
+            raise RuntimeError(
+                f"引擎创建了 {format_rawcode(rawcode)}，但未能反查到当前单位上的运行时实例"
+            )
+        return instance
+
+    def _temporary_engine_ability_template(
+        self,
+        pm: ProcessMemory,
+        candidate: UnitCandidate,
+        rawcode: int,
+    ) -> tuple[dict[str, object], str]:
+        instance = self._create_engine_ability_instance(
+            pm,
+            candidate,
+            rawcode,
+            refresh_after_add=False,
+        )
+        try:
+            template = self._ability_runtime_template_from_instance(pm, instance)
+            source = (
+                f"engine-created wrapper=0x{instance.wrapper_address:x} "
+                f"class={instance.class_text}"
+            )
+        finally:
+            self._remove_engine_ability_instance(pm, candidate, instance.data_address)
+        return template, source
+
+    def _find_engine_ability_data(
+        self,
+        pm: ProcessMemory,
+        candidate: UnitCandidate,
+        rawcode: int,
+    ) -> int:
+        internals = self._discover_native_ability_internals(pm)
+        results = self._run_native_helper_ops(
+            candidate.unit_address,
+            (
+                (self.NATIVE_HELPER_OP_INTERNAL_ABILITY_FIND, rawcode, internals.find_address, 0, 0),
+            ),
+        )
+        return results[0].result if results else 0
+
+    def _remove_engine_ability_instance(
+        self,
+        pm: ProcessMemory,
+        candidate: UnitCandidate,
+        data_address: int,
+    ) -> None:
+        if not data_address:
+            return
+        try:
+            rawcode = pm.read_u32(data_address + 0x70)
+        except OSError:
+            rawcode = 0
+        internals = self._discover_native_ability_internals(pm)
+        self._run_native_helper_ops(
+            candidate.unit_address,
+            (
+                (
+                    self.NATIVE_HELPER_OP_INTERNAL_ABILITY_REMOVE,
+                    0,
+                    internals.remove_address,
+                    data_address,
+                    0,
+                ),
+                (
+                    self.NATIVE_HELPER_OP_INTERNAL_ABILITY_REFRESH,
+                    0,
+                    internals.refresh_address,
+                    0,
+                    0,
+                ),
+            ),
+        )
+        time.sleep(0.05)
+        if rawcode:
+            found = self._find_engine_ability_data(pm, candidate, rawcode)
+            if found == data_address:
+                raise RuntimeError(f"临时 ability 实例仍挂在当前单位上：0x{data_address:x}")
 
     def _iter_resource_properties(self, pm: ProcessMemory) -> Iterable[ResourceProperty]:
         tag = struct.pack("<Q", self.RESOURCE_PROP_TAG)
@@ -2634,66 +3114,125 @@ class War3Trainer:
             for byte in data
         )
 
+    def _ability_instance_from_wrapper(
+        self,
+        pm: ProcessMemory,
+        candidate: UnitCandidate,
+        wrapper: int,
+        component_rawcodes: set[int],
+    ) -> AbilityInstance | None:
+        try:
+            vtable = pm.read_u64(wrapper)
+            tag = pm.read_u64(wrapper + 0x18)
+            wrapper_owner = pm.read_u64(wrapper + 0x50)
+            data = pm.read_u64(wrapper + 0x90)
+        except OSError:
+            return None
+        if wrapper_owner != candidate.owner_address:
+            return None
+        if not self._looks_like_vtable(vtable) or not self._sane_heap_ptr(data):
+            return None
+        class_rawcode = (tag >> 32) & 0xFFFFFFFF
+        if class_rawcode in component_rawcodes:
+            return None
+        if not self._looks_like_rawcode(class_rawcode):
+            return None
+        try:
+            data_vtable = pm.read_u64(data)
+            unit = pm.read_u64(data + 0x68)
+            rawcode = pm.read_u32(data + 0x70)
+            mirror_rawcode = pm.read_u32(data + 0x78)
+            handle = pm.read_u64(wrapper + 0x20)
+            data_cache_pointer = pm.read_u64(data + 0xA0)
+        except OSError:
+            return None
+        if not self._looks_like_vtable(data_vtable):
+            return None
+        if unit != candidate.unit_address:
+            return None
+        if rawcode != mirror_rawcode or not self._looks_like_rawcode(rawcode):
+            return None
+        return AbilityInstance(
+            slot=0,
+            wrapper_address=wrapper,
+            data_address=data,
+            wrapper_vtable=vtable,
+            data_vtable=data_vtable,
+            wrapper_tag_address=wrapper + 0x18,
+            wrapper_tag=tag,
+            handle=handle,
+            class_rawcode=class_rawcode,
+            rawcode=rawcode,
+            rawcode_address=data + 0x70,
+            mirror_rawcode_address=data + 0x78,
+            data_cache_address=data + 0xA0,
+            data_cache_pointer=data_cache_pointer if self._sane_heap_ptr(data_cache_pointer) else 0,
+        )
+
+    def _global_ability_instances_from_candidate(
+        self,
+        pm: ProcessMemory,
+        candidate: UnitCandidate,
+        component_rawcodes: set[int],
+        required_rawcodes: set[int] | None,
+        seen_wrappers: set[int],
+    ) -> list[AbilityInstance]:
+        if not candidate.owner_address:
+            return []
+        rawcode_filter = {
+            rawcode & 0xFFFFFFFF
+            for rawcode in (required_rawcodes or set())
+            if rawcode and self._looks_like_rawcode(rawcode)
+        }
+        instances: list[AbilityInstance] = []
+        owner_pattern = struct.pack("<Q", candidate.owner_address)
+        for owner_ref in pm.scan_bytes_private(owner_pattern, max_region_size=16 * 1024 * 1024):
+            wrapper = owner_ref - 0x50
+            if wrapper in seen_wrappers:
+                continue
+            instance = self._ability_instance_from_wrapper(pm, candidate, wrapper, component_rawcodes)
+            if instance is None:
+                continue
+            if rawcode_filter and instance.rawcode not in rawcode_filter:
+                continue
+            seen_wrappers.add(wrapper)
+            instances.append(instance)
+        return instances
+
     def _ability_instances_from_candidate(
         self,
         pm: ProcessMemory,
         candidate: UnitCandidate,
+        required_rawcodes: set[int] | None = None,
+        allow_global_scan: bool = False,
     ) -> list[AbilityInstance]:
         if not candidate.owner_address or not candidate.unit_address:
             return []
         component_rawcodes = {tag >> 32 for tag in self.COMPONENT_TAGS.values()}
         instances: list[AbilityInstance] = []
+        seen_wrappers: set[int] = set()
         for offset in range(-self.ABILITY_WRAPPER_SCAN_BACK, self.ABILITY_WRAPPER_SCAN_FORWARD, 8):
             wrapper = candidate.owner_address + offset
-            try:
-                vtable = pm.read_u64(wrapper)
-                tag = pm.read_u64(wrapper + 0x18)
-                wrapper_owner = pm.read_u64(wrapper + 0x50)
-                data = pm.read_u64(wrapper + 0x90)
-            except OSError:
+            instance = self._ability_instance_from_wrapper(pm, candidate, wrapper, component_rawcodes)
+            if instance is None:
                 continue
-            if wrapper_owner != candidate.owner_address:
-                continue
-            if not self._looks_like_vtable(vtable) or not self._sane_heap_ptr(data):
-                continue
-            class_rawcode = (tag >> 32) & 0xFFFFFFFF
-            if class_rawcode in component_rawcodes:
-                continue
-            if not self._looks_like_rawcode(class_rawcode):
-                continue
-            try:
-                data_vtable = pm.read_u64(data)
-                unit = pm.read_u64(data + 0x68)
-                rawcode = pm.read_u32(data + 0x70)
-                mirror_rawcode = pm.read_u32(data + 0x78)
-                handle = pm.read_u64(wrapper + 0x20)
-                data_cache_pointer = pm.read_u64(data + 0xA0)
-            except OSError:
-                continue
-            if not self._looks_like_vtable(data_vtable):
-                continue
-            if unit != candidate.unit_address:
-                continue
-            if rawcode != mirror_rawcode or not self._looks_like_rawcode(rawcode):
-                continue
-            instances.append(
-                AbilityInstance(
-                    slot=len(instances) + 1,
-                    wrapper_address=wrapper,
-                    data_address=data,
-                    wrapper_vtable=vtable,
-                    data_vtable=data_vtable,
-                    wrapper_tag_address=wrapper + 0x18,
-                    wrapper_tag=tag,
-                    handle=handle,
-                    class_rawcode=class_rawcode,
-                    rawcode=rawcode,
-                    rawcode_address=data + 0x70,
-                    mirror_rawcode_address=data + 0x78,
-                    data_cache_address=data + 0xA0,
-                    data_cache_pointer=data_cache_pointer if self._sane_heap_ptr(data_cache_pointer) else 0,
+            seen_wrappers.add(wrapper)
+            instances.append(instance)
+        if allow_global_scan:
+            instances.extend(
+                self._global_ability_instances_from_candidate(
+                    pm,
+                    candidate,
+                    component_rawcodes,
+                    required_rawcodes,
+                    seen_wrappers,
                 )
             )
+        instances.sort(key=lambda instance: (instance.handle, instance.wrapper_address))
+        instances = [
+            replace(instance, slot=index + 1)
+            for index, instance in enumerate(instances)
+        ]
         return instances
 
     def _inventory_record_address(
@@ -2925,7 +3464,7 @@ class War3Trainer:
             self._append_unit_field(pm, fields, "armor", "护甲", "f32", candidate.unit_address + 0x2E8, "防御")
             self._append_unit_field(pm, fields, "armor_type", "护甲类型", "i32", candidate.unit_address + 0x2F0, "防御")
 
-        ability_instances = self._ability_instances_from_candidate(pm, candidate)
+        ability_instances: list[AbilityInstance] = []
 
         hero_skill_config_rawcodes: list[int] = []
         hero = components.get("hero")
@@ -2958,27 +3497,11 @@ class War3Trainer:
                 except OSError:
                     current_config_rawcode = 0
                 hero_skill_config_rawcodes.append(current_config_rawcode)
-            skill_instance_by_index: dict[int, AbilityInstance] = {}
-            used_skill_instance_wrappers: set[int] = set()
-            ordered_skill_instances = sorted(
-                (
-                    instance
-                    for instance in ability_instances
-                    if instance.rawcode in set(hero_skill_config_rawcodes)
-                ),
-                key=lambda instance: (instance.handle, instance.wrapper_address),
+            ability_instances = self._ability_instances_from_candidate(
+                pm,
+                candidate,
+                allow_global_scan=True,
             )
-            for index, rawcode in enumerate(hero_skill_config_rawcodes):
-                if not rawcode:
-                    continue
-                for instance in ordered_skill_instances:
-                    if instance.wrapper_address in used_skill_instance_wrappers:
-                        continue
-                    if instance.rawcode != rawcode:
-                        continue
-                    skill_instance_by_index[index] = instance
-                    used_skill_instance_wrappers.add(instance.wrapper_address)
-                    break
             for index in range(self.HERO_SKILL_SLOT_COUNT):
                 number = index + 1
                 config_address = data + 0x204 + index * 4
@@ -3028,27 +3551,14 @@ class War3Trainer:
                 )
 
         if hero_skill_config_rawcodes:
-            used_instance_wrappers: set[int] = set()
-            skill_instance_by_index = {}
-            ordered_skill_instances = sorted(
-                (
-                    instance
-                    for instance in ability_instances
-                    if instance.rawcode in set(hero_skill_config_rawcodes)
-                ),
-                key=lambda instance: (instance.handle, instance.wrapper_address),
+            skill_instance_by_index = self._map_hero_skill_instances(
+                hero_skill_config_rawcodes,
+                ability_instances,
             )
-            for index, rawcode in enumerate(hero_skill_config_rawcodes):
-                if not rawcode:
-                    continue
-                for instance in ordered_skill_instances:
-                    if instance.wrapper_address in used_instance_wrappers:
-                        continue
-                    if instance.rawcode != rawcode:
-                        continue
-                    skill_instance_by_index[index] = instance
-                    used_instance_wrappers.add(instance.wrapper_address)
-                    break
+            used_instance_wrappers = {
+                instance.wrapper_address
+                for instance in skill_instance_by_index.values()
+            }
             for index, rawcode in enumerate(hero_skill_config_rawcodes):
                 if not rawcode:
                     continue
@@ -3292,6 +3802,94 @@ class War3Trainer:
             return None
         return index
 
+    def _map_hero_skill_instances(
+        self,
+        configs: list[int],
+        ability_instances: list[AbilityInstance],
+    ) -> dict[int, AbilityInstance]:
+        ordered_instances = sorted(
+            ability_instances,
+            key=lambda instance: (instance.handle, instance.wrapper_address),
+        )
+        skill_candidates = [
+            instance
+            for instance in ordered_instances
+            if ((instance.rawcode >> 24) & 0xFF) != ord("B")
+            and ((instance.class_rawcode >> 24) & 0xFF) != ord("B")
+        ]
+        mapped: dict[int, AbilityInstance] = {}
+        used_wrappers: set[int] = set()
+        for index, rawcode in enumerate(configs):
+            if not rawcode:
+                continue
+            for instance in skill_candidates:
+                if instance.wrapper_address in used_wrappers:
+                    continue
+                if instance.rawcode != rawcode:
+                    continue
+                mapped[index] = instance
+                used_wrappers.add(instance.wrapper_address)
+                break
+
+        missing_indices = [
+            index
+            for index, rawcode in enumerate(configs)
+            if rawcode and index not in mapped
+        ]
+        if not missing_indices:
+            return mapped
+
+        nonzero_indices = [
+            index
+            for index, rawcode in enumerate(configs)
+            if rawcode
+        ]
+        nonzero_config_count = sum(1 for rawcode in configs if rawcode)
+        candidate_position_by_wrapper = {
+            instance.wrapper_address: position
+            for position, instance in enumerate(skill_candidates)
+        }
+        rank_by_index = {
+            index: rank
+            for rank, index in enumerate(nonzero_indices)
+        }
+        start_positions = {
+            candidate_position_by_wrapper[instance.wrapper_address] - rank_by_index[index]
+            for index, instance in mapped.items()
+            if instance.wrapper_address in candidate_position_by_wrapper
+        }
+        if len(start_positions) == 1:
+            start = next(iter(start_positions))
+            end = start + nonzero_config_count
+            if 0 <= start and end <= len(skill_candidates):
+                window = skill_candidates[start:end]
+                anchors_match = all(
+                    mapped[index].wrapper_address == window[rank_by_index[index]].wrapper_address
+                    for index in mapped
+                    if index in rank_by_index
+                )
+                if anchors_match:
+                    for index in missing_indices:
+                        instance = window[rank_by_index[index]]
+                        if instance.wrapper_address not in used_wrappers:
+                            mapped[index] = instance
+                            used_wrappers.add(instance.wrapper_address)
+                    return mapped
+
+        remaining_instances = [
+            instance
+            for instance in skill_candidates
+            if instance.wrapper_address not in used_wrappers
+        ]
+        if len(skill_candidates) != nonzero_config_count:
+            return mapped
+        if len(remaining_instances) != len(missing_indices):
+            return mapped
+
+        for index, instance in zip(missing_indices, remaining_instances):
+            mapped[index] = instance
+        return mapped
+
     def _hero_skill_instance_map(
         self,
         pm: ProcessMemory,
@@ -3304,25 +3902,42 @@ class War3Trainer:
                 configs.append(pm.read_u32(hero_data + 0x204 + index * 4))
             except OSError:
                 configs.append(0)
-        ability_instances = self._ability_instances_from_candidate(pm, candidate)
-        ordered_skill_instances = sorted(
-            (instance for instance in ability_instances if instance.rawcode in set(configs)),
-            key=lambda instance: (instance.handle, instance.wrapper_address),
+        ability_instances = self._ability_instances_from_candidate(
+            pm,
+            candidate,
+            allow_global_scan=True,
         )
+        mapped = self._map_hero_skill_instances(configs, ability_instances)
+        return configs, mapped, ability_instances
+
+    def _hero_skill_instance_map_for_write(
+        self,
+        pm: ProcessMemory,
+        candidate: UnitCandidate,
+        configs: list[int],
+    ) -> tuple[dict[int, AbilityInstance], list[AbilityInstance]]:
         mapped: dict[int, AbilityInstance] = {}
-        used_wrappers: set[int] = set()
+        instances: list[AbilityInstance] = []
+        seen_data: set[int] = set()
         for index, rawcode in enumerate(configs):
             if not rawcode:
                 continue
-            for instance in ordered_skill_instances:
-                if instance.wrapper_address in used_wrappers:
-                    continue
-                if instance.rawcode != rawcode:
-                    continue
-                mapped[index] = instance
-                used_wrappers.add(instance.wrapper_address)
-                break
-        return configs, mapped, ability_instances
+            data_address = self._find_engine_ability_data(pm, candidate, rawcode)
+            if not data_address or data_address in seen_data:
+                continue
+            seen_data.add(data_address)
+            instance = self._ability_instance_from_data_for_candidate(
+                pm,
+                candidate,
+                data_address,
+                rawcode,
+            )
+            if instance is None:
+                continue
+            instance = replace(instance, slot=index + 1)
+            mapped[index] = instance
+            instances.append(instance)
+        return mapped, instances
 
     def _ability_runtime_template_from_instance(
         self,
@@ -3381,6 +3996,26 @@ class War3Trainer:
             return False
         return self._valid_current_limit(current_hp, max_hp) and current_hp > 0.0 and max_hp > 0.0
 
+    def _ability_template_source_candidate(
+        self,
+        pm: ProcessMemory,
+        owner: int,
+        unit: int,
+    ) -> UnitCandidate | None:
+        if not self._sane_heap_ptr(owner) or not self._sane_heap_ptr(unit):
+            return None
+        source = self._candidate_from_owner(pm, owner, 0, "ability_template_source")
+        if source is None or source.unit_address != unit:
+            return None
+        try:
+            current_hp = pm.read_f32(source.hp_current_address)
+            max_hp = pm.read_f32(source.hp_max_address)
+        except OSError:
+            return None
+        if not (self._valid_current_limit(current_hp, max_hp) and current_hp > 0.0 and max_hp > 0.0):
+            return None
+        return source
+
     def _find_ability_runtime_template(
         self,
         pm: ProcessMemory,
@@ -3429,7 +4064,10 @@ class War3Trainer:
                     continue
                 if not self._looks_like_vtable(wrapper_vtable) or not self._sane_heap_ptr(owner):
                     continue
-                if not self._ability_template_source_is_live(pm, owner, unit):
+                source_candidate = self._ability_template_source_candidate(pm, owner, unit)
+                if source_candidate is None:
+                    continue
+                if self._find_engine_ability_data(pm, source_candidate, rawcode) != data:
                     continue
                 class_rawcode = (tag >> 32) & 0xFFFFFFFF
                 if class_rawcode in component_rawcodes or not self._looks_like_rawcode(class_rawcode):
@@ -3472,24 +4110,53 @@ class War3Trainer:
         _hero_wrapper, hero_data = hero
         config_address = hero_data + 0x204 + index * 4
         cache_address = hero_data + 0x1BC + index * 4
-        configs, mapped, ability_instances = self._hero_skill_instance_map(pm, candidate, hero_data)
+        configs: list[int] = []
+        for slot_index in range(self.HERO_SKILL_SLOT_COUNT):
+            try:
+                configs.append(pm.read_u32(hero_data + 0x204 + slot_index * 4))
+            except OSError:
+                configs.append(0)
         old_rawcode = configs[index] if index < len(configs) else 0
-        instance = mapped.get(index)
-        if old_rawcode != new_rawcode:
+        instance = None
+        if old_rawcode:
+            data_address = self._find_engine_ability_data(pm, candidate, old_rawcode)
+            if data_address:
+                instance = self._ability_instance_from_data_for_candidate(
+                    pm,
+                    candidate,
+                    data_address,
+                    old_rawcode,
+                )
+                if instance is not None:
+                    instance = replace(instance, slot=index + 1)
+        ability_instances = [instance] if instance is not None else []
+        runtime_needs_update = instance is not None and instance.rawcode != new_rawcode
+        needs_runtime_replacement = old_rawcode != new_rawcode or runtime_needs_update
+        if needs_runtime_replacement:
             if not old_rawcode:
                 raise RuntimeError(
                     f"技能{index + 1}当前没有已学技能 rawcode，"
                     "没有可替换的运行时 ability 实例；为避免命令卡空格，本次不写入。"
                 )
+            source_ability_rawcode = instance.rawcode if instance is not None else old_rawcode
             source_skill_slots = [
                 other_index + 1
                 for other_index, rawcode in enumerate(configs)
                 if rawcode == old_rawcode
             ]
+            active_source_data = self._find_engine_ability_data(
+                pm,
+                candidate,
+                source_ability_rawcode,
+            )
             source_ability_slots = [
                 other.slot
                 for other in ability_instances
-                if other.rawcode == old_rawcode
+                if other.rawcode == source_ability_rawcode
+                and (
+                    (instance is not None and other.wrapper_address == instance.wrapper_address)
+                    or (active_source_data and other.data_address == active_source_data)
+                )
             ]
             if len(source_skill_slots) != 1 or len(source_ability_slots) != 1 or instance is None:
                 details: list[str] = []
@@ -3508,12 +4175,23 @@ class War3Trainer:
                 if other_index != index and rawcode == new_rawcode
             ]
             duplicate_ability_slots = [
-                other.slot
+                other
                 for other in ability_instances
                 if (instance is None or other.wrapper_address != instance.wrapper_address)
                 and other.rawcode == new_rawcode
             ]
-            if duplicate_skill_slots or duplicate_ability_slots:
+            active_duplicate_data = self._find_engine_ability_data(pm, candidate, new_rawcode)
+            duplicate_ability_slots = [
+                other.slot
+                for other in duplicate_ability_slots
+                if active_duplicate_data and other.data_address == active_duplicate_data
+            ]
+            hidden_duplicate = (
+                active_duplicate_data
+                and not duplicate_ability_slots
+                and (instance is None or active_duplicate_data != instance.data_address)
+            )
+            if duplicate_skill_slots or duplicate_ability_slots or hidden_duplicate:
                 details: list[str] = []
                 if duplicate_skill_slots:
                     details.append(
@@ -3523,6 +4201,8 @@ class War3Trainer:
                     details.append(
                         "能力实例" + ",".join(str(slot) for slot in duplicate_ability_slots)
                     )
+                if hidden_duplicate:
+                    details.append(f"隐藏运行时实例0x{active_duplicate_data:x}")
                 raise RuntimeError(
                     f"{format_rawcode(new_rawcode)} 已存在于当前单位的" + "；".join(details) + "。"
                     "Warcraft III 的同 rawcode 已学技能不会生成第二个命令卡按钮，"
@@ -3530,40 +4210,25 @@ class War3Trainer:
                 )
         runtime_template: dict[str, object] | None = None
         runtime_template_source = ""
-        if instance is not None and old_rawcode != new_rawcode:
-            old_template_key = (candidate.handle, instance.wrapper_address, old_rawcode)
+        if instance is not None and needs_runtime_replacement:
+            source_rawcode = instance.rawcode
+            old_template_key = (candidate.handle, instance.wrapper_address, source_rawcode)
             self._ability_runtime_templates.setdefault(
                 old_template_key,
                 self._ability_runtime_template_from_instance(pm, instance),
             )
-            new_template_key = (candidate.handle, instance.wrapper_address, new_rawcode)
-            cached_template = self._ability_runtime_templates.get(new_template_key)
-            if cached_template is not None:
-                runtime_template = cached_template
-                runtime_template_source = "cached"
-            else:
-                template_instance = self._find_ability_runtime_template(
-                    pm,
-                    new_rawcode,
-                    excluded_wrappers={instance.wrapper_address},
-                    excluded_data={instance.data_address},
-                )
-                if template_instance is None:
-                    raise RuntimeError(
-                        f"未找到 {format_rawcode(new_rawcode)} 的存活单位运行时技能模板，"
-                        "为避免命令卡空格，本次不写入。请确认地图中已有单位拥有该技能后再改。"
-                    )
-                runtime_template = self._ability_runtime_template_from_instance(pm, template_instance)
-                runtime_template_source = (
-                    f"template wrapper=0x{template_instance.wrapper_address:x} "
-                    f"class={template_instance.class_text}"
-                )
+            runtime_template, runtime_template_source = self._temporary_engine_ability_template(
+                pm,
+                candidate,
+                new_rawcode,
+            )
 
         pm.write_u32(config_address, new_rawcode)
         pm.write_u32(cache_address, new_rawcode)
         actions = [
             f"config/cache {format_rawcode(old_rawcode)}->{format_rawcode(new_rawcode)}",
         ]
+        final_runtime_instance = instance
         if instance is not None:
             if runtime_template is not None:
                 class_rawcode = self._write_ability_runtime_template(pm, instance, new_rawcode, runtime_template)
@@ -3594,8 +4259,8 @@ class War3Trainer:
                 f"技能{index + 1}写入后读回 config={format_rawcode(final_config)} "
                 f"cache={format_rawcode(final_cache)}，不是 {format_rawcode(new_rawcode)}"
             )
-        if instance is not None:
-            final_rawcode = pm.read_u32(instance.rawcode_address)
+        if final_runtime_instance is not None:
+            final_rawcode = pm.read_u32(final_runtime_instance.rawcode_address)
             if final_rawcode != new_rawcode:
                 raise RuntimeError(
                     f"技能{index + 1}运行时实例读回 {format_rawcode(final_rawcode)}，"
@@ -3849,11 +4514,30 @@ class War3Trainer:
         specs = list(specs)
         if not specs:
             return []
+        written: list[UnitMemoryField] = []
+        remaining_specs: list[MemoryWriteSpec] = []
+        for spec in specs:
+            direct_key = self.FIELD_KEY_ALIASES.get(spec.label, spec.label)
+            if self._skill_index_from_field_key(direct_key) is not None:
+                field = UnitMemoryField(
+                    key=direct_key,
+                    label=direct_key,
+                    value_type="rawcode",
+                    value=0,
+                    address=0,
+                    category="技能",
+                    write_address=1,
+                    write_type="rawcode",
+                )
+                written.append(self._write_hero_skill_name_field(pm, candidate, field, spec.value))
+            else:
+                remaining_specs.append(spec)
+        if not remaining_specs:
+            return written
         fields = self._unit_fields_from_candidate(pm, candidate)
         by_key = {field.key: field for field in fields}
         by_label = {field.label: field for field in fields}
-        written: list[UnitMemoryField] = []
-        for spec in specs:
+        for spec in remaining_specs:
             field = (
                 by_key.get(spec.label)
                 or by_key.get(self.FIELD_KEY_ALIASES.get(spec.label, ""))

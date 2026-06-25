@@ -4,7 +4,7 @@
 a = Analysis(
     ['war3_reforged_trainer.py'],
     pathex=[],
-    binaries=[],
+    binaries=[('tools/war3_native_helper.dll', 'tools')],
     datas=[],
     hiddenimports=[],
     hookspath=[],

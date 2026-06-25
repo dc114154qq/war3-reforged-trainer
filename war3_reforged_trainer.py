@@ -1068,6 +1068,7 @@ class War3Trainer:
     NATIVE_HELPER_OP_INTERNAL_ABILITY_END = 33
     NATIVE_HELPER_OP_INTERNAL_ABILITY_REFRESH = 34
     NATIVE_HELPER_OP_INTERNAL_ABILITY_REMOVE = 35
+    NATIVE_HELPER_OP_SET_ITEM_CHARGES = 40
 
     def __init__(self, pid: int | None = None):
         self.hwnd, self.pid = find_war3(pid)
@@ -1178,6 +1179,30 @@ class War3Trainer:
                 return region
         raise RuntimeError("未找到 Warcraft III native 函数表")
 
+    def _find_native_handler_by_name_scan(
+        self,
+        pm: ProcessMemory,
+        regions: list[Region],
+        name: str,
+    ) -> NativeHandler | None:
+        pattern = name.encode("ascii") + b"\0"
+        for hit in pm.scan_bytes_private(pattern, max_region_size=2 * 1024 * 1024):
+            record = hit - 0x18
+            region = self._region_for_address(regions, hit)
+            if region is None or region.typ != MEM_PRIVATE:
+                continue
+            try:
+                handler = pm.read_u64(record - 8)
+                ptr = pm.read_u64(record)
+                size = pm.read_u64(record + 8)
+            except OSError:
+                continue
+            if ptr != hit or size != len(name):
+                continue
+            if self._is_executable_image_address(regions, handler):
+                return NativeHandler(name, record, handler)
+        return None
+
     def _discover_native_handlers(
         self,
         pm: ProcessMemory,
@@ -1203,6 +1228,10 @@ class War3Trainer:
             if wanted.issubset(found):
                 break
         self._native_handlers.update(found)
+        for name in sorted(wanted.difference(self._native_handlers)):
+            handler = self._find_native_handler_by_name_scan(pm, regions, name)
+            if handler is not None:
+                self._native_handlers[name] = handler
         missing = wanted.difference(self._native_handlers)
         if missing:
             raise RuntimeError("未找到 native 函数：" + ", ".join(sorted(missing)))
@@ -1240,6 +1269,27 @@ class War3Trainer:
             if opcode == 0xC3 and offset > 0x10:
                 break
         return calls
+
+    def _rel32_jumps_in_function(
+        self,
+        pm: ProcessMemory,
+        address: int,
+        *,
+        max_bytes: int = 0x80,
+    ) -> list[int]:
+        regions = pm.regions()
+        code = pm.read(address, max_bytes)
+        jumps: list[int] = []
+        for offset in range(0, max(0, len(code) - 4)):
+            opcode = code[offset]
+            if opcode == 0xE9:
+                rel = struct.unpack_from("<i", code, offset + 1)[0]
+                target = address + offset + 5 + rel
+                if self._is_executable_image_address(regions, target):
+                    jumps.append(target)
+            if opcode == 0xC3 and offset > 0x10:
+                break
+        return jumps
 
     def _discover_native_ability_internals(self, pm: ProcessMemory) -> NativeAbilityInternals:
         handlers = self._discover_native_handlers(pm, ("UnitAddAbility", "UnitRemoveAbility"))
@@ -1379,9 +1429,10 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_INTERNAL_ABILITY_END,
             self.NATIVE_HELPER_OP_INTERNAL_ABILITY_REFRESH,
             self.NATIVE_HELPER_OP_INTERNAL_ABILITY_REMOVE,
+            self.NATIVE_HELPER_OP_SET_ITEM_CHARGES,
         }
         if any(kind not in allowed_kinds for kind, _rawcode, _handler, _arg0, _arg1 in op_list):
-            raise RuntimeError("native helper 仅允许结构化验证后的内部 ability 操作")
+            raise RuntimeError("native helper 仅允许结构化验证后的 ability/物品数量操作")
         command_path = self._native_helper_command_path()
         command_path.write_bytes(self._pack_native_helper_command(unit_address, op_list))
         dll_path = self._native_helper_dll_path()
@@ -1621,6 +1672,57 @@ class War3Trainer:
             self._remove_engine_ability_instance(pm, candidate, instance.data_address)
         return template, source
 
+    def _replace_engine_ability_instance(
+        self,
+        pm: ProcessMemory,
+        candidate: UnitCandidate,
+        old_instance: AbilityInstance,
+        new_rawcode: int,
+    ) -> AbilityInstance:
+        new_instance = self._create_engine_ability_instance(
+            pm,
+            candidate,
+            new_rawcode,
+            refresh_after_add=False,
+        )
+        if new_instance.data_address == old_instance.data_address:
+            raise RuntimeError(
+                f"引擎返回的新技能实例与旧实例相同：0x{new_instance.data_address:x}"
+            )
+        try:
+            self._remove_engine_ability_instance(pm, candidate, old_instance.data_address)
+        except Exception:
+            try:
+                self._remove_engine_ability_instance(pm, candidate, new_instance.data_address)
+            except Exception:
+                pass
+            raise
+
+        time.sleep(0.05)
+        active_data = self._find_engine_ability_data(pm, candidate, new_rawcode)
+        if not active_data:
+            raise RuntimeError(f"引擎替换后找不到 {format_rawcode(new_rawcode)} 运行时实例")
+        final_instance = self._ability_instance_from_data_for_candidate(
+            pm,
+            candidate,
+            active_data,
+            new_rawcode,
+        )
+        if final_instance is None:
+            current_instances = self._ability_instances_from_candidate(
+                pm,
+                candidate,
+                required_rawcodes={new_rawcode},
+                allow_global_scan=True,
+            )
+            if len(current_instances) == 1:
+                final_instance = current_instances[0]
+        if final_instance is None:
+            raise RuntimeError(
+                f"引擎替换了 {format_rawcode(new_rawcode)}，但未能反查到当前单位上的运行时实例"
+            )
+        return replace(final_instance, slot=old_instance.slot)
+
     def _find_engine_ability_data(
         self,
         pm: ProcessMemory,
@@ -1673,6 +1775,41 @@ class War3Trainer:
             found = self._find_engine_ability_data(pm, candidate, rawcode)
             if found == data_address:
                 raise RuntimeError(f"临时 ability 实例仍挂在当前单位上：0x{data_address:x}")
+
+    def _set_item_charges_via_native_handler(
+        self,
+        pm: ProcessMemory,
+        candidate: UnitCandidate,
+        item: InventoryItem,
+        charges: int,
+    ) -> None:
+        if not candidate.unit_address:
+            raise RuntimeError("当前单位缺少运行时 unit 指针，不能调用物品数量 native handler")
+        if not item.item_address:
+            raise RuntimeError(f"物品槽{item.slot}缺少 item 对象地址，不能调用物品数量 native handler")
+        handlers = self._discover_native_handlers(pm, ("SetItemCharges",))
+        set_charges_handler = handlers["SetItemCharges"].handler_address
+        jumps = self._rel32_jumps_in_function(pm, set_charges_handler)
+        notify_candidates = {
+            target
+            for target in jumps
+            if jumps.count(target) >= 2
+        }
+        if len(notify_candidates) != 1:
+            raise RuntimeError("未能从 SetItemCharges handler 中唯一定位物品数量通知函数")
+        notify_handler = next(iter(notify_candidates))
+        self._run_native_helper_ops(
+            candidate.unit_address,
+            (
+                (
+                    self.NATIVE_HELPER_OP_SET_ITEM_CHARGES,
+                    0,
+                    notify_handler,
+                    item.item_address,
+                    charges & 0xFFFFFFFF,
+                ),
+            ),
+        )
 
     def _iter_resource_properties(self, pm: ProcessMemory) -> Iterable[ResourceProperty]:
         tag = struct.pack("<Q", self.RESOURCE_PROP_TAG)
@@ -4208,19 +4345,18 @@ class War3Trainer:
                     "Warcraft III 的同 rawcode 已学技能不会生成第二个命令卡按钮，"
                     "强写会表现为目标格技能消失；请先把已有同名技能改成其它 rawcode。"
                 )
-        runtime_template: dict[str, object] | None = None
-        runtime_template_source = ""
+        replacement_instance: AbilityInstance | None = None
+        replacement_source = ""
         if instance is not None and needs_runtime_replacement:
-            source_rawcode = instance.rawcode
-            old_template_key = (candidate.handle, instance.wrapper_address, source_rawcode)
-            self._ability_runtime_templates.setdefault(
-                old_template_key,
-                self._ability_runtime_template_from_instance(pm, instance),
-            )
-            runtime_template, runtime_template_source = self._temporary_engine_ability_template(
+            replacement_instance = self._replace_engine_ability_instance(
                 pm,
                 candidate,
+                instance,
                 new_rawcode,
+            )
+            replacement_source = (
+                f"engine-replaced old_wrapper=0x{instance.wrapper_address:x} "
+                f"new_wrapper=0x{replacement_instance.wrapper_address:x}"
             )
 
         pm.write_u32(config_address, new_rawcode)
@@ -4228,14 +4364,13 @@ class War3Trainer:
         actions = [
             f"config/cache {format_rawcode(old_rawcode)}->{format_rawcode(new_rawcode)}",
         ]
-        final_runtime_instance = instance
+        final_runtime_instance = replacement_instance or instance
         if instance is not None:
-            if runtime_template is not None:
-                class_rawcode = self._write_ability_runtime_template(pm, instance, new_rawcode, runtime_template)
+            if replacement_instance is not None:
                 actions.append(
-                    f"runtime wrapper=0x{instance.wrapper_address:x} "
+                    f"runtime {replacement_source} "
                     f"{instance.rawcode_text}->{format_rawcode(new_rawcode)} "
-                    f"class={format_rawcode(class_rawcode)} source={runtime_template_source}"
+                    f"class={format_rawcode(replacement_instance.class_rawcode)}"
                 )
             else:
                 old_tag = pm.read_u64(instance.wrapper_tag_address)
@@ -4459,13 +4594,9 @@ class War3Trainer:
         if snapshot is None or not snapshot.item_address or not snapshot.charges_address:
             raise RuntimeError(f"物品槽{slot_index + 1}为空或未解析 item 对象，不能写数量")
 
+        old_charges = snapshot.charges
         old_flags = pm.read_u32(snapshot.item_address + self.ITEM_CHARGES_FLAG_OFFSET)
-        if new_charges == 0:
-            new_flags = old_flags | self.ITEM_CHARGES_EMPTY_FLAG
-        else:
-            new_flags = old_flags & ~self.ITEM_CHARGES_EMPTY_FLAG
-        pm.write_u32(snapshot.item_address + self.ITEM_CHARGES_FLAG_OFFSET, new_flags)
-        pm.write_i32(snapshot.charges_address, new_charges)
+        self._set_item_charges_via_native_handler(pm, candidate, snapshot, new_charges)
         time.sleep(0.05)
 
         final_snapshot = next(
@@ -4481,6 +4612,10 @@ class War3Trainer:
             raise RuntimeError(
                 f"物品槽{slot_index + 1}数量写入后读回 {final_charges}，不是 {new_charges}"
             )
+        if final_snapshot is not None and final_snapshot.item_address:
+            final_flags = pm.read_u32(final_snapshot.item_address + self.ITEM_CHARGES_FLAG_OFFSET)
+        else:
+            final_flags = old_flags
         refresh_note = ""
         if "hero" in components:
             if self._refresh_selected_hero_command_card():
@@ -4498,8 +4633,9 @@ class War3Trainer:
             write_type=field.write_type,
             write_base=field.write_base,
             note=(
-                f"item charges native offset=0x{self.ITEM_CHARGES_OFFSET:x}; "
-                f"flags 0x{old_flags:x}->0x{new_flags:x}"
+                f"SetItemCharges {old_charges}->{final_charges}; "
+                f"item charges offset=0x{self.ITEM_CHARGES_OFFSET:x}; "
+                f"flags 0x{old_flags:x}->0x{final_flags:x}"
                 f"{refresh_note}"
             ),
             extra_writes=field.extra_writes,

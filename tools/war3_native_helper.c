@@ -15,6 +15,10 @@
 #define WAR3_NATIVE_OP_INTERNAL_ABILITY_END 33u
 #define WAR3_NATIVE_OP_INTERNAL_ABILITY_REFRESH 34u
 #define WAR3_NATIVE_OP_INTERNAL_ABILITY_REMOVE 35u
+#define WAR3_NATIVE_OP_SET_ITEM_CHARGES 40u
+#define WAR3_ITEM_FLAGS_OFFSET 0x38u
+#define WAR3_ITEM_CHARGES_OFFSET 0x8d0u
+#define WAR3_ITEM_CHARGES_EMPTY_FLAG 0x1000u
 
 typedef void (__fastcall *InternalAbilityUnitFn)(uint64_t unit_address);
 typedef uint64_t (__fastcall *InternalAbilityFindFn)(
@@ -35,6 +39,7 @@ typedef uint64_t (__fastcall *InternalAbilityAddFn)(
     uint32_t arg5
 );
 typedef void (__fastcall *InternalAbilityRemoveFn)(uint64_t unit_address, uint64_t data_address);
+typedef void (__fastcall *ItemChargesNotifyFn)(uint32_t value);
 
 typedef struct NativeOp {
     uint32_t kind;
@@ -142,6 +147,30 @@ static void run_command(void) {
             case WAR3_NATIVE_OP_INTERNAL_ABILITY_REMOVE: {
                 InternalAbilityRemoveFn fn = (InternalAbilityRemoveFn)(uintptr_t)op->handler;
                 fn(cmd.unit_handle, op->arg0);
+                op->result = 1;
+                break;
+            }
+            case WAR3_NATIVE_OP_SET_ITEM_CHARGES: {
+                uint8_t *item = (uint8_t *)(uintptr_t)op->arg0;
+                int32_t charges = (int32_t)op->arg1;
+                uint32_t *flags = (uint32_t *)(void *)(item + WAR3_ITEM_FLAGS_OFFSET);
+                int32_t *item_charges = (int32_t *)(void *)(item + WAR3_ITEM_CHARGES_OFFSET);
+                ItemChargesNotifyFn notify = (ItemChargesNotifyFn)(uintptr_t)op->handler;
+                if (item == NULL) {
+                    op->last_error = ERROR_INVALID_ADDRESS;
+                    last_error = ERROR_INVALID_ADDRESS;
+                    goto finish;
+                }
+                if (charges < 0) {
+                    charges = 0;
+                }
+                if (charges == 0) {
+                    *flags |= WAR3_ITEM_CHARGES_EMPTY_FLAG;
+                } else {
+                    *flags &= ~WAR3_ITEM_CHARGES_EMPTY_FLAG;
+                }
+                *item_charges = charges;
+                notify(0);
                 op->result = 1;
                 break;
             }

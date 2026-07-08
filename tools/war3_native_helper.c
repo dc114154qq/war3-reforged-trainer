@@ -3,7 +3,7 @@
 #include <stdio.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 3u
+#define WAR3_NATIVE_VERSION 5u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -16,6 +16,10 @@
 #define WAR3_NATIVE_OP_INTERNAL_ABILITY_REFRESH 34u
 #define WAR3_NATIVE_OP_INTERNAL_ABILITY_REMOVE 35u
 #define WAR3_NATIVE_OP_SET_ITEM_CHARGES 40u
+#define WAR3_NATIVE_OP_SET_HERO_INT 60u
+#define WAR3_NATIVE_OP_GET_HERO_INT 61u
+#define WAR3_NATIVE_OP_JASS_SELECTED_UNIT 50u
+#define WAR3_NATIVE_OP_JASS_SELECTED_UNIT_ARG 51u
 #define WAR3_ITEM_FLAGS_OFFSET 0x38u
 #define WAR3_ITEM_CHARGES_OFFSET 0x8d0u
 #define WAR3_ITEM_CHARGES_EMPTY_FLAG 0x1000u
@@ -40,6 +44,14 @@ typedef uint64_t (__fastcall *InternalAbilityAddFn)(
 );
 typedef void (__fastcall *InternalAbilityRemoveFn)(uint64_t unit_address, uint64_t data_address);
 typedef void (__fastcall *ItemChargesNotifyFn)(uint32_t value);
+typedef void (__fastcall *InternalHeroIntSetFn)(uint64_t unit_address, int32_t value, uint8_t permanent);
+typedef int32_t (__fastcall *InternalHeroIntGetFn)(uint64_t unit_address, uint8_t include_bonus);
+typedef uint64_t (__fastcall *JassNoArgU64Fn)(void);
+typedef void (__fastcall *JassNoArgVoidFn)(void);
+typedef void (__fastcall *JassGroupEnumUnitsSelectedFn)(uint64_t group, uint64_t player, uint64_t filter);
+typedef uint64_t (__fastcall *JassFirstOfGroupFn)(uint64_t group);
+typedef uint32_t (__fastcall *JassGetHandleIdFn)(uint64_t handle);
+typedef void (__fastcall *JassDestroyGroupFn)(uint64_t group);
 
 typedef struct NativeOp {
     uint32_t kind;
@@ -64,6 +76,83 @@ typedef struct NativeCommand {
 } NativeCommand;
 
 static volatile LONG g_processing = 0;
+
+static DWORD run_jass_selected_unit(NativeCommand *cmd, uint32_t index) {
+    if (index + 2 >= cmd->op_count) {
+        return ERROR_INVALID_DATA;
+    }
+
+    NativeOp *main_op = &cmd->ops[index];
+    NativeOp *call_op = &cmd->ops[index + 1];
+    NativeOp *cleanup_op = &cmd->ops[index + 2];
+    JassNoArgU64Fn create_group = (JassNoArgU64Fn)(uintptr_t)main_op->handler;
+    JassNoArgVoidFn sync_selections = (JassNoArgVoidFn)(uintptr_t)main_op->arg0;
+    JassNoArgU64Fn get_local_player = (JassNoArgU64Fn)(uintptr_t)main_op->arg1;
+    JassGroupEnumUnitsSelectedFn group_enum_selected =
+        (JassGroupEnumUnitsSelectedFn)(uintptr_t)call_op->handler;
+    JassFirstOfGroupFn first_of_group = (JassFirstOfGroupFn)(uintptr_t)call_op->arg0;
+    JassGetHandleIdFn get_handle_id = (JassGetHandleIdFn)(uintptr_t)call_op->arg1;
+    JassDestroyGroupFn destroy_group = (JassDestroyGroupFn)(uintptr_t)cleanup_op->handler;
+    uint64_t player_override = cleanup_op->arg0;
+    uint64_t group = 0;
+    uint64_t player = 0;
+    uint64_t unit = 0;
+    uint32_t handle_id = 0;
+    DWORD error = 0;
+
+    if (!create_group || !get_local_player || !group_enum_selected || !first_of_group || !get_handle_id) {
+        return ERROR_INVALID_DATA;
+    }
+
+    __try {
+        main_op->result = 1;
+        group = create_group();
+        call_op->result = group;
+        if (!group) {
+            error = ERROR_NOT_FOUND;
+            __leave;
+        }
+        main_op->result = 2;
+        if (sync_selections) {
+            sync_selections();
+        }
+        main_op->result = 3;
+        player = player_override ? player_override : get_local_player();
+        cleanup_op->result = player;
+        if (!player) {
+            error = ERROR_NOT_FOUND;
+            __leave;
+        }
+        main_op->result = 4;
+        group_enum_selected(group, player, 0);
+        main_op->result = 5;
+        unit = first_of_group(group);
+        if (unit) {
+            main_op->result = 6;
+            handle_id = get_handle_id(unit);
+        }
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        error = GetExceptionCode();
+    }
+
+    __try {
+        if (destroy_group && group) {
+            destroy_group(group);
+        }
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        if (!error) {
+            error = GetExceptionCode();
+        }
+    }
+
+    main_op->result = unit;
+    main_op->last_error = error;
+    call_op->result = handle_id;
+    call_op->last_error = error;
+    cleanup_op->result = player;
+    cleanup_op->last_error = error;
+    return error;
+}
 
 static void command_path(wchar_t *path, DWORD count) {
     DWORD used = GetTempPathW(count, path);
@@ -109,8 +198,7 @@ static void run_command(void) {
         cmd.magic != WAR3_NATIVE_MAGIC ||
         cmd.version != WAR3_NATIVE_VERSION ||
         cmd.status != WAR3_NATIVE_STATUS_PENDING ||
-        cmd.op_count > WAR3_NATIVE_MAX_OPS ||
-        cmd.unit_handle == 0
+        cmd.op_count > WAR3_NATIVE_MAX_OPS
     ) {
         CloseHandle(file);
         return;
@@ -129,22 +217,42 @@ static void run_command(void) {
             case WAR3_NATIVE_OP_INTERNAL_ABILITY_BEGIN:
             case WAR3_NATIVE_OP_INTERNAL_ABILITY_END:
             case WAR3_NATIVE_OP_INTERNAL_ABILITY_REFRESH: {
+                if (cmd.unit_handle == 0) {
+                    op->last_error = ERROR_INVALID_ADDRESS;
+                    last_error = ERROR_INVALID_ADDRESS;
+                    goto finish;
+                }
                 InternalAbilityUnitFn fn = (InternalAbilityUnitFn)(uintptr_t)op->handler;
                 fn(cmd.unit_handle);
                 op->result = 1;
                 break;
             }
             case WAR3_NATIVE_OP_INTERNAL_ABILITY_FIND: {
+                if (cmd.unit_handle == 0) {
+                    op->last_error = ERROR_INVALID_ADDRESS;
+                    last_error = ERROR_INVALID_ADDRESS;
+                    goto finish;
+                }
                 InternalAbilityFindFn fn = (InternalAbilityFindFn)(uintptr_t)op->handler;
                 op->result = fn(cmd.unit_handle, op->rawcode, 0, 1, 1, 1, 0);
                 break;
             }
             case WAR3_NATIVE_OP_INTERNAL_ABILITY_ADD: {
+                if (cmd.unit_handle == 0) {
+                    op->last_error = ERROR_INVALID_ADDRESS;
+                    last_error = ERROR_INVALID_ADDRESS;
+                    goto finish;
+                }
                 InternalAbilityAddFn fn = (InternalAbilityAddFn)(uintptr_t)op->handler;
                 op->result = fn(cmd.unit_handle, op->rawcode, 0, 0, 0, 0);
                 break;
             }
             case WAR3_NATIVE_OP_INTERNAL_ABILITY_REMOVE: {
+                if (cmd.unit_handle == 0) {
+                    op->last_error = ERROR_INVALID_ADDRESS;
+                    last_error = ERROR_INVALID_ADDRESS;
+                    goto finish;
+                }
                 InternalAbilityRemoveFn fn = (InternalAbilityRemoveFn)(uintptr_t)op->handler;
                 fn(cmd.unit_handle, op->arg0);
                 op->result = 1;
@@ -174,6 +282,52 @@ static void run_command(void) {
                 op->result = 1;
                 break;
             }
+            case WAR3_NATIVE_OP_SET_HERO_INT: {
+                InternalHeroIntSetFn fn = (InternalHeroIntSetFn)(uintptr_t)op->handler;
+                int32_t value = (int32_t)op->rawcode;
+                uint8_t permanent = op->arg0 ? 1u : 0u;
+                if (cmd.unit_handle == 0) {
+                    op->last_error = ERROR_INVALID_ADDRESS;
+                    last_error = ERROR_INVALID_ADDRESS;
+                    goto finish;
+                }
+                __try {
+                    fn(cmd.unit_handle, value, permanent);
+                    op->result = 1;
+                } __except (EXCEPTION_EXECUTE_HANDLER) {
+                    op->last_error = GetExceptionCode();
+                    last_error = op->last_error;
+                    goto finish;
+                }
+                break;
+            }
+            case WAR3_NATIVE_OP_GET_HERO_INT: {
+                InternalHeroIntGetFn fn = (InternalHeroIntGetFn)(uintptr_t)op->handler;
+                uint8_t include_bonus = op->arg0 ? 1u : 0u;
+                if (cmd.unit_handle == 0) {
+                    op->last_error = ERROR_INVALID_ADDRESS;
+                    last_error = ERROR_INVALID_ADDRESS;
+                    goto finish;
+                }
+                __try {
+                    op->result = (uint32_t)fn(cmd.unit_handle, include_bonus);
+                } __except (EXCEPTION_EXECUTE_HANDLER) {
+                    op->last_error = GetExceptionCode();
+                    last_error = op->last_error;
+                    goto finish;
+                }
+                break;
+            }
+            case WAR3_NATIVE_OP_JASS_SELECTED_UNIT: {
+                last_error = run_jass_selected_unit(&cmd, i);
+                if (last_error) {
+                    goto finish;
+                }
+                i += 2;
+                break;
+            }
+            case WAR3_NATIVE_OP_JASS_SELECTED_UNIT_ARG:
+                break;
             default:
                 op->last_error = ERROR_INVALID_DATA;
                 last_error = ERROR_INVALID_DATA;

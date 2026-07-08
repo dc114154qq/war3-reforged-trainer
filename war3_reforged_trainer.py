@@ -314,6 +314,26 @@ class NativeHelperOpResult:
     last_error: int = 0
 
 
+@dataclass(frozen=True)
+class JassSelectionProbeResult:
+    unit_handle: int
+    handle_id: int
+    player_handle: int
+    candidate: UnitCandidate | None
+    note: str
+
+
+@dataclass(frozen=True)
+class NativeSelectionProbeResult:
+    selection_manager_offset: int
+    primary_list_offset: int
+    alternate_list_offset: int
+    is_unit_selected_handler: int
+    group_enum_selected_handler: int
+    candidate: UnitCandidate | None
+    note: str
+
+
 def format_rawcode(raw: int) -> str:
     raw &= 0xFFFFFFFF
     data = struct.pack(">I", raw)
@@ -686,6 +706,7 @@ class ProcessMemory:
         self.handle = kernel32.OpenProcess(access, False, pid)
         if not self.handle:
             raise ctypes.WinError(ctypes.get_last_error())
+        self._regions_cache: list[Region] | None = None
 
     def close(self) -> None:
         if self.handle:
@@ -698,7 +719,9 @@ class ProcessMemory:
     def __exit__(self, *_exc) -> None:
         self.close()
 
-    def regions(self) -> list[Region]:
+    def regions(self, force_refresh: bool = False) -> list[Region]:
+        if self._regions_cache is not None and not force_refresh:
+            return list(self._regions_cache)
         mbi = MEMORY_BASIC_INFORMATION64()
         addr = 0
         out: list[Region] = []
@@ -718,7 +741,8 @@ class ProcessMemory:
             ):
                 out.append(Region(int(mbi.BaseAddress), int(mbi.RegionSize), protect, int(mbi.Type)))
             addr = int(mbi.BaseAddress) + int(mbi.RegionSize)
-        return out
+        self._regions_cache = out
+        return list(out)
 
     def read(self, address: int, size: int) -> bytes:
         buf = ctypes.create_string_buffer(size)
@@ -952,6 +976,7 @@ class War3Trainer:
     RESOURCE_PROP_TAG = 0x60666C675E70726F
     UNIT_OWNER_TAG = 0x2B7733752B61676C
     ITEM_OWNER_TAG = 0x6974656D2B61676C
+    PLAYER_COMPONENT_TAG = 0x2B706C792B61676C
     COMPONENT_TAGS = {
         "move": 0x416D6F762B61676C,    # lga+vomA
         "attack": 0x4161746B2B61676C,  # lga+ktaA
@@ -1032,6 +1057,10 @@ class War3Trainer:
         for address in KNOWN_SELECTED_UNIT_POINTER_ADDRESSES
         if (address & 0xFFFFF) >= 0xBF000
     )
+    CPLAYER_SELECTION_MANAGER_OFFSET = 0x168
+    SELECTION_MANAGER_ALT_LIST_OFFSET = 0x3D0
+    SELECTION_MANAGER_MAX_UNITS = 64
+    UNIT_OWNER_POINTER_SEARCH_RADIUS = 0x2000000
     HERO_SKILL_SLOT_COUNT = 5
     ABILITY_WRAPPER_SCAN_BACK = 0x70000
     ABILITY_WRAPPER_SCAN_FORWARD = 0x12000
@@ -1055,8 +1084,20 @@ class War3Trainer:
         "GetUnitTypeId",
         "UnitInventorySize",
     )
+    JASS_SELECTION_NATIVE_NAMES = (
+        "CreateGroup",
+        "SyncSelections",
+        "GetLocalPlayer",
+        "GroupEnumUnitsSelected",
+        "FirstOfGroup",
+        "GetHandleId",
+        "DestroyGroup",
+    )
+    NATIVE_SELECTION_HANDLER_NAMES = (
+        "IsUnitSelected",
+    )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 3
+    NATIVE_HELPER_VERSION = 5
     NATIVE_HELPER_STATUS_PENDING = 1
     NATIVE_HELPER_STATUS_OK = 2
     NATIVE_HELPER_MAX_OPS = 16
@@ -1069,6 +1110,10 @@ class War3Trainer:
     NATIVE_HELPER_OP_INTERNAL_ABILITY_REFRESH = 34
     NATIVE_HELPER_OP_INTERNAL_ABILITY_REMOVE = 35
     NATIVE_HELPER_OP_SET_ITEM_CHARGES = 40
+    NATIVE_HELPER_OP_SET_HERO_INT = 60
+    NATIVE_HELPER_OP_GET_HERO_INT = 61
+    NATIVE_HELPER_OP_JASS_SELECTED_UNIT = 50
+    NATIVE_HELPER_OP_JASS_SELECTED_UNIT_ARG = 51
 
     def __init__(self, pid: int | None = None):
         self.hwnd, self.pid = find_war3(pid)
@@ -1076,8 +1121,17 @@ class War3Trainer:
         self._selected_handle_addresses = list(self.KNOWN_SELECTED_HANDLE_ADDRESSES)
         self._item_object_cache: dict[int, int] = {}
         self._native_handlers: dict[str, NativeHandler] = {}
+        self._native_table_region: tuple[int, int] | None = None
+        self._native_table_blob: tuple[int, int, bytes] | None = None
+        self._native_hero_int_set_address = 0
+        self._native_hero_int_get_address = 0
         self._ability_runtime_templates: dict[tuple[int, int, int], dict[str, object]] = {}
         self._ability_instance_by_data: dict[tuple[int, int, int], AbilityInstance] = {}
+        self._selection_player_candidates: list[int] = []
+        self._selected_components_cache: dict[int, dict[str, tuple[int, int]]] = {}
+        self._ability_instances_cache: dict[tuple[int, int, int, bool], list[AbilityInstance]] = {}
+        self._selection_manager_offset = self.CPLAYER_SELECTION_MANAGER_OFFSET
+        self._selection_list_offsets = (0, self.SELECTION_MANAGER_ALT_LIST_OFFSET)
 
     def refresh_window(self, allow_pid_change: bool = False) -> None:
         if is_war3_window(self.hwnd, self.pid):
@@ -1089,8 +1143,17 @@ class War3Trainer:
             self._selected_handle_addresses = list(self.KNOWN_SELECTED_HANDLE_ADDRESSES)
             self._item_object_cache = {}
             self._native_handlers = {}
+            self._native_table_region = None
+            self._native_table_blob = None
+            self._native_hero_int_set_address = 0
+            self._native_hero_int_get_address = 0
             self._ability_runtime_templates = {}
             self._ability_instance_by_data = {}
+            self._selection_player_candidates = []
+            self._selected_components_cache = {}
+            self._ability_instances_cache = {}
+            self._selection_manager_offset = self.CPLAYER_SELECTION_MANAGER_OFFSET
+            self._selection_list_offsets = (0, self.SELECTION_MANAGER_ALT_LIST_OFFSET)
 
     def focus(self) -> None:
         focus_window(self.hwnd)
@@ -1161,7 +1224,45 @@ class War3Trainer:
             return None
 
     def _find_native_table_region(self, pm: ProcessMemory, regions: list[Region]) -> Region:
+        if self._native_table_region is not None:
+            cached_base, cached_size = self._native_table_region
+            cached = self._region_for_address(regions, cached_base)
+            if (
+                cached is not None
+                and cached.base == cached_base
+                and cached.size == cached_size
+                and cached.typ == MEM_PRIVATE
+            ):
+                return cached
+
         pattern = b"UnitAddAbility\0"
+        for region in sorted(regions, key=lambda item: item.base, reverse=True):
+            if region.typ != MEM_PRIVATE or region.size > 0x40000 or region.base >= 0x700000000000:
+                continue
+            try:
+                blob = pm.read(region.base, region.size)
+            except OSError:
+                continue
+            start = 0
+            while True:
+                offset = blob.find(pattern, start)
+                if offset < 0:
+                    break
+                hit = region.base + offset
+                record = hit - 0x18
+                try:
+                    handler = pm.read_u64(record - 8)
+                    ptr = pm.read_u64(record)
+                    size = pm.read_u64(record + 8)
+                except OSError:
+                    start = offset + 1
+                    continue
+                if ptr == hit and size == len("UnitAddAbility") and self._is_executable_image_address(regions, handler):
+                    self._native_table_region = (region.base, region.size)
+                    self._native_table_blob = (region.base, region.size, blob)
+                    return region
+                start = offset + 1
+
         for hit in pm.scan_bytes_private(pattern, max_region_size=2 * 1024 * 1024):
             record = hit - 0x18
             region = self._region_for_address(regions, hit)
@@ -1176,8 +1277,86 @@ class War3Trainer:
             if ptr != hit or size != len("UnitAddAbility"):
                 continue
             if self._is_executable_image_address(regions, handler):
+                self._native_table_region = (region.base, region.size)
                 return region
         raise RuntimeError("未找到 Warcraft III native 函数表")
+
+    def _native_table_blob_for_region(self, pm: ProcessMemory, region: Region) -> bytes:
+        if self._native_table_blob is not None:
+            cached_base, cached_size, cached_blob = self._native_table_blob
+            if cached_base == region.base and cached_size == region.size:
+                return cached_blob
+        blob = pm.read(region.base, region.size)
+        self._native_table_blob = (region.base, region.size, blob)
+        return blob
+
+    def _native_handler_from_record_blob(
+        self,
+        pm: ProcessMemory,
+        regions: list[Region],
+        blob: bytes,
+        base: int,
+        record_offset: int,
+        name: str,
+    ) -> NativeHandler | None:
+        if record_offset < 8 or record_offset + 24 > len(blob):
+            return None
+        try:
+            handler = struct.unpack_from("<Q", blob, record_offset - 8)[0]
+            ptr, size, capacity = struct.unpack_from("<QQQ", blob, record_offset)
+        except struct.error:
+            return None
+        if size != len(name):
+            return None
+        record = base + record_offset
+        inline_capacity = capacity & 0xFF
+        try:
+            if ptr == record + 0x18 and inline_capacity >= size:
+                end = record_offset + 0x18 + int(size)
+                if end > len(blob):
+                    return None
+                data = blob[record_offset + 0x18 : end]
+            else:
+                if not self._sane_heap_ptr(ptr) or not size <= capacity < 0x1000:
+                    return None
+                data = pm.read(ptr, int(size))
+        except OSError:
+            return None
+        if data != name.encode("ascii"):
+            return None
+        if not self._is_executable_image_address(regions, handler):
+            return None
+        return NativeHandler(name, record, handler)
+
+    def _find_native_handlers_in_table_blob(
+        self,
+        pm: ProcessMemory,
+        regions: list[Region],
+        blob: bytes,
+        base: int,
+        names: set[str],
+    ) -> dict[str, NativeHandler]:
+        found: dict[str, NativeHandler] = {}
+        for name in sorted(names):
+            pattern = name.encode("ascii") + b"\0"
+            start = 0
+            while True:
+                hit = blob.find(pattern, start)
+                if hit < 0:
+                    break
+                handler = self._native_handler_from_record_blob(
+                    pm,
+                    regions,
+                    blob,
+                    base,
+                    hit - 0x18,
+                    name,
+                )
+                if handler is not None:
+                    found[name] = handler
+                    break
+                start = hit + 1
+        return found
 
     def _find_native_handler_by_name_scan(
         self,
@@ -1214,9 +1393,17 @@ class War3Trainer:
 
         regions = pm.regions()
         table_region = self._find_native_table_region(pm, regions)
-        blob = pm.read(table_region.base, table_region.size)
-        found: dict[str, NativeHandler] = {}
+        blob = self._native_table_blob_for_region(pm, table_region)
+        found = self._find_native_handlers_in_table_blob(
+            pm,
+            regions,
+            blob,
+            table_region.base,
+            wanted.difference(self._native_handlers),
+        )
         for offset in range(8, len(blob) - 24, 8):
+            if wanted.issubset(self._native_handlers.keys() | found.keys()):
+                break
             handler = struct.unpack_from("<Q", blob, offset - 8)[0]
             if not self._is_executable_image_address(regions, handler):
                 continue
@@ -1419,8 +1606,6 @@ class War3Trainer:
         *,
         timeout_ms: int = 1000,
     ) -> list[NativeHelperOpResult]:
-        if not unit_address:
-            raise RuntimeError("当前单位缺少运行时 unit 指针，不能调用 native helper")
         op_list = list(ops)
         allowed_kinds = {
             self.NATIVE_HELPER_OP_INTERNAL_ABILITY_BEGIN,
@@ -1430,9 +1615,21 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_INTERNAL_ABILITY_REFRESH,
             self.NATIVE_HELPER_OP_INTERNAL_ABILITY_REMOVE,
             self.NATIVE_HELPER_OP_SET_ITEM_CHARGES,
+            self.NATIVE_HELPER_OP_SET_HERO_INT,
+            self.NATIVE_HELPER_OP_GET_HERO_INT,
+            self.NATIVE_HELPER_OP_JASS_SELECTED_UNIT,
+            self.NATIVE_HELPER_OP_JASS_SELECTED_UNIT_ARG,
         }
         if any(kind not in allowed_kinds for kind, _rawcode, _handler, _arg0, _arg1 in op_list):
-            raise RuntimeError("native helper 仅允许结构化验证后的 ability/物品数量操作")
+            raise RuntimeError("native helper 仅允许结构化验证后的 ability/物品数量/智力/实验选择操作")
+        unit_kinds = allowed_kinds.difference(
+            {
+                self.NATIVE_HELPER_OP_JASS_SELECTED_UNIT,
+                self.NATIVE_HELPER_OP_JASS_SELECTED_UNIT_ARG,
+            }
+        )
+        if any(kind in unit_kinds for kind, _rawcode, _handler, _arg0, _arg1 in op_list) and not unit_address:
+            raise RuntimeError("当前单位缺少运行时 unit 指针，不能调用 native helper")
         command_path = self._native_helper_command_path()
         command_path.write_bytes(self._pack_native_helper_command(unit_address, op_list))
         dll_path = self._native_helper_dll_path()
@@ -1776,6 +1973,190 @@ class War3Trainer:
             if found == data_address:
                 raise RuntimeError(f"临时 ability 实例仍挂在当前单位上：0x{data_address:x}")
 
+    def _discover_native_hero_int_internals(self, pm: ProcessMemory) -> tuple[int, int]:
+        if self._native_hero_int_set_address and self._native_hero_int_get_address:
+            regions = pm.regions()
+            if (
+                self._is_executable_image_address(regions, self._native_hero_int_set_address)
+                and self._is_executable_image_address(regions, self._native_hero_int_get_address)
+            ):
+                return self._native_hero_int_set_address, self._native_hero_int_get_address
+
+        wanted = {"SetHeroInt", "GetHeroInt"}
+        handlers = {
+            name: self._native_handlers[name]
+            for name in wanted
+            if name in self._native_handlers
+        }
+        if set(handlers) != wanted:
+            regions = pm.regions()
+            table_region = self._find_native_table_region(pm, regions)
+            nearby_regions = [
+                region
+                for region in regions
+                if region.typ == MEM_PRIVATE
+                and region.size <= 0x40000
+                and region.base < 0x700000000000
+                and abs(region.base - table_region.base) <= 0x200000
+            ]
+            nearby_regions.sort(key=lambda region: (abs(region.base - table_region.base), -region.base))
+            for region in nearby_regions:
+                missing = wanted.difference(handlers)
+                if not missing:
+                    break
+                try:
+                    blob = self._native_table_blob_for_region(pm, region)
+                except OSError:
+                    continue
+                handlers.update(
+                    self._find_native_handlers_in_table_blob(
+                        pm,
+                        regions,
+                        blob,
+                        region.base,
+                        missing,
+                    )
+                )
+            self._native_handlers.update(handlers)
+        if set(handlers) != wanted:
+            handlers = self._discover_native_handlers(pm, wanted)
+        set_calls = self._rel32_calls_in_function(pm, handlers["SetHeroInt"].handler_address, max_bytes=0x80)
+        get_jumps = self._rel32_jumps_in_function(pm, handlers["GetHeroInt"].handler_address, max_bytes=0x80)
+        if len(set_calls) < 3:
+            raise RuntimeError("未能从 SetHeroInt handler 定位内部智力写入函数")
+        if not get_jumps:
+            raise RuntimeError("未能从 GetHeroInt handler 定位内部智力读取函数")
+
+        set_address = set_calls[-1]
+        get_address = get_jumps[-1]
+        regions = pm.regions()
+        if not self._is_executable_image_address(regions, set_address):
+            raise RuntimeError(f"内部智力写入函数地址不可执行：0x{set_address:x}")
+        if not self._is_executable_image_address(regions, get_address):
+            raise RuntimeError(f"内部智力读取函数地址不可执行：0x{get_address:x}")
+        self._native_hero_int_set_address = set_address
+        self._native_hero_int_get_address = get_address
+        return set_address, get_address
+
+    @staticmethod
+    def _native_result_i32(result: int) -> int:
+        value = result & 0xFFFFFFFF
+        if value & 0x80000000:
+            value -= 0x100000000
+        return value
+
+    def _get_hero_intelligence_via_native_internal(
+        self,
+        pm: ProcessMemory,
+        candidate: UnitCandidate,
+        include_bonus: bool,
+    ) -> int:
+        _set_address, get_address = self._discover_native_hero_int_internals(pm)
+        results = self._run_native_helper_ops(
+            candidate.unit_address,
+            (
+                (
+                    self.NATIVE_HELPER_OP_GET_HERO_INT,
+                    0,
+                    get_address,
+                    1 if include_bonus else 0,
+                    0,
+                ),
+            ),
+        )
+        return self._native_result_i32(results[0].result)
+
+    def _get_hero_intelligence_pair_via_native_internal(
+        self,
+        pm: ProcessMemory,
+        candidate: UnitCandidate,
+    ) -> tuple[int, int]:
+        _set_address, get_address = self._discover_native_hero_int_internals(pm)
+        results = self._run_native_helper_ops(
+            candidate.unit_address,
+            (
+                (self.NATIVE_HELPER_OP_GET_HERO_INT, 0, get_address, 0, 0),
+                (self.NATIVE_HELPER_OP_GET_HERO_INT, 0, get_address, 1, 0),
+            ),
+        )
+        return self._native_result_i32(results[0].result), self._native_result_i32(results[1].result)
+
+    @staticmethod
+    def _coerce_hero_intelligence_target(value: int | float | str) -> int:
+        try:
+            numeric = float(str(value).strip()) if isinstance(value, str) else float(value)
+        except ValueError as exc:
+            raise ValueError("目标智力必须是整数") from exc
+        if not math.isfinite(numeric) or numeric != int(numeric):
+            raise ValueError("目标智力必须是整数")
+        target = int(numeric)
+        if not 0 <= target <= 1000000:
+            raise ValueError("目标智力必须在 0 到 1000000 之间")
+        return target
+
+    def _write_hero_intelligence_field(
+        self,
+        pm: ProcessMemory,
+        candidate: UnitCandidate,
+        field: UnitMemoryField,
+        value: int | float | str,
+    ) -> UnitMemoryField:
+        if not candidate.unit_address:
+            raise RuntimeError("当前单位缺少运行时 unit 指针，不能调用内部 SetHeroInt")
+        target_total = self._coerce_hero_intelligence_target(value)
+        set_address, _get_address = self._discover_native_hero_int_internals(pm)
+        current_base, current_total = self._get_hero_intelligence_pair_via_native_internal(pm, candidate)
+        current_bonus = current_total - current_base
+        target_base = target_total - current_bonus
+        if target_base < 0:
+            raise ValueError(f"目标智力低于当前加成 {current_bonus}，无法保持加成并写成该总值")
+
+        def set_base(base_value: int) -> None:
+            self._run_native_helper_ops(
+                candidate.unit_address,
+                (
+                    (
+                        self.NATIVE_HELPER_OP_SET_HERO_INT,
+                        base_value & 0xFFFFFFFF,
+                        set_address,
+                        1,
+                        0,
+                    ),
+                ),
+            )
+
+        set_base(target_base)
+        time.sleep(0.05)
+        final_base, final_total = self._get_hero_intelligence_pair_via_native_internal(pm, candidate)
+        if final_total != target_total:
+            corrected_base = final_base + (target_total - final_total)
+            if corrected_base < 0:
+                raise RuntimeError(
+                    f"内部 SetHeroInt 写入后总智力={final_total}，无法修正到目标 {target_total}"
+                )
+            set_base(corrected_base)
+            time.sleep(0.05)
+            final_base, final_total = self._get_hero_intelligence_pair_via_native_internal(pm, candidate)
+        if final_total != target_total:
+            raise RuntimeError(f"内部 SetHeroInt 写入后总智力={final_total}，目标={target_total}")
+
+        return UnitMemoryField(
+            key=field.key,
+            label=field.label,
+            value_type=field.value_type,
+            value=float(final_total) if field.value_type == "f32" else final_total,
+            address=field.address,
+            category=field.category,
+            write_address=field.write_address,
+            write_type=field.write_type,
+            write_base=field.write_base,
+            note=(
+                f"内部 SetHeroInt 已写入；总智力 {current_total}->{final_total}，"
+                f"基础智力 {current_base}->{final_base}，当前加成 {current_bonus}"
+            ),
+            extra_writes=field.extra_writes,
+        )
+
     def _set_item_charges_via_native_handler(
         self,
         pm: ProcessMemory,
@@ -2015,7 +2396,12 @@ class War3Trainer:
         target_food_used: int | None = None,
         target_food_cap: int | None = None,
     ) -> ResourceCache:
-        if target_gold is None and target_lumber is None and target_food_used is None and target_food_cap is None:
+        if (
+            target_gold is None
+            and target_lumber is None
+            and target_food_used is None
+            and target_food_cap is None
+        ):
             raise ValueError("至少填写一个目标资源值")
         with ProcessMemory(self.pid, write=True) as pm:
             current = self._read_resource_cache_addresses(pm, cache)
@@ -2183,6 +2569,8 @@ class War3Trainer:
             if target_cap is not None:
                 if not cache.food_cap_address:
                     raise RuntimeError("当前资源块没有可写的人口上限字段")
+                if not 0 <= int(target_cap) <= 1000:
+                    raise ValueError("目标人口上限必须在 0 到 1000 之间")
                 pm.write_i32(cache.food_cap_address, int(target_cap))
         return self.read_resource_cache(current_gold, current_lumber)
 
@@ -2385,6 +2773,51 @@ class War3Trainer:
                 pass
         index = self._build_unit_owner_index(pm)
         return index.get(handle)
+
+    def _owner_for_unit_pointer(self, pm: ProcessMemory, unit: int, handle: int) -> int | None:
+        if not self._sane_heap_ptr(unit) or not self._looks_like_unit_handle(handle):
+            return None
+
+        indexed = self._unit_owner_index.get(handle)
+        if indexed is not None:
+            try:
+                if pm.read_u64(indexed + 0x20) == handle and pm.read_u64(indexed + 0x90) == unit:
+                    return indexed
+            except OSError:
+                pass
+
+        pattern = struct.pack("<Q", unit)
+        start_address = unit - self.UNIT_OWNER_POINTER_SEARCH_RADIUS
+        end_address = unit + self.UNIT_OWNER_POINTER_SEARCH_RADIUS
+        for region in pm.regions():
+            if region.typ != MEM_PRIVATE or region.size > 1024 * 1024:
+                continue
+            if region.base + region.size < start_address or region.base > end_address:
+                continue
+            try:
+                data = pm.read(region.base, region.size)
+            except OSError:
+                continue
+            start = 0
+            while True:
+                hit = data.find(pattern, start)
+                if hit < 0:
+                    break
+                owner = region.base + hit - 0x90
+                try:
+                    if (
+                        self._looks_like_vtable(pm.read_u64(owner))
+                        and pm.read_u64(owner + 0x18) == self.UNIT_OWNER_TAG
+                        and pm.read_u64(owner + 0x20) == handle
+                        and pm.read_u64(owner + 0x90) == unit
+                        and self._property_from_owner(pm, owner, 1) is not None
+                    ):
+                        self._unit_owner_index[handle] = owner
+                        return owner
+                except OSError:
+                    pass
+                start = hit + 1
+        return None
 
     def _build_unit_object_index(self, pm: ProcessMemory, force_refresh: bool = False) -> dict[int, tuple[int, int]]:
         unit_index: dict[int, tuple[int, int]] = {}
@@ -2659,8 +3092,432 @@ class War3Trainer:
             return candidate
         return None
 
+    def _selection_manager_unit_slots(
+        self,
+        pm: ProcessMemory,
+        list_base: int,
+    ) -> list[tuple[int, int]]:
+        try:
+            root = pm.read_u64(list_base + 0x18)
+            count = pm.read_u32(list_base + 0x20)
+        except OSError:
+            return []
+        if not 0 < count <= self.SELECTION_MANAGER_MAX_UNITS:
+            return []
+        if (root & 1) or not self._sane_heap_ptr(root):
+            return []
+
+        out: list[tuple[int, int]] = []
+        node = root
+        seen: set[int] = set()
+        for _index in range(int(count)):
+            if (node & 1) or not self._sane_heap_ptr(node) or node in seen:
+                break
+            seen.add(node)
+            try:
+                next_node = pm.read_u64(node + 0x08)
+                unit = pm.read_u64(node + 0x10)
+            except OSError:
+                break
+            if self._sane_heap_ptr(unit):
+                out.append((unit, node + 0x10))
+            node = next_node
+        return out
+
+    def _selection_player_pointer_candidates(self, pm: ProcessMemory, discover: bool = True) -> list[int]:
+        candidates: list[int] = []
+        seen: set[int] = set()
+
+        def add(value: int) -> None:
+            if value in seen or not self._sane_heap_ptr(value):
+                return
+            seen.add(value)
+            candidates.append(value)
+
+        for value in self._selection_player_candidates:
+            add(value)
+        if not discover:
+            return candidates
+
+        discovered_from_player_components = False
+        tag = struct.pack("<Q", self.PLAYER_COMPONENT_TAG)
+        for tag_address in pm.scan_bytes_private(tag, max_region_size=1024 * 1024):
+            owner = tag_address - 0x18
+            for offset in (0x90, 0x88):
+                try:
+                    value = pm.read_u64(owner + offset)
+                    vtable = pm.read_u64(value)
+                    selection_manager = pm.read_u64(value + self._selection_manager_offset)
+                except OSError:
+                    continue
+                if not self._looks_like_vtable(vtable):
+                    continue
+                if not self._sane_heap_ptr(selection_manager):
+                    continue
+                discovered_from_player_components = True
+                add(value)
+        if discovered_from_player_components:
+            return candidates
+
+        try:
+            resource_owner_groups = self._resource_property_groups(pm)
+        except OSError:
+            resource_owner_groups = {}
+        for owner in resource_owner_groups:
+            if not self._sane_heap_ptr(owner):
+                continue
+            for offset in range(0, 0x220, 8):
+                try:
+                    value = pm.read_u64(owner + offset)
+                    vtable = pm.read_u64(value)
+                    selection_manager = pm.read_u64(value + self._selection_manager_offset)
+                except OSError:
+                    continue
+                if not self._looks_like_vtable(vtable):
+                    continue
+                if not self._sane_heap_ptr(selection_manager):
+                    continue
+                add(value)
+        return candidates
+
+    def _candidate_from_selected_unit_pointer(
+        self,
+        pm: ProcessMemory,
+        unit: int,
+        note: str,
+        score: int,
+        selection_slot_address: int,
+    ) -> UnitCandidate | None:
+        if not self._sane_heap_ptr(unit):
+            return None
+        try:
+            handle = pm.read_u64(unit + 0x18)
+        except OSError:
+            return None
+        if not self._looks_like_unit_handle(handle):
+            return None
+        owner = self._owner_for_unit_pointer(pm, unit, handle) or self._owner_for_handle(pm, handle)
+        if owner is None:
+            return None
+        return self._candidate_from_identity(pm, handle, owner, unit, note, score, selection_slot_address)
+
+    def _candidate_from_selection_player(self, pm: ProcessMemory, player: int) -> UnitCandidate | None:
+        try:
+            selection_manager = pm.read_u64(player + self._selection_manager_offset)
+        except OSError:
+            return None
+        if not self._sane_heap_ptr(selection_manager):
+            return None
+
+        for list_offset in self._selection_list_offsets:
+            list_base = selection_manager + list_offset
+            for unit, slot_address in self._selection_manager_unit_slots(pm, list_base):
+                candidate = self._candidate_from_selected_unit_pointer(
+                    pm,
+                    unit,
+                    (
+                        f"selected_unit_slot=0x{unit:x} via=selection_manager "
+                        f"player=0x{player:x} manager=0x{selection_manager:x} list=0x{list_base:x}"
+                    ),
+                    990 if list_offset == 0 else 980,
+                    slot_address,
+                )
+                if candidate is None:
+                    continue
+                if player in self._selection_player_candidates:
+                    self._selection_player_candidates.remove(player)
+                self._selection_player_candidates.insert(0, player)
+                return candidate
+        return None
+
+    def _locate_selected_unit_by_player_component_scan(self, pm: ProcessMemory) -> UnitCandidate | None:
+        tag = struct.pack("<Q", self.PLAYER_COMPONENT_TAG)
+        seen: set[int] = set()
+        regions = sorted(pm.regions(), key=lambda region: region.base, reverse=True)
+        for region in regions:
+            if region.typ != MEM_PRIVATE or region.size > 1024 * 1024:
+                continue
+            if region.base >= 0x700000000000:
+                continue
+            try:
+                data = pm.read(region.base, region.size)
+            except OSError:
+                continue
+            start = 0
+            while True:
+                offset = data.find(tag, start)
+                if offset < 0:
+                    break
+                owner = region.base + offset - 0x18
+                for player_offset in (0x90, 0x88):
+                    try:
+                        player = pm.read_u64(owner + player_offset)
+                        vtable = pm.read_u64(player)
+                    except OSError:
+                        continue
+                    if player in seen or not self._looks_like_vtable(vtable):
+                        continue
+                    seen.add(player)
+                    candidate = self._candidate_from_selection_player(pm, player)
+                    if candidate is not None:
+                        return candidate
+                start = offset + 1
+        return None
+
+    @staticmethod
+    def _selection_manager_offsets_from_code(code: bytes) -> list[int]:
+        offsets: list[int] = []
+        for index in range(0, max(0, len(code) - 6)):
+            if code[index : index + 2] != b"\x48\x8b":
+                continue
+            # mov r64, qword ptr [rax + disp32], used after player-handle resolver.
+            if code[index + 2] not in {0x88, 0x98}:
+                continue
+            disp = struct.unpack_from("<I", code, index + 3)[0]
+            if 0x40 <= disp <= 0x800 and disp not in offsets:
+                offsets.append(disp)
+        return offsets
+
+    @staticmethod
+    def _selection_list_offsets_from_code(code: bytes) -> list[int]:
+        offsets: list[int] = [0]
+        for index in range(0, max(0, len(code) - 6)):
+            # add rcx, disp32
+            if code[index : index + 3] != b"\x48\x81\xc1":
+                continue
+            disp = struct.unpack_from("<I", code, index + 3)[0]
+            if 0 < disp <= 0x1000 and disp not in offsets:
+                offsets.append(disp)
+        return offsets
+
+    def _discover_native_selection_layout(self, pm: ProcessMemory) -> tuple[int, int, int, dict[str, NativeHandler]]:
+        handlers = self._discover_native_handlers(pm, self.NATIVE_SELECTION_HANDLER_NAMES)
+        manager_votes: dict[int, int] = {}
+        for handler in handlers.values():
+            try:
+                code = pm.read(handler.handler_address, 0x240)
+            except OSError:
+                continue
+            for offset in self._selection_manager_offsets_from_code(code):
+                manager_votes[offset] = manager_votes.get(offset, 0) + 1
+        if not manager_votes:
+            raise RuntimeError("native selection handler 中没有找到 CPlayer selection manager 偏移")
+        selection_manager_offset = max(
+            manager_votes,
+            key=lambda offset: (manager_votes[offset], offset == self.CPLAYER_SELECTION_MANAGER_OFFSET),
+        )
+
+        list_offsets: list[int] = [0]
+        for call in self._rel32_calls_in_function(pm, handlers["IsUnitSelected"].handler_address, max_bytes=0x120):
+            try:
+                code = pm.read(call, 0x80)
+            except OSError:
+                continue
+            for offset in self._selection_list_offsets_from_code(code):
+                if offset not in list_offsets:
+                    list_offsets.append(offset)
+            for jump in self._rel32_jumps_in_function(pm, call, max_bytes=0x80):
+                try:
+                    jump_code = pm.read(jump, 0x80)
+                except OSError:
+                    continue
+                for offset in self._selection_list_offsets_from_code(jump_code):
+                    if offset not in list_offsets:
+                        list_offsets.append(offset)
+        alternate = self.SELECTION_MANAGER_ALT_LIST_OFFSET
+        if alternate not in list_offsets:
+            alternate = next((offset for offset in list_offsets if offset), self.SELECTION_MANAGER_ALT_LIST_OFFSET)
+        return selection_manager_offset, 0, alternate, handlers
+
+    def _locate_selected_unit_by_selection_manager(self, pm: ProcessMemory) -> UnitCandidate | None:
+        for player in self._selection_player_pointer_candidates(pm, discover=False):
+            candidate = self._candidate_from_selection_player(pm, player)
+            if candidate is not None:
+                return candidate
+        candidate = self._locate_selected_unit_by_player_component_scan(pm)
+        if candidate is not None:
+            return candidate
+        for player in self._selection_player_pointer_candidates(pm, discover=True):
+            candidate = self._candidate_from_selection_player(pm, player)
+            if candidate is not None:
+                return candidate
+        return None
+
+    def probe_native_selection_manager(self) -> NativeSelectionProbeResult:
+        with ProcessMemory(self.pid) as pm:
+            manager_offset, primary_offset, alternate_offset, handlers = self._discover_native_selection_layout(pm)
+            self._selection_manager_offset = manager_offset
+            self._selection_list_offsets = tuple(dict.fromkeys((primary_offset, alternate_offset)))
+            candidate = self._locate_selected_unit_by_selection_manager(pm)
+            fallback_note = ""
+            if candidate is None:
+                try:
+                    candidate = self.locate_selected_unit_by_handle(pm, allow_deep_scan=True)
+                    fallback_note = " fallback=normal_locator"
+                except Exception:
+                    candidate = None
+            note = (
+                f"native_disasm manager_offset=0x{manager_offset:x} "
+                f"list_offsets={','.join('0x%x' % offset for offset in self._selection_list_offsets)}"
+                f"{fallback_note}"
+            )
+            return NativeSelectionProbeResult(
+                manager_offset,
+                primary_offset,
+                alternate_offset,
+                handlers["IsUnitSelected"].handler_address,
+                handlers.get("GroupEnumUnitsSelected", NativeHandler("GroupEnumUnitsSelected", 0, 0)).handler_address,
+                candidate,
+                note,
+            )
+
+    def prewarm_selected_unit_cache(self) -> UnitCandidate:
+        with ProcessMemory(self.pid) as pm:
+            try:
+                candidate = self.locate_selected_unit_by_handle(pm, allow_deep_scan=True)
+            except Exception as first_error:
+                try:
+                    manager_offset, primary_offset, alternate_offset, _handlers = self._discover_native_selection_layout(pm)
+                    self._selection_manager_offset = manager_offset
+                    self._selection_list_offsets = tuple(dict.fromkeys((primary_offset, alternate_offset)))
+                    candidate = self.locate_selected_unit_by_handle(pm, allow_deep_scan=True)
+                except Exception:
+                    raise first_error
+            else:
+                self._unit_fields_from_candidate(pm, candidate)
+                return candidate
+            self._unit_fields_from_candidate(pm, candidate)
+            return candidate
+
     def _locate_selected_unit_by_panel(self, pm: ProcessMemory) -> UnitCandidate:
         raise RuntimeError("OCR/面板数值定位已禁用；当前选中单位只能通过内存 selected-handle 定位")
+
+    def _read_jass_selected_unit_raw(self, pm: ProcessMemory) -> tuple[int, int, int]:
+        handlers = self._discover_native_handlers(pm, self.JASS_SELECTION_NATIVE_NAMES)
+        results = self._run_native_helper_ops(
+            0,
+            (
+                (
+                    self.NATIVE_HELPER_OP_JASS_SELECTED_UNIT,
+                    0,
+                    handlers["CreateGroup"].handler_address,
+                    handlers["SyncSelections"].handler_address,
+                    handlers["GetLocalPlayer"].handler_address,
+                ),
+                (
+                    self.NATIVE_HELPER_OP_JASS_SELECTED_UNIT_ARG,
+                    0,
+                    handlers["GroupEnumUnitsSelected"].handler_address,
+                    handlers["FirstOfGroup"].handler_address,
+                    handlers["GetHandleId"].handler_address,
+                ),
+                (
+                    self.NATIVE_HELPER_OP_JASS_SELECTED_UNIT_ARG,
+                    0,
+                    handlers["DestroyGroup"].handler_address,
+                    0,
+                    0,
+                ),
+            ),
+            timeout_ms=1000,
+        )
+        unit_handle = results[0].result
+        handle_id = results[1].result & 0xFFFFFFFF
+        player_handle = results[2].result
+        return unit_handle, handle_id, player_handle
+
+    def _candidate_from_jass_selection_result(
+        self,
+        pm: ProcessMemory,
+        unit_value: int,
+        handle_id: int,
+        player_handle: int,
+    ) -> UnitCandidate | None:
+        note = f"jass_selected unit=0x{unit_value:x} handle_id=0x{handle_id:x} player=0x{player_handle:x}"
+        unit_index = self._build_unit_object_index(pm, force_refresh=True)
+        entry = unit_index.get(unit_value)
+        if entry is not None:
+            handle, owner = entry
+            candidate = self._candidate_from_owner(pm, owner, 980, note + " mode=unit_ptr", handle, "jass", 0)
+            if candidate is not None and candidate.unit_address == unit_value:
+                return candidate
+
+        if self._looks_like_unit_handle(unit_value):
+            owner = self._owner_for_handle(pm, unit_value)
+            if owner is not None:
+                candidate = self._candidate_from_owner(pm, owner, 970, note + " mode=unit_handle", unit_value, "jass", 0)
+                if candidate is not None:
+                    return candidate
+
+        if self._sane_heap_ptr(unit_value):
+            try:
+                nested_handle = pm.read_u64(unit_value + 0x18)
+            except OSError:
+                nested_handle = 0
+            if self._looks_like_unit_handle(nested_handle):
+                owner = self._owner_for_handle(pm, nested_handle)
+                if owner is not None:
+                    candidate = self._candidate_from_owner(
+                        pm,
+                        owner,
+                        960,
+                        note + f" mode=handle_at_unit+0x18 nested=0x{nested_handle:x}",
+                        nested_handle,
+                        "jass",
+                        0,
+                    )
+                    if candidate is not None and candidate.unit_address == unit_value:
+                        return candidate
+
+        if handle_id:
+            matches: list[UnitCandidate] = []
+            for handle, owner in (self._unit_owner_index or self._build_unit_owner_index(pm)).items():
+                low = handle & 0xFFFFFFFF
+                high = (handle >> 32) & 0xFFFFFFFF
+                if handle_id not in {low, high}:
+                    continue
+                candidate = self._candidate_from_owner(
+                    pm,
+                    owner,
+                    940,
+                    note + f" mode=handle_id_match full_handle=0x{handle:x}",
+                    handle,
+                    "jass",
+                    0,
+                )
+                if candidate is not None:
+                    matches.append(candidate)
+            unique_by_unit = {candidate.unit_address: candidate for candidate in matches if candidate.unit_address}
+            if len(unique_by_unit) == 1:
+                return next(iter(unique_by_unit.values()))
+        return None
+
+    def probe_jass_selected_unit(self) -> JassSelectionProbeResult:
+        with ProcessMemory(self.pid) as pm:
+            unit_handle, handle_id, player_handle = self._read_jass_selected_unit_raw(pm)
+            candidate = self._candidate_from_jass_selection_result(pm, unit_handle, handle_id, player_handle)
+            note = "mapped" if candidate is not None else "raw_only"
+            return JassSelectionProbeResult(unit_handle, handle_id, player_handle, candidate, note)
+
+    def locate_selected_unit_by_jass_native(self, pm: ProcessMemory | None = None) -> UnitCandidate:
+        close_pm = False
+        if pm is None:
+            pm = ProcessMemory(self.pid)
+            close_pm = True
+        try:
+            unit_handle, handle_id, player_handle = self._read_jass_selected_unit_raw(pm)
+            if not unit_handle and not handle_id:
+                raise RuntimeError("JASS selection native 没有返回选中单位")
+            candidate = self._candidate_from_jass_selection_result(pm, unit_handle, handle_id, player_handle)
+            if candidate is None:
+                raise RuntimeError(
+                    "JASS selection native 返回了单位，但无法映射到当前内存单位结构："
+                    f"unit=0x{unit_handle:x} handle_id=0x{handle_id:x} player=0x{player_handle:x}"
+                )
+            return candidate
+        finally:
+            if close_pm:
+                pm.close()
 
     def locate_selected_unit_by_handle(
         self,
@@ -2717,6 +3574,9 @@ class War3Trainer:
                 if delay:
                     time.sleep(delay)
                 tried.clear()
+                selection_manager_candidate = self._locate_selected_unit_by_selection_manager(pm)
+                if selection_manager_candidate is not None:
+                    return selection_manager_candidate
                 unit_pointer_candidate = self._locate_selected_unit_by_known_unit_pointer(pm)
                 if unit_pointer_candidate is not None:
                     return unit_pointer_candidate
@@ -3128,14 +3988,34 @@ class War3Trainer:
             yield name, wrapper, data
 
     def _selected_components(self, pm: ProcessMemory, owner: int) -> dict[str, tuple[int, int]]:
-        components: dict[str, tuple[int, int]] = {}
         if not owner:
-            return components
+            return {}
+        cached = self._selected_components_cache.get(owner)
+        if cached is not None:
+            valid: dict[str, tuple[int, int]] = {}
+            for name, (wrapper, data) in cached.items():
+                try:
+                    tag = pm.read_u64(wrapper + 0x18)
+                    wrapper_owner = pm.read_u64(wrapper + 0x50)
+                    wrapper_data = pm.read_u64(wrapper + 0x90)
+                    data_vtable = pm.read_u64(data)
+                except OSError:
+                    continue
+                if (
+                    self.COMPONENT_NAMES.get(tag) == name
+                    and wrapper_owner == owner
+                    and wrapper_data == data
+                    and self._looks_like_vtable(data_vtable)
+                ):
+                    valid[name] = (wrapper, data)
+            if len(valid) == len(cached):
+                return dict(valid)
+            self._selected_components_cache.pop(owner, None)
+
+        components: dict[str, tuple[int, int]] = {}
         for name, wrapper, data in self._iter_owner_component_wrappers(pm, owner):
             components.setdefault(name, (wrapper, data))
-        if not {"hero", "inventory", "attack", "move"}.issubset(components):
-            for name, pair in self._component_map_for_owners(pm, {owner}).get(owner, {}).items():
-                components.setdefault(name, pair)
+        self._selected_components_cache[owner] = dict(components)
         return components
 
     def _component_map_for_owners(
@@ -3336,6 +4216,74 @@ class War3Trainer:
             instances.append(instance)
         return instances
 
+    def _validated_cached_ability_instances(
+        self,
+        pm: ProcessMemory,
+        candidate: UnitCandidate,
+        key: tuple[int, int, int, bool],
+    ) -> list[AbilityInstance] | None:
+        cached = self._ability_instances_cache.get(key)
+        if cached is None:
+            return None
+        for instance in cached:
+            try:
+                if pm.read_u64(instance.wrapper_address + 0x50) != candidate.owner_address:
+                    return None
+                if pm.read_u64(instance.wrapper_address + 0x90) != instance.data_address:
+                    return None
+                if pm.read_u64(instance.data_address + 0x68) != candidate.unit_address:
+                    return None
+                if pm.read_u32(instance.data_address + 0x70) != instance.rawcode:
+                    return None
+                if pm.read_u32(instance.data_address + 0x78) != instance.rawcode:
+                    return None
+            except OSError:
+                return None
+        return list(cached)
+
+    def _near_ability_instances_from_candidate(
+        self,
+        pm: ProcessMemory,
+        candidate: UnitCandidate,
+        component_rawcodes: set[int],
+    ) -> tuple[list[AbilityInstance], set[int]]:
+        start = candidate.owner_address - self.ABILITY_WRAPPER_SCAN_BACK
+        end = candidate.owner_address + self.ABILITY_WRAPPER_SCAN_FORWARD
+        instances: list[AbilityInstance] = []
+        seen_wrappers: set[int] = set()
+        for region in pm.regions():
+            region_start = max(start, region.base)
+            region_end = min(end, region.base + region.size)
+            if region_end - region_start < 0x98:
+                continue
+            try:
+                data = pm.read(region_start, region_end - region_start)
+            except OSError:
+                continue
+            first = (8 - ((region_start - candidate.owner_address) & 7)) & 7
+            for offset in range(first, len(data) - 0x97, 8):
+                wrapper = region_start + offset
+                try:
+                    vtable = struct.unpack_from("<Q", data, offset)[0]
+                    tag = struct.unpack_from("<Q", data, offset + 0x18)[0]
+                    owner = struct.unpack_from("<Q", data, offset + 0x50)[0]
+                    ability_data = struct.unpack_from("<Q", data, offset + 0x90)[0]
+                except struct.error:
+                    continue
+                if owner != candidate.owner_address:
+                    continue
+                if not self._looks_like_vtable(vtable) or not self._sane_heap_ptr(ability_data):
+                    continue
+                class_rawcode = (tag >> 32) & 0xFFFFFFFF
+                if class_rawcode in component_rawcodes or not self._looks_like_rawcode(class_rawcode):
+                    continue
+                instance = self._ability_instance_from_wrapper(pm, candidate, wrapper, component_rawcodes)
+                if instance is None:
+                    continue
+                seen_wrappers.add(wrapper)
+                instances.append(instance)
+        return instances, seen_wrappers
+
     def _ability_instances_from_candidate(
         self,
         pm: ProcessMemory,
@@ -3345,16 +4293,13 @@ class War3Trainer:
     ) -> list[AbilityInstance]:
         if not candidate.owner_address or not candidate.unit_address:
             return []
+        cache_key = (candidate.handle, candidate.owner_address, candidate.unit_address, bool(allow_global_scan))
+        if required_rawcodes is None:
+            cached = self._validated_cached_ability_instances(pm, candidate, cache_key)
+            if cached is not None:
+                return cached
         component_rawcodes = {tag >> 32 for tag in self.COMPONENT_TAGS.values()}
-        instances: list[AbilityInstance] = []
-        seen_wrappers: set[int] = set()
-        for offset in range(-self.ABILITY_WRAPPER_SCAN_BACK, self.ABILITY_WRAPPER_SCAN_FORWARD, 8):
-            wrapper = candidate.owner_address + offset
-            instance = self._ability_instance_from_wrapper(pm, candidate, wrapper, component_rawcodes)
-            if instance is None:
-                continue
-            seen_wrappers.add(wrapper)
-            instances.append(instance)
+        instances, seen_wrappers = self._near_ability_instances_from_candidate(pm, candidate, component_rawcodes)
         if allow_global_scan:
             instances.extend(
                 self._global_ability_instances_from_candidate(
@@ -3370,6 +4315,8 @@ class War3Trainer:
             replace(instance, slot=index + 1)
             for index, instance in enumerate(instances)
         ]
+        if required_rawcodes is None:
+            self._ability_instances_cache[cache_key] = list(instances)
         return instances
 
     def _inventory_record_address(
@@ -3422,7 +4369,12 @@ class War3Trainer:
                 continue
         return 0
 
-    def _item_objects_from_handles(self, pm: ProcessMemory, handles: Iterable[int]) -> dict[int, int]:
+    def _item_objects_from_handles(
+        self,
+        pm: ProcessMemory,
+        handles: Iterable[int],
+        owner: int = 0,
+    ) -> dict[int, int]:
         wanted = {
             int(handle)
             for handle in handles
@@ -3443,6 +4395,45 @@ class War3Trainer:
             except OSError:
                 self._item_object_cache.pop(handle, None)
         missing = wanted.difference(found)
+        if not missing:
+            return found
+        if owner:
+            start = owner - 0x8000
+            end = owner + 0x8000
+            for region in pm.regions():
+                if not missing:
+                    break
+                region_start = max(start, region.base)
+                region_end = min(end, region.base + region.size)
+                if region_end - region_start < 0x98:
+                    continue
+                try:
+                    data = pm.read(region_start, region_end - region_start)
+                except OSError:
+                    continue
+                first = (8 - ((region_start - owner) & 7)) & 7
+                for offset in range(first, len(data) - 0x97, 8):
+                    if not missing:
+                        break
+                    try:
+                        tag = struct.unpack_from("<Q", data, offset + 0x18)[0]
+                        handle = struct.unpack_from("<Q", data, offset + 0x20)[0]
+                        item = struct.unpack_from("<Q", data, offset + 0x90)[0]
+                    except struct.error:
+                        continue
+                    if tag != self.ITEM_OWNER_TAG or handle not in missing:
+                        continue
+                    try:
+                        if (
+                            self._sane_heap_ptr(item)
+                            and self._looks_like_vtable(pm.read_u64(item))
+                            and pm.read_u64(item + 0x18) == handle
+                        ):
+                            found[handle] = item
+                            self._item_object_cache[handle] = item
+                            missing.remove(handle)
+                    except OSError:
+                        continue
         if not missing:
             return found
         patterns = {struct.pack("<Q", handle): handle for handle in missing}
@@ -3513,7 +4504,11 @@ class War3Trainer:
             except OSError:
                 handle = 0
             slot_handles.append((index, handle_address, handle))
-        item_by_handle = self._item_objects_from_handles(pm, (handle for _index, _address, handle in slot_handles))
+        item_by_handle = self._item_objects_from_handles(
+            pm,
+            (handle for _index, _address, handle in slot_handles),
+            candidate.owner_address,
+        )
         for index, handle_address, handle in slot_handles:
             item_address = item_by_handle.get(handle, 0)
             rawcode = 0
@@ -3610,16 +4605,35 @@ class War3Trainer:
             self._append_unit_field(pm, fields, "xp", "经验值", "i32", data + 0x100, "英雄")
             self._append_unit_field(pm, fields, "skill_points", "技能点", "i32", data + 0x104, "英雄")
             self._append_unit_field(pm, fields, "base_strength", "力量(基础)", "i32", data + 0x108, "英雄")
-            self._append_unit_field(
-                pm,
-                fields,
-                "intelligence_total",
-                "智力(当前总值候选)",
-                "f32",
-                data + 0x118,
-                "英雄",
-                note="当前样本与面板白字+绿字总智力一致；Reforged 未在同组件内找到可验证的基础智力整数",
-            )
+            try:
+                base_intelligence, total_intelligence = self._get_hero_intelligence_pair_via_native_internal(pm, candidate)
+                fields.append(
+                    UnitMemoryField(
+                        key="intelligence_total",
+                        label="智力(当前总值)",
+                        value_type="i32",
+                        value=total_intelligence,
+                        address=data + 0x118,
+                        category="英雄",
+                        write_address=data + 0x118,
+                        write_type="i32",
+                        note=(
+                            "内部 GetHeroInt 真实总智力；写入通过内部 SetHeroInt；"
+                            f"基础智力={base_intelligence}"
+                        ),
+                    )
+                )
+            except Exception as exc:
+                self._append_unit_field(
+                    pm,
+                    fields,
+                    "intelligence_total",
+                    "智力(当前总值候选)",
+                    "f32",
+                    data + 0x118,
+                    "英雄",
+                    note=f"内部 GetHeroInt 读取失败，暂用旧缓存候选：{exc}",
+                )
             self._append_unit_field(pm, fields, "base_agility", "敏捷(基础)", "i32", data + 0x130, "英雄")
             growth_note = "英雄组件成长值，不是面板装备/光环加成"
             self._append_unit_field(pm, fields, "strength_growth", "力量成长/级", "f32", data + 0x188, "英雄", note=growth_note)
@@ -3637,7 +4651,6 @@ class War3Trainer:
             ability_instances = self._ability_instances_from_candidate(
                 pm,
                 candidate,
-                allow_global_scan=True,
             )
             for index in range(self.HERO_SKILL_SLOT_COUNT):
                 number = index + 1
@@ -4683,6 +5696,9 @@ class War3Trainer:
                 raise RuntimeError(f"当前选中单位没有字段：{spec.label}")
             if not field.writable:
                 raise RuntimeError(f"字段不可写：{field.label}")
+            if field.key == "intelligence_total":
+                written.append(self._write_hero_intelligence_field(pm, candidate, field, spec.value))
+                continue
             if self._skill_index_from_field_key(field.key) is not None:
                 written.append(self._write_hero_skill_name_field(pm, candidate, field, spec.value))
                 continue
@@ -5647,6 +6663,32 @@ def run_gui() -> None:
             f"source={cand.selection_source or 'unknown'} base=0x{cand.base:x} unit=0x{cand.unit_address:x}"
         )
 
+    def read_unit_native_selection() -> str:
+        try:
+            t = trainer()
+            probe = t.probe_native_selection_manager()
+            if probe.candidate is None:
+                raise RuntimeError(f"native selection manager 已定位，但当前选择列表没有可映射单位；{probe.note}")
+            with ProcessMemory(t.pid) as pm:
+                panel = t._panel_from_candidate(pm, probe.candidate)
+                fields = t._unit_fields_from_candidate(pm, probe.candidate)
+        except Exception as exc:
+            populate_recovery_candidates(t if "t" in locals() else None)
+            root.after(0, clear_selected_unit_readout)
+            raise RuntimeError(f"{exc}；已尝试列出候选单位，请在候选表选择目标后点击“读取所选候选”") from exc
+        root.after(0, populate_auto_selected_unit_readout, panel, probe.candidate, fields, True)
+        return (
+            f"Native定位：HP {panel.hp_text}，MP {panel.mp_text}；"
+            f"offset=0x{probe.selection_manager_offset:x} "
+            f"IsUnitSelected=0x{probe.is_unit_selected_handler:x} "
+            f"unit=0x{probe.candidate.unit_address:x}"
+        )
+
+    def prewarm_selection_cache() -> str:
+        t = trainer()
+        cand = t.prewarm_selected_unit_cache()
+        return f"选择缓存已预热；unit=0x{cand.unit_address:x}"
+
     outer = ttk.Frame(root, padding=12)
     outer.pack(fill="both", expand=True)
     top = ttk.Frame(outer)
@@ -5755,6 +6797,7 @@ def run_gui() -> None:
     ttk.Button(unit, text="刷新字段表", command=lambda: call_async(read_unit_fields)).grid(row=6, column=2, pady=12, sticky="w")
     ttk.Button(unit, text="列出候选单位", command=lambda: call_async(refresh_unit_candidates)).grid(row=6, column=3, pady=12, sticky="w")
     ttk.Button(unit, text="读取所选候选", command=lambda: call_async(read_selection_candidate_fields)).grid(row=6, column=4, pady=12, sticky="w")
+    ttk.Button(unit, text="Native定位", command=lambda: call_async(read_unit_native_selection)).grid(row=6, column=5, pady=12, sticky="w")
 
     candidate_frame = ttk.Frame(unit)
     candidate_frame.grid(row=7, column=0, columnspan=7, sticky="nsew", pady=(0, 8))
@@ -5861,6 +6904,7 @@ def run_gui() -> None:
                 refresh_resources()
             except Exception:
                 pass
+            root.after(300, lambda: call_async(prewarm_selection_cache))
         except Exception as exc:
             set_status(f"未连接：{exc}")
 
@@ -5902,6 +6946,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--list-selection-candidates", action="store_true", help="List plausible selected-unit candidates with full clues")
     parser.add_argument("--unit-identity", help="Manual candidate identity: HANDLE,OWNER,UNIT or handle=...,owner=...,unit=...")
     parser.add_argument("--verify-selection-locator", action="store_true", help="Verify selected-unit locator uses handle -> owner -> unit chain")
+    parser.add_argument("--native-selection-probe", action="store_true", help="Locate selected unit through native-disassembled selection manager")
+    parser.add_argument("--jass-selection-probe", action="store_true", help="Experiment: call JASS selection natives and print raw/mapped result")
+    parser.add_argument("--jass-locate-selected", action="store_true", help="Experiment: locate current selected unit through JASS selection natives")
     parser.add_argument("--set-unit-field", action="append", default=[], metavar="KEY=VALUE", help="Write a supported selected-unit field by key")
     parser.add_argument("--set-xp", type=int)
     parser.add_argument("--set-skill-points", type=int)
@@ -6082,6 +7129,48 @@ def run_cli(args: argparse.Namespace) -> int:
         )
         if not status:
             raise RuntimeError("选中单位定位链验证失败")
+    if args.native_selection_probe:
+        probe = t.probe_native_selection_manager()
+        mapped = "yes" if probe.candidate is not None else "no"
+        detail = ""
+        if probe.candidate is not None:
+            detail = (
+                f" handle=0x{probe.candidate.handle:x}"
+                f" owner=0x{probe.candidate.owner_address:x}"
+                f" unit=0x{probe.candidate.unit_address:x}"
+                f" note={probe.candidate.note}"
+            )
+        print(
+            f"native_selection offset=0x{probe.selection_manager_offset:x}"
+            f" list=0x{probe.primary_list_offset:x}/0x{probe.alternate_list_offset:x}"
+            f" is_unit_selected=0x{probe.is_unit_selected_handler:x}"
+            f" group_enum=0x{probe.group_enum_selected_handler:x}"
+            f" mapped={mapped}{detail}"
+        )
+    if args.jass_selection_probe:
+        probe = t.probe_jass_selected_unit()
+        mapped = "yes" if probe.candidate is not None else "no"
+        detail = ""
+        if probe.candidate is not None:
+            detail = (
+                f" handle=0x{probe.candidate.handle:x} owner=0x{probe.candidate.owner_address:x}"
+                f" unit=0x{probe.candidate.unit_address:x} note={probe.candidate.note}"
+            )
+        print(
+            f"jass_selection unit=0x{probe.unit_handle:x} handle_id=0x{probe.handle_id:x} "
+            f"player=0x{probe.player_handle:x} mapped={mapped}{detail}"
+        )
+    if args.jass_locate_selected:
+        cand = t.locate_selected_unit_by_jass_native()
+        with ProcessMemory(t.pid) as pm:
+            panel = t._panel_from_candidate(pm, cand)
+            pos = t._position_from_candidate(pm, cand)
+        pos_text = f" x={pos[0]:.3f} y={pos[1]:.3f}" if pos is not None else ""
+        print(
+            f"jass_selected hp={panel.hp_text} mp={panel.mp_text}{pos_text} "
+            f"handle=0x{cand.handle:x} owner=0x{cand.owner_address:x} unit=0x{cand.unit_address:x} "
+            f"note={cand.note}"
+        )
     if (
         args.set_hp is not None
         or args.set_mp is not None
@@ -6202,6 +7291,9 @@ def main(argv: Iterable[str] | None = None) -> int:
             args.list_selection_candidates,
             bool(args.unit_identity),
             args.verify_selection_locator,
+            args.native_selection_probe,
+            args.jass_selection_probe,
+            args.jass_locate_selected,
             args.set_hp is not None,
             args.set_mp is not None,
             args.set_hp_regen is not None,

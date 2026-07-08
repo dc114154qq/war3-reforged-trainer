@@ -3,7 +3,7 @@
 #include <stdio.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 5u
+#define WAR3_NATIVE_VERSION 6u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -16,6 +16,9 @@
 #define WAR3_NATIVE_OP_INTERNAL_ABILITY_REFRESH 34u
 #define WAR3_NATIVE_OP_INTERNAL_ABILITY_REMOVE 35u
 #define WAR3_NATIVE_OP_SET_ITEM_CHARGES 40u
+#define WAR3_NATIVE_OP_REMOVE_ITEM_SLOT 41u
+#define WAR3_NATIVE_OP_ADD_ITEM_TO_SLOT_BY_ID 42u
+#define WAR3_NATIVE_OP_GET_ITEM_TYPE_IN_SLOT 43u
 #define WAR3_NATIVE_OP_SET_HERO_INT 60u
 #define WAR3_NATIVE_OP_GET_HERO_INT 61u
 #define WAR3_NATIVE_OP_JASS_SELECTED_UNIT 50u
@@ -44,6 +47,17 @@ typedef uint64_t (__fastcall *InternalAbilityAddFn)(
 );
 typedef void (__fastcall *InternalAbilityRemoveFn)(uint64_t unit_address, uint64_t data_address);
 typedef void (__fastcall *ItemChargesNotifyFn)(uint32_t value);
+typedef uint64_t (__fastcall *InternalUnitItemInSlotFn)(uint64_t unit, int32_t slot);
+typedef uint8_t (__fastcall *InternalUnitRemoveItemFn)(uint64_t unit, uint64_t item);
+typedef uint64_t (__fastcall *InternalCreateItemFn)(uint32_t item_id, float *x, float *y, uint32_t player);
+typedef uint8_t (__fastcall *InternalUnitAddItemToSlotFn)(
+    uint64_t unit,
+    uint64_t item,
+    int32_t slot,
+    uint8_t unknown
+);
+typedef void (__fastcall *InternalItemPreRemoveFn)(uint64_t item);
+typedef void (__fastcall *InternalItemRemoveFn)(uint64_t item, const char *reason);
 typedef void (__fastcall *InternalHeroIntSetFn)(uint64_t unit_address, int32_t value, uint8_t permanent);
 typedef int32_t (__fastcall *InternalHeroIntGetFn)(uint64_t unit_address, uint8_t include_bonus);
 typedef uint64_t (__fastcall *JassNoArgU64Fn)(void);
@@ -76,6 +90,7 @@ typedef struct NativeCommand {
 } NativeCommand;
 
 static volatile LONG g_processing = 0;
+static const char g_item_remove_reason[] = "War3TrainerReplaceItem";
 
 static DWORD run_jass_selected_unit(NativeCommand *cmd, uint32_t index) {
     if (index + 2 >= cmd->op_count) {
@@ -280,6 +295,103 @@ static void run_command(void) {
                 *item_charges = charges;
                 notify(0);
                 op->result = 1;
+                break;
+            }
+            case WAR3_NATIVE_OP_REMOVE_ITEM_SLOT: {
+                InternalUnitItemInSlotFn unit_item_in_slot =
+                    (InternalUnitItemInSlotFn)(uintptr_t)op->handler;
+                InternalUnitRemoveItemFn remove_item =
+                    (InternalUnitRemoveItemFn)(uintptr_t)op->arg0;
+                int32_t slot = (int32_t)op->rawcode;
+                uint64_t item = 0;
+                if (cmd.unit_handle == 0 || remove_item == 0) {
+                    op->last_error = ERROR_INVALID_ADDRESS;
+                    last_error = ERROR_INVALID_ADDRESS;
+                    goto finish;
+                }
+                __try {
+                    item = unit_item_in_slot(cmd.unit_handle, slot);
+                    op->result = item;
+                    if (item != 0) {
+                        uint64_t vtable = 0;
+                        InternalItemPreRemoveFn pre_remove = NULL;
+                        InternalItemRemoveFn remove_world_item = NULL;
+                        op->arg1 = remove_item(cmd.unit_handle, item);
+                        vtable = *(uint64_t *)(uintptr_t)item;
+                        pre_remove = (InternalItemPreRemoveFn)(uintptr_t)(
+                            *(uint64_t *)(uintptr_t)(vtable + 0x108u)
+                        );
+                        remove_world_item = (InternalItemRemoveFn)(uintptr_t)(
+                            *(uint64_t *)(uintptr_t)(vtable + 0x268u)
+                        );
+                        if (pre_remove) {
+                            pre_remove(item);
+                        }
+                        if (remove_world_item) {
+                            remove_world_item(item, g_item_remove_reason);
+                        }
+                    }
+                } __except (EXCEPTION_EXECUTE_HANDLER) {
+                    op->last_error = GetExceptionCode();
+                    last_error = op->last_error;
+                    goto finish;
+                }
+                break;
+            }
+            case WAR3_NATIVE_OP_ADD_ITEM_TO_SLOT_BY_ID: {
+                InternalCreateItemFn create_item = (InternalCreateItemFn)(uintptr_t)op->handler;
+                InternalUnitAddItemToSlotFn unit_add_item_to_slot =
+                    (InternalUnitAddItemToSlotFn)(uintptr_t)op->arg0;
+                int32_t slot = (int32_t)op->arg0;
+                float x = 0.0f;
+                float y = 0.0f;
+                uint64_t item = 0;
+                if (cmd.unit_handle == 0 || unit_add_item_to_slot == 0) {
+                    op->last_error = ERROR_INVALID_ADDRESS;
+                    last_error = ERROR_INVALID_ADDRESS;
+                    goto finish;
+                }
+                __try {
+                    slot = (int32_t)op->arg1;
+                    item = create_item(op->rawcode, &x, &y, 0);
+                    op->result = item;
+                    if (item == 0) {
+                        op->last_error = ERROR_NOT_FOUND;
+                        last_error = ERROR_NOT_FOUND;
+                        goto finish;
+                    }
+                    op->arg1 = unit_add_item_to_slot(cmd.unit_handle, item, slot, 1);
+                    if (!op->arg1) {
+                        op->last_error = ERROR_CAN_NOT_COMPLETE;
+                        last_error = ERROR_CAN_NOT_COMPLETE;
+                        goto finish;
+                    }
+                } __except (EXCEPTION_EXECUTE_HANDLER) {
+                    op->last_error = GetExceptionCode();
+                    last_error = op->last_error;
+                    goto finish;
+                }
+                break;
+            }
+            case WAR3_NATIVE_OP_GET_ITEM_TYPE_IN_SLOT: {
+                InternalUnitItemInSlotFn unit_item_in_slot =
+                    (InternalUnitItemInSlotFn)(uintptr_t)op->handler;
+                int32_t slot = (int32_t)op->rawcode;
+                uint64_t item = 0;
+                if (cmd.unit_handle == 0) {
+                    op->last_error = ERROR_INVALID_ADDRESS;
+                    last_error = ERROR_INVALID_ADDRESS;
+                    goto finish;
+                }
+                __try {
+                    item = unit_item_in_slot(cmd.unit_handle, slot);
+                    op->arg1 = item;
+                    op->result = item ? *(uint32_t *)(uintptr_t)(item + 0x70u) : 0;
+                } __except (EXCEPTION_EXECUTE_HANDLER) {
+                    op->last_error = GetExceptionCode();
+                    last_error = op->last_error;
+                    goto finish;
+                }
                 break;
             }
             case WAR3_NATIVE_OP_SET_HERO_INT: {

@@ -1075,7 +1075,7 @@ class War3Trainer:
         "SetUnitAbilityLevel",
         "GetUnitAbilityLevel",
         "UnitAddItem",
-        "UnitAddItemToSlotById",
+        "UnitAddItemById",
         "UnitItemInSlot",
         "UnitRemoveItem",
         "RemoveItem",
@@ -1097,7 +1097,7 @@ class War3Trainer:
         "IsUnitSelected",
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 5
+    NATIVE_HELPER_VERSION = 6
     NATIVE_HELPER_STATUS_PENDING = 1
     NATIVE_HELPER_STATUS_OK = 2
     NATIVE_HELPER_MAX_OPS = 16
@@ -1110,6 +1110,9 @@ class War3Trainer:
     NATIVE_HELPER_OP_INTERNAL_ABILITY_REFRESH = 34
     NATIVE_HELPER_OP_INTERNAL_ABILITY_REMOVE = 35
     NATIVE_HELPER_OP_SET_ITEM_CHARGES = 40
+    NATIVE_HELPER_OP_REMOVE_ITEM_SLOT = 41
+    NATIVE_HELPER_OP_ADD_ITEM_TO_SLOT_BY_ID = 42
+    NATIVE_HELPER_OP_GET_ITEM_TYPE_IN_SLOT = 43
     NATIVE_HELPER_OP_SET_HERO_INT = 60
     NATIVE_HELPER_OP_GET_HERO_INT = 61
     NATIVE_HELPER_OP_JASS_SELECTED_UNIT = 50
@@ -1615,13 +1618,16 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_INTERNAL_ABILITY_REFRESH,
             self.NATIVE_HELPER_OP_INTERNAL_ABILITY_REMOVE,
             self.NATIVE_HELPER_OP_SET_ITEM_CHARGES,
+            self.NATIVE_HELPER_OP_REMOVE_ITEM_SLOT,
+            self.NATIVE_HELPER_OP_ADD_ITEM_TO_SLOT_BY_ID,
+            self.NATIVE_HELPER_OP_GET_ITEM_TYPE_IN_SLOT,
             self.NATIVE_HELPER_OP_SET_HERO_INT,
             self.NATIVE_HELPER_OP_GET_HERO_INT,
             self.NATIVE_HELPER_OP_JASS_SELECTED_UNIT,
             self.NATIVE_HELPER_OP_JASS_SELECTED_UNIT_ARG,
         }
         if any(kind not in allowed_kinds for kind, _rawcode, _handler, _arg0, _arg1 in op_list):
-            raise RuntimeError("native helper 仅允许结构化验证后的 ability/物品数量/智力/实验选择操作")
+            raise RuntimeError("native helper 仅允许结构化验证后的 ability/物品/智力/实验选择操作")
         unit_kinds = allowed_kinds.difference(
             {
                 self.NATIVE_HELPER_OP_JASS_SELECTED_UNIT,
@@ -2191,6 +2197,98 @@ class War3Trainer:
                 ),
             ),
         )
+
+    def _set_inventory_slot_item_via_native_handler(
+        self,
+        pm: ProcessMemory,
+        candidate: UnitCandidate,
+        slot_index: int,
+        rawcode: int,
+    ) -> tuple[int, int, int]:
+        if not candidate.unit_address:
+            raise RuntimeError("当前单位缺少运行时 unit 指针，不能调用物品 native handler")
+        handlers = self._discover_native_handlers(
+            pm,
+            (
+                "UnitAddItem",
+                "UnitAddItemById",
+                "UnitItemInSlot",
+                "UnitRemoveItem",
+            ),
+        )
+        item_in_slot_calls = self._rel32_calls_in_function(
+            pm,
+            handlers["UnitItemInSlot"].handler_address,
+            max_bytes=0x80,
+        )
+        add_item_calls = self._rel32_calls_in_function(
+            pm,
+            handlers["UnitAddItem"].handler_address,
+            max_bytes=0x180,
+        )
+        add_by_id_calls = self._rel32_calls_in_function(
+            pm,
+            handlers["UnitAddItemById"].handler_address,
+            max_bytes=0x120,
+        )
+        remove_item_calls = self._rel32_calls_in_function(
+            pm,
+            handlers["UnitRemoveItem"].handler_address,
+            max_bytes=0x80,
+        )
+        if len(item_in_slot_calls) < 3 or len(add_item_calls) < 10 or len(add_by_id_calls) < 8 or len(remove_item_calls) < 4:
+            raise RuntimeError("未能从物品 native handler 中定位内部物品栏函数")
+        item_in_slot_internal = item_in_slot_calls[2]
+        add_first_slot_internal = add_item_calls[9]
+        add_exact_slot_internal = add_first_slot_internal + 0x90
+        create_item_internal = add_by_id_calls[2]
+        remove_item_internal = remove_item_calls[3]
+        regions = pm.regions()
+        for name, address in (
+            ("item_in_slot", item_in_slot_internal),
+            ("create_item", create_item_internal),
+            ("add_exact_slot", add_exact_slot_internal),
+            ("remove_item", remove_item_internal),
+        ):
+            if not self._is_executable_image_address(regions, address):
+                raise RuntimeError(f"内部物品栏函数 {name} 地址不可执行：0x{address:x}")
+        results = self._run_native_helper_ops(
+            candidate.unit_address,
+            (
+                (
+                    self.NATIVE_HELPER_OP_REMOVE_ITEM_SLOT,
+                    slot_index,
+                    item_in_slot_internal,
+                    remove_item_internal,
+                    0,
+                ),
+                (
+                    self.NATIVE_HELPER_OP_ADD_ITEM_TO_SLOT_BY_ID,
+                    rawcode,
+                    create_item_internal,
+                    add_exact_slot_internal,
+                    slot_index,
+                ),
+                (
+                    self.NATIVE_HELPER_OP_GET_ITEM_TYPE_IN_SLOT,
+                    slot_index,
+                    item_in_slot_internal,
+                    0,
+                    0,
+                ),
+            ),
+            timeout_ms=1500,
+        )
+        removed_handle = results[0].result
+        added_item = results[1].result
+        final_rawcode = results[2].result & 0xFFFFFFFF
+        if final_rawcode != rawcode:
+            raise RuntimeError(
+                f"内部 UnitAddItemToSlot 写入后 native 读回 "
+                f"{format_rawcode(final_rawcode) if final_rawcode else '空'}，"
+                f"不是 {format_rawcode(rawcode)}；新 item=0x{added_item:x}"
+            )
+        return removed_handle, added_item, final_rawcode
 
     def _iter_resource_properties(self, pm: ProcessMemory) -> Iterable[ResourceProperty]:
         tag = struct.pack("<Q", self.RESOURCE_PROP_TAG)
@@ -4877,7 +4975,7 @@ class War3Trainer:
                         note=(
                             f"handle=0x{item.handle:x} item=0x{item.item_address:x}; "
                             f"mirror=0x{item.mirror_rawcode_address:x} ability={format_rawcode(item.ability_rawcode) if item.ability_rawcode else '0'}; "
-                            "写入时直接修改本槽 item 对象，不交换其他物品槽"
+                            "写入时通过内部物品栏函数创建/替换本槽 item，不交换其他物品槽"
                         ),
                     )
                 )
@@ -4891,9 +4989,9 @@ class War3Trainer:
                         value=0,
                         address=item.handle_address,
                         category="物品栏",
-                        write_address=0,
-                        write_type="",
-                        note=note + "；空槽没有可直接改写的 item 对象",
+                        write_address=item.handle_address,
+                        write_type="rawcode",
+                        note=note + "；写入时通过内部物品栏函数在本槽创建物品",
                     )
                 )
             fields.append(
@@ -5489,45 +5587,34 @@ class War3Trainer:
         items = self._inventory_items_from_candidate(pm, candidate, components)
         old_snapshot = next((item for item in items if item.slot == slot_index + 1), None)
         before_by_slot = {item.slot: item.rawcode for item in items}
-        if old_snapshot is None or not old_snapshot.item_address or not old_snapshot.rawcode_address:
-            raise RuntimeError(
-                f"物品槽{slot_index + 1}为空或未解析 item 对象；"
-                "当前实现只直接修改已有槽位对象，不用不安全 native 创建新物品"
-            )
         old_rawcode = old_snapshot.rawcode if old_snapshot is not None else 0
         actions: list[str] = []
         if old_rawcode == new_rawcode:
             actions.append("物品 rawcode 未变化")
         else:
-            template = next(
-                (
-                    item
-                    for item in items
-                    if item.slot != slot_index + 1 and item.rawcode == new_rawcode and item.item_address
-                ),
-                None,
+            removed_handle, added_item, native_rawcode = self._set_inventory_slot_item_via_native_handler(
+                pm,
+                candidate,
+                slot_index,
+                new_rawcode,
             )
-            if template is not None:
-                for offset, size in (
-                    (0x38, 4),
-                    (0x58, 0x40),
-                    (0x178, 4),
-                    (0x1B8, 4),
-                ):
-                    pm.write_bytes(
-                        old_snapshot.item_address + offset,
-                        pm.read(template.item_address + offset, size),
-                    )
-                actions.append(f"从物品槽{template.slot}复制 {format_rawcode(new_rawcode)} 类型元数据")
-            else:
-                actions.append("未找到同 rawcode 物品模板，仅写本槽 item type rawcode/镜像")
-            pm.write_u32(old_snapshot.rawcode_address, new_rawcode)
-            if old_snapshot.mirror_rawcode_address:
-                pm.write_u32(old_snapshot.mirror_rawcode_address, new_rawcode)
+            self._item_object_cache.clear()
+            actions.append(
+                f"内部物品栏替换 {format_rawcode(old_rawcode) if old_rawcode else '空'}"
+                f"->{format_rawcode(native_rawcode)} removed=0x{removed_handle:x} "
+                f"new_item=0x{added_item:x}"
+            )
             actions.append("未交换其他物品槽")
 
-        time.sleep(0.05)
-        after_items = self._inventory_items_from_candidate(pm, candidate, components)
+        final_snapshot: InventoryItem | None = None
+        after_items: list[InventoryItem] = []
+        for attempt in range(6):
+            time.sleep(0.03 if attempt == 0 else 0.08)
+            self._item_object_cache.clear()
+            after_items = self._inventory_items_from_candidate(pm, candidate, components)
+            final_snapshot = next((item for item in after_items if item.slot == slot_index + 1), None)
+            if final_snapshot is not None and final_snapshot.rawcode == new_rawcode:
+                break
         after_by_slot = {item.slot: item.rawcode for item in after_items}
         changed_other_slots = [
             slot
@@ -5538,7 +5625,6 @@ class War3Trainer:
             raise RuntimeError(
                 "物品写入影响了非目标槽：" + ", ".join(str(slot) for slot in changed_other_slots)
             )
-        final_snapshot = next((item for item in after_items if item.slot == slot_index + 1), None)
         final_rawcode = final_snapshot.rawcode if final_snapshot is not None else 0
         final_handle = final_snapshot.handle if final_snapshot is not None else 0
         if final_rawcode != new_rawcode:
@@ -5554,7 +5640,7 @@ class War3Trainer:
                 f"handle=0x{final_snapshot.handle:x} item=0x{final_snapshot.item_address:x}; "
                 f"mirror=0x{final_snapshot.mirror_rawcode_address:x} "
                 f"ability={format_rawcode(final_snapshot.ability_rawcode) if final_snapshot.ability_rawcode else '0'}; "
-                "直接修改本槽 item 对象，未交换其他物品槽"
+                "通过内部物品栏函数创建/替换本槽 item，未交换其他物品槽"
             )
         else:
             note = field.note

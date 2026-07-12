@@ -1064,6 +1064,8 @@ class War3Trainer:
     HERO_SKILL_SLOT_COUNT = 5
     ABILITY_WRAPPER_SCAN_BACK = 0x70000
     ABILITY_WRAPPER_SCAN_FORWARD = 0x12000
+    COMPONENT_WRAPPER_SCAN_BACK = 0x70000
+    COMPONENT_WRAPPER_SCAN_FORWARD = 0x12000
     ABILITY_RUNTIME_TEMPLATE_QWORD_OFFSETS = (0x0, 0x70, 0x78, 0xA0, 0x148)
     ITEM_CHARGES_OFFSET = 0x8D0
     ITEM_CHARGES_FLAG_OFFSET = 0x38
@@ -1132,6 +1134,8 @@ class War3Trainer:
         self._ability_instance_by_data: dict[tuple[int, int, int], AbilityInstance] = {}
         self._selection_player_candidates: list[int] = []
         self._selected_components_cache: dict[int, dict[str, tuple[int, int]]] = {}
+        self._component_index_cache: dict[int, dict[str, tuple[int, int]]] | None = None
+        self._component_index_misses: set[int] = set()
         self._ability_instances_cache: dict[tuple[int, int, int, bool], list[AbilityInstance]] = {}
         self._selection_manager_offset = self.CPLAYER_SELECTION_MANAGER_OFFSET
         self._selection_list_offsets = (0, self.SELECTION_MANAGER_ALT_LIST_OFFSET)
@@ -1154,6 +1158,8 @@ class War3Trainer:
             self._ability_instance_by_data = {}
             self._selection_player_candidates = []
             self._selected_components_cache = {}
+            self._component_index_cache = None
+            self._component_index_misses = set()
             self._ability_instances_cache = {}
             self._selection_manager_offset = self.CPLAYER_SELECTION_MANAGER_OFFSET
             self._selection_list_offsets = (0, self.SELECTION_MANAGER_ALT_LIST_OFFSET)
@@ -4059,62 +4065,173 @@ class War3Trainer:
         pm: ProcessMemory,
         owner: int,
     ) -> Iterable[tuple[str, int, int]]:
-        for offset in range(-0x8000, 0x1800, 8):
-            wrapper = owner + offset
-            try:
-                vtable = pm.read_u64(wrapper)
-                tag = pm.read_u64(wrapper + 0x18)
-                wrapper_owner = pm.read_u64(wrapper + 0x50)
-                data = pm.read_u64(wrapper + 0x90)
-            except OSError:
-                continue
-            name = self.COMPONENT_NAMES.get(tag)
-            if name is None:
-                continue
-            if wrapper_owner != owner:
-                continue
-            if not self._looks_like_vtable(vtable):
-                continue
-            if not self._sane_heap_ptr(data):
+        start = owner - self.COMPONENT_WRAPPER_SCAN_BACK
+        end = owner + self.COMPONENT_WRAPPER_SCAN_FORWARD
+        for region in pm.regions():
+            region_start = max(start, region.base)
+            region_end = min(end, region.base + region.size)
+            if region_end <= region_start:
                 continue
             try:
-                data_vtable = pm.read_u64(data)
+                block = pm.read(region_start, region_end - region_start)
             except OSError:
                 continue
-            if not self._looks_like_vtable(data_vtable):
-                continue
-            yield name, wrapper, data
+            for tag, name in self.COMPONENT_NAMES.items():
+                pattern = struct.pack("<Q", tag)
+                search = 0
+                while True:
+                    index = block.find(pattern, search)
+                    if index < 0:
+                        break
+                    search = index + 1
+                    wrapper = region_start + index - 0x18
+                    if wrapper < start or wrapper >= end:
+                        continue
+                    try:
+                        vtable = pm.read_u64(wrapper)
+                        wrapper_owner = pm.read_u64(wrapper + 0x50)
+                        data = pm.read_u64(wrapper + 0x90)
+                    except OSError:
+                        continue
+                    if wrapper_owner != owner:
+                        continue
+                    if not self._looks_like_vtable(vtable) or not self._sane_heap_ptr(data):
+                        continue
+                    try:
+                        data_vtable = pm.read_u64(data)
+                    except OSError:
+                        continue
+                    if not self._looks_like_vtable(data_vtable):
+                        continue
+                    yield name, wrapper, data
 
     def _selected_components(self, pm: ProcessMemory, owner: int) -> dict[str, tuple[int, int]]:
         if not owner:
             return {}
+        components: dict[str, tuple[int, int]] = {}
         cached = self._selected_components_cache.get(owner)
         if cached is not None:
-            valid: dict[str, tuple[int, int]] = {}
-            for name, (wrapper, data) in cached.items():
-                try:
-                    tag = pm.read_u64(wrapper + 0x18)
-                    wrapper_owner = pm.read_u64(wrapper + 0x50)
-                    wrapper_data = pm.read_u64(wrapper + 0x90)
-                    data_vtable = pm.read_u64(data)
-                except OSError:
-                    continue
-                if (
-                    self.COMPONENT_NAMES.get(tag) == name
-                    and wrapper_owner == owner
-                    and wrapper_data == data
-                    and self._looks_like_vtable(data_vtable)
-                ):
-                    valid[name] = (wrapper, data)
+            valid = self._validated_owner_components(pm, owner, cached)
             if len(valid) == len(cached):
-                return dict(valid)
-            self._selected_components_cache.pop(owner, None)
+                components.update(valid)
+            else:
+                self._selected_components_cache.pop(owner, None)
 
-        components: dict[str, tuple[int, int]] = {}
-        for name, wrapper, data in self._iter_owner_component_wrappers(pm, owner):
-            components.setdefault(name, (wrapper, data))
+        if not components:
+            for name, wrapper, data in self._iter_owner_component_wrappers(pm, owner):
+                components.setdefault(name, (wrapper, data))
+
+        if self._component_index_cache is None or (
+            owner not in self._component_index_cache
+            and owner not in self._component_index_misses
+        ):
+            self._rebuild_component_index(pm)
+            if owner not in self._component_index_cache:
+                self._component_index_misses.add(owner)
+        indexed_source = self._component_index_cache.get(owner, {})
+        indexed = self._validated_owner_components(
+            pm,
+            owner,
+            indexed_source,
+        )
+        if len(indexed) != len(indexed_source):
+            self._rebuild_component_index(pm)
+            indexed = self._validated_owner_components(
+                pm,
+                owner,
+                self._component_index_cache.get(owner, {}),
+            )
+        components.update(indexed)
         self._selected_components_cache[owner] = dict(components)
         return components
+
+    def _validated_owner_components(
+        self,
+        pm: ProcessMemory,
+        owner: int,
+        components: dict[str, tuple[int, int]],
+    ) -> dict[str, tuple[int, int]]:
+        valid: dict[str, tuple[int, int]] = {}
+        for name, (wrapper, data) in components.items():
+            try:
+                vtable = pm.read_u64(wrapper)
+                tag = pm.read_u64(wrapper + 0x18)
+                wrapper_owner = pm.read_u64(wrapper + 0x50)
+                wrapper_data = pm.read_u64(wrapper + 0x90)
+                data_vtable = pm.read_u64(data)
+            except OSError:
+                continue
+            if (
+                self.COMPONENT_NAMES.get(tag) == name
+                and wrapper_owner == owner
+                and wrapper_data == data
+                and self._looks_like_vtable(vtable)
+                and self._looks_like_vtable(data_vtable)
+            ):
+                valid[name] = (wrapper, data)
+        return valid
+
+    def _scan_component_index(
+        self,
+        pm: ProcessMemory,
+    ) -> dict[int, dict[str, tuple[int, int]]]:
+        components_by_owner: dict[int, dict[str, tuple[int, int]]] = {}
+        patterns = tuple(
+            (struct.pack("<Q", tag), tag, name)
+            for tag, name in self.COMPONENT_NAMES.items()
+        )
+        tail_len = 7
+        for region in pm.regions():
+            if region.typ != MEM_PRIVATE or region.size > 16 * 1024 * 1024:
+                continue
+            offset = 0
+            tail = b""
+            while offset < region.size:
+                size = min(4 * 1024 * 1024, region.size - offset)
+                try:
+                    block = tail + pm.read(region.base + offset, size)
+                except OSError:
+                    offset += size
+                    tail = b""
+                    continue
+                block_base = region.base + offset - len(tail)
+                for pattern, expected_tag, name in patterns:
+                    search = 0
+                    while True:
+                        index = block.find(pattern, search)
+                        if index < 0:
+                            break
+                        search = index + 1
+                        tag_address = block_base + index
+                        if tag_address < region.base:
+                            continue
+                        wrapper = tag_address - 0x18
+                        try:
+                            vtable = pm.read_u64(wrapper)
+                            tag = pm.read_u64(wrapper + 0x18)
+                            owner = pm.read_u64(wrapper + 0x50)
+                            data = pm.read_u64(wrapper + 0x90)
+                        except OSError:
+                            continue
+                        if tag != expected_tag or not self._sane_heap_ptr(owner):
+                            continue
+                        if not self._looks_like_vtable(vtable) or not self._sane_heap_ptr(data):
+                            continue
+                        try:
+                            data_vtable = pm.read_u64(data)
+                        except OSError:
+                            continue
+                        if not self._looks_like_vtable(data_vtable):
+                            continue
+                        components_by_owner.setdefault(owner, {}).setdefault(name, (wrapper, data))
+                tail = block[-tail_len:]
+                offset += size
+        return components_by_owner
+
+    def _rebuild_component_index(self, pm: ProcessMemory) -> None:
+        self._component_index_cache = self._scan_component_index(pm)
+        known_owners = set(self._unit_owner_index.values())
+        self._component_index_misses = known_owners.difference(self._component_index_cache)
 
     def _component_map_for_owners(
         self,
@@ -4124,28 +4241,16 @@ class War3Trainer:
         components_by_owner: dict[int, dict[str, tuple[int, int]]] = {}
         if not owners:
             return components_by_owner
-        for tag, name in self.COMPONENT_NAMES.items():
-            pattern = struct.pack("<Q", tag)
-            for tag_address in pm.scan_bytes_private(pattern, max_region_size=16 * 1024 * 1024):
-                wrapper = tag_address - 0x18
-                try:
-                    vtable = pm.read_u64(wrapper)
-                    wrapper_tag = pm.read_u64(wrapper + 0x18)
-                    owner = pm.read_u64(wrapper + 0x50)
-                    data = pm.read_u64(wrapper + 0x90)
-                except OSError:
-                    continue
-                if wrapper_tag != tag or owner not in owners:
-                    continue
-                if not self._looks_like_vtable(vtable) or not self._sane_heap_ptr(data):
-                    continue
-                try:
-                    data_vtable = pm.read_u64(data)
-                except OSError:
-                    continue
-                if not self._looks_like_vtable(data_vtable):
-                    continue
-                components_by_owner.setdefault(owner, {}).setdefault(name, (wrapper, data))
+        if self._component_index_cache is None:
+            self._rebuild_component_index(pm)
+        for owner in owners:
+            components = self._validated_owner_components(
+                pm,
+                owner,
+                self._component_index_cache.get(owner, {}),
+            )
+            if components:
+                components_by_owner[owner] = components
         return components_by_owner
 
     def _append_unit_field(

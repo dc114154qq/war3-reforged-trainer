@@ -3,7 +3,7 @@
 #include <stdio.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 6u
+#define WAR3_NATIVE_VERSION 8u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -23,6 +23,8 @@
 #define WAR3_NATIVE_OP_GET_HERO_INT 61u
 #define WAR3_NATIVE_OP_JASS_SELECTED_UNIT 50u
 #define WAR3_NATIVE_OP_JASS_SELECTED_UNIT_ARG 51u
+#define WAR3_NATIVE_OP_JASS_LOCAL_PLAYER_QUERY 52u
+#define WAR3_NATIVE_OP_JASS_LOCAL_PLAYER_SET 53u
 #define WAR3_ITEM_FLAGS_OFFSET 0x38u
 #define WAR3_ITEM_CHARGES_OFFSET 0x8d0u
 #define WAR3_ITEM_CHARGES_EMPTY_FLAG 0x1000u
@@ -66,6 +68,9 @@ typedef void (__fastcall *JassGroupEnumUnitsSelectedFn)(uint64_t group, uint64_t
 typedef uint64_t (__fastcall *JassFirstOfGroupFn)(uint64_t group);
 typedef uint32_t (__fastcall *JassGetHandleIdFn)(uint64_t handle);
 typedef void (__fastcall *JassDestroyGroupFn)(uint64_t group);
+typedef int32_t (__fastcall *JassGetPlayerIdFn)(uint64_t player);
+typedef int32_t (__fastcall *JassGetPlayerStateFn)(uint64_t player, uint32_t state);
+typedef void (__fastcall *JassSetPlayerStateFn)(uint64_t player, uint32_t state, int32_t value);
 
 typedef struct NativeOp {
     uint32_t kind;
@@ -440,6 +445,60 @@ static void run_command(void) {
             }
             case WAR3_NATIVE_OP_JASS_SELECTED_UNIT_ARG:
                 break;
+            case WAR3_NATIVE_OP_JASS_LOCAL_PLAYER_QUERY: {
+                JassNoArgU64Fn get_local_player = (JassNoArgU64Fn)(uintptr_t)op->handler;
+                JassGetPlayerIdFn get_player_id = (JassGetPlayerIdFn)(uintptr_t)op->arg0;
+                JassGetPlayerStateFn get_player_state = (JassGetPlayerStateFn)(uintptr_t)op->arg1;
+                uint64_t player = 0;
+                if (!get_local_player || !get_player_id || !get_player_state) {
+                    op->last_error = ERROR_INVALID_DATA;
+                    last_error = ERROR_INVALID_DATA;
+                    goto finish;
+                }
+                __try {
+                    player = get_local_player();
+                    if (!player) {
+                        op->last_error = ERROR_NOT_FOUND;
+                        last_error = ERROR_NOT_FOUND;
+                        goto finish;
+                    }
+                    if (op->rawcode == UINT32_MAX) {
+                        op->result = (uint32_t)get_player_id(player);
+                    } else {
+                        op->result = (uint32_t)get_player_state(player, op->rawcode);
+                    }
+                } __except (EXCEPTION_EXECUTE_HANDLER) {
+                    op->last_error = GetExceptionCode();
+                    last_error = op->last_error;
+                    goto finish;
+                }
+                break;
+            }
+            case WAR3_NATIVE_OP_JASS_LOCAL_PLAYER_SET: {
+                JassNoArgU64Fn get_local_player = (JassNoArgU64Fn)(uintptr_t)op->handler;
+                JassSetPlayerStateFn set_player_state = (JassSetPlayerStateFn)(uintptr_t)op->arg0;
+                uint64_t player = 0;
+                if (!get_local_player || !set_player_state) {
+                    op->last_error = ERROR_INVALID_DATA;
+                    last_error = ERROR_INVALID_DATA;
+                    goto finish;
+                }
+                __try {
+                    player = get_local_player();
+                    if (!player) {
+                        op->last_error = ERROR_NOT_FOUND;
+                        last_error = ERROR_NOT_FOUND;
+                        goto finish;
+                    }
+                    set_player_state(player, op->rawcode, (int32_t)op->arg1);
+                    op->result = (uint32_t)op->arg1;
+                } __except (EXCEPTION_EXECUTE_HANDLER) {
+                    op->last_error = GetExceptionCode();
+                    last_error = op->last_error;
+                    goto finish;
+                }
+                break;
+            }
             default:
                 op->last_error = ERROR_INVALID_DATA;
                 last_error = ERROR_INVALID_DATA;

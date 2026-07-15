@@ -144,6 +144,15 @@ class ResourceProperty:
 
 
 @dataclass(frozen=True)
+class LocalPlayerResources:
+    player_id: int
+    gold: int
+    lumber: int
+    food_used: int
+    food_cap: int
+
+
+@dataclass(frozen=True)
 class UnitCandidate:
     base: int
     score: int
@@ -162,6 +171,7 @@ class UnitCandidate:
     position_property_address: int = 0
     selection_source: str = ""
     selection_slot_address: int = 0
+    unit_type_id: int = 0
 
     @property
     def hp_visible_address(self) -> int:
@@ -859,6 +869,44 @@ class ProcessMemory:
                 offset += size
         return hits
 
+    def scan_bytes_private_many(
+        self,
+        patterns: Iterable[bytes],
+        max_region_size: int = 64 * 1024 * 1024,
+    ) -> dict[bytes, list[int]]:
+        unique_patterns = tuple(dict.fromkeys(patterns))
+        hits = {pattern: [] for pattern in unique_patterns}
+        if not unique_patterns:
+            return hits
+        tail_len = max(len(pattern) for pattern in unique_patterns) - 1
+        for region in self.regions():
+            if region.typ != MEM_PRIVATE or region.size > max_region_size:
+                continue
+            offset = 0
+            tail = b""
+            while offset < region.size:
+                size = min(4 * 1024 * 1024, region.size - offset)
+                try:
+                    data = tail + self.read(region.base + offset, size)
+                except OSError:
+                    offset += size
+                    tail = b""
+                    continue
+                block_base = region.base + offset - len(tail)
+                for pattern in unique_patterns:
+                    start = 0
+                    while True:
+                        index = data.find(pattern, start)
+                        if index < 0:
+                            break
+                        address = block_base + index
+                        if address >= region.base:
+                            hits[pattern].append(address)
+                        start = index + 1
+                tail = data[-tail_len:] if tail_len else b""
+                offset += size
+        return hits
+
     def scan_i32(self, value: int) -> list[tuple[int, int, int]]:
         return self.scan_bytes(struct.pack("<i", int(value)))
 
@@ -1066,6 +1114,12 @@ class War3Trainer:
     ABILITY_WRAPPER_SCAN_FORWARD = 0x12000
     COMPONENT_WRAPPER_SCAN_BACK = 0x70000
     COMPONENT_WRAPPER_SCAN_FORWARD = 0x12000
+    UNIT_COMPONENT_DATA_OFFSETS = {
+        "inventory": 0x5A0,
+        "hero": 0x5A8,
+        "move": 0x5B0,
+        "attack": 0x5C0,
+    }
     ABILITY_RUNTIME_TEMPLATE_QWORD_OFFSETS = (0x0, 0x70, 0x78, 0xA0, 0x148)
     ITEM_CHARGES_OFFSET = 0x8D0
     ITEM_CHARGES_FLAG_OFFSET = 0x38
@@ -1099,7 +1153,7 @@ class War3Trainer:
         "IsUnitSelected",
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 6
+    NATIVE_HELPER_VERSION = 8
     NATIVE_HELPER_STATUS_PENDING = 1
     NATIVE_HELPER_STATUS_OK = 2
     NATIVE_HELPER_MAX_OPS = 16
@@ -1119,6 +1173,8 @@ class War3Trainer:
     NATIVE_HELPER_OP_GET_HERO_INT = 61
     NATIVE_HELPER_OP_JASS_SELECTED_UNIT = 50
     NATIVE_HELPER_OP_JASS_SELECTED_UNIT_ARG = 51
+    NATIVE_HELPER_OP_JASS_LOCAL_PLAYER_QUERY = 52
+    NATIVE_HELPER_OP_JASS_LOCAL_PLAYER_SET = 53
 
     def __init__(self, pid: int | None = None):
         self.hwnd, self.pid = find_war3(pid)
@@ -1133,12 +1189,14 @@ class War3Trainer:
         self._ability_runtime_templates: dict[tuple[int, int, int], dict[str, object]] = {}
         self._ability_instance_by_data: dict[tuple[int, int, int], AbilityInstance] = {}
         self._selection_player_candidates: list[int] = []
-        self._selected_components_cache: dict[int, dict[str, tuple[int, int]]] = {}
+        self._selected_components_cache: dict[tuple[int, int, int], dict[str, tuple[int, int]]] = {}
         self._component_index_cache: dict[int, dict[str, tuple[int, int]]] | None = None
         self._component_index_misses: set[int] = set()
+        self._unit_component_layout_confirmed = False
         self._ability_instances_cache: dict[tuple[int, int, int, bool], list[AbilityInstance]] = {}
         self._selection_manager_offset = self.CPLAYER_SELECTION_MANAGER_OFFSET
         self._selection_list_offsets = (0, self.SELECTION_MANAGER_ALT_LIST_OFFSET)
+        self._resource_candidates_by_start: dict[int, list[ResourceCache]] = {}
 
     def refresh_window(self, allow_pid_change: bool = False) -> None:
         if is_war3_window(self.hwnd, self.pid):
@@ -1160,9 +1218,11 @@ class War3Trainer:
             self._selected_components_cache = {}
             self._component_index_cache = None
             self._component_index_misses = set()
+            self._unit_component_layout_confirmed = False
             self._ability_instances_cache = {}
             self._selection_manager_offset = self.CPLAYER_SELECTION_MANAGER_OFFSET
             self._selection_list_offsets = (0, self.SELECTION_MANAGER_ALT_LIST_OFFSET)
+            self._resource_candidates_by_start = {}
 
     def focus(self) -> None:
         focus_window(self.hwnd)
@@ -1631,6 +1691,8 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_GET_HERO_INT,
             self.NATIVE_HELPER_OP_JASS_SELECTED_UNIT,
             self.NATIVE_HELPER_OP_JASS_SELECTED_UNIT_ARG,
+            self.NATIVE_HELPER_OP_JASS_LOCAL_PLAYER_QUERY,
+            self.NATIVE_HELPER_OP_JASS_LOCAL_PLAYER_SET,
         }
         if any(kind not in allowed_kinds for kind, _rawcode, _handler, _arg0, _arg1 in op_list):
             raise RuntimeError("native helper 仅允许结构化验证后的 ability/物品/智力/实验选择操作")
@@ -1638,6 +1700,8 @@ class War3Trainer:
             {
                 self.NATIVE_HELPER_OP_JASS_SELECTED_UNIT,
                 self.NATIVE_HELPER_OP_JASS_SELECTED_UNIT_ARG,
+                self.NATIVE_HELPER_OP_JASS_LOCAL_PLAYER_QUERY,
+                self.NATIVE_HELPER_OP_JASS_LOCAL_PLAYER_SET,
             }
         )
         if any(kind in unit_kinds for kind, _rawcode, _handler, _arg0, _arg1 in op_list) and not unit_address:
@@ -2296,9 +2360,15 @@ class War3Trainer:
             )
         return removed_handle, added_item, final_rawcode
 
-    def _iter_resource_properties(self, pm: ProcessMemory) -> Iterable[ResourceProperty]:
-        tag = struct.pack("<Q", self.RESOURCE_PROP_TAG)
-        for tag_address in pm.scan_bytes_private(tag, max_region_size=1024 * 1024):
+    def _iter_resource_properties(
+        self,
+        pm: ProcessMemory,
+        tag_addresses: Iterable[int] | None = None,
+    ) -> Iterable[ResourceProperty]:
+        if tag_addresses is None:
+            tag = struct.pack("<Q", self.RESOURCE_PROP_TAG)
+            tag_addresses = pm.scan_bytes_private(tag, max_region_size=1024 * 1024)
+        for tag_address in tag_addresses:
             base = tag_address - 0x28
             try:
                 value64 = pm.read_u64(base)
@@ -2323,13 +2393,8 @@ class War3Trainer:
         cap_prop: ResourceProperty | None,
         limit_prop: ResourceProperty | None,
     ) -> tuple[ResourceProperty | None, ResourceProperty | None]:
-        if used_prop is None:
-            return cap_prop or limit_prop, limit_prop
-        if cap_prop is not None and used_prop.value <= cap_prop.value <= 1000:
-            return cap_prop, limit_prop
-        if limit_prop is not None and used_prop.value <= limit_prop.value <= 1000:
-            return limit_prop, cap_prop
-        return cap_prop or limit_prop, limit_prop
+        del used_prop
+        return cap_prop, limit_prop
 
     def _resource_cache_candidates_from_group(
         self,
@@ -2351,8 +2416,6 @@ class War3Trainer:
             lumber_prop = group.get(start_kind + 3)
             if gold_prop is None or lumber_prop is None:
                 continue
-            if gold_prop.value % 10 or lumber_prop.value % 10:
-                continue
             gold = gold_prop.value // 10
             lumber = lumber_prop.value // 10
             if not 0 <= gold <= 10_000_000 or not 0 <= lumber <= 10_000_000:
@@ -2362,9 +2425,9 @@ class War3Trainer:
             if current_lumber is not None and lumber != int(current_lumber):
                 continue
 
-            limit_prop = group.get(start_kind + 5)
+            cap_prop = group.get(start_kind + 5)
             used_prop = group.get(start_kind + 6)
-            cap_prop = group.get(start_kind + 7)
+            limit_prop = group.get(start_kind + 7)
             cap_choice, limit_choice = self._resource_food_cap(used_prop, cap_prop, limit_prop)
             food_used = used_prop.value if used_prop is not None else 0
             food_cap = cap_choice.value if cap_choice is not None else 0
@@ -2440,14 +2503,191 @@ class War3Trainer:
                 best = candidate
         return best
 
-    def _resource_property_groups(self, pm: ProcessMemory) -> dict[int, dict[int, ResourceProperty]]:
+    def _resource_property_groups(
+        self,
+        pm: ProcessMemory,
+        warm_unit_owner_index: bool = False,
+    ) -> dict[int, dict[int, ResourceProperty]]:
+        resource_tag_addresses: Iterable[int] | None = None
+        if warm_unit_owner_index:
+            resource_tag = struct.pack("<Q", self.RESOURCE_PROP_TAG)
+            unit_owner_tag = struct.pack("<Q", self.UNIT_OWNER_TAG)
+            tag_hits = pm.scan_bytes_private_many(
+                (resource_tag, unit_owner_tag),
+                max_region_size=1024 * 1024,
+            )
+            resource_tag_addresses = tag_hits[resource_tag]
+            self._unit_owner_index = self._unit_owner_index_from_tag_addresses(
+                pm,
+                tag_hits[unit_owner_tag],
+            )
         groups: dict[int, dict[int, ResourceProperty]] = {}
-        for prop in self._iter_resource_properties(pm):
+        for prop in self._iter_resource_properties(pm, resource_tag_addresses):
             owner_group = groups.setdefault(prop.owner_key, {})
             current = owner_group.get(prop.kind)
             if current is None or prop.address > current.address:
                 owner_group[prop.kind] = prop
         return groups
+
+    def _read_local_player_resources_via_native(self, pm: ProcessMemory) -> LocalPlayerResources:
+        handlers = self._discover_native_handlers(pm, ("GetLocalPlayer", "GetPlayerId", "GetPlayerState"))
+        get_local_player = handlers["GetLocalPlayer"].handler_address
+        get_player_id = handlers["GetPlayerId"].handler_address
+        get_player_state = handlers["GetPlayerState"].handler_address
+        states = (0xFFFFFFFF, 1, 2, 5, 4)
+        results = self._run_native_helper_ops(
+            0,
+            (
+                (
+                    self.NATIVE_HELPER_OP_JASS_LOCAL_PLAYER_QUERY,
+                    state,
+                    get_local_player,
+                    get_player_id,
+                    get_player_state,
+                )
+                for state in states
+            ),
+        )
+        values = [self._native_result_i32(result.result) for result in results]
+        snapshot = LocalPlayerResources(*values)
+        if not 0 <= snapshot.player_id < 28:
+            raise RuntimeError(f"GetPlayerId 返回异常玩家槽：{snapshot.player_id}")
+        if not 0 <= snapshot.gold <= 10_000_000 or not 0 <= snapshot.lumber <= 10_000_000:
+            raise RuntimeError("GetPlayerState 返回的金币/木材超出合理范围")
+        if not 0 <= snapshot.food_used <= 10_000 or not 0 <= snapshot.food_cap <= 10_000:
+            raise RuntimeError("GetPlayerState 返回的人口数值超出合理范围")
+        return snapshot
+
+    def _set_local_player_food_cap_via_native(self, pm: ProcessMemory, target_food_cap: int) -> None:
+        handlers = self._discover_native_handlers(
+            pm,
+            ("GetLocalPlayer", "GetPlayerId", "GetPlayerState", "SetPlayerState"),
+        )
+        results = self._run_native_helper_ops(
+            0,
+            (
+                (
+                    self.NATIVE_HELPER_OP_JASS_LOCAL_PLAYER_SET,
+                    4,
+                    handlers["GetLocalPlayer"].handler_address,
+                    handlers["SetPlayerState"].handler_address,
+                    int(target_food_cap),
+                ),
+                (
+                    self.NATIVE_HELPER_OP_JASS_LOCAL_PLAYER_QUERY,
+                    4,
+                    handlers["GetLocalPlayer"].handler_address,
+                    handlers["GetPlayerId"].handler_address,
+                    handlers["GetPlayerState"].handler_address,
+                ),
+            ),
+        )
+        actual_food_cap = self._native_result_i32(results[1].result)
+        if actual_food_cap != int(target_food_cap):
+            raise RuntimeError(
+                f"SetPlayerState 写入人口上限后读回 {actual_food_cap}，不是 {target_food_cap}"
+            )
+
+    def _set_local_player_food_used_via_native(self, pm: ProcessMemory, target_food_used: int) -> None:
+        handlers = self._discover_native_handlers(
+            pm,
+            ("GetLocalPlayer", "GetPlayerId", "GetPlayerState", "SetPlayerState"),
+        )
+        results = self._run_native_helper_ops(
+            0,
+            (
+                (
+                    self.NATIVE_HELPER_OP_JASS_LOCAL_PLAYER_SET,
+                    5,
+                    handlers["GetLocalPlayer"].handler_address,
+                    handlers["SetPlayerState"].handler_address,
+                    int(target_food_used),
+                ),
+                (
+                    self.NATIVE_HELPER_OP_JASS_LOCAL_PLAYER_QUERY,
+                    5,
+                    handlers["GetLocalPlayer"].handler_address,
+                    handlers["GetPlayerId"].handler_address,
+                    handlers["GetPlayerState"].handler_address,
+                ),
+            ),
+        )
+        actual_food_used = self._native_result_i32(results[1].result)
+        if actual_food_used != int(target_food_used):
+            raise RuntimeError(
+                f"SetPlayerState 写入当前人口后读回 {actual_food_used}，不是 {target_food_used}"
+            )
+
+    @staticmethod
+    def _resource_cache_matches_local_snapshot(
+        cache: ResourceCache,
+        snapshot: LocalPlayerResources,
+    ) -> bool:
+        if cache.gold != snapshot.gold or cache.lumber != snapshot.lumber:
+            return False
+        if cache.food_used_address and cache.food_used != snapshot.food_used:
+            return False
+        if cache.food_cap_address and cache.food_cap != snapshot.food_cap:
+            return False
+        return True
+
+    def validate_local_player_resource_cache(self, cache: ResourceCache) -> ResourceCache:
+        with ProcessMemory(self.pid) as pm:
+            for _attempt in range(3):
+                snapshot = self._read_local_player_resources_via_native(pm)
+                expected_start_kind = 1 + snapshot.player_id * 0x28
+                if cache.block_start_kind != expected_start_kind:
+                    break
+                try:
+                    current = self._read_resource_cache_addresses(pm, cache)
+                except (OSError, RuntimeError):
+                    continue
+                if self._resource_cache_matches_local_snapshot(current, snapshot):
+                    return current
+        raise RuntimeError("缓存资源地址与本地玩家 GetPlayerState 不一致")
+
+    def locate_local_player_resource_cache(
+        self,
+        caches: list[ResourceCache] | None = None,
+    ) -> ResourceCache:
+        if caches is None:
+            caches = self.list_resource_caches()
+        if not caches:
+            raise RuntimeError("未找到可用于匹配本地玩家的资源组")
+
+        with ProcessMemory(self.pid) as pm:
+            for _attempt in range(4):
+                snapshot = self._read_local_player_resources_via_native(pm)
+                expected_start_kind = 1 + snapshot.player_id * 0x28
+                candidate_pool = list(caches)
+                candidate_pool.extend(self._resource_candidates_by_start.get(expected_start_kind, ()))
+                unique_pool = {
+                    (cache.gold_address, cache.lumber_address): cache
+                    for cache in candidate_pool
+                }
+                current_caches: list[ResourceCache] = []
+                for cache in unique_pool.values():
+                    try:
+                        current_caches.append(self._read_resource_cache_addresses(pm, cache))
+                    except (OSError, RuntimeError):
+                        continue
+
+                slot_matches = [
+                    cache
+                    for cache in current_caches
+                    if cache.block_start_kind == expected_start_kind
+                    and self._resource_cache_matches_local_snapshot(cache, snapshot)
+                ]
+                if len(slot_matches) == 1:
+                    match = slot_matches[0]
+                    self._remember_selection_player_from_resource_owner(
+                        pm,
+                        match.owner_key,
+                        current_caches,
+                    )
+                    return replace(match, source=match.source + f" local_player={snapshot.player_id}")
+
+        raise RuntimeError("无法按玩家槽唯一匹配本地玩家资源组；已拒绝自动选择，避免修改其他阵营")
 
     def list_resource_caches(
         self,
@@ -2457,28 +2697,39 @@ class War3Trainer:
         current_food_cap: int | None = None,
     ) -> list[ResourceCache]:
         with ProcessMemory(self.pid) as pm:
-            groups = self._resource_property_groups(pm)
+            groups = self._resource_property_groups(pm, warm_unit_owner_index=True)
+            candidates_by_start: dict[int, list[ResourceCache]] = {}
             found: list[ResourceCache] = []
             seen: set[tuple[int, int]] = set()
             for group in groups.values():
-                candidate = self._resource_cache_from_group(
+                candidates = self._resource_cache_candidates_from_group(
                     group, current_gold, current_lumber, current_food, current_food_cap
                 )
-                if candidate is None:
+                if not candidates:
                     continue
+                for _candidate_score, candidate_cache in candidates:
+                    candidates_by_start.setdefault(candidate_cache.block_start_kind, []).append(candidate_cache)
+                player_slot_candidates = [
+                    candidate
+                    for candidate in candidates
+                    if candidate[1].block_start_kind >= 1
+                    and (candidate[1].block_start_kind - 1) % 0x28 == 0
+                ]
+                if not player_slot_candidates:
+                    continue
+                candidate = max(player_slot_candidates, key=lambda item: item[0])
                 _score, cache = candidate
                 key = (cache.gold_address, cache.lumber_address)
                 if key in seen:
                     continue
                 seen.add(key)
                 found.append(cache)
+            self._resource_candidates_by_start = candidates_by_start
             return sorted(found, key=lambda cache: (cache.block_start_kind, cache.owner_key))
 
     def _read_resource_cache_addresses(self, pm: ProcessMemory, cache: ResourceCache) -> ResourceCache:
         gold10 = pm.read_i32(cache.gold_address)
         lumber10 = pm.read_i32(cache.lumber_address)
-        if gold10 % 10 or lumber10 % 10:
-            raise RuntimeError("资源地址校验失败：金币/木材值不是游戏内部的 x10 格式，请重新读取资源组")
         gold = gold10 // 10
         lumber = lumber10 // 10
         if not 0 <= gold <= 10_000_000 or not 0 <= lumber <= 10_000_000:
@@ -2499,6 +2750,8 @@ class War3Trainer:
         target_lumber: int | None = None,
         target_food_used: int | None = None,
         target_food_cap: int | None = None,
+        sync_local_food_used: bool = False,
+        sync_local_food_cap: bool = False,
     ) -> ResourceCache:
         if (
             target_gold is None
@@ -2522,13 +2775,19 @@ class War3Trainer:
                     raise RuntimeError("所选资源组没有可写的人口占用字段")
                 if not 0 <= int(target_food_used) <= 1000:
                     raise ValueError("目标人口占用必须在 0 到 1000 之间")
-                pm.write_i32(current.food_used_address, int(target_food_used))
+                if sync_local_food_used:
+                    self._set_local_player_food_used_via_native(pm, int(target_food_used))
+                else:
+                    pm.write_i32(current.food_used_address, int(target_food_used))
             if target_food_cap is not None:
                 if not current.food_cap_address:
                     raise RuntimeError("所选资源组没有可写的人口上限字段")
                 if not 0 <= int(target_food_cap) <= 1000:
                     raise ValueError("目标人口上限必须在 0 到 1000 之间")
-                pm.write_i32(current.food_cap_address, int(target_food_cap))
+                if sync_local_food_cap:
+                    self._set_local_player_food_cap_via_native(pm, int(target_food_cap))
+                else:
+                    pm.write_i32(current.food_cap_address, int(target_food_cap))
             return self._read_resource_cache_addresses(pm, current)
 
     def locate_resource_cache(
@@ -2843,10 +3102,13 @@ class War3Trainer:
             selection_slot_address=selection_slot_address,
         )
 
-    def _build_unit_owner_index(self, pm: ProcessMemory) -> dict[int, int]:
+    def _unit_owner_index_from_tag_addresses(
+        self,
+        pm: ProcessMemory,
+        tag_addresses: Iterable[int],
+    ) -> dict[int, int]:
         index: dict[int, int] = {}
-        tag = struct.pack("<Q", self.UNIT_OWNER_TAG)
-        for tag_address in pm.scan_bytes_private(tag, max_region_size=1024 * 1024):
+        for tag_address in tag_addresses:
             owner = tag_address - 0x18
             try:
                 vtable = pm.read_u64(owner)
@@ -2863,6 +3125,12 @@ class War3Trainer:
             if self._property_from_owner(pm, owner, 1) is None:
                 continue
             index[handle] = owner
+        return index
+
+    def _build_unit_owner_index(self, pm: ProcessMemory) -> dict[int, int]:
+        tag = struct.pack("<Q", self.UNIT_OWNER_TAG)
+        tag_addresses = pm.scan_bytes_private(tag, max_region_size=1024 * 1024)
+        index = self._unit_owner_index_from_tag_addresses(pm, tag_addresses)
         self._unit_owner_index = index
         return index
 
@@ -3228,6 +3496,37 @@ class War3Trainer:
             node = next_node
         return out
 
+    def _remember_selection_player_from_resource_owner(
+        self,
+        pm: ProcessMemory,
+        resource_owner: int,
+        resource_caches: Iterable[ResourceCache],
+    ) -> None:
+        if not self._sane_heap_ptr(resource_owner):
+            return
+        players_by_owner: dict[int, int] = {}
+        for cache in resource_caches:
+            owner = cache.owner_key
+            if not self._sane_heap_ptr(owner) or owner in players_by_owner:
+                continue
+            try:
+                player = pm.read_u64(owner + 0x90)
+                vtable = pm.read_u64(player)
+                selection_manager = pm.read_u64(player + self._selection_manager_offset)
+            except OSError:
+                continue
+            if not self._looks_like_vtable(vtable) or not self._sane_heap_ptr(selection_manager):
+                continue
+            players_by_owner[owner] = player
+        player = players_by_owner.get(resource_owner, 0)
+        if not player or len(players_by_owner) < 2:
+            return
+        if len(set(players_by_owner.values())) != len(players_by_owner):
+            return
+        if player in self._selection_player_candidates:
+            self._selection_player_candidates.remove(player)
+        self._selection_player_candidates.insert(0, player)
+
     def _selection_player_pointer_candidates(self, pm: ProcessMemory, discover: bool = True) -> list[int]:
         candidates: list[int] = []
         seen: set[int] = set()
@@ -3529,6 +3828,28 @@ class War3Trainer:
         handle_id = results[1].result & 0xFFFFFFFF
         player_handle = results[2].result
         return unit_handle, handle_id, player_handle
+
+    def _read_selected_unit_type_id(self, pm: ProcessMemory, candidate: UnitCandidate) -> int:
+        if not candidate.unit_address:
+            return 0
+        primary = pm.read_u32(candidate.unit_address + 0x70)
+        mirror = pm.read_u32(candidate.unit_address + 0x178)
+        if primary != mirror or not self._looks_like_item_rawcode(primary):
+            return 0
+        return primary
+
+    def _candidate_with_selected_unit_type_id(
+        self,
+        pm: ProcessMemory,
+        candidate: UnitCandidate,
+    ) -> UnitCandidate:
+        try:
+            unit_type_id = self._read_selected_unit_type_id(pm, candidate)
+        except (OSError, RuntimeError):
+            return candidate
+        if not unit_type_id:
+            return candidate
+        return replace(candidate, unit_type_id=unit_type_id)
 
     def _candidate_from_jass_selection_result(
         self,
@@ -4105,21 +4426,94 @@ class War3Trainer:
                         continue
                     yield name, wrapper, data
 
+    def _components_from_unit_object(
+        self,
+        pm: ProcessMemory,
+        owner: int,
+    ) -> dict[str, tuple[int, int]]:
+        identity = self._owner_component_identity(pm, owner)
+        if identity is None:
+            return {}
+        _owner, _handle, unit = identity
+
+        components: dict[str, tuple[int, int]] = {}
+        for name, offset in self.UNIT_COMPONENT_DATA_OFFSETS.items():
+            try:
+                data = pm.read_u64(unit + offset)
+                data_vtable = pm.read_u64(data) if self._sane_heap_ptr(data) else 0
+            except OSError:
+                continue
+            if self._looks_like_vtable(data_vtable):
+                components[name] = (0, data)
+        return components
+
+    def _unit_component_layout_matches_process(self, pm: ProcessMemory) -> bool:
+        if self._unit_component_layout_confirmed:
+            return True
+        found_names: set[str] = set()
+        for owner in self._unit_owner_index.values():
+            direct = self._components_from_unit_object(pm, owner)
+            if not direct:
+                continue
+            wrappers = {
+                name: (wrapper, data)
+                for name, wrapper, data in self._iter_owner_component_wrappers(pm, owner)
+            }
+            for name, (_wrapper, data) in direct.items():
+                if wrappers.get(name, (0, 0))[1] == data:
+                    found_names.add(name)
+            if len(found_names) >= 2:
+                self._unit_component_layout_confirmed = True
+                return True
+        return False
+
+    def _owner_component_identity(
+        self,
+        pm: ProcessMemory,
+        owner: int,
+    ) -> tuple[int, int, int] | None:
+        try:
+            if pm.read_u64(owner + 0x18) != self.UNIT_OWNER_TAG:
+                return None
+            handle = pm.read_u64(owner + 0x20)
+            unit = pm.read_u64(owner + 0x90)
+            if not self._sane_heap_ptr(unit) or pm.read_u64(unit + 0x18) != handle:
+                return None
+        except OSError:
+            return None
+        return owner, handle, unit
+
     def _selected_components(self, pm: ProcessMemory, owner: int) -> dict[str, tuple[int, int]]:
         if not owner:
             return {}
         components: dict[str, tuple[int, int]] = {}
-        cached = self._selected_components_cache.get(owner)
+        cache_key = self._owner_component_identity(pm, owner)
+        if cache_key is None:
+            return {}
+        cached = self._selected_components_cache.get(cache_key)
         if cached is not None:
-            valid = self._validated_owner_components(pm, owner, cached)
-            if len(valid) == len(cached):
-                components.update(valid)
-            else:
-                self._selected_components_cache.pop(owner, None)
+            if cached:
+                valid = self._validated_owner_components(pm, owner, cached)
+                if len(valid) == len(cached):
+                    return dict(valid)
+            self._selected_components_cache.pop(cache_key, None)
 
-        if not components:
-            for name, wrapper, data in self._iter_owner_component_wrappers(pm, owner):
-                components.setdefault(name, (wrapper, data))
+        direct = self._components_from_unit_object(pm, owner)
+        wrapper_components: dict[str, tuple[int, int]] = {}
+        for name, wrapper, data in self._iter_owner_component_wrappers(pm, owner):
+            wrapper_components.setdefault(name, (wrapper, data))
+
+        direct_is_fully_verified = bool(direct) and all(
+            wrapper_components.get(name, (0, 0))[1] == data
+            for name, (_wrapper, data) in direct.items()
+        )
+        if direct_is_fully_verified and set(wrapper_components) == set(direct):
+            components.update(wrapper_components)
+            self._selected_components_cache[cache_key] = dict(components)
+            return components
+
+        if not direct and not wrapper_components and self._unit_component_layout_matches_process(pm):
+            return {}
 
         if self._component_index_cache is None or (
             owner not in self._component_index_cache
@@ -4142,7 +4536,10 @@ class War3Trainer:
                 self._component_index_cache.get(owner, {}),
             )
         components.update(indexed)
-        self._selected_components_cache[owner] = dict(components)
+        if components:
+            self._selected_components_cache[cache_key] = dict(components)
+        else:
+            self._selected_components_cache.pop(cache_key, None)
         return components
 
     def _validated_owner_components(
@@ -4152,7 +4549,12 @@ class War3Trainer:
         components: dict[str, tuple[int, int]],
     ) -> dict[str, tuple[int, int]]:
         valid: dict[str, tuple[int, int]] = {}
+        unit_components = self._components_from_unit_object(pm, owner)
         for name, (wrapper, data) in components.items():
+            if not wrapper:
+                if unit_components.get(name) == (0, data):
+                    valid[name] = (wrapper, data)
+                continue
             try:
                 vtable = pm.read_u64(wrapper)
                 tag = pm.read_u64(wrapper + 0x18)
@@ -5121,6 +5523,7 @@ class War3Trainer:
     def read_selected_unit_fields(self) -> tuple[VisibleUnitPanel, UnitCandidate, list[UnitMemoryField]]:
         with ProcessMemory(self.pid) as pm:
             candidate = self.locate_selected_unit_by_handle(pm, allow_deep_scan=True)
+            candidate = self._candidate_with_selected_unit_type_id(pm, candidate)
             panel = self._panel_from_candidate(pm, candidate)
             return panel, candidate, self._unit_fields_from_candidate(pm, candidate)
 
@@ -5141,6 +5544,7 @@ class War3Trainer:
             )
             if candidate is None:
                 raise RuntimeError("候选单位已经失效，请重新读取候选列表")
+            candidate = self._candidate_with_selected_unit_type_id(pm, candidate)
             panel = self._panel_from_candidate(pm, candidate)
             return panel, candidate, self._unit_fields_from_candidate(pm, candidate)
 
@@ -5956,6 +6360,7 @@ class War3Trainer:
     def locate_current_selected_unit(self) -> tuple[VisibleUnitPanel, UnitCandidate]:
         with ProcessMemory(self.pid) as pm:
             candidate = self.locate_selected_unit_by_handle(pm, allow_deep_scan=True)
+            candidate = self._candidate_with_selected_unit_type_id(pm, candidate)
             return self._panel_from_candidate(pm, candidate), candidate
 
     def _write_basic_unit_values_to_candidate(
@@ -6166,6 +6571,7 @@ def run_gui() -> None:
     mp_regen_target = tk.StringVar(value="")
     x_current = tk.StringVar(value="")
     y_current = tk.StringVar(value="")
+    unit_type_id_current = tk.StringVar(value="")
     x_target = tk.StringVar(value="")
     y_target = tk.StringVar(value="")
     unit_field_target = tk.StringVar(value="")
@@ -6176,6 +6582,7 @@ def run_gui() -> None:
         "resource_caches": {},
         "resource_labels": {},
         "selected_resource_iid": "",
+        "local_resource_iid": "",
         "unit_fields": {},
         "selected_unit_identity": None,
         "last_verified_unit_identity": None,
@@ -6183,25 +6590,49 @@ def run_gui() -> None:
         "manual_unit_identity": None,
         "locks": {},
         "lock_busy": False,
+        "active_operations": set(),
     }
 
     def set_status(text: str) -> None:
         status.set(text)
 
-    def call_async(fn: Callable[[], str | None]) -> None:
-        set_status("正在执行，请稍候...")
+    def call_async(
+        fn: Callable[[], str | None],
+        operation_key: str = "",
+        busy_widget: ttk.Button | None = None,
+        busy_text: str = "正在执行，请稍候...",
+    ) -> None:
+        active_operations = state.get("active_operations")
+        assert isinstance(active_operations, set)
+        if operation_key and operation_key in active_operations:
+            return
+        if operation_key:
+            active_operations.add(operation_key)
+        if busy_widget is not None:
+            busy_widget.state(["disabled"])
+        set_status(busy_text)
+
+        def finish(result: str | None, exc: Exception | None) -> None:
+            if operation_key:
+                active_operations.discard(operation_key)
+            if busy_widget is not None:
+                busy_widget.state(["!disabled"])
+            if exc is not None:
+                messagebox.showerror("错误", str(exc))
+                set_status(f"失败：{exc}")
+            elif result:
+                set_status(result)
+            else:
+                set_status("已完成")
 
         def worker() -> None:
             try:
                 with operation_lock:
                     result = fn()
-                if result:
-                    root.after(0, set_status, result)
-                else:
-                    root.after(0, set_status, "已完成")
             except Exception as exc:
-                root.after(0, lambda: messagebox.showerror("错误", str(exc)))
-                root.after(0, set_status, f"失败：{exc}")
+                root.after(0, finish, None, exc)
+            else:
+                root.after(0, finish, result, None)
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -6250,7 +6681,11 @@ def run_gui() -> None:
             food_used_target.set(str(cache.food_used) if cache.food_used_address else "")
             food_cap_target.set(str(cache.food_cap) if cache.food_cap_address else "")
 
-    def populate_resource_caches(caches: list[ResourceCache], preferred_iid: str = "") -> None:
+    def populate_resource_caches(
+        caches: list[ResourceCache],
+        preferred_iid: str = "",
+        local_iid: str = "",
+    ) -> None:
         cache_map: dict[str, ResourceCache] = {}
         label_map: dict[str, str] = {}
         resource_tree.delete(*resource_tree.get_children())
@@ -6267,6 +6702,7 @@ def run_gui() -> None:
         state["resource_caches"] = cache_map
         state["resource_labels"] = label_map
         state["selected_resource_iid"] = selected_iid
+        state["local_resource_iid"] = local_iid
         if selected_iid:
             resource_tree.selection_set(selected_iid)
             resource_tree.focus(selected_iid)
@@ -6319,7 +6755,6 @@ def run_gui() -> None:
 
     def refresh_resources() -> str:
         t = trainer()
-        preferred_iid = str(state.get("selected_resource_iid", ""))
         caches = t.list_resource_caches()
         if not caches:
             cg = int(gold_current.get()) if gold_current.get().strip() else None
@@ -6327,8 +6762,13 @@ def run_gui() -> None:
             cf = int(food_current.get()) if food_current.get().strip() else None
             cfc = int(food_cap_current.get()) if food_cap_current.get().strip() else None
             caches = [t.read_resource_cache(cg, cl, cf, cfc)]
-        root.after(0, populate_resource_caches, caches, preferred_iid)
-        return f"已读取 {len(caches)} 个资源组；请选择表格行后设置金币/木材/人口"
+        local_cache = t.locate_local_player_resource_cache(caches)
+        local_iid = resource_iid(local_cache)
+        caches = [cache for cache in caches if cache.owner_key != local_cache.owner_key]
+        caches.append(local_cache)
+        caches.sort(key=lambda cache: (cache.block_start_kind, cache.owner_key))
+        root.after(0, populate_resource_caches, caches, local_iid, local_iid)
+        return f"已读取 {len(caches)} 个资源组；已识别并选中本地玩家资源组"
 
     def set_resource(kind: str) -> str:
         t = trainer()
@@ -6345,18 +6785,32 @@ def run_gui() -> None:
         root.after(0, update_resource_cache_display, refreshed)
         return f"资源组 {label} 木材已写入：{current.lumber} -> {refreshed.lumber}"
 
-    def set_food_resource() -> str:
+    def set_food_resource(kind: str) -> str:
         t = trainer()
         cache = selected_resource_cache()
         label = selected_resource_label(cache)
         current = t.read_resource_cache_addresses(cache)
-        target_used = parse_int(food_used_target.get(), "目标人口占用") if food_used_target.get().strip() else None
-        target_cap = parse_int(food_cap_target.get(), "目标人口上限") if food_cap_target.get().strip() else None
-        if target_used is None and target_cap is None:
-            raise ValueError("至少填写一个目标人口占用或目标人口上限")
-        refreshed = t.write_resource_cache(current, target_food_used=target_used, target_food_cap=target_cap)
+        is_local_player = resource_iid(cache) == str(state.get("local_resource_iid", ""))
+        if kind == "food_used":
+            target = parse_int(food_used_target.get(), "目标当前人口")
+            refreshed = t.write_resource_cache(
+                current,
+                target_food_used=target,
+                sync_local_food_used=is_local_player,
+            )
+            message = f"当前人口已写入：{current.food_used} -> {refreshed.food_used}"
+        elif kind == "food_cap":
+            target = parse_int(food_cap_target.get(), "目标人口上限")
+            refreshed = t.write_resource_cache(
+                current,
+                target_food_cap=target,
+                sync_local_food_cap=is_local_player,
+            )
+            message = f"人口上限已写入：{current.food_cap} -> {refreshed.food_cap}"
+        else:
+            raise ValueError(f"未知人口字段：{kind}")
         root.after(0, update_resource_cache_display, refreshed)
-        return f"资源组 {label} 人口已写入：{refreshed.food_used}/{refreshed.food_cap}；{refreshed.source}"
+        return f"资源组 {label} {message}；{refreshed.source}"
 
     def add_resource(kind: str) -> str:
         t = trainer()
@@ -6543,6 +6997,7 @@ def run_gui() -> None:
             mp_regen_target,
             x_current,
             y_current,
+            unit_type_id_current,
             x_target,
             y_target,
             unit_field_target,
@@ -6567,6 +7022,7 @@ def run_gui() -> None:
         reset_targets = force_targets or state.get("selected_unit_identity") != identity
         state["selected_unit_identity"] = identity
         state["last_verified_unit_identity"] = identity
+        unit_type_id_current.set(format_rawcode(cand.unit_type_id) if cand.unit_type_id else "")
 
         hp_current.set(str(panel.current_hp))
         hp_max_current.set(str(panel.max_hp))
@@ -6705,11 +7161,13 @@ def run_gui() -> None:
             locks = {}
             state["locks"] = locks
         cache_iid = resource_iid(cache)
+        is_local_player = cache_iid == str(state.get("local_resource_iid", ""))
         locks[f"resource:{cache_iid}:{kind}"] = {
-            "scope": f"资源组 {group_label}",
+            "scope": "本地玩家资源" if is_local_player else f"资源组 {group_label}",
             "kind": "resource",
             "key": kind,
             "resource_cache": cache,
+            "resource_local_player": is_local_player,
             "label": f"{label}",
             "value": value,
         }
@@ -6755,14 +7213,39 @@ def run_gui() -> None:
             cache = item.get("resource_cache")
             if not isinstance(cache, ResourceCache):
                 raise ValueError("锁定项缺少资源组地址，请删除后重新锁定")
-            if key == "gold":
-                item["resource_cache"] = t.write_resource_cache(cache, target_gold=target)
-            elif key == "lumber":
-                item["resource_cache"] = t.write_resource_cache(cache, target_lumber=target)
-            elif key == "food_used":
-                item["resource_cache"] = t.write_resource_cache(cache, target_food_used=target)
-            elif key == "food_cap":
-                item["resource_cache"] = t.write_resource_cache(cache, target_food_cap=target)
+            is_local_player = bool(item.get("resource_local_player"))
+
+            def write_locked_resource(target_cache: ResourceCache) -> ResourceCache:
+                if key == "gold":
+                    return t.write_resource_cache(target_cache, target_gold=target)
+                if key == "lumber":
+                    return t.write_resource_cache(target_cache, target_lumber=target)
+                if key == "food_used":
+                    return t.write_resource_cache(
+                        target_cache,
+                        target_food_used=target,
+                        sync_local_food_used=is_local_player,
+                    )
+                if key == "food_cap":
+                    return t.write_resource_cache(
+                        target_cache,
+                        target_food_cap=target,
+                        sync_local_food_cap=is_local_player,
+                    )
+                raise ValueError(f"未知资源锁定字段：{key}")
+
+            if is_local_player:
+                try:
+                    cache = t.validate_local_player_resource_cache(cache)
+                except (OSError, RuntimeError):
+                    cache = t.locate_local_player_resource_cache()
+            try:
+                item["resource_cache"] = write_locked_resource(cache)
+            except (OSError, RuntimeError):
+                if not is_local_player:
+                    raise
+                cache = t.locate_local_player_resource_cache()
+                item["resource_cache"] = write_locked_resource(cache)
 
     def lock_tick() -> None:
         locks = state.get("locks", {})
@@ -6841,6 +7324,7 @@ def run_gui() -> None:
         )
 
     def read_unit() -> str:
+        started = time.perf_counter()
         try:
             t = trainer()
             panel, cand, fields = t.read_selected_unit_fields()
@@ -6849,9 +7333,11 @@ def run_gui() -> None:
             root.after(0, clear_selected_unit_readout)
             raise RuntimeError(f"{exc}；已尝试列出候选单位，请在候选表选择目标后点击“读取所选候选”") from exc
         root.after(0, populate_auto_selected_unit_readout, panel, cand, fields, True)
+        elapsed_ms = (time.perf_counter() - started) * 1000
         return (
             f"选中单位：HP {panel.hp_text}，MP {panel.mp_text}；"
-            f"source={cand.selection_source or 'unknown'} base=0x{cand.base:x} unit=0x{cand.unit_address:x}"
+            f"source={cand.selection_source or 'unknown'} base=0x{cand.base:x} unit=0x{cand.unit_address:x}；"
+            f"耗时 {elapsed_ms:.0f} ms"
         )
 
     def read_unit_native_selection() -> str:
@@ -6861,18 +7347,19 @@ def run_gui() -> None:
             if probe.candidate is None:
                 raise RuntimeError(f"native selection manager 已定位，但当前选择列表没有可映射单位；{probe.note}")
             with ProcessMemory(t.pid) as pm:
-                panel = t._panel_from_candidate(pm, probe.candidate)
-                fields = t._unit_fields_from_candidate(pm, probe.candidate)
+                candidate = t._candidate_with_selected_unit_type_id(pm, probe.candidate)
+                panel = t._panel_from_candidate(pm, candidate)
+                fields = t._unit_fields_from_candidate(pm, candidate)
         except Exception as exc:
             populate_recovery_candidates(t if "t" in locals() else None)
             root.after(0, clear_selected_unit_readout)
             raise RuntimeError(f"{exc}；已尝试列出候选单位，请在候选表选择目标后点击“读取所选候选”") from exc
-        root.after(0, populate_auto_selected_unit_readout, panel, probe.candidate, fields, True)
+        root.after(0, populate_auto_selected_unit_readout, panel, candidate, fields, True)
         return (
             f"Native定位：HP {panel.hp_text}，MP {panel.mp_text}；"
             f"offset=0x{probe.selection_manager_offset:x} "
             f"IsUnitSelected=0x{probe.is_unit_selected_handler:x} "
-            f"unit=0x{probe.candidate.unit_address:x}"
+            f"unit=0x{candidate.unit_address:x}"
         )
 
     def prewarm_selection_cache() -> str:
@@ -6901,7 +7388,7 @@ def run_gui() -> None:
     res.rowconfigure(1, weight=1)
     res.columnconfigure(6, weight=1)
     resource_columns = ("group", "gold", "lumber", "food", "gold_address", "lumber_address", "source")
-    resource_tree = ttk.Treeview(resource_frame, columns=resource_columns, show="headings", height=11)
+    resource_tree = ttk.Treeview(resource_frame, columns=resource_columns, show="headings", height=10)
     resource_headings = {
         "group": ("资源组", 90),
         "gold": ("金币", 80),
@@ -6940,18 +7427,21 @@ def run_gui() -> None:
     ttk.Entry(res, textvariable=food_current, width=12, state="readonly").grid(row=4, column=1, sticky="w")
     ttk.Label(res, text="人口上限").grid(row=4, column=2, sticky="w", padx=(16, 0))
     ttk.Entry(res, textvariable=food_cap_current, width=12, state="readonly").grid(row=4, column=3, sticky="w")
-    ttk.Label(res, text="目标人口/上限").grid(row=5, column=0, sticky="w", pady=8)
+    ttk.Label(res, text="目标当前人口").grid(row=5, column=0, sticky="w", pady=8)
     ttk.Entry(res, textvariable=food_used_target, width=12).grid(row=5, column=1, sticky="w")
-    ttk.Entry(res, textvariable=food_cap_target, width=12).grid(row=5, column=3, sticky="w")
-    ttk.Button(res, text="设置人口", command=lambda: call_async(set_food_resource)).grid(row=5, column=4, padx=8)
-    ttk.Button(res, text="锁定人口", command=lambda: call_async(lambda: add_resource_lock("food_used"))).grid(row=5, column=5, padx=4)
-    ttk.Button(res, text="锁定上限", command=lambda: call_async(lambda: add_resource_lock("food_cap"))).grid(row=5, column=6, padx=4)
+    ttk.Button(res, text="设置当前人口", command=lambda: call_async(lambda: set_food_resource("food_used"))).grid(row=5, column=2, padx=8)
+    ttk.Button(res, text="锁定当前人口", command=lambda: call_async(lambda: add_resource_lock("food_used"))).grid(row=5, column=3, padx=4)
 
-    ttk.Label(res, text="增量").grid(row=6, column=0, sticky="w", pady=(12, 0))
-    ttk.Entry(res, textvariable=resource_delta, width=12).grid(row=6, column=1, sticky="w", pady=(12, 0))
-    ttk.Button(res, text="金币 +/-", command=lambda: call_async(lambda: add_resource("gold"))).grid(row=6, column=2, pady=(12, 0))
-    ttk.Button(res, text="木材 +/-", command=lambda: call_async(lambda: add_resource("lumber"))).grid(row=6, column=3, pady=(12, 0))
-    ttk.Button(res, text="金木一起 +/-", command=lambda: call_async(lambda: add_resource("both"))).grid(row=6, column=4, pady=(12, 0), padx=8)
+    ttk.Label(res, text="目标人口上限").grid(row=6, column=0, sticky="w", pady=8)
+    ttk.Entry(res, textvariable=food_cap_target, width=12).grid(row=6, column=1, sticky="w")
+    ttk.Button(res, text="设置人口上限", command=lambda: call_async(lambda: set_food_resource("food_cap"))).grid(row=6, column=2, padx=8)
+    ttk.Button(res, text="锁定人口上限", command=lambda: call_async(lambda: add_resource_lock("food_cap"))).grid(row=6, column=3, padx=4)
+
+    ttk.Label(res, text="增量").grid(row=7, column=0, sticky="w", pady=(12, 0))
+    ttk.Entry(res, textvariable=resource_delta, width=12).grid(row=7, column=1, sticky="w", pady=(12, 0))
+    ttk.Button(res, text="金币 +/-", command=lambda: call_async(lambda: add_resource("gold"))).grid(row=7, column=2, pady=(12, 0))
+    ttk.Button(res, text="木材 +/-", command=lambda: call_async(lambda: add_resource("lumber"))).grid(row=7, column=3, pady=(12, 0))
+    ttk.Button(res, text="金木一起 +/-", command=lambda: call_async(lambda: add_resource("both"))).grid(row=7, column=4, pady=(12, 0), padx=8)
 
     unit = ttk.Frame(notebook, padding=10)
     notebook.add(unit, text="选中单位")
@@ -6979,11 +7469,17 @@ def run_gui() -> None:
     ttk.Entry(unit, textvariable=x_current, width=12).grid(row=4, column=1, sticky="w")
     ttk.Label(unit, text="当前 Y").grid(row=4, column=2, sticky="w", padx=(16, 0))
     ttk.Entry(unit, textvariable=y_current, width=12).grid(row=4, column=3, sticky="w")
+    ttk.Label(unit, text="单位 ID").grid(row=4, column=4, sticky="w", padx=(16, 0))
+    ttk.Entry(unit, textvariable=unit_type_id_current, width=12, state="readonly").grid(row=4, column=5, sticky="w")
     ttk.Label(unit, text="目标 X").grid(row=5, column=0, sticky="w", pady=8)
     ttk.Entry(unit, textvariable=x_target, width=12).grid(row=5, column=1, sticky="w")
     ttk.Label(unit, text="目标 Y").grid(row=5, column=2, sticky="w", padx=(16, 0))
     ttk.Entry(unit, textvariable=y_target, width=12).grid(row=5, column=3, sticky="w")
-    ttk.Button(unit, text="读取当前选中单位", command=lambda: call_async(read_unit)).grid(row=6, column=0, pady=12, sticky="w")
+    read_unit_button = ttk.Button(unit, text="读取当前选中单位")
+    read_unit_button.configure(
+        command=lambda: call_async(read_unit, "read_unit", read_unit_button)
+    )
+    read_unit_button.grid(row=6, column=0, pady=12, sticky="w")
     ttk.Button(unit, text="写入选中单位", command=lambda: call_async(set_unit)).grid(row=6, column=1, pady=12, sticky="w")
     ttk.Button(unit, text="刷新字段表", command=lambda: call_async(read_unit_fields)).grid(row=6, column=2, pady=12, sticky="w")
     ttk.Button(unit, text="列出候选单位", command=lambda: call_async(refresh_unit_candidates)).grid(row=6, column=3, pady=12, sticky="w")
@@ -7095,7 +7591,10 @@ def run_gui() -> None:
                 refresh_resources()
             except Exception:
                 pass
-            root.after(300, lambda: call_async(prewarm_selection_cache))
+            root.after(
+                300,
+                lambda: call_async(prewarm_selection_cache, busy_text="正在预热，请稍候..."),
+            )
         except Exception as exc:
             set_status(f"未连接：{exc}")
 

@@ -5,7 +5,7 @@ a = Analysis(
     ['war3_reforged_trainer.py'],
     pathex=[],
     binaries=[('tools/war3_native_helper.dll', 'tools')],
-    datas=[],
+    datas=[('assets/app_icon.png', 'assets')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -35,4 +35,6 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon='assets/app_icon.ico',
+    version='tools/war3_version_info.txt',
 )

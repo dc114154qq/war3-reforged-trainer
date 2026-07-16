@@ -9,6 +9,8 @@ This replaces the old 32-bit game.dll trainer path with verified Reforged routes
 from __future__ import annotations
 
 import argparse
+from bisect import bisect_right
+from contextlib import contextmanager
 import ctypes
 import math
 import tempfile
@@ -18,7 +20,10 @@ import threading
 import time
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Callable, Iterable
+from typing import Callable, Iterable, Iterator
+
+
+APP_VERSION = "1.0.0"
 
 
 if sys.platform == "win32":
@@ -50,8 +55,18 @@ WM_KEYDOWN = 0x0100
 WM_KEYUP = 0x0101
 WM_CHAR = 0x0102
 WM_NULL = 0x0000
+WM_QUIT = 0x0012
+WM_HOTKEY = 0x0312
 VK_RETURN = 0x0D
 VK_F1 = 0x70
+VK_HOME = 0x24
+VK_END = 0x23
+VK_NUMPAD1 = 0x61
+VK_NUMPAD2 = 0x62
+VK_NUMPAD3 = 0x63
+MOD_ALT = 0x0001
+MOD_CONTROL = 0x0002
+MOD_NOREPEAT = 0x4000
 SW_RESTORE = 9
 HWND_TOPMOST = -1
 HWND_NOTOPMOST = -2
@@ -59,12 +74,25 @@ SWP_NOMOVE = 0x0002
 SWP_NOSIZE = 0x0001
 WH_CALLWNDPROC = 4
 SMTO_ABORTIFHUNG = 0x0002
+WAIT_OBJECT_0 = 0x00000000
+WAIT_ABANDONED = 0x00000080
+WAIT_TIMEOUT = 0x00000102
+ERROR_NOT_SUPPORTED = 50
+ERROR_NOT_FOUND = 1168
 
 
 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 user32 = ctypes.WinDLL("user32", use_last_error=True)
 
 kernel32.OpenProcess.restype = ctypes.c_void_p
+kernel32.CreateMutexW.argtypes = (ctypes.c_void_p, ctypes.c_bool, ctypes.c_wchar_p)
+kernel32.CreateMutexW.restype = ctypes.c_void_p
+kernel32.WaitForSingleObject.argtypes = (ctypes.c_void_p, ctypes.c_ulong)
+kernel32.WaitForSingleObject.restype = ctypes.c_ulong
+kernel32.ReleaseMutex.argtypes = (ctypes.c_void_p,)
+kernel32.ReleaseMutex.restype = ctypes.c_bool
+kernel32.CloseHandle.argtypes = (ctypes.c_void_p,)
+kernel32.CloseHandle.restype = ctypes.c_bool
 kernel32.LoadLibraryW.argtypes = (ctypes.c_wchar_p,)
 kernel32.LoadLibraryW.restype = ctypes.c_void_p
 kernel32.GetProcAddress.argtypes = (ctypes.c_void_p, ctypes.c_char_p)
@@ -92,6 +120,183 @@ user32.SendMessageTimeoutW.argtypes = (
     ctypes.POINTER(ctypes.c_void_p),
 )
 user32.SendMessageTimeoutW.restype = ctypes.c_void_p
+
+
+class POINT(ctypes.Structure):
+    _fields_ = [
+        ("x", ctypes.c_long),
+        ("y", ctypes.c_long),
+    ]
+
+
+class MSG(ctypes.Structure):
+    _fields_ = [
+        ("hwnd", ctypes.c_void_p),
+        ("message", ctypes.c_uint),
+        ("wParam", ctypes.c_size_t),
+        ("lParam", ctypes.c_ssize_t),
+        ("time", ctypes.c_ulong),
+        ("pt", POINT),
+        ("lPrivate", ctypes.c_ulong),
+    ]
+
+
+kernel32.GetCurrentThreadId.restype = ctypes.c_ulong
+user32.RegisterHotKey.argtypes = (ctypes.c_void_p, ctypes.c_int, ctypes.c_uint, ctypes.c_uint)
+user32.RegisterHotKey.restype = ctypes.c_bool
+user32.UnregisterHotKey.argtypes = (ctypes.c_void_p, ctypes.c_int)
+user32.UnregisterHotKey.restype = ctypes.c_bool
+user32.GetMessageW.argtypes = (ctypes.POINTER(MSG), ctypes.c_void_p, ctypes.c_uint, ctypes.c_uint)
+user32.GetMessageW.restype = ctypes.c_int
+user32.PostThreadMessageW.argtypes = (ctypes.c_ulong, ctypes.c_uint, ctypes.c_size_t, ctypes.c_ssize_t)
+user32.PostThreadMessageW.restype = ctypes.c_bool
+
+
+@dataclass(frozen=True)
+class GlobalHotkeySpec:
+    name: str
+    label: str
+    modifiers: int
+    virtual_key: int
+
+
+class GlobalHotkeyManager:
+    def __init__(self) -> None:
+        self._lock = threading.RLock()
+        self._thread: threading.Thread | None = None
+        self._thread_id = 0
+        self._registered_names: tuple[str, ...] = ()
+
+    @property
+    def registered_names(self) -> tuple[str, ...]:
+        with self._lock:
+            return self._registered_names
+
+    def start(
+        self,
+        specs: Iterable[GlobalHotkeySpec],
+        on_trigger: Callable[[str], None],
+    ) -> dict[str, int]:
+        self.stop()
+        spec_list = tuple(specs)
+        ready = threading.Event()
+        errors: dict[str, int] = {}
+
+        def worker() -> None:
+            registered: dict[int, GlobalHotkeySpec] = {}
+            thread_id = int(kernel32.GetCurrentThreadId())
+            with self._lock:
+                self._thread_id = thread_id
+            try:
+                for hotkey_id, spec in enumerate(spec_list, 1):
+                    ctypes.set_last_error(0)
+                    if user32.RegisterHotKey(
+                        None,
+                        hotkey_id,
+                        spec.modifiers | MOD_NOREPEAT,
+                        spec.virtual_key,
+                    ):
+                        registered[hotkey_id] = spec
+                    else:
+                        errors[spec.name] = ctypes.get_last_error()
+                with self._lock:
+                    self._registered_names = tuple(spec.name for spec in registered.values())
+                ready.set()
+
+                message = MSG()
+                while True:
+                    result = int(user32.GetMessageW(ctypes.byref(message), None, 0, 0))
+                    if result <= 0:
+                        break
+                    if message.message != WM_HOTKEY:
+                        continue
+                    spec = registered.get(int(message.wParam))
+                    if spec is None:
+                        continue
+                    try:
+                        on_trigger(spec.name)
+                    except Exception:
+                        pass
+            finally:
+                for hotkey_id in registered:
+                    user32.UnregisterHotKey(None, hotkey_id)
+                with self._lock:
+                    self._registered_names = ()
+                    self._thread_id = 0
+                ready.set()
+
+        thread = threading.Thread(target=worker, name="war3-global-hotkeys", daemon=True)
+        with self._lock:
+            self._thread = thread
+        thread.start()
+        if not ready.wait(3.0):
+            self.stop()
+            raise RuntimeError("全局快捷键线程启动超时")
+        return dict(errors)
+
+    def stop(self) -> None:
+        with self._lock:
+            thread = self._thread
+            thread_id = self._thread_id
+        if thread is None:
+            return
+        if thread.is_alive() and thread_id:
+            user32.PostThreadMessageW(thread_id, WM_QUIT, 0, 0)
+            thread.join(timeout=2.0)
+        with self._lock:
+            if self._thread is thread and not thread.is_alive():
+                self._thread = None
+                self._thread_id = 0
+                self._registered_names = ()
+
+
+ELEPHANT_HOTKEY_SPECS = (
+    GlobalHotkeySpec("hero_level", "Ctrl+Q  英雄等级", MOD_CONTROL, ord("Q")),
+    GlobalHotkeySpec("instant_move", "Ctrl+X  瞬间移动", MOD_CONTROL, ord("X")),
+    GlobalHotkeySpec("explode_unit", "Ctrl+W  瞬间爆炸目标单位", MOD_CONTROL, ord("W")),
+    GlobalHotkeySpec("reveal_map", "Home  开图", 0, VK_HOME),
+    GlobalHotkeySpec("hide_map", "End  关图", 0, VK_END),
+    GlobalHotkeySpec("invulnerable", "Ctrl+E  无敌", MOD_CONTROL, ord("E")),
+    GlobalHotkeySpec("vulnerable", "Ctrl+R  取消无敌", MOD_CONTROL, ord("R")),
+    GlobalHotkeySpec("reset_cooldown", "Ctrl+Z  重置冷却", MOD_CONTROL, ord("Z")),
+    GlobalHotkeySpec("clone_to_self", "Ctrl+A  复制单位给自己", MOD_CONTROL, ord("A")),
+    GlobalHotkeySpec("duplicate_inventory", "Ctrl+D  复制背包物品", MOD_CONTROL, ord("D")),
+    GlobalHotkeySpec("unit_scale", "Ctrl+P  设置大小", MOD_CONTROL, ord("P")),
+    GlobalHotkeySpec("item_charges", "Ctrl+F  物品数量", MOD_CONTROL, ord("F")),
+    GlobalHotkeySpec("drop_inventory", "Ctrl+T  丢弃背包所有物品", MOD_CONTROL, ord("T")),
+    GlobalHotkeySpec("add_ability", "Ctrl+G  添加技能", MOD_CONTROL, ord("G")),
+    GlobalHotkeySpec("clone_unit", "Ctrl+B  复制单位", MOD_CONTROL, ord("B")),
+    GlobalHotkeySpec("take_control", "Ctrl+I  获取对方控制权", MOD_CONTROL, ord("I")),
+    GlobalHotkeySpec("add_resources", "Ctrl+L  增加金币木材", MOD_CONTROL, ord("L")),
+    GlobalHotkeySpec("mass_clone", "Ctrl+N  大量复制", MOD_CONTROL, ord("N")),
+    GlobalHotkeySpec("ability_level", "Ctrl+H  设置技能等级", MOD_CONTROL, ord("H")),
+    GlobalHotkeySpec("remove_ability", "Ctrl+J  删除技能", MOD_CONTROL, ord("J")),
+    GlobalHotkeySpec("all_auras", "Ctrl+Num1  全光环", MOD_CONTROL, VK_NUMPAD1),
+    GlobalHotkeySpec("all_passives", "Ctrl+Num2  全被动", MOD_CONTROL, VK_NUMPAD2),
+    GlobalHotkeySpec("six_artifacts", "Ctrl+Num3  得到6个神器", MOD_CONTROL, VK_NUMPAD3),
+    GlobalHotkeySpec("reinforcements", "Ctrl+K  呼叫增援", MOD_CONTROL, ord("K")),
+    GlobalHotkeySpec("preset_item", "Ctrl+M  得到物品", MOD_CONTROL, ord("M")),
+    GlobalHotkeySpec("preset_tech", "Ctrl+O  得到科技", MOD_CONTROL, ord("O")),
+    GlobalHotkeySpec("create_all_items", "Ctrl+S  创建所有物品", MOD_CONTROL, ord("S")),
+    GlobalHotkeySpec("ignore_collision", "Alt+L  无视碰撞体积", MOD_ALT, ord("L")),
+    GlobalHotkeySpec("hero_attributes", "Alt+Q  设置属性", MOD_ALT, ord("Q")),
+    GlobalHotkeySpec("skill_points", "Alt+W  增加技能点数", MOD_ALT, ord("W")),
+    GlobalHotkeySpec("kill_owner_units", "Alt+E  秒杀玩家的所有单位", MOD_ALT, ord("E")),
+    GlobalHotkeySpec("xp_rate", "Alt+R  增加经验获取率", MOD_ALT, ord("R")),
+    GlobalHotkeySpec("reset_ability", "Alt+T  重置技能", MOD_ALT, ord("T")),
+    GlobalHotkeySpec("all_debuffs", "Alt+Y  获得 debuff", MOD_ALT, ord("Y")),
+    GlobalHotkeySpec("all_buffs", "Alt+U  获得 buff", MOD_ALT, ord("U")),
+    GlobalHotkeySpec("fullscreen_swarm", "Alt+I  全屏腐臭蜂群", MOD_ALT, ord("I")),
+    GlobalHotkeySpec("fullscreen_clap", "Alt+O  全屏雷霆一击", MOD_ALT, ord("O")),
+    GlobalHotkeySpec("fullscreen_monsoon", "Alt+P  全屏季风", MOD_ALT, ord("P")),
+    GlobalHotkeySpec("fullscreen_starfall", "Alt+A  全屏群星陨落", MOD_ALT, ord("A")),
+    GlobalHotkeySpec("fullscreen_forked", "Alt+S  全屏叉状闪电", MOD_ALT, ord("S")),
+    GlobalHotkeySpec("fullscreen_auto", "Alt+D  全屏自动特效攻击", MOD_ALT, ord("D")),
+    GlobalHotkeySpec("toggle_unit_pause", "Alt+F  暂停/恢复单位", MOD_ALT, ord("F")),
+    GlobalHotkeySpec("toggle_game_pause", "Alt+G  暂停/恢复游戏", MOD_ALT, ord("G")),
+    GlobalHotkeySpec("end_game", "Alt+H  结束游戏", MOD_ALT, ord("H")),
+    GlobalHotkeySpec("remove_all_abilities", "Alt+J  技能全删", MOD_ALT, ord("J")),
+)
 
 class MEMORY_BASIC_INFORMATION64(ctypes.Structure):
     _fields_ = [
@@ -322,6 +527,9 @@ class NativeHelperOpResult:
     kind: int
     result: int
     last_error: int = 0
+    arg0: int = 0
+    arg1: int = 0
+    extra_results: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -1149,11 +1357,84 @@ class War3Trainer:
         "GetHandleId",
         "DestroyGroup",
     )
+    ELEPHANT_NATIVE_NAMES = (
+        "SetHeroLevel",
+        "GetHeroLevel",
+        "UnitStripHeroLevel",
+        "SuspendHeroXP",
+        "IsSuspendedXP",
+        "SetUnitInvulnerable",
+        "BlzIsUnitInvulnerable",
+        "UnitResetCooldown",
+        "SetUnitPathing",
+        "SetUnitScale",
+        "KillUnit",
+        "SetUnitExploded",
+        "RemoveUnit",
+        "PauseUnit",
+        "IsUnitPaused",
+        "PauseGame",
+        "EndGame",
+        "FogEnable",
+        "FogMaskEnable",
+        "IsFogEnabled",
+        "IsFogMaskEnabled",
+        "GetLocalPlayer",
+        "GetOwningPlayer",
+        "SetUnitOwner",
+        "CreateUnit",
+        "CreateItem",
+        "ChooseRandomItem",
+        "UnitAddItemById",
+        "UnitItemInSlot",
+        "UnitRemoveItem",
+        "RemoveItem",
+        "GetItemTypeId",
+        "SetItemCharges",
+        "UnitAddAbility",
+        "UnitRemoveAbility",
+        "SetUnitAbilityLevel",
+        "GetUnitAbilityLevel",
+        "BlzSetUnitMaxMana",
+        "SetHeroStr",
+        "SetHeroAgi",
+        "SetHeroInt",
+        "UnitModifySkillPoints",
+        "BlzGetUnitAbilityByIndex",
+        "BlzGetUnitAbility",
+        "BlzGetAbilityId",
+        "BlzGetAbilityRealLevelField",
+        "BlzSetAbilityRealLevelField",
+        "BlzUnitHideAbility",
+        "SetPlayerTechResearched",
+        "SetPlayerTechMaxAllowed",
+        "SetPlayerHandicapXP",
+        "Player",
+        "SetPlayerAlliance",
+        "CreateGroup",
+        "GroupEnumUnitsSelected",
+        "GroupEnumUnitsOfPlayer",
+        "FirstOfGroup",
+        "GetHandleId",
+        "GroupRemoveUnit",
+        "DestroyGroup",
+        "SetUnitPosition",
+        "GetUnitX",
+        "GetUnitY",
+        "GetUnitTypeId",
+        "GetWidgetLife",
+        "SetUnitState",
+        "IssuePointOrderById",
+        "IssueTargetOrderById",
+        "IssueImmediateOrderById",
+        "UnitApplyTimedLife",
+        "IsPlayerEnemy",
+    )
     NATIVE_SELECTION_HANDLER_NAMES = (
         "IsUnitSelected",
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 8
+    NATIVE_HELPER_VERSION = 15
     NATIVE_HELPER_STATUS_PENDING = 1
     NATIVE_HELPER_STATUS_OK = 2
     NATIVE_HELPER_MAX_OPS = 16
@@ -1175,6 +1456,43 @@ class War3Trainer:
     NATIVE_HELPER_OP_JASS_SELECTED_UNIT_ARG = 51
     NATIVE_HELPER_OP_JASS_LOCAL_PLAYER_QUERY = 52
     NATIVE_HELPER_OP_JASS_LOCAL_PLAYER_SET = 53
+    NATIVE_HELPER_OP_JASS_UNIT_VOID = 70
+    NATIVE_HELPER_OP_JASS_UNIT_BOOL = 71
+    NATIVE_HELPER_OP_JASS_UNIT_INT_BOOL = 72
+    NATIVE_HELPER_OP_JASS_UNIT_RAWCODE = 73
+    NATIVE_HELPER_OP_JASS_UNIT_RAWCODE_LEVEL = 74
+    NATIVE_HELPER_OP_JASS_UNIT_SCALE = 75
+    NATIVE_HELPER_OP_JASS_WORLD_BOOL = 76
+    NATIVE_HELPER_OP_JASS_UNIT_INT_QUERY = 77
+    NATIVE_HELPER_OP_JASS_EXPLODE_UNIT = 78
+    NATIVE_HELPER_OP_JASS_TAKE_OWNERSHIP = 79
+    NATIVE_HELPER_OP_JASS_CREATE_LOCAL_UNIT = 80
+    NATIVE_HELPER_OP_JASS_CLEAR_INVENTORY = 81
+    NATIVE_HELPER_OP_JASS_SET_LOCAL_TECH = 82
+    NATIVE_HELPER_OP_JASS_SET_LOCAL_XP_RATE = 83
+    NATIVE_HELPER_OP_JASS_KILL_OWNER_UNITS = 84
+    NATIVE_HELPER_OP_JASS_MULTI_ARG = 85
+    NATIVE_HELPER_OP_JASS_PEACE_MODE = 86
+    NATIVE_HELPER_OP_JASS_WORLD_INT_QUERY = 87
+    NATIVE_HELPER_OP_JASS_FOG_BOOL = 88
+    NATIVE_HELPER_OP_JASS_SET_INVENTORY_CHARGES = 89
+    NATIVE_HELPER_OP_JASS_DUPLICATE_INVENTORY = 90
+    NATIVE_HELPER_OP_JASS_DROP_INVENTORY = 91
+    NATIVE_HELPER_OP_JASS_REMOVE_ALL_ABILITIES = 92
+    NATIVE_HELPER_OP_QUERY_WORLD_POINT = 93
+    NATIVE_HELPER_OP_JASS_SET_UNIT_POSITION = 94
+    NATIVE_HELPER_OP_CREATE_ALL_ITEMS = 95
+    NATIVE_HELPER_OP_REMOVE_ITEM_HANDLES = 98
+    NATIVE_HELPER_OP_REMOVE_ITEM_HANDLES_ARG = 99
+    NATIVE_HELPER_OP_CAST_ABILITY = 100
+    NATIVE_HELPER_OP_DIRECT_ABILITY_TARGET = 101
+    NATIVE_HELPER_OP_DIRECT_ABILITY_IMMEDIATE = 102
+    NATIVE_HELPER_OP_DIRECT_ABILITY_POINT = 103
+    NATIVE_HELPER_OP_DIRECT_ABILITY_NOARG_DERIVED = 104
+    NATIVE_HELPER_OP_DIRECT_ABILITY_BUFF = 105
+    NATIVE_HELPER_OP_DIRECT_ABILITY_ENUM = 106
+    NATIVE_HELPER_OP_JASS_ABILITY_REAL_LEVEL_FIELD_SET = 107
+    NATIVE_HELPER_OP_JASS_UNIT_RESOLVE = 109
 
     def __init__(self, pid: int | None = None):
         self.hwnd, self.pid = find_war3(pid)
@@ -1183,9 +1501,16 @@ class War3Trainer:
         self._item_object_cache: dict[int, int] = {}
         self._native_handlers: dict[str, NativeHandler] = {}
         self._native_table_region: tuple[int, int] | None = None
+        self._native_table_regions: list[tuple[int, int]] = []
         self._native_table_blob: tuple[int, int, bytes] | None = None
         self._native_hero_int_set_address = 0
         self._native_hero_int_get_address = 0
+        self._jass_unit_resolver_address = 0
+        self._buff_data_constructor_address = 0
+        self._pending_direct_effects: set[tuple[int, int]] = set()
+        self._hidden_toggle_abilities: set[tuple[int, int]] = set()
+        self._pending_direct_effects_lock = threading.Lock()
+        self._native_helper_lock = threading.RLock()
         self._ability_runtime_templates: dict[tuple[int, int, int], dict[str, object]] = {}
         self._ability_instance_by_data: dict[tuple[int, int, int], AbilityInstance] = {}
         self._selection_player_candidates: list[int] = []
@@ -1209,9 +1534,14 @@ class War3Trainer:
             self._item_object_cache = {}
             self._native_handlers = {}
             self._native_table_region = None
+            self._native_table_regions = []
             self._native_table_blob = None
             self._native_hero_int_set_address = 0
             self._native_hero_int_get_address = 0
+            self._jass_unit_resolver_address = 0
+            self._buff_data_constructor_address = 0
+            self._pending_direct_effects = set()
+            self._hidden_toggle_abilities = set()
             self._ability_runtime_templates = {}
             self._ability_instance_by_data = {}
             self._selection_player_candidates = []
@@ -1292,46 +1622,29 @@ class War3Trainer:
         except UnicodeDecodeError:
             return None
 
-    def _find_native_table_region(self, pm: ProcessMemory, regions: list[Region]) -> Region:
-        if self._native_table_region is not None:
-            cached_base, cached_size = self._native_table_region
-            cached = self._region_for_address(regions, cached_base)
-            if (
-                cached is not None
-                and cached.base == cached_base
-                and cached.size == cached_size
-                and cached.typ == MEM_PRIVATE
-            ):
+    def _find_native_table_regions(
+        self,
+        pm: ProcessMemory,
+        regions: list[Region],
+    ) -> list[Region]:
+        if self._native_table_regions:
+            cached: list[Region] = []
+            for cached_base, cached_size in self._native_table_regions:
+                region = self._region_for_address(regions, cached_base)
+                if (
+                    region is None
+                    or region.base != cached_base
+                    or region.size != cached_size
+                    or region.typ != MEM_PRIVATE
+                ):
+                    cached = []
+                    break
+                cached.append(region)
+            if cached:
                 return cached
 
         pattern = b"UnitAddAbility\0"
-        for region in sorted(regions, key=lambda item: item.base, reverse=True):
-            if region.typ != MEM_PRIVATE or region.size > 0x40000 or region.base >= 0x700000000000:
-                continue
-            try:
-                blob = pm.read(region.base, region.size)
-            except OSError:
-                continue
-            start = 0
-            while True:
-                offset = blob.find(pattern, start)
-                if offset < 0:
-                    break
-                hit = region.base + offset
-                record = hit - 0x18
-                try:
-                    handler = pm.read_u64(record - 8)
-                    ptr = pm.read_u64(record)
-                    size = pm.read_u64(record + 8)
-                except OSError:
-                    start = offset + 1
-                    continue
-                if ptr == hit and size == len("UnitAddAbility") and self._is_executable_image_address(regions, handler):
-                    self._native_table_region = (region.base, region.size)
-                    self._native_table_blob = (region.base, region.size, blob)
-                    return region
-                start = offset + 1
-
+        candidates: dict[tuple[int, int], Region] = {}
         for hit in pm.scan_bytes_private(pattern, max_region_size=2 * 1024 * 1024):
             record = hit - 0x18
             region = self._region_for_address(regions, hit)
@@ -1343,12 +1656,27 @@ class War3Trainer:
                 size = pm.read_u64(record + 8)
             except OSError:
                 continue
-            if ptr != hit or size != len("UnitAddAbility"):
-                continue
-            if self._is_executable_image_address(regions, handler):
-                self._native_table_region = (region.base, region.size)
-                return region
-        raise RuntimeError("未找到 Warcraft III native 函数表")
+            if (
+                ptr == hit
+                and size == len("UnitAddAbility")
+                and self._is_executable_image_address(regions, handler)
+            ):
+                candidates[(region.base, region.size)] = region
+        if not candidates:
+            raise RuntimeError("未找到 Warcraft III native 函数表")
+
+        ordered = sorted(candidates.values(), key=lambda item: item.base, reverse=True)
+        self._native_table_regions = [(region.base, region.size) for region in ordered]
+        primary = ordered[0]
+        self._native_table_region = (primary.base, primary.size)
+        try:
+            self._native_table_blob = (primary.base, primary.size, pm.read(primary.base, primary.size))
+        except OSError:
+            self._native_table_blob = None
+        return ordered
+
+    def _find_native_table_region(self, pm: ProcessMemory, regions: list[Region]) -> Region:
+        return self._find_native_table_regions(pm, regions)[0]
 
     def _native_table_blob_for_region(self, pm: ProcessMemory, region: Region) -> bytes:
         if self._native_table_blob is not None:
@@ -1493,6 +1821,86 @@ class War3Trainer:
             raise RuntimeError("未找到 native 函数：" + ", ".join(sorted(missing)))
         return {name: self._native_handlers[name] for name in wanted}
 
+    def _discover_native_handlers_near_table(
+        self,
+        pm: ProcessMemory,
+        names: Iterable[str],
+    ) -> dict[str, NativeHandler]:
+        wanted = set(names)
+        missing = wanted.difference(self._native_handlers)
+        if not missing:
+            return {name: self._native_handlers[name] for name in wanted}
+
+        regions = pm.regions()
+        anchors = self._find_native_table_regions(pm, regions)
+        scan_ranges: list[tuple[int, int]] = []
+        for anchor in sorted(anchors, key=lambda item: item.base):
+            start = max(0, anchor.base - 0x80000)
+            end = anchor.base + anchor.size + 0x80000
+            if scan_ranges and start <= scan_ranges[-1][1]:
+                previous_start, previous_end = scan_ranges[-1]
+                scan_ranges[-1] = (previous_start, max(previous_end, end))
+            else:
+                scan_ranges.append((start, end))
+        wanted_lengths = {len(name) for name in missing}
+        found: dict[str, NativeHandler] = {}
+        executable_regions = sorted(
+            (
+                (region.base, region.base + region.size)
+                for region in regions
+                if (region.protect & 0xFF) in EXECUTABLE_PROTECTS
+            ),
+            key=lambda item: item[0],
+        )
+        executable_starts = [start for start, _end in executable_regions]
+
+        def is_executable(address: int) -> bool:
+            index = bisect_right(executable_starts, address) - 1
+            return index >= 0 and address < executable_regions[index][1]
+
+        for scan_start, scan_end in scan_ranges:
+            for region in sorted(regions, key=lambda item: item.base):
+                if region.typ != MEM_PRIVATE:
+                    continue
+                region_start = max(region.base, scan_start - 8)
+                region_end = min(region.base + region.size, scan_end)
+                if region_end - region_start < 32:
+                    continue
+                try:
+                    blob = pm.read(region_start, region_end - region_start)
+                except OSError:
+                    continue
+                first_record = max(scan_start, (region_start + 7) & ~7)
+                if first_record - region_start < 8:
+                    first_record += 8
+                for record in range(first_record, region_end - 24, 8):
+                    offset = record - region_start
+                    handler = struct.unpack_from("<Q", blob, offset - 8)[0]
+                    if not is_executable(handler):
+                        continue
+                    size = struct.unpack_from("<Q", blob, offset + 8)[0]
+                    if size not in wanted_lengths:
+                        continue
+                    name = self._decode_native_string_from_blob(pm, blob, region_start, offset)
+                    if name not in missing:
+                        continue
+                    found[name] = NativeHandler(name, record, handler)
+                    missing.remove(name)
+                    wanted_lengths = {len(item) for item in missing}
+                    if not missing:
+                        break
+                if not missing:
+                    break
+            if not missing:
+                break
+
+        self._native_handlers.update(found)
+        if missing:
+            raise RuntimeError(
+                "在 native 表邻域未找到函数：" + ", ".join(sorted(missing))
+            )
+        return {name: self._native_handlers[name] for name in wanted}
+
     def verify_native_handlers(self) -> dict[str, NativeHandler]:
         with ProcessMemory(self.pid) as pm:
             return self._discover_native_handlers(pm, self.NATIVE_HANDLER_NAMES)
@@ -1609,6 +2017,13 @@ class War3Trainer:
     def _native_helper_command_path(self) -> Path:
         return Path(tempfile.gettempdir()) / f"war3_reforged_native_{self.pid}.bin"
 
+    @staticmethod
+    def _read_native_helper_command(path: Path) -> bytes | None:
+        try:
+            return path.read_bytes()
+        except PermissionError:
+            return None
+
     def _pack_native_helper_command(
         self,
         unit_address: int,
@@ -1647,7 +2062,7 @@ class War3Trainer:
     def _parse_native_helper_results(self, data: bytes, op_count: int) -> list[NativeHelperOpResult]:
         if len(data) < self._native_helper_command_size():
             raise RuntimeError("native helper 返回数据长度异常")
-        magic, version, status, actual_count, _unit, last_error, _reserved = (
+        magic, version, status, actual_count, _unit, last_error, extra_count = (
             self.NATIVE_HELPER_HEADER_STRUCT.unpack_from(data, 0)
         )
         if magic != self.NATIVE_HELPER_MAGIC or version != self.NATIVE_HELPER_VERSION:
@@ -1656,16 +2071,32 @@ class War3Trainer:
             raise RuntimeError(f"native helper 执行失败：status={status} last_error={last_error}")
         if actual_count != op_count:
             raise RuntimeError(f"native helper 返回操作数量异常：{actual_count}!={op_count}")
+        extra_offset = self._native_helper_command_size()
+        extra_size = int(extra_count) * 8
+        if len(data) < extra_offset + extra_size:
+            raise RuntimeError("native helper 附加结果长度异常")
+        extra_results = (
+            tuple(struct.unpack_from(f"<{extra_count}Q", data, extra_offset))
+            if extra_count
+            else ()
+        )
         results: list[NativeHelperOpResult] = []
         base = self.NATIVE_HELPER_HEADER_STRUCT.size
         for index in range(op_count):
             offset = base + index * self.NATIVE_HELPER_OP_STRUCT.size
-            kind, _rawcode, _handler, _arg0, _arg1, result, op_error, _reserved = (
+            kind, _rawcode, _handler, arg0, arg1, result, op_error, _reserved = (
                 self.NATIVE_HELPER_OP_STRUCT.unpack_from(data, offset)
             )
             if op_error:
                 raise RuntimeError(f"native helper 操作 {index + 1} 失败：error={op_error}")
-            results.append(NativeHelperOpResult(kind=kind, result=result, last_error=op_error))
+            results.append(NativeHelperOpResult(
+                kind=kind,
+                result=result,
+                last_error=op_error,
+                arg0=arg0,
+                arg1=arg1,
+                extra_results=extra_results if index == 0 else (),
+            ))
         return results
 
     def _run_native_helper_ops(
@@ -1673,7 +2104,51 @@ class War3Trainer:
         unit_address: int,
         ops: Iterable[tuple[int, int, int, int, int]],
         *,
-        timeout_ms: int = 1000,
+        timeout_ms: int = 10000,
+    ) -> list[NativeHelperOpResult]:
+        wait_ms = max(5000, min(300000, int(timeout_ms) + 5000))
+        with self._native_helper_transaction(wait_ms=wait_ms):
+            return self._run_native_helper_ops_locked(
+                unit_address,
+                ops,
+                timeout_ms=timeout_ms,
+            )
+
+    @contextmanager
+    def _native_helper_transaction(self, *, wait_ms: int = 300000) -> Iterator[None]:
+        with self._native_helper_lock:
+            mutex = kernel32.CreateMutexW(
+                None,
+                False,
+                f"Local\\War3ReforgedTrainer.NativeHelper.{self.pid}",
+            )
+            if not mutex:
+                raise ctypes.WinError(ctypes.get_last_error())
+            wait_result = int(kernel32.WaitForSingleObject(
+                mutex,
+                max(5000, min(300000, int(wait_ms))),
+            ))
+            if wait_result not in (WAIT_OBJECT_0, WAIT_ABANDONED):
+                kernel32.CloseHandle(mutex)
+                if wait_result == WAIT_TIMEOUT:
+                    raise TimeoutError("等待 Warcraft native helper 事务锁超时")
+                raise ctypes.WinError(ctypes.get_last_error())
+            try:
+                yield
+            finally:
+                release_error = 0
+                if not kernel32.ReleaseMutex(mutex):
+                    release_error = ctypes.get_last_error()
+                kernel32.CloseHandle(mutex)
+                if release_error:
+                    raise ctypes.WinError(release_error)
+
+    def _run_native_helper_ops_locked(
+        self,
+        unit_address: int,
+        ops: Iterable[tuple[int, int, int, int, int]],
+        *,
+        timeout_ms: int = 10000,
     ) -> list[NativeHelperOpResult]:
         op_list = list(ops)
         allowed_kinds = {
@@ -1693,17 +2168,83 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_JASS_SELECTED_UNIT_ARG,
             self.NATIVE_HELPER_OP_JASS_LOCAL_PLAYER_QUERY,
             self.NATIVE_HELPER_OP_JASS_LOCAL_PLAYER_SET,
+            self.NATIVE_HELPER_OP_JASS_UNIT_VOID,
+            self.NATIVE_HELPER_OP_JASS_UNIT_BOOL,
+            self.NATIVE_HELPER_OP_JASS_UNIT_INT_BOOL,
+            self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE,
+            self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE_LEVEL,
+            self.NATIVE_HELPER_OP_JASS_UNIT_SCALE,
+            self.NATIVE_HELPER_OP_JASS_WORLD_BOOL,
+            self.NATIVE_HELPER_OP_JASS_UNIT_INT_QUERY,
+            self.NATIVE_HELPER_OP_JASS_EXPLODE_UNIT,
+            self.NATIVE_HELPER_OP_JASS_TAKE_OWNERSHIP,
+            self.NATIVE_HELPER_OP_JASS_CREATE_LOCAL_UNIT,
+            self.NATIVE_HELPER_OP_JASS_CLEAR_INVENTORY,
+            self.NATIVE_HELPER_OP_JASS_SET_LOCAL_TECH,
+            self.NATIVE_HELPER_OP_JASS_SET_LOCAL_XP_RATE,
+            self.NATIVE_HELPER_OP_JASS_KILL_OWNER_UNITS,
+            self.NATIVE_HELPER_OP_JASS_MULTI_ARG,
+            self.NATIVE_HELPER_OP_JASS_PEACE_MODE,
+            self.NATIVE_HELPER_OP_JASS_WORLD_INT_QUERY,
+            self.NATIVE_HELPER_OP_JASS_FOG_BOOL,
+            self.NATIVE_HELPER_OP_JASS_SET_INVENTORY_CHARGES,
+            self.NATIVE_HELPER_OP_JASS_DUPLICATE_INVENTORY,
+            self.NATIVE_HELPER_OP_JASS_DROP_INVENTORY,
+            self.NATIVE_HELPER_OP_JASS_REMOVE_ALL_ABILITIES,
+            self.NATIVE_HELPER_OP_QUERY_WORLD_POINT,
+            self.NATIVE_HELPER_OP_JASS_SET_UNIT_POSITION,
+            self.NATIVE_HELPER_OP_CREATE_ALL_ITEMS,
+            self.NATIVE_HELPER_OP_REMOVE_ITEM_HANDLES,
+            self.NATIVE_HELPER_OP_REMOVE_ITEM_HANDLES_ARG,
+            self.NATIVE_HELPER_OP_DIRECT_ABILITY_TARGET,
+            self.NATIVE_HELPER_OP_DIRECT_ABILITY_IMMEDIATE,
+            self.NATIVE_HELPER_OP_DIRECT_ABILITY_POINT,
+            self.NATIVE_HELPER_OP_DIRECT_ABILITY_NOARG_DERIVED,
+            self.NATIVE_HELPER_OP_DIRECT_ABILITY_BUFF,
+            self.NATIVE_HELPER_OP_DIRECT_ABILITY_ENUM,
+            self.NATIVE_HELPER_OP_JASS_ABILITY_REAL_LEVEL_FIELD_SET,
+            self.NATIVE_HELPER_OP_JASS_UNIT_RESOLVE,
         }
         if any(kind not in allowed_kinds for kind, _rawcode, _handler, _arg0, _arg1 in op_list):
-            raise RuntimeError("native helper 仅允许结构化验证后的 ability/物品/智力/实验选择操作")
-        unit_kinds = allowed_kinds.difference(
-            {
-                self.NATIVE_HELPER_OP_JASS_SELECTED_UNIT,
-                self.NATIVE_HELPER_OP_JASS_SELECTED_UNIT_ARG,
-                self.NATIVE_HELPER_OP_JASS_LOCAL_PLAYER_QUERY,
-                self.NATIVE_HELPER_OP_JASS_LOCAL_PLAYER_SET,
-            }
-        )
+            raise RuntimeError("native helper 仅允许结构化验证后的白名单操作")
+        unit_kinds = {
+            self.NATIVE_HELPER_OP_INTERNAL_ABILITY_BEGIN,
+            self.NATIVE_HELPER_OP_INTERNAL_ABILITY_FIND,
+            self.NATIVE_HELPER_OP_INTERNAL_ABILITY_ADD,
+            self.NATIVE_HELPER_OP_INTERNAL_ABILITY_END,
+            self.NATIVE_HELPER_OP_INTERNAL_ABILITY_REFRESH,
+            self.NATIVE_HELPER_OP_INTERNAL_ABILITY_REMOVE,
+            self.NATIVE_HELPER_OP_SET_ITEM_CHARGES,
+            self.NATIVE_HELPER_OP_REMOVE_ITEM_SLOT,
+            self.NATIVE_HELPER_OP_ADD_ITEM_TO_SLOT_BY_ID,
+            self.NATIVE_HELPER_OP_GET_ITEM_TYPE_IN_SLOT,
+            self.NATIVE_HELPER_OP_SET_HERO_INT,
+            self.NATIVE_HELPER_OP_GET_HERO_INT,
+            self.NATIVE_HELPER_OP_JASS_UNIT_VOID,
+            self.NATIVE_HELPER_OP_JASS_UNIT_BOOL,
+            self.NATIVE_HELPER_OP_JASS_UNIT_INT_BOOL,
+            self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE,
+            self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE_LEVEL,
+            self.NATIVE_HELPER_OP_JASS_UNIT_SCALE,
+            self.NATIVE_HELPER_OP_JASS_UNIT_INT_QUERY,
+            self.NATIVE_HELPER_OP_JASS_EXPLODE_UNIT,
+            self.NATIVE_HELPER_OP_JASS_TAKE_OWNERSHIP,
+            self.NATIVE_HELPER_OP_JASS_CLEAR_INVENTORY,
+            self.NATIVE_HELPER_OP_JASS_KILL_OWNER_UNITS,
+            self.NATIVE_HELPER_OP_JASS_SET_INVENTORY_CHARGES,
+            self.NATIVE_HELPER_OP_JASS_DUPLICATE_INVENTORY,
+            self.NATIVE_HELPER_OP_JASS_DROP_INVENTORY,
+            self.NATIVE_HELPER_OP_JASS_REMOVE_ALL_ABILITIES,
+            self.NATIVE_HELPER_OP_JASS_SET_UNIT_POSITION,
+            self.NATIVE_HELPER_OP_DIRECT_ABILITY_TARGET,
+            self.NATIVE_HELPER_OP_DIRECT_ABILITY_IMMEDIATE,
+            self.NATIVE_HELPER_OP_DIRECT_ABILITY_POINT,
+            self.NATIVE_HELPER_OP_DIRECT_ABILITY_NOARG_DERIVED,
+            self.NATIVE_HELPER_OP_DIRECT_ABILITY_BUFF,
+            self.NATIVE_HELPER_OP_DIRECT_ABILITY_ENUM,
+            self.NATIVE_HELPER_OP_JASS_ABILITY_REAL_LEVEL_FIELD_SET,
+            self.NATIVE_HELPER_OP_JASS_UNIT_RESOLVE,
+        }
         if any(kind in unit_kinds for kind, _rawcode, _handler, _arg0, _arg1 in op_list) and not unit_address:
             raise RuntimeError("当前单位缺少运行时 unit 指针，不能调用 native helper")
         command_path = self._native_helper_command_path()
@@ -1742,18 +2283,1951 @@ class War3Trainer:
                     150,
                     ctypes.byref(message_result),
                 )
-                if not sent:
-                    raise TimeoutError("Warcraft III 窗口线程未响应 native helper 消息")
-                data = command_path.read_bytes()
+                data = self._read_native_helper_command(command_path)
+                if data is None:
+                    time.sleep(0.01)
+                    continue
                 last_status = struct.unpack_from("<I", data, 8)[0]
                 if last_status != self.NATIVE_HELPER_STATUS_PENDING:
                     return self._parse_native_helper_results(data, len(op_list))
+                if not sent:
+                    time.sleep(0.02)
+                    continue
                 time.sleep(0.02)
             raise TimeoutError(f"native helper 执行超时：status={last_status}")
         finally:
             if hook:
                 user32.UnhookWindowsHookEx(hook)
             kernel32.FreeLibrary(module)
+
+    @staticmethod
+    def _float_bits(value: float) -> int:
+        return struct.unpack("<I", struct.pack("<f", float(value)))[0]
+
+    @staticmethod
+    def _float_from_bits(value: int) -> float:
+        return struct.unpack("<f", struct.pack("<I", int(value) & 0xFFFFFFFF))[0]
+
+    def _elephant_handlers(
+        self,
+        pm: ProcessMemory,
+        names: Iterable[str],
+    ) -> dict[str, NativeHandler]:
+        self._discover_native_handlers_near_table(pm, self.ELEPHANT_NATIVE_NAMES)
+        return {name: self._native_handlers[name] for name in names}
+
+    def _elephant_selected_candidate(self, pm: ProcessMemory) -> UnitCandidate:
+        candidate = self.locate_selected_unit_by_handle(pm, allow_deep_scan=True)
+        candidate = self._candidate_with_selected_unit_type_id(pm, candidate)
+        return candidate
+
+    def _elephant_selected_handle(self, pm: ProcessMemory) -> int:
+        handlers = self._elephant_handlers(
+            pm,
+            (
+                "CreateGroup",
+                "GetLocalPlayer",
+                "GroupEnumUnitsSelected",
+                "FirstOfGroup",
+                "GetHandleId",
+                "DestroyGroup",
+            ),
+        )
+        results = self._run_native_helper_ops(
+            0,
+            (
+                (
+                    self.NATIVE_HELPER_OP_JASS_SELECTED_UNIT,
+                    0,
+                    handlers["CreateGroup"].handler_address,
+                    0,
+                    handlers["GetLocalPlayer"].handler_address,
+                ),
+                (
+                    self.NATIVE_HELPER_OP_JASS_SELECTED_UNIT_ARG,
+                    0,
+                    handlers["GroupEnumUnitsSelected"].handler_address,
+                    handlers["FirstOfGroup"].handler_address,
+                    handlers["GetHandleId"].handler_address,
+                ),
+                (
+                    self.NATIVE_HELPER_OP_JASS_SELECTED_UNIT_ARG,
+                    0,
+                    handlers["DestroyGroup"].handler_address,
+                    0,
+                    0,
+                ),
+            ),
+        )
+        unit_handle = int(results[0].result)
+        if not unit_handle:
+            raise RuntimeError("游戏当前没有可操作的选中单位")
+        return unit_handle
+
+    def _direct_selected_context(self) -> tuple[UnitCandidate, int]:
+        for _attempt in range(3):
+            with ProcessMemory(self.pid) as pm:
+                candidate = self._elephant_selected_candidate(pm)
+                unit_handle = self._elephant_selected_handle(pm)
+            resolved_unit = self._resolve_jass_unit_handle(unit_handle)
+            if resolved_unit == candidate.unit_address:
+                return candidate, unit_handle
+            time.sleep(0.02)
+        raise RuntimeError("选中单位在操作期间发生变化，请重新执行")
+
+    def _resolve_jass_unit_handle(self, unit_handle: int, *, allow_missing: bool = False) -> int:
+        if not unit_handle:
+            return 0
+        with ProcessMemory(self.pid) as pm:
+            resolver = self._discover_jass_unit_resolver(pm)
+        try:
+            return int(self._run_native_helper_ops(
+                unit_handle,
+                ((
+                    self.NATIVE_HELPER_OP_JASS_UNIT_RESOLVE,
+                    0,
+                    resolver,
+                    0,
+                    0,
+                ),),
+            )[0].result)
+        except RuntimeError as exc:
+            if allow_missing and (
+                f"error={ERROR_NOT_FOUND}" in str(exc)
+                or f"last_error={ERROR_NOT_FOUND}" in str(exc)
+            ):
+                return 0
+            raise
+
+    def _remove_captured_engine_ability_instance(
+        self,
+        candidate: UnitCandidate,
+        unit_handle: int,
+        data_address: int,
+    ) -> None:
+        resolved_unit = self._resolve_jass_unit_handle(unit_handle, allow_missing=True)
+        if not resolved_unit:
+            return
+        if resolved_unit != candidate.unit_address:
+            raise RuntimeError(
+                "临时技能清理前单位身份已变化："
+                f"0x{resolved_unit:x}!=0x{candidate.unit_address:x}"
+            )
+        with ProcessMemory(self.pid) as pm:
+            self._remove_engine_ability_instance(pm, candidate, data_address)
+
+    def prewarm_elephant_functions(self) -> int:
+        with ProcessMemory(self.pid) as pm:
+            handlers = self._discover_native_handlers_near_table(pm, self.ELEPHANT_NATIVE_NAMES)
+        return len(handlers)
+
+    def get_selected_hero_level(self) -> int:
+        with ProcessMemory(self.pid) as pm:
+            unit_handle = self._elephant_selected_handle(pm)
+            handlers = self._elephant_handlers(pm, ("GetHeroLevel",))
+        result = self._run_native_helper_ops(
+            unit_handle,
+            ((
+                self.NATIVE_HELPER_OP_JASS_UNIT_INT_QUERY,
+                0,
+                handlers["GetHeroLevel"].handler_address,
+                0,
+                0,
+            ),),
+        )[0].result
+        return int(result & 0xFFFFFFFF)
+
+    def set_selected_hero_level(self, level: int) -> int:
+        target = int(level)
+        if not 1 <= target <= 100000:
+            raise ValueError("英雄等级必须在 1 到 100000 之间")
+        with ProcessMemory(self.pid) as pm:
+            unit_handle = self._elephant_selected_handle(pm)
+            handlers = self._elephant_handlers(
+                pm,
+                (
+                    "SetHeroLevel",
+                    "GetHeroLevel",
+                    "UnitStripHeroLevel",
+                    "SuspendHeroXP",
+                    "IsSuspendedXP",
+                ),
+            )
+        current = int(self._run_native_helper_ops(
+            unit_handle,
+            ((
+                self.NATIVE_HELPER_OP_JASS_UNIT_INT_QUERY,
+                0,
+                handlers["GetHeroLevel"].handler_address,
+                0,
+                0,
+            ),),
+        )[0].result & 0xFFFFFFFF)
+        if target > current:
+            suspended = bool(self._run_native_helper_ops(
+                unit_handle,
+                ((
+                    self.NATIVE_HELPER_OP_JASS_UNIT_INT_QUERY,
+                    0,
+                    handlers["IsSuspendedXP"].handler_address,
+                    0,
+                    0,
+                ),),
+            )[0].result & 1)
+            if suspended:
+                self._run_native_helper_ops(
+                    unit_handle,
+                    ((
+                        self.NATIVE_HELPER_OP_JASS_UNIT_BOOL,
+                        0,
+                        handlers["SuspendHeroXP"].handler_address,
+                        0,
+                        0,
+                    ),),
+                )
+            try:
+                self._run_native_helper_ops(
+                    unit_handle,
+                    ((
+                        self.NATIVE_HELPER_OP_JASS_UNIT_INT_BOOL,
+                        target,
+                        handlers["SetHeroLevel"].handler_address,
+                        1,
+                        0,
+                    ),),
+                )
+            finally:
+                if suspended:
+                    self._run_native_helper_ops(
+                        unit_handle,
+                        ((
+                            self.NATIVE_HELPER_OP_JASS_UNIT_BOOL,
+                            1,
+                            handlers["SuspendHeroXP"].handler_address,
+                            0,
+                            0,
+                        ),),
+                    )
+        elif target < current:
+            result = self._run_native_helper_ops(
+                unit_handle,
+                ((
+                    self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE,
+                    current - target,
+                    handlers["UnitStripHeroLevel"].handler_address,
+                    0,
+                    0,
+                ),),
+            )[0].result
+            if not result:
+                raise RuntimeError("游戏拒绝降低英雄等级")
+        actual = int(self._run_native_helper_ops(
+            unit_handle,
+            ((
+                self.NATIVE_HELPER_OP_JASS_UNIT_INT_QUERY,
+                0,
+                handlers["GetHeroLevel"].handler_address,
+                0,
+                0,
+            ),),
+        )[0].result & 0xFFFFFFFF)
+        if actual != target:
+            raise RuntimeError(f"英雄等级写入后读回 {actual}，目标为 {target}")
+        return actual
+
+    def set_selected_unit_invulnerable(self, enabled: bool) -> None:
+        self._run_elephant_unit_bool("SetUnitInvulnerable", enabled)
+
+    def set_selected_hero_attributes(self, value: int) -> int:
+        target = int(value)
+        if not 0 <= target <= 1_000_000_000:
+            raise ValueError("英雄属性必须在 0 到 1000000000 之间")
+        with ProcessMemory(self.pid) as pm:
+            unit_handle = self._elephant_selected_handle(pm)
+            handlers = self._elephant_handlers(pm, ("SetHeroStr", "SetHeroAgi", "SetHeroInt"))
+        self._run_native_helper_ops(
+            unit_handle,
+            tuple(
+                (
+                    self.NATIVE_HELPER_OP_JASS_UNIT_INT_BOOL,
+                    target,
+                    handlers[name].handler_address,
+                    1,
+                    0,
+                )
+                for name in ("SetHeroStr", "SetHeroAgi", "SetHeroInt")
+            ),
+        )
+        return target
+
+    def add_selected_hero_skill_points(self, amount: int = 1) -> int:
+        delta = int(amount)
+        if not 1 <= delta <= 1_000_000:
+            raise ValueError("增加技能点数必须在 1 到 1000000 之间")
+        with ProcessMemory(self.pid) as pm:
+            unit_handle = self._elephant_selected_handle(pm)
+            handler = self._elephant_handlers(
+                pm,
+                ("UnitModifySkillPoints",),
+            )["UnitModifySkillPoints"].handler_address
+        result = int(self._run_native_helper_ops(
+            unit_handle,
+            ((self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE, delta, handler, 0, 0),),
+        )[0].result)
+        if not result:
+            raise RuntimeError("游戏拒绝增加英雄技能点")
+        return delta
+
+    def is_selected_unit_invulnerable(self) -> bool:
+        return bool(self._query_elephant_unit_int("BlzIsUnitInvulnerable"))
+
+    def set_selected_unit_pathing(self, enabled: bool) -> None:
+        self._run_elephant_unit_bool("SetUnitPathing", enabled)
+
+    def set_selected_unit_paused(self, enabled: bool) -> None:
+        self._run_elephant_unit_bool("PauseUnit", enabled)
+
+    def is_selected_unit_paused(self) -> bool:
+        return bool(self._query_elephant_unit_int("IsUnitPaused"))
+
+    def _query_elephant_unit_int(self, native_name: str) -> int:
+        with ProcessMemory(self.pid) as pm:
+            unit_handle = self._elephant_selected_handle(pm)
+            handlers = self._elephant_handlers(pm, (native_name,))
+        return int(self._run_native_helper_ops(
+            unit_handle,
+            ((
+                self.NATIVE_HELPER_OP_JASS_UNIT_INT_QUERY,
+                0,
+                handlers[native_name].handler_address,
+                0,
+                0,
+            ),),
+        )[0].result)
+
+    def _run_elephant_unit_bool(self, native_name: str, enabled: bool) -> None:
+        with ProcessMemory(self.pid) as pm:
+            unit_handle = self._elephant_selected_handle(pm)
+            handlers = self._elephant_handlers(pm, (native_name,))
+        self._run_native_helper_ops(
+            unit_handle,
+            ((
+                self.NATIVE_HELPER_OP_JASS_UNIT_BOOL,
+                1 if enabled else 0,
+                handlers[native_name].handler_address,
+                0,
+                0,
+            ),),
+        )
+
+    def _run_elephant_unit_void(self, native_name: str) -> None:
+        with ProcessMemory(self.pid) as pm:
+            unit_handle = self._elephant_selected_handle(pm)
+            handlers = self._elephant_handlers(pm, (native_name,))
+        self._run_native_helper_ops(
+            unit_handle,
+            ((
+                self.NATIVE_HELPER_OP_JASS_UNIT_VOID,
+                0,
+                handlers[native_name].handler_address,
+                0,
+                0,
+            ),),
+        )
+
+    def reset_selected_unit_cooldown(self) -> None:
+        self._run_elephant_unit_void("UnitResetCooldown")
+
+    def kill_selected_unit(self) -> None:
+        self._run_elephant_unit_void("KillUnit")
+
+    def remove_selected_unit(self) -> None:
+        self._run_elephant_unit_void("RemoveUnit")
+
+    def explode_selected_unit(self) -> None:
+        with ProcessMemory(self.pid) as pm:
+            unit_handle = self._elephant_selected_handle(pm)
+            handlers = self._elephant_handlers(pm, ("SetUnitExploded", "KillUnit"))
+        self._run_native_helper_ops(
+            unit_handle,
+            ((
+                self.NATIVE_HELPER_OP_JASS_EXPLODE_UNIT,
+                0,
+                handlers["SetUnitExploded"].handler_address,
+                handlers["KillUnit"].handler_address,
+                0,
+            ),),
+        )
+
+    def set_selected_unit_scale(self, scale: float) -> float:
+        target = float(scale)
+        if not 0.01 <= target <= 100.0:
+            raise ValueError("单位大小必须在 0.01 到 100 之间")
+        with ProcessMemory(self.pid) as pm:
+            unit_handle = self._elephant_selected_handle(pm)
+            handlers = self._elephant_handlers(pm, ("SetUnitScale",))
+        self._run_native_helper_ops(
+            unit_handle,
+            ((
+                self.NATIVE_HELPER_OP_JASS_UNIT_SCALE,
+                self._float_bits(target),
+                handlers["SetUnitScale"].handler_address,
+                0,
+                0,
+            ),),
+        )
+        return target
+
+    def query_mouse_world_position(self) -> tuple[float, float]:
+        packed = int(self._run_native_helper_ops(
+            0,
+            ((
+                self.NATIVE_HELPER_OP_QUERY_WORLD_POINT,
+                0,
+                0,
+                0,
+                0,
+            ),),
+        )[0].result)
+        x = self._float_from_bits(packed)
+        y = self._float_from_bits(packed >> 32)
+        if not math.isfinite(x) or not math.isfinite(y):
+            raise RuntimeError("游戏返回的鼠标世界坐标无效")
+        if abs(x) > 1_000_000.0 or abs(y) > 1_000_000.0:
+            raise RuntimeError(f"游戏返回的鼠标世界坐标超出范围：({x:g}, {y:g})")
+        return x, y
+
+    def set_selected_unit_position(self, x: float, y: float) -> tuple[float, float]:
+        target_x = float(x)
+        target_y = float(y)
+        if not math.isfinite(target_x) or not math.isfinite(target_y):
+            raise ValueError("单位坐标必须是有限数值")
+        if abs(target_x) > 1_000_000.0 or abs(target_y) > 1_000_000.0:
+            raise ValueError("单位坐标超出允许范围")
+        with ProcessMemory(self.pid) as pm:
+            unit_handle = self._elephant_selected_handle(pm)
+            handler = self._elephant_handlers(pm, ("SetUnitPosition",))[
+                "SetUnitPosition"
+            ].handler_address
+        self._run_native_helper_ops(
+            unit_handle,
+            ((
+                self.NATIVE_HELPER_OP_JASS_SET_UNIT_POSITION,
+                self._float_bits(target_x),
+                handler,
+                self._float_bits(target_y),
+                0,
+            ),),
+        )
+        return target_x, target_y
+
+    def move_selected_unit_to_mouse(self) -> tuple[float, float]:
+        x, y = self.query_mouse_world_position()
+        return self.set_selected_unit_position(x, y)
+
+    def _run_direct_selected_ability(
+        self,
+        rawcode: int | str,
+        op_kind: int,
+        vtable_offset: int,
+        arg1: int,
+    ) -> int:
+        with self._native_helper_transaction():
+            return self._run_direct_selected_ability_locked(
+                rawcode,
+                op_kind,
+                vtable_offset,
+                arg1,
+            )
+
+    def _run_direct_selected_ability_locked(
+        self,
+        rawcode: int | str,
+        op_kind: int,
+        vtable_offset: int,
+        arg1: int,
+    ) -> int:
+        ability_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
+        if not ability_rawcode:
+            raise ValueError("技能 ID 无效")
+        added = False
+        candidate: UnitCandidate | None = None
+        ability_data = 0
+        try:
+            candidate, unit_handle = self._direct_selected_context()
+            with ProcessMemory(self.pid) as pm:
+                get_level = self._elephant_handlers(
+                    pm,
+                    ("GetUnitAbilityLevel",),
+                )["GetUnitAbilityLevel"].handler_address
+            level = int(self._run_native_helper_ops(
+                unit_handle,
+                ((
+                    self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE_LEVEL,
+                    ability_rawcode,
+                    get_level,
+                    0,
+                    0,
+                ),),
+            )[0].result)
+            if not level:
+                with ProcessMemory(self.pid) as pm:
+                    created_instance, added = self._create_engine_ability_instance(
+                        pm,
+                        candidate,
+                        ability_rawcode,
+                        require_wrapper=False,
+                    )
+                    ability_data = created_instance.data_address
+            with ProcessMemory(self.pid) as pm:
+                assert candidate is not None
+                ability_data = ability_data or self._find_engine_ability_data(
+                    pm,
+                    candidate,
+                    ability_rawcode,
+                )
+                if not ability_data:
+                    raise RuntimeError(
+                        f"找不到 {format_rawcode(ability_rawcode)} 的运行时技能实例"
+                    )
+                ability_vtable = pm.read_u64(ability_data)
+                direct_handler = pm.read_u64(ability_vtable + int(vtable_offset))
+                if not self._is_executable_image_address(pm.regions(), direct_handler):
+                    raise RuntimeError("技能直接效果回调不在游戏可执行代码段")
+                target_unit = candidate.unit_address
+            return int(self._run_native_helper_ops(
+                target_unit,
+                ((
+                    op_kind,
+                    ability_rawcode,
+                    direct_handler,
+                    ability_data,
+                    arg1,
+                ),),
+            )[0].result)
+        finally:
+            if added and candidate is not None and ability_data:
+                self._remove_captured_engine_ability_instance(
+                    candidate,
+                    unit_handle,
+                    ability_data,
+                )
+
+    def apply_direct_ability_to_selected_unit(self, rawcode: int | str) -> int:
+        return self._run_direct_selected_ability(
+            rawcode,
+            self.NATIVE_HELPER_OP_DIRECT_ABILITY_TARGET,
+            0xA70,
+            0,
+        )
+
+    def apply_direct_immediate_ability(self, rawcode: int | str) -> int:
+        return self._run_direct_selected_ability(
+            rawcode,
+            self.NATIVE_HELPER_OP_DIRECT_ABILITY_IMMEDIATE,
+            0x998,
+            0,
+        )
+
+    def apply_direct_noarg_derived_ability(self, rawcode: int | str) -> int:
+        return self._run_direct_selected_ability(
+            rawcode,
+            self.NATIVE_HELPER_OP_DIRECT_ABILITY_NOARG_DERIVED,
+            0xA78,
+            0,
+        )
+
+    def _discover_jass_unit_resolver(self, pm: ProcessMemory) -> int:
+        if self._jass_unit_resolver_address:
+            if self._is_executable_image_address(pm.regions(), self._jass_unit_resolver_address):
+                return self._jass_unit_resolver_address
+            self._jass_unit_resolver_address = 0
+        add_handler = self._elephant_handlers(pm, ("UnitAddAbility",))["UnitAddAbility"].handler_address
+        calls = self._rel32_calls_in_function(pm, add_handler)
+        if len(calls) < 2:
+            raise RuntimeError("UnitAddAbility 未暴露可验证的单位句柄解析函数")
+        resolver = calls[0]
+        if not self._is_executable_image_address(pm.regions(), resolver):
+            raise RuntimeError("单位句柄解析函数不在游戏可执行代码段")
+        self._jass_unit_resolver_address = resolver
+        return resolver
+
+    def _discover_buff_data_constructor(self, pm: ProcessMemory, effect_handler: int) -> int:
+        if self._buff_data_constructor_address:
+            if self._is_executable_image_address(pm.regions(), self._buff_data_constructor_address):
+                return self._buff_data_constructor_address
+            self._buff_data_constructor_address = 0
+        signature = b"\xc7\x41\x20\xff\xff\xff\xff"
+        for address in self._rel32_calls_in_function(pm, effect_handler, max_bytes=0x500):
+            try:
+                code = pm.read(address, 0x180)
+            except OSError:
+                continue
+            if signature not in code[:0x40]:
+                continue
+            if not self._is_executable_image_address(pm.regions(), address):
+                continue
+            self._buff_data_constructor_address = address
+            return address
+        raise RuntimeError("未能从技能效果函数中定位 SBuffData 构造函数")
+
+    def apply_direct_roar_buff_to_selected_unit(self, rawcode: int | str) -> int:
+        with self._native_helper_transaction():
+            return self._apply_direct_roar_buff_to_selected_unit_locked(rawcode)
+
+    def _apply_direct_roar_buff_to_selected_unit_locked(self, rawcode: int | str) -> int:
+        ability_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
+        if not ability_rawcode:
+            raise ValueError("技能 ID 无效")
+        added = False
+        candidate: UnitCandidate | None = None
+        ability_data = 0
+        try:
+            candidate, unit_handle = self._direct_selected_context()
+            with ProcessMemory(self.pid) as pm:
+                get_level = self._elephant_handlers(
+                    pm,
+                    ("GetUnitAbilityLevel",),
+                )["GetUnitAbilityLevel"].handler_address
+            level = int(self._run_native_helper_ops(
+                unit_handle,
+                ((
+                    self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE_LEVEL,
+                    ability_rawcode,
+                    get_level,
+                    0,
+                    0,
+                ),),
+            )[0].result)
+            if not level:
+                with ProcessMemory(self.pid) as pm:
+                    created_instance, added = self._create_engine_ability_instance(
+                        pm,
+                        candidate,
+                        ability_rawcode,
+                        require_wrapper=False,
+                    )
+                    ability_data = created_instance.data_address
+            with ProcessMemory(self.pid) as pm:
+                assert candidate is not None
+                ability_data = ability_data or self._find_engine_ability_data(
+                    pm,
+                    candidate,
+                    ability_rawcode,
+                )
+                if not ability_data:
+                    raise RuntimeError(
+                        f"找不到 {format_rawcode(ability_rawcode)} 的运行时技能实例"
+                    )
+                ability_vtable = pm.read_u64(ability_data)
+                effect_handler = pm.read_u64(ability_vtable + 0x998)
+                buff_handler = pm.read_u64(ability_vtable + 0xA00)
+                constructor = self._discover_buff_data_constructor(pm, effect_handler)
+                regions = pm.regions()
+                for label, address in (("AddBuff", buff_handler), ("SBuffData", constructor)):
+                    if not self._is_executable_image_address(regions, address):
+                        raise RuntimeError(f"{label} 回调不在游戏可执行代码段")
+                target_unit = candidate.unit_address
+            return int(self._run_native_helper_ops(
+                target_unit,
+                ((
+                    self.NATIVE_HELPER_OP_DIRECT_ABILITY_BUFF,
+                    ability_rawcode,
+                    buff_handler,
+                    ability_data,
+                    constructor,
+                ),),
+            )[0].result)
+        finally:
+            if added and candidate is not None and ability_data:
+                self._remove_captured_engine_ability_instance(
+                    candidate,
+                    unit_handle,
+                    ability_data,
+                )
+
+    def _run_direct_ability_over_enemy_units(
+        self,
+        rawcode: int | str,
+        mode: str,
+        *,
+        success_limit: int = 0,
+    ) -> tuple[int, int]:
+        with self._native_helper_transaction():
+            return self._run_direct_ability_over_enemy_units_locked(
+                rawcode,
+                mode,
+                success_limit=success_limit,
+            )
+
+    def _run_direct_ability_over_enemy_units_locked(
+        self,
+        rawcode: int | str,
+        mode: str,
+        *,
+        success_limit: int = 0,
+    ) -> tuple[int, int]:
+        ability_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
+        mode_values = {"target": (0, 0xA70), "point": (1, 0xA58)}
+        if mode not in mode_values:
+            raise ValueError(f"不支持的全图直接效果类型：{mode}")
+        target_limit = int(success_limit)
+        if not 0 <= target_limit <= 0xFFFF:
+            raise ValueError("成功目标上限必须在 0 到 65535 之间")
+        mode_value, vtable_offset = mode_values[mode]
+        added = False
+        candidate: UnitCandidate | None = None
+        ability_data = 0
+        try:
+            candidate, unit_handle = self._direct_selected_context()
+            with ProcessMemory(self.pid) as pm:
+                handlers = self._elephant_handlers(
+                    pm,
+                    (
+                        "GetUnitAbilityLevel",
+                        "GetOwningPlayer",
+                        "CreateGroup",
+                        "GroupEnumUnitsOfPlayer",
+                        "FirstOfGroup",
+                        "GroupRemoveUnit",
+                        "DestroyGroup",
+                        "Player",
+                        "GetUnitTypeId",
+                        "GetWidgetLife",
+                        "GetUnitX",
+                        "GetUnitY",
+                        "IsPlayerEnemy",
+                    ),
+                )
+                resolver = self._discover_jass_unit_resolver(pm)
+            level = int(self._run_native_helper_ops(
+                unit_handle,
+                ((
+                    self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE_LEVEL,
+                    ability_rawcode,
+                    handlers["GetUnitAbilityLevel"].handler_address,
+                    0,
+                    0,
+                ),),
+            )[0].result)
+            if not level:
+                with ProcessMemory(self.pid) as pm:
+                    created_instance, added = self._create_engine_ability_instance(
+                        pm,
+                        candidate,
+                        ability_rawcode,
+                        require_wrapper=False,
+                    )
+                    ability_data = created_instance.data_address
+            with ProcessMemory(self.pid) as pm:
+                assert candidate is not None
+                ability_data = ability_data or self._find_engine_ability_data(
+                    pm,
+                    candidate,
+                    ability_rawcode,
+                )
+                if not ability_data:
+                    raise RuntimeError(
+                        f"找不到 {format_rawcode(ability_rawcode)} 的运行时技能实例"
+                    )
+                ability_vtable = pm.read_u64(ability_data)
+                direct_handler = pm.read_u64(ability_vtable + vtable_offset)
+                if not self._is_executable_image_address(pm.regions(), direct_handler):
+                    raise RuntimeError("技能直接效果回调不在游戏可执行代码段")
+            flags = mode_value | (target_limit << 16)
+            result = self._run_native_helper_ops(
+                unit_handle,
+                (
+                    (
+                        self.NATIVE_HELPER_OP_DIRECT_ABILITY_ENUM,
+                        ability_rawcode,
+                        direct_handler,
+                        ability_data,
+                        flags,
+                    ),
+                    (
+                        self.NATIVE_HELPER_OP_JASS_MULTI_ARG,
+                        0,
+                        handlers["GetOwningPlayer"].handler_address,
+                        handlers["CreateGroup"].handler_address,
+                        handlers["GroupEnumUnitsOfPlayer"].handler_address,
+                    ),
+                    (
+                        self.NATIVE_HELPER_OP_JASS_MULTI_ARG,
+                        0,
+                        handlers["FirstOfGroup"].handler_address,
+                        handlers["GroupRemoveUnit"].handler_address,
+                        handlers["DestroyGroup"].handler_address,
+                    ),
+                    (
+                        self.NATIVE_HELPER_OP_JASS_MULTI_ARG,
+                        0,
+                        handlers["Player"].handler_address,
+                        handlers["GetUnitTypeId"].handler_address,
+                        handlers["GetWidgetLife"].handler_address,
+                    ),
+                    (
+                        self.NATIVE_HELPER_OP_JASS_MULTI_ARG,
+                        0,
+                        handlers["GetUnitX"].handler_address,
+                        handlers["GetUnitY"].handler_address,
+                        handlers["IsPlayerEnemy"].handler_address,
+                    ),
+                    (
+                        self.NATIVE_HELPER_OP_JASS_MULTI_ARG,
+                        vtable_offset,
+                        resolver,
+                        110000,
+                        0,
+                    ),
+                ),
+                timeout_ms=120000,
+            )[0]
+            packed = int(result.result)
+            attempts = (packed >> 32) & 0xFFFFFFFF
+            successes = packed & 0xFFFFFFFF
+            if len(result.extra_results) != successes:
+                raise RuntimeError(
+                    f"全图技能返回的目标数量异常：{len(result.extra_results)}!={successes}"
+                )
+            return attempts, successes
+        finally:
+            if added and candidate is not None and ability_data:
+                self._remove_captured_engine_ability_instance(
+                    candidate,
+                    unit_handle,
+                    ability_data,
+                )
+
+    def get_selected_unit_position(self) -> tuple[float, float]:
+        with ProcessMemory(self.pid) as pm:
+            unit_handle = self._elephant_selected_handle(pm)
+            handlers = self._elephant_handlers(pm, ("GetUnitX", "GetUnitY"))
+        results = self._run_native_helper_ops(
+            unit_handle,
+            (
+                (
+                    self.NATIVE_HELPER_OP_JASS_UNIT_INT_QUERY,
+                    0,
+                    handlers["GetUnitX"].handler_address,
+                    0,
+                    0,
+                ),
+                (
+                    self.NATIVE_HELPER_OP_JASS_UNIT_INT_QUERY,
+                    0,
+                    handlers["GetUnitY"].handler_address,
+                    0,
+                    0,
+                ),
+            ),
+        )
+        return self._float_from_bits(results[0].result), self._float_from_bits(results[1].result)
+
+    def apply_direct_point_ability(
+        self,
+        rawcode: int | str,
+        x: float | None = None,
+        y: float | None = None,
+    ) -> int:
+        if x is None or y is None:
+            x, y = self.get_selected_unit_position()
+        target_x = float(x)
+        target_y = float(y)
+        if not math.isfinite(target_x) or not math.isfinite(target_y):
+            raise ValueError("技能目标坐标必须是有限数值")
+        packed = self._float_bits(target_x) | (self._float_bits(target_y) << 32)
+        return self._run_direct_selected_ability(
+            rawcode,
+            self.NATIVE_HELPER_OP_DIRECT_ABILITY_POINT,
+            0xA58,
+            packed,
+        )
+
+    def enable_selected_toggle_ability(
+        self,
+        rawcode: int | str,
+        order_id: int,
+    ) -> int:
+        with self._native_helper_transaction():
+            return self._enable_selected_toggle_ability_locked(rawcode, order_id)
+
+    def _enable_selected_toggle_ability_locked(
+        self,
+        rawcode: int | str,
+        order_id: int,
+    ) -> int:
+        ability_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
+        if not ability_rawcode:
+            raise ValueError("技能 ID 无效")
+        with ProcessMemory(self.pid) as pm:
+            unit_handle = self._elephant_selected_handle(pm)
+            handlers = self._elephant_handlers(
+                pm,
+                (
+                    "GetUnitAbilityLevel",
+                    "UnitAddAbility",
+                    "BlzUnitHideAbility",
+                    "IssueImmediateOrderById",
+                ),
+            )
+        level = int(self._run_native_helper_ops(
+            unit_handle,
+            ((
+                self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE_LEVEL,
+                ability_rawcode,
+                handlers["GetUnitAbilityLevel"].handler_address,
+                0,
+                0,
+            ),),
+        )[0].result)
+        toggle_key = (unit_handle, ability_rawcode)
+        if level and toggle_key in self._hidden_toggle_abilities:
+            return 1
+        added = not level
+        if added:
+            add_result = int(self._run_native_helper_ops(
+                unit_handle,
+                ((
+                    self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE,
+                    ability_rawcode,
+                    handlers["UnitAddAbility"].handler_address,
+                    0,
+                    0,
+                ),),
+            )[0].result)
+            if not add_result:
+                raise RuntimeError(f"游戏未能添加 {format_rawcode(ability_rawcode)}")
+        if added:
+            self._run_native_helper_ops(
+                unit_handle,
+                ((
+                    self.NATIVE_HELPER_OP_JASS_UNIT_INT_BOOL,
+                    ability_rawcode,
+                    handlers["BlzUnitHideAbility"].handler_address,
+                    0,
+                    0,
+                ),),
+            )
+        issued = int(self._run_native_helper_ops(
+            unit_handle,
+            ((
+                self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE,
+                int(order_id),
+                handlers["IssueImmediateOrderById"].handler_address,
+                0,
+                0,
+            ),),
+        )[0].result)
+        if added:
+            self._run_native_helper_ops(
+                unit_handle,
+                ((
+                    self.NATIVE_HELPER_OP_JASS_UNIT_INT_BOOL,
+                    ability_rawcode,
+                    handlers["BlzUnitHideAbility"].handler_address,
+                    1,
+                    0,
+                ),),
+            )
+            if issued:
+                self._hidden_toggle_abilities.add(toggle_key)
+        return issued
+
+    def _run_selected_ability_effect(
+        self,
+        rawcode: int | str,
+        effect_kind: str,
+        *,
+        passes: int = 1,
+        area: float | None = None,
+        hold_seconds: float = 0.0,
+        point: tuple[float, float] | None = None,
+    ) -> tuple[int, int]:
+        with self._native_helper_transaction():
+            return self._run_selected_ability_effect_locked(
+                rawcode,
+                effect_kind,
+                passes=passes,
+                area=area,
+                hold_seconds=hold_seconds,
+                point=point,
+            )
+
+    def _run_selected_ability_effect_locked(
+        self,
+        rawcode: int | str,
+        effect_kind: str,
+        *,
+        passes: int = 1,
+        area: float | None = None,
+        hold_seconds: float = 0.0,
+        point: tuple[float, float] | None = None,
+    ) -> tuple[int, int]:
+        ability_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
+        effect_kinds = {
+            "immediate": (self.NATIVE_HELPER_OP_DIRECT_ABILITY_IMMEDIATE, 0x998),
+            "point": (self.NATIVE_HELPER_OP_DIRECT_ABILITY_POINT, 0xA58),
+            "noarg": (self.NATIVE_HELPER_OP_DIRECT_ABILITY_NOARG_DERIVED, 0xA78),
+        }
+        if effect_kind not in effect_kinds:
+            raise ValueError(f"不支持的技能直接效果类型：{effect_kind}")
+        pass_count = int(passes)
+        if not 1 <= pass_count <= 255:
+            raise ValueError("技能执行次数必须在 1 到 255 之间")
+        effect_op, vtable_offset = effect_kinds[effect_kind]
+        hold_duration = float(hold_seconds)
+        if not 0.0 <= hold_duration <= 120.0:
+            raise ValueError("技能效果保持时间必须在 0 到 120 秒之间")
+        if area is not None:
+            area = float(area)
+            if not math.isfinite(area) or not 1.0 <= area <= 1000000.0:
+                raise ValueError("技能作用范围无效")
+        if point is not None:
+            x, y = map(float, point)
+            if not math.isfinite(x) or not math.isfinite(y):
+                raise ValueError("技能目标坐标必须是有限数值")
+        elif effect_kind == "point":
+            x, y = self.get_selected_unit_position()
+        else:
+            x = y = 0.0
+
+        added = False
+        pending_key: tuple[int, int] | None = None
+        ability_handle = 0
+        original_area_bits: int | None = None
+        area_field = int.from_bytes(b"aare", "big")
+        area_level = 0
+        unit_handle = 0
+        remove_handler = 0
+        get_area_handler = 0
+        set_area_handler = 0
+        candidate: UnitCandidate | None = None
+        ability_data = 0
+        try:
+            candidate, unit_handle = self._direct_selected_context()
+            with ProcessMemory(self.pid) as pm:
+                handlers = self._elephant_handlers(
+                    pm,
+                    (
+                        "GetUnitAbilityLevel",
+                        "UnitRemoveAbility",
+                        "BlzGetUnitAbility",
+                        "BlzGetAbilityRealLevelField",
+                        "BlzSetAbilityRealLevelField",
+                        "BlzUnitHideAbility",
+                        "IssueImmediateOrderById",
+                    ),
+                )
+            if hold_duration:
+                pending_key = (unit_handle, ability_rawcode)
+                with self._pending_direct_effects_lock:
+                    if pending_key in self._pending_direct_effects:
+                        raise RuntimeError(
+                            f"{format_rawcode(ability_rawcode)} 的上一次效果仍在持续"
+                        )
+                    self._pending_direct_effects.add(pending_key)
+            level = int(self._run_native_helper_ops(
+                unit_handle,
+                ((
+                    self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE_LEVEL,
+                    ability_rawcode,
+                    handlers["GetUnitAbilityLevel"].handler_address,
+                    0,
+                    0,
+                ),),
+            )[0].result)
+            if not level:
+                with ProcessMemory(self.pid) as pm:
+                    created_instance, added = self._create_engine_ability_instance(
+                        pm,
+                        candidate,
+                        ability_rawcode,
+                        require_wrapper=False,
+                    )
+                    ability_data = created_instance.data_address
+                level = 1
+            area_level = max(0, level - 1)
+            remove_handler = handlers["UnitRemoveAbility"].handler_address
+            get_area_handler = handlers["BlzGetAbilityRealLevelField"].handler_address
+            set_area_handler = handlers["BlzSetAbilityRealLevelField"].handler_address
+            ability_handle = int(self._run_native_helper_ops(
+                unit_handle,
+                ((
+                    self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE,
+                    ability_rawcode,
+                    handlers["BlzGetUnitAbility"].handler_address,
+                    0,
+                    0,
+                ),),
+            )[0].result)
+            if not ability_handle:
+                raise RuntimeError(
+                    f"游戏未返回 {format_rawcode(ability_rawcode)} 的 ability handle"
+                )
+            if area is not None:
+                original_area_bits = int(self._run_native_helper_ops(
+                    ability_handle,
+                    ((
+                        self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE_LEVEL,
+                        area_field,
+                        handlers["BlzGetAbilityRealLevelField"].handler_address,
+                        area_level,
+                        0,
+                    ),),
+                )[0].result) & 0xFFFFFFFF
+                set_result = int(self._run_native_helper_ops(
+                    ability_handle,
+                    ((
+                        self.NATIVE_HELPER_OP_JASS_ABILITY_REAL_LEVEL_FIELD_SET,
+                        area_field,
+                        set_area_handler,
+                        area_level,
+                        self._float_bits(area),
+                    ),),
+                )[0].result)
+                if not set_result:
+                    raise RuntimeError("游戏拒绝临时放大技能作用范围")
+                actual_bits = int(self._run_native_helper_ops(
+                    ability_handle,
+                    ((
+                        self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE_LEVEL,
+                        area_field,
+                        handlers["BlzGetAbilityRealLevelField"].handler_address,
+                        area_level,
+                        0,
+                    ),),
+                )[0].result) & 0xFFFFFFFF
+                actual_area = self._float_from_bits(actual_bits)
+                if not math.isfinite(actual_area) or actual_area < area * 0.9:
+                    raise RuntimeError(f"技能作用范围写入未生效：{actual_area:g}")
+            if added and hold_duration:
+                self._run_native_helper_ops(
+                    unit_handle,
+                    ((
+                        self.NATIVE_HELPER_OP_JASS_UNIT_INT_BOOL,
+                        ability_rawcode,
+                        handlers["BlzUnitHideAbility"].handler_address,
+                        1,
+                        0,
+                    ),),
+                )
+            with ProcessMemory(self.pid) as pm:
+                assert candidate is not None
+                ability_data = ability_data or self._find_engine_ability_data(
+                    pm,
+                    candidate,
+                    ability_rawcode,
+                )
+                if not ability_data:
+                    raise RuntimeError(
+                        f"找不到 {format_rawcode(ability_rawcode)} 的运行时技能实例"
+                    )
+                ability_vtable = pm.read_u64(ability_data)
+                direct_handler = pm.read_u64(ability_vtable + vtable_offset)
+                if not self._is_executable_image_address(pm.regions(), direct_handler):
+                    raise RuntimeError("技能直接效果回调不在游戏可执行代码段")
+                target_unit = candidate.unit_address
+            arg1 = self._float_bits(x) | (self._float_bits(y) << 32) if effect_kind == "point" else 0
+            succeeded = 0
+            for _ in range(pass_count):
+                result = self._run_native_helper_ops(
+                    target_unit,
+                    ((
+                        effect_op,
+                        ability_rawcode,
+                        direct_handler,
+                        ability_data,
+                        arg1,
+                    ),),
+                )[0]
+                succeeded += 1 if result.result else 0
+            if hold_duration:
+                time.sleep(hold_duration)
+                stop_result = 0
+                for stop_attempt in range(3):
+                    stop_result = int(self._run_native_helper_ops(
+                        unit_handle,
+                        ((
+                            self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE,
+                            851972,
+                            handlers["IssueImmediateOrderById"].handler_address,
+                            0,
+                            0,
+                        ),),
+                        timeout_ms=10000,
+                    )[0].result)
+                    if stop_result:
+                        break
+                    if stop_attempt < 2:
+                        time.sleep(0.05 * (stop_attempt + 1))
+                if not stop_result:
+                    raise RuntimeError("游戏连续 3 次拒绝停止持续技能效果")
+            return pass_count, succeeded
+        finally:
+            active_error = sys.exc_info()[1]
+            cleanup_errors: list[str] = []
+            if (
+                original_area_bits is not None
+                and ability_handle
+                and get_area_handler
+                and set_area_handler
+            ):
+                try:
+                    restored = int(self._run_native_helper_ops(
+                        ability_handle,
+                        ((
+                            self.NATIVE_HELPER_OP_JASS_ABILITY_REAL_LEVEL_FIELD_SET,
+                            area_field,
+                            set_area_handler,
+                            area_level,
+                            original_area_bits,
+                        ),),
+                        timeout_ms=10000,
+                    )[0].result)
+                    if not restored:
+                        raise RuntimeError("游戏拒绝恢复原始作用范围")
+                    restored_bits = int(self._run_native_helper_ops(
+                        ability_handle,
+                        ((
+                            self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE_LEVEL,
+                            area_field,
+                            get_area_handler,
+                            area_level,
+                            0,
+                        ),),
+                        timeout_ms=10000,
+                    )[0].result) & 0xFFFFFFFF
+                    if restored_bits != original_area_bits:
+                        raise RuntimeError(
+                            "作用范围恢复校验失败："
+                            f"0x{restored_bits:08x}!=0x{original_area_bits:08x}"
+                        )
+                except Exception as exc:
+                    cleanup_errors.append(f"恢复作用范围失败：{exc}")
+            if added and candidate is not None and ability_data:
+                try:
+                    self._remove_captured_engine_ability_instance(
+                        candidate,
+                        unit_handle,
+                        ability_data,
+                    )
+                except Exception as exc:
+                    cleanup_errors.append(f"删除临时技能失败：{exc}")
+            if pending_key is not None:
+                with self._pending_direct_effects_lock:
+                    self._pending_direct_effects.discard(pending_key)
+            if cleanup_errors:
+                cleanup_message = "；".join(cleanup_errors)
+                if active_error is not None:
+                    raise RuntimeError(
+                        f"{active_error}；清理失败：{cleanup_message}"
+                    ) from active_error
+                raise RuntimeError(cleanup_message)
+
+    def cast_ability_with_runtime_dummy(
+        self,
+        rawcode: int | str,
+        order_id: int,
+        cast_type: str,
+        *,
+        global_scope: bool = False,
+        enemy_owner: bool = False,
+        self_cast: bool = False,
+        remove_self_ability: bool = False,
+        point_geometry: str = "target",
+        level: int = 1,
+        passes: int = 1,
+        success_limit: int = 0,
+        mana: float = 100000.0,
+        cleanup_duration: float = 1.5,
+    ) -> tuple[int, int]:
+        raise OSError(ERROR_NOT_SUPPORTED, "运行时假单位施法路径已禁用")
+
+    def apply_standard_debuffs_to_selected_unit(self) -> tuple[int, int]:
+        target_abilities = ("Acrs", "Aply", "Aslo", "Acri", "Afae", "ANso", "AEer", "ANdo")
+        attempted = len(target_abilities) + 1
+        succeeded = sum(
+            1 if self.apply_direct_ability_to_selected_unit(ability) else 0
+            for ability in target_abilities
+        )
+        succeeded += 1 if self.apply_direct_roar_buff_to_selected_unit("ANht") else 0
+        return attempted, succeeded
+
+    def apply_standard_buffs_to_selected_unit(self) -> tuple[int, int]:
+        target_abilities = ("Aams", "Ainf", "Ablo", "Auhf", "Afzy", "Alsh", "Arej", "Aivs", "ACfa")
+        attempted = len(target_abilities)
+        succeeded = sum(
+            1 if self.apply_direct_ability_to_selected_unit(ability) else 0
+            for ability in target_abilities
+        )
+        for ability in ("Aroa", "Absk"):
+            attempted += 1
+            succeeded += 1 if self.apply_direct_immediate_ability(ability) else 0
+        attempted += 1
+        succeeded += 1 if self.apply_direct_point_ability("Ahwd") else 0
+        channel_attempted, channel_succeeded = self._run_selected_ability_effect(
+            "AEtq",
+            "immediate",
+            hold_seconds=12.0,
+        )
+        attempted += channel_attempted
+        succeeded += channel_succeeded
+        attempted += 1
+        succeeded += 1 if self.enable_selected_toggle_ability("ANms", 852589) else 0
+        attempted += 1
+        succeeded += 1 if self.apply_direct_noarg_derived_ability("AIsa") else 0
+        return attempted, succeeded
+
+    def cast_fullscreen_swarm(self, *, success_limit: int = 0) -> tuple[int, int]:
+        entries = ("ACca", "ACcv", "AOsh")
+        attempted = succeeded = 0
+        for ability in entries:
+            current_attempted, current_succeeded = self._run_direct_ability_over_enemy_units(
+                ability,
+                "point",
+                success_limit=success_limit,
+            )
+            attempted += current_attempted
+            succeeded += current_succeeded
+        return attempted, succeeded
+
+    def cast_fullscreen_clap(self, *, success_limit: int = 0) -> tuple[int, int]:
+        entries = ("AHtc", "AOws")
+        attempted = succeeded = 0
+        for ability in entries:
+            current_attempted, current_succeeded = self._run_selected_ability_effect(
+                ability,
+                "noarg",
+                area=100000.0,
+            )
+            attempted += current_attempted
+            succeeded += current_succeeded
+        return attempted, succeeded
+
+    def cast_fullscreen_monsoon(self, *, success_limit: int = 0) -> tuple[int, int]:
+        return self._run_selected_ability_effect(
+            "ANmo",
+            "point",
+            area=100000.0,
+            hold_seconds=12.0,
+        )
+
+    def cast_fullscreen_starfall(self, *, success_limit: int = 0) -> tuple[int, int]:
+        return self._run_selected_ability_effect(
+            "AEsb",
+            "immediate",
+            area=100000.0,
+            hold_seconds=12.0,
+        )
+
+    def cast_fullscreen_forked_lightning(self, *, success_limit: int = 0) -> tuple[int, int]:
+        return self._run_direct_ability_over_enemy_units(
+            "ACfl",
+            "target",
+            success_limit=success_limit,
+        )
+
+    def cast_fullscreen_auto_effect(self, *, success_limit: int = 0) -> tuple[int, int]:
+        passes = int(success_limit) if success_limit else 5
+        return self._run_selected_ability_effect(
+            "AEfk",
+            "noarg",
+            passes=passes,
+            area=100000.0,
+        )
+
+    def create_all_loaded_items(
+        self,
+        limit: int = 0,
+        *,
+        dry_run: bool = False,
+    ) -> tuple[int, int, tuple[int, ...]]:
+        item_limit = int(limit)
+        if not 0 <= item_limit <= 100000:
+            raise ValueError("创建物品测试上限必须在 0 到 100000 之间")
+        with ProcessMemory(self.pid) as pm:
+            handlers = self._elephant_handlers(pm, ("ChooseRandomItem", "CreateItem"))
+        encoded_limit = item_limit | (0x80000000 if dry_run else 0)
+        result = self._run_native_helper_ops(
+            0,
+            ((
+                self.NATIVE_HELPER_OP_CREATE_ALL_ITEMS,
+                encoded_limit,
+                handlers["ChooseRandomItem"].handler_address,
+                handlers["CreateItem"].handler_address,
+                0,
+            ),),
+            timeout_ms=120000,
+        )[0]
+        packed = int(result.result)
+        created = packed & 0xFFFFFFFF
+        total = (packed >> 32) & 0xFFFFFFFF
+        if not total:
+            raise RuntimeError("运行时物品数据库为空")
+        handles = tuple(int(handle) for handle in result.extra_results if handle)
+        if not dry_run and len(handles) != created:
+            raise RuntimeError(
+                f"物品创建返回 {created} 个，但句柄列表有 {len(handles)} 个"
+            )
+        return total, created, handles
+
+    def remove_item_handle(self, item_handle: int) -> None:
+        self.remove_item_handles((item_handle,))
+
+    def remove_item_handles(self, item_handles: Iterable[int]) -> int:
+        handles = tuple(int(handle) for handle in item_handles if int(handle))
+        if not handles:
+            return 0
+        with ProcessMemory(self.pid) as pm:
+            handler = self._elephant_handlers(pm, ("RemoveItem",))["RemoveItem"].handler_address
+        removed = 0
+        for start in range(0, len(handles), 47):
+            batch = handles[start : start + 47]
+            first = batch[0]
+            second = batch[1] if len(batch) > 1 else 0
+            ops: list[tuple[int, int, int, int, int]] = [(
+                self.NATIVE_HELPER_OP_REMOVE_ITEM_HANDLES,
+                len(batch),
+                handler,
+                first,
+                second,
+            )]
+            remaining = batch[2:]
+            for offset in range(0, len(remaining), 3):
+                triple = remaining[offset : offset + 3]
+                ops.append((
+                    self.NATIVE_HELPER_OP_REMOVE_ITEM_HANDLES_ARG,
+                    0,
+                    triple[0],
+                    triple[1] if len(triple) > 1 else 0,
+                    triple[2] if len(triple) > 2 else 0,
+                ))
+            removed += int(self._run_native_helper_ops(0, tuple(ops))[0].result)
+        return removed
+
+    def take_selected_unit_control(self) -> int:
+        with ProcessMemory(self.pid) as pm:
+            unit_handle = self._elephant_selected_handle(pm)
+            handlers = self._elephant_handlers(pm, ("GetLocalPlayer", "SetUnitOwner"))
+        return self._run_native_helper_ops(
+            unit_handle,
+            ((
+                self.NATIVE_HELPER_OP_JASS_TAKE_OWNERSHIP,
+                0,
+                handlers["GetLocalPlayer"].handler_address,
+                handlers["SetUnitOwner"].handler_address,
+                0,
+            ),),
+        )[0].result
+
+    def create_local_unit(self, rawcode: int | str | None = None) -> tuple[int, int]:
+        with ProcessMemory(self.pid) as pm:
+            candidate = self._elephant_selected_candidate(pm)
+            unit_rawcode = (
+                candidate.unit_type_id
+                if rawcode is None
+                else int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
+            )
+            if not unit_rawcode:
+                raise ValueError("没有可用于创建单位的有效 ID")
+            position = self._position_from_candidate(pm, candidate)
+            x, y = position if position is not None else (0.0, 0.0)
+            handlers = self._elephant_handlers(pm, ("GetLocalPlayer", "CreateUnit"))
+        coordinates = struct.unpack("<Q", struct.pack("<ff", float(x) + 96.0, float(y)))[0]
+        result = self._run_native_helper_ops(
+            0,
+            ((
+                self.NATIVE_HELPER_OP_JASS_CREATE_LOCAL_UNIT,
+                unit_rawcode,
+                handlers["GetLocalPlayer"].handler_address,
+                handlers["CreateUnit"].handler_address,
+                coordinates,
+            ),),
+        )[0].result
+        if not result:
+            raise RuntimeError(f"游戏未能创建单位 {format_rawcode(unit_rawcode)}")
+        return unit_rawcode, result
+
+    def create_local_units(self, count: int, rawcode: int | str | None = None) -> tuple[int, int]:
+        total = int(count)
+        if not 1 <= total <= 100:
+            raise ValueError("批量复制数量必须在 1 到 100 之间")
+        created = 0
+        unit_rawcode = 0
+        for _ in range(total):
+            unit_rawcode, _handle = self.create_local_unit(rawcode)
+            created += 1
+        return unit_rawcode, created
+
+    def add_item_to_selected_unit(self, rawcode: int | str) -> int:
+        item_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
+        if not item_rawcode:
+            raise ValueError("物品 ID 无效")
+        with ProcessMemory(self.pid) as pm:
+            unit_handle = self._elephant_selected_handle(pm)
+            handlers = self._elephant_handlers(pm, ("UnitAddItemById",))
+        result = self._run_native_helper_ops(
+            unit_handle,
+            ((
+                self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE,
+                item_rawcode,
+                handlers["UnitAddItemById"].handler_address,
+                0,
+                0,
+            ),),
+        )[0].result
+        if not result:
+            raise RuntimeError(f"游戏未能添加物品 {format_rawcode(item_rawcode)}")
+        return result
+
+    def clear_selected_unit_inventory(self) -> int:
+        with ProcessMemory(self.pid) as pm:
+            unit_handle = self._elephant_selected_handle(pm)
+            handlers = self._elephant_handlers(pm, ("UnitItemInSlot", "RemoveItem"))
+        return int(self._run_native_helper_ops(
+            unit_handle,
+            ((
+                self.NATIVE_HELPER_OP_JASS_CLEAR_INVENTORY,
+                0,
+                handlers["UnitItemInSlot"].handler_address,
+                handlers["RemoveItem"].handler_address,
+                0,
+            ),),
+        )[0].result)
+
+    def set_selected_inventory_charges(self, charges: int) -> int:
+        target = int(charges)
+        if not 1 <= target <= 1_000_000_000:
+            raise ValueError("物品数量必须在 1 到 1000000000 之间")
+        with ProcessMemory(self.pid) as pm:
+            unit_handle = self._elephant_selected_handle(pm)
+            handlers = self._elephant_handlers(pm, ("UnitItemInSlot", "SetItemCharges"))
+        return int(self._run_native_helper_ops(
+            unit_handle,
+            ((
+                self.NATIVE_HELPER_OP_JASS_SET_INVENTORY_CHARGES,
+                target,
+                handlers["UnitItemInSlot"].handler_address,
+                handlers["SetItemCharges"].handler_address,
+                0,
+            ),),
+        )[0].result)
+
+    def duplicate_selected_inventory_items(self) -> int:
+        with ProcessMemory(self.pid) as pm:
+            unit_handle = self._elephant_selected_handle(pm)
+            handlers = self._elephant_handlers(
+                pm,
+                ("UnitItemInSlot", "GetItemTypeId", "UnitAddItemById"),
+            )
+        return int(self._run_native_helper_ops(
+            unit_handle,
+            ((
+                self.NATIVE_HELPER_OP_JASS_DUPLICATE_INVENTORY,
+                0,
+                handlers["UnitItemInSlot"].handler_address,
+                handlers["GetItemTypeId"].handler_address,
+                handlers["UnitAddItemById"].handler_address,
+            ),),
+        )[0].result)
+
+    def drop_selected_inventory_items(self) -> int:
+        with ProcessMemory(self.pid) as pm:
+            unit_handle = self._elephant_selected_handle(pm)
+            handlers = self._elephant_handlers(pm, ("UnitItemInSlot", "UnitRemoveItem"))
+        return int(self._run_native_helper_ops(
+            unit_handle,
+            ((
+                self.NATIVE_HELPER_OP_JASS_DROP_INVENTORY,
+                0,
+                handlers["UnitItemInSlot"].handler_address,
+                handlers["UnitRemoveItem"].handler_address,
+                0,
+            ),),
+        )[0].result)
+
+    def _run_selected_ability_rawcode(self, native_name: str, rawcode: int | str) -> int:
+        ability_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
+        if not ability_rawcode:
+            raise ValueError("技能 ID 无效")
+        with ProcessMemory(self.pid) as pm:
+            unit_handle = self._elephant_selected_handle(pm)
+            handlers = self._elephant_handlers(pm, (native_name,))
+        result = self._run_native_helper_ops(
+            unit_handle,
+            ((
+                self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE,
+                ability_rawcode,
+                handlers[native_name].handler_address,
+                0,
+                0,
+            ),),
+        )[0].result
+        return int(result)
+
+    def add_ability_to_selected_unit(self, rawcode: int | str) -> None:
+        if not self._run_selected_ability_rawcode("UnitAddAbility", rawcode):
+            raise RuntimeError("游戏拒绝添加该技能；目标可能已拥有此技能或地图中没有该对象")
+
+    def remove_ability_from_selected_unit(self, rawcode: int | str) -> None:
+        if not self._run_selected_ability_rawcode("UnitRemoveAbility", rawcode):
+            raise RuntimeError("游戏拒绝删除该技能；目标可能没有此技能")
+
+    def add_abilities_to_selected_unit(self, rawcodes: Iterable[int | str]) -> int:
+        ability_ids = tuple(
+            int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
+            for rawcode in rawcodes
+        )
+        if not ability_ids or any(not rawcode for rawcode in ability_ids):
+            raise ValueError("技能 ID 列表无效")
+        with ProcessMemory(self.pid) as pm:
+            unit_handle = self._elephant_selected_handle(pm)
+            handler = self._elephant_handlers(pm, ("UnitAddAbility",))["UnitAddAbility"].handler_address
+        added = 0
+        for start in range(0, len(ability_ids), self.NATIVE_HELPER_MAX_OPS):
+            results = self._run_native_helper_ops(
+                unit_handle,
+                tuple(
+                    (self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE, rawcode, handler, 0, 0)
+                    for rawcode in ability_ids[start : start + self.NATIVE_HELPER_MAX_OPS]
+                ),
+            )
+            added += sum(bool(result.result) for result in results)
+        return added
+
+    def add_ability_bundle_to_selected_unit(
+        self,
+        entries: Iterable[tuple[int | str, int | None]],
+    ) -> tuple[int, int]:
+        bundle = tuple(
+            (
+                int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF,
+                None if level is None else int(level),
+            )
+            for rawcode, level in entries
+        )
+        if not bundle or any(not rawcode for rawcode, _level in bundle):
+            raise ValueError("技能组合无效")
+        if any(level is not None and not 1 <= level <= 100000 for _rawcode, level in bundle):
+            raise ValueError("技能组合等级必须在 1 到 100000 之间")
+        with ProcessMemory(self.pid) as pm:
+            unit_handle = self._elephant_selected_handle(pm)
+            handlers = self._elephant_handlers(pm, ("UnitAddAbility", "SetUnitAbilityLevel"))
+        add_handler = handlers["UnitAddAbility"].handler_address
+        level_handler = handlers["SetUnitAbilityLevel"].handler_address
+        ops: list[tuple[int, int, int, int, int]] = []
+        for rawcode, level in bundle:
+            ops.append((self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE, rawcode, add_handler, 0, 0))
+            if level is not None:
+                ops.append((
+                    self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE_LEVEL,
+                    rawcode,
+                    level_handler,
+                    level,
+                    0,
+                ))
+        added = 0
+        for start in range(0, len(ops), self.NATIVE_HELPER_MAX_OPS):
+            results = self._run_native_helper_ops(
+                unit_handle,
+                tuple(ops[start : start + self.NATIVE_HELPER_MAX_OPS]),
+            )
+            added += sum(
+                bool(result.result)
+                for result in results
+                if result.kind == self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE
+            )
+        return added, len(bundle)
+
+    def replace_selected_inventory_items(
+        self,
+        slot_items: Iterable[tuple[int, int | str]],
+    ) -> int:
+        replacements = tuple(
+            (
+                int(slot),
+                int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF,
+            )
+            for slot, rawcode in slot_items
+        )
+        if not replacements:
+            raise ValueError("物品组合为空")
+        if any(not 0 <= slot < 6 or not rawcode for slot, rawcode in replacements):
+            raise ValueError("物品槽位或物品 ID 无效")
+        if len({slot for slot, _rawcode in replacements}) != len(replacements):
+            raise ValueError("物品组合包含重复槽位")
+        with ProcessMemory(self.pid) as pm:
+            candidate = self._elephant_selected_candidate(pm)
+            for slot, rawcode in replacements:
+                self._set_inventory_slot_item_via_native_handler(
+                    pm,
+                    candidate,
+                    slot,
+                    rawcode,
+                )
+        return len(replacements)
+
+    def reset_selected_unit_ability(self, rawcode: int | str) -> None:
+        ability_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
+        if not ability_rawcode:
+            raise ValueError("技能 ID 无效")
+        with ProcessMemory(self.pid) as pm:
+            unit_handle = self._elephant_selected_handle(pm)
+            handlers = self._elephant_handlers(pm, ("UnitRemoveAbility", "UnitAddAbility"))
+        results = self._run_native_helper_ops(
+            unit_handle,
+            (
+                (
+                    self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE,
+                    ability_rawcode,
+                    handlers["UnitRemoveAbility"].handler_address,
+                    0,
+                    0,
+                ),
+                (
+                    self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE,
+                    ability_rawcode,
+                    handlers["UnitAddAbility"].handler_address,
+                    0,
+                    0,
+                ),
+            ),
+        )
+        if not results[1].result:
+            raise RuntimeError("游戏拒绝重置该技能；地图中可能没有该对象")
+
+    def remove_all_selected_unit_abilities(self) -> int:
+        with ProcessMemory(self.pid) as pm:
+            unit_handle = self._elephant_selected_handle(pm)
+            handlers = self._elephant_handlers(
+                pm,
+                ("BlzGetUnitAbilityByIndex", "BlzGetAbilityId", "UnitRemoveAbility"),
+            )
+        return int(self._run_native_helper_ops(
+            unit_handle,
+            ((
+                self.NATIVE_HELPER_OP_JASS_REMOVE_ALL_ABILITIES,
+                0,
+                handlers["BlzGetUnitAbilityByIndex"].handler_address,
+                handlers["BlzGetAbilityId"].handler_address,
+                handlers["UnitRemoveAbility"].handler_address,
+            ),),
+        )[0].result)
+
+    def set_selected_unit_ability_level(self, rawcode: int | str, level: int) -> int:
+        ability_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
+        target_level = int(level)
+        if not ability_rawcode or not 1 <= target_level <= 100000:
+            raise ValueError("请提供有效技能 ID，等级必须在 1 到 100000 之间")
+        with ProcessMemory(self.pid) as pm:
+            unit_handle = self._elephant_selected_handle(pm)
+            handlers = self._elephant_handlers(pm, ("SetUnitAbilityLevel", "GetUnitAbilityLevel"))
+        self._run_native_helper_ops(
+            unit_handle,
+            ((
+                self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE_LEVEL,
+                ability_rawcode,
+                handlers["SetUnitAbilityLevel"].handler_address,
+                target_level,
+                0,
+            ),),
+        )
+        actual = int(self._run_native_helper_ops(
+            unit_handle,
+            ((
+                self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE,
+                ability_rawcode,
+                handlers["GetUnitAbilityLevel"].handler_address,
+                0,
+                0,
+            ),),
+        )[0].result & 0xFFFFFFFF)
+        if actual != target_level:
+            raise RuntimeError(f"技能等级写入后读回 {actual}，目标为 {target_level}")
+        return actual
+
+    def set_local_player_tech(self, rawcode: int | str, level: int) -> int:
+        tech_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
+        target_level = int(level)
+        if not tech_rawcode or not 0 <= target_level <= 100000:
+            raise ValueError("请提供有效科技 ID，等级必须在 0 到 100000 之间")
+        with ProcessMemory(self.pid) as pm:
+            handlers = self._elephant_handlers(
+                pm,
+                ("GetLocalPlayer", "SetPlayerTechMaxAllowed", "SetPlayerTechResearched"),
+            )
+        self._run_native_helper_ops(
+            0,
+            (
+                (
+                    self.NATIVE_HELPER_OP_JASS_SET_LOCAL_TECH,
+                    tech_rawcode,
+                    handlers["GetLocalPlayer"].handler_address,
+                    handlers["SetPlayerTechMaxAllowed"].handler_address,
+                    target_level,
+                ),
+                (
+                    self.NATIVE_HELPER_OP_JASS_SET_LOCAL_TECH,
+                    tech_rawcode,
+                    handlers["GetLocalPlayer"].handler_address,
+                    handlers["SetPlayerTechResearched"].handler_address,
+                    target_level,
+                ),
+            ),
+        )
+        return target_level
+
+    def set_local_player_xp_rate(self, rate: float) -> float:
+        target = float(rate)
+        if not 0.0 <= target <= 10000.0:
+            raise ValueError("经验倍率必须在 0 到 10000 之间")
+        with ProcessMemory(self.pid) as pm:
+            handlers = self._elephant_handlers(pm, ("GetLocalPlayer", "SetPlayerHandicapXP"))
+        self._run_native_helper_ops(
+            0,
+            ((
+                self.NATIVE_HELPER_OP_JASS_SET_LOCAL_XP_RATE,
+                self._float_bits(target),
+                handlers["GetLocalPlayer"].handler_address,
+                handlers["SetPlayerHandicapXP"].handler_address,
+                0,
+            ),),
+        )
+        return target
+
+    def get_map_fog_state(self) -> tuple[bool, bool]:
+        with ProcessMemory(self.pid) as pm:
+            handlers = self._elephant_handlers(pm, ("IsFogEnabled", "IsFogMaskEnabled"))
+        results = self._run_native_helper_ops(
+            0,
+            (
+                (
+                    self.NATIVE_HELPER_OP_JASS_WORLD_INT_QUERY,
+                    0,
+                    handlers["IsFogEnabled"].handler_address,
+                    0,
+                    0,
+                ),
+                (
+                    self.NATIVE_HELPER_OP_JASS_WORLD_INT_QUERY,
+                    0,
+                    handlers["IsFogMaskEnabled"].handler_address,
+                    0,
+                    0,
+                ),
+            ),
+        )
+        return bool(results[0].result), bool(results[1].result)
+
+    def set_map_revealed(self, revealed: bool) -> None:
+        with ProcessMemory(self.pid) as pm:
+            handlers = self._elephant_handlers(pm, ("FogEnable", "FogMaskEnable"))
+        fog_enabled = 0 if revealed else 1
+        self._run_native_helper_ops(
+            0,
+            (
+                (
+                    self.NATIVE_HELPER_OP_JASS_FOG_BOOL,
+                    fog_enabled,
+                    handlers["FogEnable"].handler_address,
+                    0,
+                    0,
+                ),
+                (
+                    self.NATIVE_HELPER_OP_JASS_FOG_BOOL,
+                    fog_enabled,
+                    handlers["FogMaskEnable"].handler_address,
+                    0,
+                    0,
+                ),
+            ),
+        )
+
+    def set_game_paused(self, paused: bool) -> None:
+        with ProcessMemory(self.pid) as pm:
+            handlers = self._elephant_handlers(pm, ("PauseGame",))
+        self._run_native_helper_ops(
+            0,
+            ((
+                self.NATIVE_HELPER_OP_JASS_WORLD_BOOL,
+                1 if paused else 0,
+                handlers["PauseGame"].handler_address,
+                0,
+                0,
+            ),),
+        )
+
+    def end_current_game(self, show_score_screen: bool = True) -> None:
+        with ProcessMemory(self.pid) as pm:
+            handlers = self._elephant_handlers(pm, ("EndGame",))
+        self._run_native_helper_ops(
+            0,
+            ((
+                self.NATIVE_HELPER_OP_JASS_WORLD_BOOL,
+                1 if show_score_screen else 0,
+                handlers["EndGame"].handler_address,
+                0,
+                0,
+            ),),
+        )
+
+    def set_peace_mode(self, enabled: bool) -> int:
+        with ProcessMemory(self.pid) as pm:
+            handlers = self._elephant_handlers(pm, ("Player", "SetPlayerAlliance"))
+        return int(self._run_native_helper_ops(
+            0,
+            ((
+                self.NATIVE_HELPER_OP_JASS_PEACE_MODE,
+                1 if enabled else 0,
+                handlers["Player"].handler_address,
+                handlers["SetPlayerAlliance"].handler_address,
+                0,
+            ),),
+        )[0].result)
+
+    def kill_selected_owner_units(self) -> int:
+        with ProcessMemory(self.pid) as pm:
+            unit_handle = self._elephant_selected_handle(pm)
+            handlers = self._elephant_handlers(
+                pm,
+                (
+                    "GetOwningPlayer",
+                    "CreateGroup",
+                    "GroupEnumUnitsOfPlayer",
+                    "FirstOfGroup",
+                    "GroupRemoveUnit",
+                    "KillUnit",
+                    "DestroyGroup",
+                ),
+            )
+        return int(self._run_native_helper_ops(
+            unit_handle,
+            (
+                (
+                    self.NATIVE_HELPER_OP_JASS_KILL_OWNER_UNITS,
+                    0,
+                    handlers["GetOwningPlayer"].handler_address,
+                    handlers["CreateGroup"].handler_address,
+                    handlers["GroupEnumUnitsOfPlayer"].handler_address,
+                ),
+                (
+                    self.NATIVE_HELPER_OP_JASS_MULTI_ARG,
+                    0,
+                    handlers["FirstOfGroup"].handler_address,
+                    handlers["GroupRemoveUnit"].handler_address,
+                    handlers["KillUnit"].handler_address,
+                ),
+                (
+                    self.NATIVE_HELPER_OP_JASS_MULTI_ARG,
+                    0,
+                    handlers["DestroyGroup"].handler_address,
+                    0,
+                    0,
+                ),
+            ),
+            timeout_ms=3000,
+        )[0].result)
 
     @staticmethod
     def _scan_bytes_private_between(
@@ -1805,16 +4279,12 @@ class War3Trainer:
         data_address: int,
         rawcode: int,
     ) -> AbilityInstance | None:
-        if not self._sane_heap_ptr(data_address):
-            return None
-        try:
-            if pm.read_u64(data_address + 0x68) != candidate.unit_address:
-                return None
-            if pm.read_u32(data_address + 0x70) != rawcode:
-                return None
-            if pm.read_u32(data_address + 0x78) != rawcode:
-                return None
-        except OSError:
+        if self._ability_data_instance_for_candidate(
+            pm,
+            candidate,
+            data_address,
+            rawcode,
+        ) is None:
             return None
         component_rawcodes = {tag >> 32 for tag in self.COMPONENT_TAGS.values()}
         cache_key = (candidate.handle, data_address, rawcode)
@@ -1849,6 +4319,48 @@ class War3Trainer:
                 return instance
         return None
 
+    def _ability_data_instance_for_candidate(
+        self,
+        pm: ProcessMemory,
+        candidate: UnitCandidate,
+        data_address: int,
+        rawcode: int,
+    ) -> AbilityInstance | None:
+        if not self._sane_heap_ptr(data_address):
+            return None
+        try:
+            data_vtable = pm.read_u64(data_address)
+            unit_address = pm.read_u64(data_address + 0x68)
+            data_rawcode = pm.read_u32(data_address + 0x70)
+            mirror_rawcode = pm.read_u32(data_address + 0x78)
+            data_cache_pointer = pm.read_u64(data_address + 0xA0)
+        except OSError:
+            return None
+        if not self._looks_like_vtable(data_vtable):
+            return None
+        if unit_address != candidate.unit_address:
+            return None
+        if data_rawcode != rawcode or mirror_rawcode != rawcode:
+            return None
+        return AbilityInstance(
+            slot=0,
+            wrapper_address=0,
+            data_address=data_address,
+            wrapper_vtable=0,
+            data_vtable=data_vtable,
+            wrapper_tag_address=0,
+            wrapper_tag=0,
+            handle=0,
+            class_rawcode=rawcode,
+            rawcode=rawcode,
+            rawcode_address=data_address + 0x70,
+            mirror_rawcode_address=data_address + 0x78,
+            data_cache_address=data_address + 0xA0,
+            data_cache_pointer=(
+                data_cache_pointer if self._sane_heap_ptr(data_cache_pointer) else 0
+            ),
+        )
+
     def _create_engine_ability_instance(
         self,
         pm: ProcessMemory,
@@ -1856,20 +4368,30 @@ class War3Trainer:
         rawcode: int,
         *,
         refresh_after_add: bool = True,
-    ) -> AbilityInstance:
+        require_wrapper: bool = True,
+    ) -> tuple[AbilityInstance, bool]:
         if not candidate.unit_address:
             raise RuntimeError("当前单位缺少运行时 unit 指针，不能从资源创建技能模板")
         internals = self._discover_native_ability_internals(pm)
         existing_data = self._find_engine_ability_data(pm, candidate, rawcode)
         if existing_data:
-            instance = self._ability_instance_from_data_for_candidate(
-                pm,
-                candidate,
-                existing_data,
-                rawcode,
+            instance = (
+                self._ability_instance_from_data_for_candidate(
+                    pm,
+                    candidate,
+                    existing_data,
+                    rawcode,
+                )
+                if require_wrapper
+                else self._ability_data_instance_for_candidate(
+                    pm,
+                    candidate,
+                    existing_data,
+                    rawcode,
+                )
             )
             if instance is not None:
-                return instance
+                return instance, False
             raise RuntimeError(
                 f"当前单位已存在 {format_rawcode(rawcode)}，但无法安全映射到运行时实例"
             )
@@ -1897,13 +4419,26 @@ class War3Trainer:
                     ),
                 ),
             )
-        time.sleep(0.05)
-        instance = self._ability_instance_from_data_for_candidate(
-            pm,
-            candidate,
-            data_address,
-            rawcode,
-        )
+        instance: AbilityInstance | None = None
+        for lookup_delay in (0.05, 0.10):
+            time.sleep(lookup_delay)
+            if require_wrapper:
+                pm.regions(force_refresh=True)
+                instance = self._ability_instance_from_data_for_candidate(
+                    pm,
+                    candidate,
+                    data_address,
+                    rawcode,
+                )
+            elif self._find_engine_ability_data(pm, candidate, rawcode) == data_address:
+                instance = self._ability_data_instance_for_candidate(
+                    pm,
+                    candidate,
+                    data_address,
+                    rawcode,
+                )
+            if instance is not None:
+                break
         if instance is None:
             current_instances = self._ability_instances_from_candidate(
                 pm,
@@ -1914,14 +4449,18 @@ class War3Trainer:
             if len(current_instances) == 1:
                 instance = current_instances[0]
         if instance is None:
+            create_error = (
+                f"引擎创建了 {format_rawcode(rawcode)}，"
+                "但未能反查到当前单位上的运行时实例"
+            )
             try:
                 self._remove_engine_ability_instance(pm, candidate, data_address)
-            except Exception:
-                pass
-            raise RuntimeError(
-                f"引擎创建了 {format_rawcode(rawcode)}，但未能反查到当前单位上的运行时实例"
-            )
-        return instance
+            except Exception as cleanup_exc:
+                raise RuntimeError(
+                    f"{create_error}；回滚创建实例失败：{cleanup_exc}"
+                ) from cleanup_exc
+            raise RuntimeError(create_error)
+        return instance, True
 
     def _temporary_engine_ability_template(
         self,
@@ -1929,7 +4468,7 @@ class War3Trainer:
         candidate: UnitCandidate,
         rawcode: int,
     ) -> tuple[dict[str, object], str]:
-        instance = self._create_engine_ability_instance(
+        instance, created = self._create_engine_ability_instance(
             pm,
             candidate,
             rawcode,
@@ -1942,7 +4481,8 @@ class War3Trainer:
                 f"class={instance.class_text}"
             )
         finally:
-            self._remove_engine_ability_instance(pm, candidate, instance.data_address)
+            if created:
+                self._remove_engine_ability_instance(pm, candidate, instance.data_address)
         return template, source
 
     def _replace_engine_ability_instance(
@@ -1952,12 +4492,16 @@ class War3Trainer:
         old_instance: AbilityInstance,
         new_rawcode: int,
     ) -> AbilityInstance:
-        new_instance = self._create_engine_ability_instance(
+        new_instance, created = self._create_engine_ability_instance(
             pm,
             candidate,
             new_rawcode,
             refresh_after_add=False,
         )
+        if not created:
+            raise RuntimeError(
+                f"当前单位已存在 {format_rawcode(new_rawcode)}，不能作为新的替换实例"
+            )
         if new_instance.data_address == old_instance.data_address:
             raise RuntimeError(
                 f"引擎返回的新技能实例与旧实例相同：0x{new_instance.data_address:x}"
@@ -2021,18 +4565,22 @@ class War3Trainer:
             return
         try:
             rawcode = pm.read_u32(data_address + 0x70)
-        except OSError:
-            rawcode = 0
+        except OSError as exc:
+            raise RuntimeError(
+                f"临时 ability 实例已不可读，停止内部删除：0x{data_address:x}"
+            ) from exc
+        if not rawcode:
+            raise RuntimeError(f"临时 ability 实例 rawcode 无效：0x{data_address:x}")
         internals = self._discover_native_ability_internals(pm)
         self._run_native_helper_ops(
             candidate.unit_address,
             (
                 (
                     self.NATIVE_HELPER_OP_INTERNAL_ABILITY_REMOVE,
-                    0,
+                    rawcode,
                     internals.remove_address,
                     data_address,
-                    0,
+                    internals.find_address,
                 ),
                 (
                     self.NATIVE_HELPER_OP_INTERNAL_ABILITY_REFRESH,
@@ -2044,10 +4592,9 @@ class War3Trainer:
             ),
         )
         time.sleep(0.05)
-        if rawcode:
-            found = self._find_engine_ability_data(pm, candidate, rawcode)
-            if found == data_address:
-                raise RuntimeError(f"临时 ability 实例仍挂在当前单位上：0x{data_address:x}")
+        found = self._find_engine_ability_data(pm, candidate, rawcode)
+        if found == data_address:
+            raise RuntimeError(f"临时 ability 实例仍挂在当前单位上：0x{data_address:x}")
 
     def _discover_native_hero_int_internals(self, pm: ProcessMemory) -> tuple[int, int]:
         if self._native_hero_int_set_address and self._native_hero_int_get_address:
@@ -6544,9 +9091,19 @@ def run_gui() -> None:
     from tkinter import messagebox, ttk
 
     root = tk.Tk()
-    root.title("魔兽争霸3重制版修改器")
+    root.title(f"魔兽争霸3重制版修改器 v{APP_VERSION}")
     root.geometry("1180x780")
     root.minsize(1040, 700)
+    icon_path = (
+        Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+        / "assets"
+        / "app_icon.png"
+    )
+    try:
+        app_icon = tk.PhotoImage(file=str(icon_path))
+        root.iconphoto(True, app_icon)
+    except tk.TclError:
+        app_icon = None
 
     status = tk.StringVar(value="正在连接 Warcraft III...")
     pid_var = tk.StringVar(value="")
@@ -6575,7 +9132,35 @@ def run_gui() -> None:
     x_target = tk.StringVar(value="")
     y_target = tk.StringVar(value="")
     unit_field_target = tk.StringVar(value="")
+    elephant_hero_level = tk.StringVar(value="1")
+    elephant_unit_scale = tk.StringVar(value="1.0")
+    elephant_unit_rawcode = tk.StringVar(value="")
+    elephant_item_rawcode = tk.StringVar(value="ckng")
+    elephant_ability_rawcode = tk.StringVar(value="AOsh")
+    elephant_ability_level = tk.StringVar(value="1")
+    elephant_tech_rawcode = tk.StringVar(value="")
+    elephant_tech_level = tk.StringVar(value="1")
+    elephant_xp_rate = tk.StringVar(value="1.0")
+    elephant_item_charges = tk.StringVar(value="999")
+    elephant_resource_amount = tk.StringVar(value="100000")
+    elephant_mass_clone_count = tk.StringVar(value="10")
+    elephant_hero_attributes = tk.StringVar(value="20000")
+    elephant_skill_points = tk.StringVar(value="1")
+    elephant_reinforcement_rawcode = tk.StringVar(value="hcth")
+    elephant_preset_item_rawcode = tk.StringVar(value="amrc")
+    elephant_preset_tech_rawcode = tk.StringVar(value="Rost")
+    elephant_reset_ability_rawcode = tk.StringVar(value="Apxf")
+    elephant_auto_effect_count = tk.StringVar(value="5")
+    elephant_hotkeys_enabled = tk.BooleanVar(value=False)
+    elephant_hotkey_status = tk.StringVar(value="快捷键未启用")
+    elephant_hotkey_checks = {
+        spec.name: tk.BooleanVar(value=True)
+        for spec in ELEPHANT_HOTKEY_SPECS
+    }
+    hotkey_manager = GlobalHotkeyManager()
     operation_lock = threading.RLock()
+    operation_threads_lock = threading.Lock()
+    operation_threads: set[threading.Thread] = set()
 
     state: dict[str, object] = {
         "trainer": None,
@@ -6591,7 +9176,48 @@ def run_gui() -> None:
         "locks": {},
         "lock_busy": False,
         "active_operations": set(),
+        "elephant_game_paused": False,
+        "closing": False,
     }
+
+    def start_operation_thread(target: Callable[[], None], name: str) -> None:
+        def tracked_target() -> None:
+            try:
+                target()
+            finally:
+                with operation_threads_lock:
+                    operation_threads.discard(threading.current_thread())
+
+        thread = threading.Thread(target=tracked_target, name=name, daemon=False)
+        with operation_threads_lock:
+            operation_threads.add(thread)
+        try:
+            thread.start()
+        except Exception:
+            with operation_threads_lock:
+                operation_threads.discard(thread)
+            raise
+
+    def active_operation_threads() -> tuple[threading.Thread, ...]:
+        with operation_threads_lock:
+            return tuple(thread for thread in operation_threads if thread.is_alive())
+
+    def close_gui() -> None:
+        if state.get("closing"):
+            return
+        state["closing"] = True
+        hotkey_manager.stop()
+        set_status("正在等待后台操作安全结束...")
+
+        def finish_close() -> None:
+            if active_operation_threads() or state.get("lock_busy"):
+                root.after(100, finish_close)
+                return
+            root.destroy()
+
+        finish_close()
+
+    root.protocol("WM_DELETE_WINDOW", close_gui)
 
     def set_status(text: str) -> None:
         status.set(text)
@@ -6602,6 +9228,8 @@ def run_gui() -> None:
         busy_widget: ttk.Button | None = None,
         busy_text: str = "正在执行，请稍候...",
     ) -> None:
+        if state.get("closing"):
+            return
         active_operations = state.get("active_operations")
         assert isinstance(active_operations, set)
         if operation_key and operation_key in active_operations:
@@ -6615,6 +9243,8 @@ def run_gui() -> None:
         def finish(result: str | None, exc: Exception | None) -> None:
             if operation_key:
                 active_operations.discard(operation_key)
+            if state.get("closing"):
+                return
             if busy_widget is not None:
                 busy_widget.state(["!disabled"])
             if exc is not None:
@@ -6634,7 +9264,8 @@ def run_gui() -> None:
             else:
                 root.after(0, finish, result, None)
 
-        threading.Thread(target=worker, daemon=True).start()
+        thread_name = f"war3-operation-{operation_key or 'anonymous'}"
+        start_operation_thread(worker, thread_name)
 
     def trainer() -> War3Trainer:
         obj = state.get("trainer")
@@ -7248,6 +9879,8 @@ def run_gui() -> None:
                 item["resource_cache"] = write_locked_resource(cache)
 
     def lock_tick() -> None:
+        if state.get("closing"):
+            return
         locks = state.get("locks", {})
         if isinstance(locks, dict) and locks and not state.get("lock_busy"):
             state["lock_busy"] = True
@@ -7259,15 +9892,18 @@ def run_gui() -> None:
                     return
                 try:
                     apply_locks_once()
-                    root.after(0, set_status, f"锁定中：{len(locks)} 项")
+                    if not state.get("closing"):
+                        root.after(0, set_status, f"锁定中：{len(locks)} 项")
                 except Exception as exc:
-                    root.after(0, set_status, f"锁定失败：{exc}")
+                    if not state.get("closing"):
+                        root.after(0, set_status, f"锁定失败：{exc}")
                 finally:
                     operation_lock.release()
                     state["lock_busy"] = False
 
-            threading.Thread(target=worker, daemon=True).start()
-        root.after(1500, lock_tick)
+            start_operation_thread(worker, "war3-lock-tick")
+        if not state.get("closing"):
+            root.after(1500, lock_tick)
 
     def set_unit() -> str:
         t = trainer()
@@ -7366,6 +10002,370 @@ def run_gui() -> None:
         t = trainer()
         cand = t.prewarm_selected_unit_cache()
         return f"选择缓存已预热；unit=0x{cand.unit_address:x}"
+
+    def elephant_prewarm() -> str:
+        count = trainer().prewarm_elephant_functions()
+        return f"大象功能已初始化：{count} 个 native 函数可用"
+
+    def elephant_read_hero_level() -> str:
+        level = trainer().get_selected_hero_level()
+        root.after(0, elephant_hero_level.set, str(level))
+        return f"当前英雄等级：{level}"
+
+    def elephant_set_hero_level() -> str:
+        target = parse_int(elephant_hero_level.get(), "英雄等级")
+        actual = trainer().set_selected_hero_level(target)
+        root.after(0, elephant_hero_level.set, str(actual))
+        return f"英雄等级已设置为 {actual}"
+
+    def elephant_set_scale() -> str:
+        scale = parse_float(elephant_unit_scale.get(), "单位大小")
+        actual = trainer().set_selected_unit_scale(scale)
+        return f"单位大小已设置为 {actual:g}"
+
+    def elephant_create_unit(copy_selected: bool) -> str:
+        rawcode = None if copy_selected else elephant_unit_rawcode.get().strip()
+        if not copy_selected and not rawcode:
+            raise ValueError("请填写单位 ID")
+        unit_rawcode, handle = trainer().create_local_unit(rawcode)
+        return f"已创建 {format_rawcode(unit_rawcode)}；handle=0x{handle:x}"
+
+    def elephant_add_item() -> str:
+        rawcode = elephant_item_rawcode.get().strip()
+        if not rawcode:
+            raise ValueError("请填写物品 ID")
+        handle = trainer().add_item_to_selected_unit(rawcode)
+        return f"物品 {rawcode} 已添加；handle=0x{handle:x}"
+
+    def elephant_clear_inventory() -> str:
+        removed = trainer().clear_selected_unit_inventory()
+        return f"背包已清空，共删除 {removed} 件物品"
+
+    def elephant_add_ability() -> str:
+        rawcode = elephant_ability_rawcode.get().strip()
+        if not rawcode:
+            raise ValueError("请填写技能 ID")
+        trainer().add_ability_to_selected_unit(rawcode)
+        return f"技能 {rawcode} 已添加"
+
+    def elephant_remove_ability() -> str:
+        rawcode = elephant_ability_rawcode.get().strip()
+        if not rawcode:
+            raise ValueError("请填写技能 ID")
+        trainer().remove_ability_from_selected_unit(rawcode)
+        return f"技能 {rawcode} 已删除"
+
+    def elephant_set_ability_level() -> str:
+        rawcode = elephant_ability_rawcode.get().strip()
+        level = parse_int(elephant_ability_level.get(), "技能等级")
+        actual = trainer().set_selected_unit_ability_level(rawcode, level)
+        return f"技能 {rawcode} 等级已设置；native 返回 {actual}"
+
+    def elephant_set_tech() -> str:
+        rawcode = elephant_tech_rawcode.get().strip()
+        if not rawcode:
+            raise ValueError("请填写科技 ID")
+        level = parse_int(elephant_tech_level.get(), "科技等级")
+        actual = trainer().set_local_player_tech(rawcode, level)
+        return f"科技 {rawcode} 已设置为 {actual} 级"
+
+    def elephant_set_xp_rate() -> str:
+        rate = parse_float(elephant_xp_rate.get(), "经验倍率")
+        actual = trainer().set_local_player_xp_rate(rate)
+        return f"本地玩家经验倍率已设置为 {actual:g}"
+
+    def elephant_set_inventory_charges() -> str:
+        charges = parse_int(elephant_item_charges.get(), "物品数量")
+        changed = trainer().set_selected_inventory_charges(charges)
+        return f"已将 {changed} 件背包物品的数量设为 {charges}"
+
+    def elephant_duplicate_inventory() -> str:
+        duplicated = trainer().duplicate_selected_inventory_items()
+        return f"已复制 {duplicated} 件背包物品"
+
+    def elephant_drop_inventory() -> str:
+        dropped = trainer().drop_selected_inventory_items()
+        return f"已丢弃 {dropped} 件背包物品"
+
+    def elephant_add_resources() -> str:
+        amount = parse_int(elephant_resource_amount.get(), "金币木材增量")
+        trainer().add_gold_and_lumber(amount)
+        return f"金币和木材已增加 {amount}"
+
+    def elephant_mass_clone() -> str:
+        count = parse_int(elephant_mass_clone_count.get(), "批量复制数量")
+        rawcode, created = trainer().create_local_units(count)
+        return f"已复制 {created} 个 {format_rawcode(rawcode)}"
+
+    def elephant_set_hero_attributes() -> str:
+        value = parse_int(elephant_hero_attributes.get(), "英雄属性")
+        actual = trainer().set_selected_hero_attributes(value)
+        return f"力量、敏捷、智力已设置为 {actual}"
+
+    def elephant_add_skill_points() -> str:
+        amount = parse_int(elephant_skill_points.get(), "增加技能点数")
+        actual = trainer().add_selected_hero_skill_points(amount)
+        return f"英雄技能点已增加 {actual}"
+
+    def elephant_reset_ability() -> str:
+        rawcode = elephant_reset_ability_rawcode.get().strip()
+        if not rawcode:
+            raise ValueError("请填写重置技能 ID")
+        trainer().reset_selected_unit_ability(rawcode)
+        return f"技能 {rawcode} 已重置"
+
+    def elephant_remove_all_abilities() -> str:
+        removed = trainer().remove_all_selected_unit_abilities()
+        return f"已删除选中单位的 {removed} 个非基础技能"
+
+    def elephant_move_to_mouse() -> str:
+        x, y = trainer().move_selected_unit_to_mouse()
+        return f"选中单位已移动到鼠标位置 ({x:g}, {y:g})"
+
+    def elephant_add_standard_auras() -> str:
+        entries = (
+            ("AHab", 112),
+            ("AHad", 112),
+            ("AOr2", 112),
+            ("AUau", 112),
+            ("AUav", 112),
+            ("AEar", 112),
+            ("AEah", 112),
+            ("Aabr", None),
+            ("ACac", None),
+        )
+        added, total = trainer().add_ability_bundle_to_selected_unit(entries)
+        return f"全光环已处理 {total} 项，新增 {added} 项"
+
+    def elephant_add_standard_passives() -> str:
+        entries = (
+            ("AInv", None),
+            ("AHbh", 112),
+            ("AOcr", 112),
+            ("Acdb", 112),
+            ("ACce", None),
+            ("ACes", None),
+            ("ACrn", None),
+            ("ACpv", None),
+        )
+        added, total = trainer().add_ability_bundle_to_selected_unit(entries)
+        return f"全被动已处理 {total} 项，新增 {added} 项"
+
+    def elephant_add_six_artifacts() -> str:
+        trainer().add_abilities_to_selected_unit(("AInv",))
+        count = trainer().replace_selected_inventory_items((
+            (5, "nspi"),
+            (4, "frhg"),
+            (3, "crdt"),
+            (2, "shdt"),
+            (1, "srtl"),
+            (0, "klmm"),
+        ))
+        return f"六神器已写入 {count} 个背包槽位"
+
+    def elephant_create_all_items() -> str:
+        total, created, _last_item = trainer().create_all_loaded_items()
+        return f"已遍历 {total} 个运行时物品对象，成功创建 {created} 个"
+
+    def elephant_apply_all_debuffs() -> str:
+        attempted, succeeded = trainer().apply_standard_debuffs_to_selected_unit()
+        if not succeeded:
+            raise RuntimeError("游戏没有接受任何减益技能命令")
+        return f"减益技能已执行 {succeeded}/{attempted} 次"
+
+    def elephant_apply_all_buffs() -> str:
+        attempted, succeeded = trainer().apply_standard_buffs_to_selected_unit()
+        if not succeeded:
+            raise RuntimeError("游戏没有接受任何增益技能命令")
+        return f"增益技能已执行 {succeeded}/{attempted} 次"
+
+    def elephant_fullscreen_cast(action: Callable[[], tuple[int, int]], label: str) -> str:
+        attempted, succeeded = action()
+        if not succeeded:
+            raise RuntimeError(f"游戏没有接受{label}命令")
+        return f"{label}已执行 {succeeded}/{attempted} 次"
+
+    def elephant_fullscreen_auto() -> str:
+        count = parse_int(elephant_auto_effect_count.get(), "自动特效次数")
+        if not 1 <= count <= 255:
+            raise ValueError("自动特效次数必须在 1 到 255 之间")
+        return elephant_fullscreen_cast(
+            lambda: trainer().cast_fullscreen_auto_effect(success_limit=count),
+            "全屏自动特效攻击",
+        )
+
+    def elephant_create_reinforcement() -> str:
+        rawcode = elephant_reinforcement_rawcode.get().strip()
+        if not rawcode:
+            raise ValueError("请填写增援单位 ID")
+        unit_rawcode, handle = trainer().create_local_unit(rawcode)
+        return f"已呼叫 {format_rawcode(unit_rawcode)}；handle=0x{handle:x}"
+
+    def elephant_add_preset_item() -> str:
+        rawcode = elephant_preset_item_rawcode.get().strip()
+        if not rawcode:
+            raise ValueError("请填写快捷物品 ID")
+        handle = trainer().add_item_to_selected_unit(rawcode)
+        return f"物品 {rawcode} 已添加；handle=0x{handle:x}"
+
+    def elephant_set_preset_tech() -> str:
+        rawcode = elephant_preset_tech_rawcode.get().strip()
+        if not rawcode:
+            raise ValueError("请填写快捷科技 ID")
+        actual = trainer().set_local_player_tech(rawcode, 1)
+        return f"科技 {rawcode} 已设置为 {actual} 级"
+
+    def elephant_set_game_paused(paused: bool) -> str:
+        trainer().set_game_paused(paused)
+        state["elephant_game_paused"] = paused
+        return "游戏已暂停" if paused else "游戏已恢复"
+
+    def elephant_toggle_game_pause() -> str:
+        return elephant_set_game_paused(not bool(state.get("elephant_game_paused")))
+
+    def elephant_toggle_unit_pause() -> str:
+        t = trainer()
+        paused = not t.is_selected_unit_paused()
+        t.set_selected_unit_paused(paused)
+        return "选中单位已暂停" if paused else "选中单位已恢复"
+
+    def elephant_kill_owner_units() -> str:
+        killed = trainer().kill_selected_owner_units()
+        return f"已击杀该单位所属玩家的 {killed} 个单位"
+
+    def elephant_action(action: Callable[[], None], message: str) -> str:
+        action()
+        return message
+
+    hotkey_callbacks: dict[str, Callable[[], str]] = {
+        "hero_level": elephant_set_hero_level,
+        "instant_move": elephant_move_to_mouse,
+        "explode_unit": lambda: elephant_action(trainer().explode_selected_unit, "选中单位已爆炸"),
+        "reveal_map": lambda: elephant_action(lambda: trainer().set_map_revealed(True), "全地图视野已开启"),
+        "hide_map": lambda: elephant_action(lambda: trainer().set_map_revealed(False), "战争迷雾已恢复"),
+        "invulnerable": lambda: elephant_action(
+            lambda: trainer().set_selected_unit_invulnerable(True),
+            "选中单位已设为无敌",
+        ),
+        "vulnerable": lambda: elephant_action(
+            lambda: trainer().set_selected_unit_invulnerable(False),
+            "选中单位已取消无敌",
+        ),
+        "reset_cooldown": lambda: elephant_action(
+            trainer().reset_selected_unit_cooldown,
+            "选中单位技能冷却已重置",
+        ),
+        "clone_to_self": lambda: elephant_create_unit(True),
+        "duplicate_inventory": elephant_duplicate_inventory,
+        "unit_scale": elephant_set_scale,
+        "item_charges": elephant_set_inventory_charges,
+        "drop_inventory": elephant_drop_inventory,
+        "add_ability": elephant_add_ability,
+        "clone_unit": lambda: elephant_create_unit(True),
+        "take_control": lambda: elephant_action(trainer().take_selected_unit_control, "已取得选中单位控制权"),
+        "add_resources": elephant_add_resources,
+        "mass_clone": elephant_mass_clone,
+        "ability_level": elephant_set_ability_level,
+        "remove_ability": elephant_remove_ability,
+        "all_auras": elephant_add_standard_auras,
+        "all_passives": elephant_add_standard_passives,
+        "six_artifacts": elephant_add_six_artifacts,
+        "reinforcements": elephant_create_reinforcement,
+        "preset_item": elephant_add_preset_item,
+        "preset_tech": elephant_set_preset_tech,
+        "create_all_items": elephant_create_all_items,
+        "ignore_collision": lambda: elephant_action(
+            lambda: trainer().set_selected_unit_pathing(False),
+            "选中单位碰撞已关闭",
+        ),
+        "hero_attributes": elephant_set_hero_attributes,
+        "skill_points": elephant_add_skill_points,
+        "kill_owner_units": elephant_kill_owner_units,
+        "xp_rate": elephant_set_xp_rate,
+        "reset_ability": elephant_reset_ability,
+        "all_debuffs": elephant_apply_all_debuffs,
+        "all_buffs": elephant_apply_all_buffs,
+        "fullscreen_swarm": lambda: elephant_fullscreen_cast(
+            trainer().cast_fullscreen_swarm,
+            "全屏腐臭蜂群",
+        ),
+        "fullscreen_clap": lambda: elephant_fullscreen_cast(
+            trainer().cast_fullscreen_clap,
+            "全屏雷霆一击",
+        ),
+        "fullscreen_monsoon": lambda: elephant_fullscreen_cast(
+            trainer().cast_fullscreen_monsoon,
+            "全屏季风",
+        ),
+        "fullscreen_starfall": lambda: elephant_fullscreen_cast(
+            trainer().cast_fullscreen_starfall,
+            "全屏群星陨落",
+        ),
+        "fullscreen_forked": lambda: elephant_fullscreen_cast(
+            trainer().cast_fullscreen_forked_lightning,
+            "全屏叉状闪电",
+        ),
+        "fullscreen_auto": elephant_fullscreen_auto,
+        "toggle_unit_pause": elephant_toggle_unit_pause,
+        "toggle_game_pause": elephant_toggle_game_pause,
+        "end_game": lambda: elephant_action(lambda: trainer().end_current_game(True), "已结束当前游戏"),
+        "remove_all_abilities": elephant_remove_all_abilities,
+    }
+    hotkey_specs_by_name = {spec.name: spec for spec in ELEPHANT_HOTKEY_SPECS}
+    hotkey_dangerous = {
+        "explode_unit",
+        "drop_inventory",
+        "kill_owner_units",
+        "end_game",
+        "remove_all_abilities",
+    }
+    for name, variable in elephant_hotkey_checks.items():
+        variable.set(name in hotkey_callbacks and name not in hotkey_dangerous)
+
+    def trigger_elephant_hotkey(name: str) -> None:
+        callback = hotkey_callbacks.get(name)
+        spec = hotkey_specs_by_name.get(name)
+        if callback is None or spec is None:
+            return
+        call_async(
+            callback,
+            f"elephant:hotkey:{name}",
+            busy_text=f"正在执行 {spec.label}...",
+        )
+
+    def on_global_hotkey(name: str) -> None:
+        try:
+            root.after(0, trigger_elephant_hotkey, name)
+        except RuntimeError:
+            pass
+
+    def refresh_elephant_hotkeys() -> None:
+        if not elephant_hotkeys_enabled.get():
+            hotkey_manager.stop()
+            elephant_hotkey_status.set("快捷键未启用")
+            return
+        enabled_specs = tuple(
+            spec
+            for spec in ELEPHANT_HOTKEY_SPECS
+            if spec.name in hotkey_callbacks and elephant_hotkey_checks[spec.name].get()
+        )
+        errors = hotkey_manager.start(enabled_specs, on_global_hotkey)
+        registered = len(hotkey_manager.registered_names)
+        if errors:
+            elephant_hotkey_status.set(f"已注册 {registered} 个，{len(errors)} 个按键冲突")
+        else:
+            elephant_hotkey_status.set(f"已注册 {registered} 个全局快捷键")
+        set_status(elephant_hotkey_status.get())
+
+    def set_all_elephant_hotkeys(enabled: bool) -> None:
+        for name, variable in elephant_hotkey_checks.items():
+            variable.set(bool(enabled and name in hotkey_callbacks))
+        if elephant_hotkeys_enabled.get():
+            refresh_elephant_hotkeys()
+
+    def confirm_elephant_action(title: str, prompt: str, fn: Callable[[], str]) -> None:
+        if messagebox.askyesno(title, prompt, parent=root):
+            call_async(fn, f"elephant:{title}")
 
     outer = ttk.Frame(root, padding=12)
     outer.pack(fill="both", expand=True)
@@ -7580,6 +10580,315 @@ def run_gui() -> None:
     ttk.Button(locks_tab, text="解锁所选", command=lambda: call_async(remove_selected_lock)).grid(row=1, column=1, sticky="w", pady=(10, 0))
     locks_tab.columnconfigure(0, weight=1)
     locks_tab.rowconfigure(0, weight=1)
+
+    elephant_tab = ttk.Frame(notebook, padding=8)
+    notebook.add(elephant_tab, text="大象功能")
+    elephant_notebook = ttk.Notebook(elephant_tab)
+    elephant_notebook.pack(fill="both", expand=True)
+    elephant_controls_tab = ttk.Frame(elephant_notebook, padding=10)
+    elephant_hotkeys_tab = ttk.Frame(elephant_notebook, padding=10)
+    elephant_notebook.add(elephant_controls_tab, text="功能面板")
+    elephant_notebook.add(elephant_hotkeys_tab, text="快捷键功能")
+    ttk.Button(
+        elephant_controls_tab,
+        text="初始化/验证大象功能",
+        command=lambda: call_async(elephant_prewarm, "elephant:prewarm"),
+    ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 10))
+
+    world_frame = ttk.LabelFrame(elephant_controls_tab, text="地图与游戏", padding=10)
+    world_frame.grid(row=1, column=0, sticky="nsew", padx=(0, 6), pady=(0, 8))
+    ttk.Button(
+        world_frame,
+        text="开图",
+        command=lambda: call_async(
+            lambda: elephant_action(lambda: trainer().set_map_revealed(True), "全地图视野已开启")
+        ),
+    ).grid(row=0, column=0, sticky="ew", padx=(0, 6), pady=3)
+    ttk.Button(
+        world_frame,
+        text="关图",
+        command=lambda: call_async(
+            lambda: elephant_action(lambda: trainer().set_map_revealed(False), "战争迷雾已恢复")
+        ),
+    ).grid(row=0, column=1, sticky="ew", pady=3)
+    ttk.Button(
+        world_frame,
+        text="暂停游戏",
+        command=lambda: call_async(lambda: elephant_set_game_paused(True)),
+    ).grid(row=1, column=0, sticky="ew", padx=(0, 6), pady=3)
+    ttk.Button(
+        world_frame,
+        text="恢复游戏",
+        command=lambda: call_async(lambda: elephant_set_game_paused(False)),
+    ).grid(row=1, column=1, sticky="ew", pady=3)
+    ttk.Button(
+        world_frame,
+        text="开启和平模式",
+        command=lambda: confirm_elephant_action(
+            "和平模式",
+            "将全部玩家设置为互相结盟，确定继续？",
+            lambda: f"和平模式已开启，共更新 {trainer().set_peace_mode(True)} 项联盟关系",
+        ),
+    ).grid(row=2, column=0, sticky="ew", padx=(0, 6), pady=3)
+    ttk.Button(
+        world_frame,
+        text="关闭和平模式",
+        command=lambda: confirm_elephant_action(
+            "关闭和平",
+            "这会取消全部玩家之间的被动联盟，确定继续？",
+            lambda: f"和平模式已关闭，共更新 {trainer().set_peace_mode(False)} 项联盟关系",
+        ),
+    ).grid(row=2, column=1, sticky="ew", pady=3)
+    ttk.Button(
+        world_frame,
+        text="结束当前游戏",
+        command=lambda: confirm_elephant_action(
+            "结束游戏",
+            "当前对局会立即结束，确定继续？",
+            lambda: elephant_action(lambda: trainer().end_current_game(True), "已结束当前游戏"),
+        ),
+    ).grid(row=3, column=0, columnspan=2, sticky="ew", pady=(8, 3))
+    world_frame.columnconfigure(0, weight=1)
+    world_frame.columnconfigure(1, weight=1)
+
+    hero_frame = ttk.LabelFrame(elephant_controls_tab, text="英雄与单位状态", padding=10)
+    hero_frame.grid(row=1, column=1, sticky="nsew", padx=6, pady=(0, 8))
+    ttk.Label(hero_frame, text="英雄等级").grid(row=0, column=0, sticky="w", pady=3)
+    ttk.Entry(hero_frame, textvariable=elephant_hero_level, width=9).grid(row=0, column=1, sticky="w", pady=3)
+    ttk.Button(hero_frame, text="读取", command=lambda: call_async(elephant_read_hero_level)).grid(row=0, column=2, padx=4, pady=3)
+    ttk.Button(hero_frame, text="设置", command=lambda: call_async(elephant_set_hero_level)).grid(row=0, column=3, pady=3)
+    ttk.Button(
+        hero_frame,
+        text="无敌",
+        command=lambda: call_async(
+            lambda: elephant_action(lambda: trainer().set_selected_unit_invulnerable(True), "选中单位已设为无敌")
+        ),
+    ).grid(row=1, column=0, sticky="ew", pady=3)
+    ttk.Button(
+        hero_frame,
+        text="取消无敌",
+        command=lambda: call_async(
+            lambda: elephant_action(lambda: trainer().set_selected_unit_invulnerable(False), "选中单位已取消无敌")
+        ),
+    ).grid(row=1, column=1, columnspan=2, sticky="ew", padx=(6, 0), pady=3)
+    ttk.Button(
+        hero_frame,
+        text="重置冷却",
+        command=lambda: call_async(
+            lambda: elephant_action(trainer().reset_selected_unit_cooldown, "选中单位技能冷却已重置")
+        ),
+    ).grid(row=2, column=0, columnspan=3, sticky="ew", pady=3)
+    ttk.Button(
+        hero_frame,
+        text="关闭碰撞",
+        command=lambda: call_async(
+            lambda: elephant_action(lambda: trainer().set_selected_unit_pathing(False), "选中单位碰撞已关闭")
+        ),
+    ).grid(row=3, column=0, sticky="ew", pady=3)
+    ttk.Button(
+        hero_frame,
+        text="开启碰撞",
+        command=lambda: call_async(
+            lambda: elephant_action(lambda: trainer().set_selected_unit_pathing(True), "选中单位碰撞已开启")
+        ),
+    ).grid(row=3, column=1, columnspan=2, sticky="ew", padx=(6, 0), pady=3)
+    ttk.Button(
+        hero_frame,
+        text="暂停单位",
+        command=lambda: call_async(
+            lambda: elephant_action(lambda: trainer().set_selected_unit_paused(True), "选中单位已暂停")
+        ),
+    ).grid(row=4, column=0, sticky="ew", pady=3)
+    ttk.Button(
+        hero_frame,
+        text="恢复单位",
+        command=lambda: call_async(
+            lambda: elephant_action(lambda: trainer().set_selected_unit_paused(False), "选中单位已恢复")
+        ),
+    ).grid(row=4, column=1, columnspan=2, sticky="ew", padx=(6, 0), pady=3)
+    ttk.Label(hero_frame, text="单位大小").grid(row=5, column=0, sticky="w", pady=(8, 3))
+    ttk.Entry(hero_frame, textvariable=elephant_unit_scale, width=9).grid(row=5, column=1, sticky="w", pady=(8, 3))
+    ttk.Button(hero_frame, text="设置大小", command=lambda: call_async(elephant_set_scale)).grid(row=5, column=2, columnspan=2, sticky="ew", pady=(8, 3))
+
+    target_frame = ttk.LabelFrame(elephant_controls_tab, text="目标单位", padding=10)
+    target_frame.grid(row=1, column=2, sticky="nsew", padx=(6, 0), pady=(0, 8))
+    ttk.Button(
+        target_frame,
+        text="获取控制权",
+        command=lambda: call_async(
+            lambda: f"已取得选中单位控制权；本地玩家 handle=0x{trainer().take_selected_unit_control():x}"
+        ),
+    ).grid(row=0, column=0, columnspan=2, sticky="ew", pady=3)
+    ttk.Button(
+        target_frame,
+        text="击杀单位",
+        command=lambda: confirm_elephant_action(
+            "击杀单位",
+            "确定击杀当前选中单位？",
+            lambda: elephant_action(trainer().kill_selected_unit, "选中单位已被击杀"),
+        ),
+    ).grid(row=1, column=0, sticky="ew", padx=(0, 6), pady=3)
+    ttk.Button(
+        target_frame,
+        text="爆炸单位",
+        command=lambda: confirm_elephant_action(
+            "爆炸单位",
+            "确定让当前选中单位爆炸死亡？",
+            lambda: elephant_action(trainer().explode_selected_unit, "选中单位已爆炸"),
+        ),
+    ).grid(row=1, column=1, sticky="ew", pady=3)
+    ttk.Button(
+        target_frame,
+        text="删除单位",
+        command=lambda: confirm_elephant_action(
+            "删除单位",
+            "单位会从地图中直接删除，确定继续？",
+            lambda: elephant_action(trainer().remove_selected_unit, "选中单位已删除"),
+        ),
+    ).grid(row=2, column=0, columnspan=2, sticky="ew", pady=3)
+    ttk.Button(
+        target_frame,
+        text="秒杀所属玩家全部单位",
+        command=lambda: confirm_elephant_action(
+            "秒杀阵营",
+            "该单位所属玩家的全部单位都会死亡，确定继续？",
+            elephant_kill_owner_units,
+        ),
+    ).grid(row=3, column=0, columnspan=2, sticky="ew", pady=(10, 3))
+    target_frame.columnconfigure(0, weight=1)
+    target_frame.columnconfigure(1, weight=1)
+
+    create_frame = ttk.LabelFrame(elephant_controls_tab, text="创建与物品", padding=10)
+    create_frame.grid(row=2, column=0, sticky="nsew", padx=(0, 6), pady=(0, 8))
+    ttk.Label(create_frame, text="单位 ID").grid(row=0, column=0, sticky="w", pady=3)
+    ttk.Entry(create_frame, textvariable=elephant_unit_rawcode, width=10).grid(row=0, column=1, sticky="w", pady=3)
+    ttk.Button(create_frame, text="创建单位", command=lambda: call_async(lambda: elephant_create_unit(False))).grid(row=0, column=2, padx=(6, 0), pady=3)
+    ttk.Button(create_frame, text="复制选中单位给自己", command=lambda: call_async(lambda: elephant_create_unit(True))).grid(
+        row=1, column=0, columnspan=3, sticky="ew", pady=3
+    )
+    ttk.Label(create_frame, text="物品 ID").grid(row=2, column=0, sticky="w", pady=(10, 3))
+    ttk.Entry(create_frame, textvariable=elephant_item_rawcode, width=10).grid(row=2, column=1, sticky="w", pady=(10, 3))
+    ttk.Button(create_frame, text="添加物品", command=lambda: call_async(elephant_add_item)).grid(row=2, column=2, padx=(6, 0), pady=(10, 3))
+    ttk.Button(
+        create_frame,
+        text="清空背包",
+        command=lambda: confirm_elephant_action(
+            "清空背包",
+            "当前选中单位背包内的物品会被删除，确定继续？",
+            elephant_clear_inventory,
+        ),
+    ).grid(row=3, column=0, columnspan=3, sticky="ew", pady=3)
+
+    ability_frame = ttk.LabelFrame(elephant_controls_tab, text="技能", padding=10)
+    ability_frame.grid(row=2, column=1, sticky="nsew", padx=6, pady=(0, 8))
+    ttk.Label(ability_frame, text="技能 ID").grid(row=0, column=0, sticky="w", pady=3)
+    ttk.Entry(ability_frame, textvariable=elephant_ability_rawcode, width=10).grid(row=0, column=1, sticky="w", pady=3)
+    ttk.Label(ability_frame, text="等级").grid(row=0, column=2, sticky="w", padx=(8, 0), pady=3)
+    ttk.Entry(ability_frame, textvariable=elephant_ability_level, width=7).grid(row=0, column=3, sticky="w", pady=3)
+    ttk.Button(ability_frame, text="添加技能", command=lambda: call_async(elephant_add_ability)).grid(row=1, column=0, columnspan=2, sticky="ew", pady=3)
+    ttk.Button(ability_frame, text="删除技能", command=lambda: call_async(elephant_remove_ability)).grid(row=1, column=2, columnspan=2, sticky="ew", padx=(6, 0), pady=3)
+    ttk.Button(ability_frame, text="设置技能等级", command=lambda: call_async(elephant_set_ability_level)).grid(
+        row=2, column=0, columnspan=4, sticky="ew", pady=3
+    )
+
+    player_frame = ttk.LabelFrame(elephant_controls_tab, text="玩家科技与经验", padding=10)
+    player_frame.grid(row=2, column=2, sticky="nsew", padx=(6, 0), pady=(0, 8))
+    ttk.Label(player_frame, text="科技 ID").grid(row=0, column=0, sticky="w", pady=3)
+    ttk.Entry(player_frame, textvariable=elephant_tech_rawcode, width=10).grid(row=0, column=1, sticky="w", pady=3)
+    ttk.Label(player_frame, text="等级").grid(row=0, column=2, sticky="w", padx=(8, 0), pady=3)
+    ttk.Entry(player_frame, textvariable=elephant_tech_level, width=7).grid(row=0, column=3, sticky="w", pady=3)
+    ttk.Button(player_frame, text="设置科技", command=lambda: call_async(elephant_set_tech)).grid(
+        row=1, column=0, columnspan=4, sticky="ew", pady=3
+    )
+    ttk.Label(player_frame, text="经验倍率").grid(row=2, column=0, sticky="w", pady=(10, 3))
+    ttk.Entry(player_frame, textvariable=elephant_xp_rate, width=10).grid(row=2, column=1, sticky="w", pady=(10, 3))
+    ttk.Button(player_frame, text="设置倍率", command=lambda: call_async(elephant_set_xp_rate)).grid(
+        row=2, column=2, columnspan=2, sticky="ew", padx=(6, 0), pady=(10, 3)
+    )
+
+    for column in range(3):
+        elephant_controls_tab.columnconfigure(column, weight=1, uniform="elephant")
+    elephant_controls_tab.rowconfigure(1, weight=1)
+    elephant_controls_tab.rowconfigure(2, weight=1)
+
+    hotkey_toolbar = ttk.Frame(elephant_hotkeys_tab)
+    hotkey_toolbar.pack(fill="x", pady=(0, 8))
+    ttk.Checkbutton(
+        hotkey_toolbar,
+        text="启用全局快捷键",
+        variable=elephant_hotkeys_enabled,
+        command=refresh_elephant_hotkeys,
+    ).pack(side="left")
+    ttk.Button(
+        hotkey_toolbar,
+        text="全选可用",
+        command=lambda: set_all_elephant_hotkeys(True),
+    ).pack(side="left", padx=(12, 4))
+    ttk.Button(
+        hotkey_toolbar,
+        text="清空",
+        command=lambda: set_all_elephant_hotkeys(False),
+    ).pack(side="left")
+    ttk.Label(hotkey_toolbar, textvariable=elephant_hotkey_status).pack(side="right")
+
+    hotkey_canvas = tk.Canvas(
+        elephant_hotkeys_tab,
+        borderwidth=0,
+        highlightthickness=0,
+        background=ttk.Style().lookup("TFrame", "background") or root.cget("background"),
+    )
+    hotkey_scroll = ttk.Scrollbar(elephant_hotkeys_tab, orient="vertical", command=hotkey_canvas.yview)
+    hotkey_canvas.configure(yscrollcommand=hotkey_scroll.set)
+    hotkey_canvas.pack(side="left", fill="both", expand=True)
+    hotkey_scroll.pack(side="right", fill="y")
+    hotkey_body = ttk.Frame(hotkey_canvas)
+    hotkey_window = hotkey_canvas.create_window((0, 0), window=hotkey_body, anchor="nw")
+
+    def resize_hotkey_body(event) -> None:
+        hotkey_canvas.itemconfigure(hotkey_window, width=event.width)
+
+    def update_hotkey_scrollregion(_event=None) -> None:
+        hotkey_canvas.configure(scrollregion=hotkey_canvas.bbox("all"))
+
+    hotkey_canvas.bind("<Configure>", resize_hotkey_body)
+    hotkey_body.bind("<Configure>", update_hotkey_scrollregion)
+    hotkey_parameter_vars = {
+        "hero_level": elephant_hero_level,
+        "unit_scale": elephant_unit_scale,
+        "item_charges": elephant_item_charges,
+        "add_ability": elephant_ability_rawcode,
+        "add_resources": elephant_resource_amount,
+        "mass_clone": elephant_mass_clone_count,
+        "ability_level": elephant_ability_level,
+        "remove_ability": elephant_ability_rawcode,
+        "reinforcements": elephant_reinforcement_rawcode,
+        "preset_item": elephant_preset_item_rawcode,
+        "preset_tech": elephant_preset_tech_rawcode,
+        "hero_attributes": elephant_hero_attributes,
+        "skill_points": elephant_skill_points,
+        "xp_rate": elephant_xp_rate,
+        "reset_ability": elephant_reset_ability_rawcode,
+        "fullscreen_auto": elephant_auto_effect_count,
+    }
+    hotkeys_per_column = 15
+    for index, spec in enumerate(ELEPHANT_HOTKEY_SPECS):
+        column = index // hotkeys_per_column
+        row = index % hotkeys_per_column
+        item = ttk.Frame(hotkey_body)
+        item.grid(row=row, column=column, sticky="ew", padx=(0 if column == 0 else 12, 0), pady=2)
+        check = ttk.Checkbutton(
+            item,
+            text=spec.label,
+            variable=elephant_hotkey_checks[spec.name],
+            command=refresh_elephant_hotkeys,
+        )
+        check.grid(row=0, column=0, sticky="w")
+        parameter = hotkey_parameter_vars.get(spec.name)
+        if parameter is not None:
+            ttk.Entry(item, textvariable=parameter, width=8).grid(row=0, column=1, sticky="e", padx=(6, 0))
+        item.columnconfigure(0, weight=1)
+    for column in range(3):
+        hotkey_body.columnconfigure(column, weight=1, uniform="elephant-hotkeys")
 
     ttk.Label(outer, textvariable=status, anchor="w", wraplength=1000).pack(fill="x", pady=(0, 2))
 

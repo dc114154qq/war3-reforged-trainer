@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Callable, Iterable, Iterator
 
 
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.0.1"
 
 
 if sys.platform == "win32":
@@ -3721,7 +3721,12 @@ class War3Trainer:
             ),),
         )[0].result
 
-    def create_local_unit(self, rawcode: int | str | None = None) -> tuple[int, int]:
+    def create_local_unit(
+        self,
+        rawcode: int | str | None = None,
+        position: tuple[float, float] | None = None,
+    ) -> tuple[int, int]:
+        x, y = self.query_mouse_world_position() if position is None else position
         with ProcessMemory(self.pid) as pm:
             candidate = self._elephant_selected_candidate(pm)
             unit_rawcode = (
@@ -3731,10 +3736,8 @@ class War3Trainer:
             )
             if not unit_rawcode:
                 raise ValueError("没有可用于创建单位的有效 ID")
-            position = self._position_from_candidate(pm, candidate)
-            x, y = position if position is not None else (0.0, 0.0)
             handlers = self._elephant_handlers(pm, ("GetLocalPlayer", "CreateUnit"))
-        coordinates = struct.unpack("<Q", struct.pack("<ff", float(x) + 96.0, float(y)))[0]
+        coordinates = struct.unpack("<Q", struct.pack("<ff", float(x), float(y)))[0]
         result = self._run_native_helper_ops(
             0,
             ((
@@ -3753,10 +3756,11 @@ class War3Trainer:
         total = int(count)
         if not 1 <= total <= 100:
             raise ValueError("批量复制数量必须在 1 到 100 之间")
+        position = self.query_mouse_world_position()
         created = 0
         unit_rawcode = 0
         for _ in range(total):
-            unit_rawcode, _handle = self.create_local_unit(rawcode)
+            unit_rawcode, _handle = self.create_local_unit(rawcode, position)
             created += 1
         return unit_rawcode, created
 

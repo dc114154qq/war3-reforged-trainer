@@ -30,8 +30,8 @@ from war3_ability_fields import (
 )
 
 
-APP_VERSION = "1.0.2"
-WIN10_COMPAT_REVISION = "backup-r4-live-selection"
+APP_VERSION = "1.0.3"
+WIN10_COMPAT_REVISION = "backup-r5-readable-low-va"
 
 
 if sys.platform == "win32":
@@ -2282,7 +2282,7 @@ class War3Trainer:
                     return None
                 data = blob[offset + 0x18 : end]
             else:
-                if not War3Trainer._sane_heap_ptr(ptr):
+                if ptr < 0x10000 or ptr > 0x7FFFFFFFFFFF:
                     return None
                 known_name = external_names.get(ptr) if external_names is not None else None
                 if known_name is not None and len(known_name) == size:
@@ -8676,10 +8676,26 @@ class War3Trainer:
             unit_value,
             allow_missing=True,
         )
+        resolved_region = self._region_for_address(pm.regions(), resolved_unit)
         diagnostics.log(
             "win10_jass_selection_resolved",
             jass_handle=f"0x{unit_value:x}",
             unit=f"0x{resolved_unit:x}",
+            resolver=f"0x{self._jass_unit_resolver_address:x}",
+            unit_readable=(
+                pm.is_readable_range(resolved_unit, 0x20)
+                if isinstance(pm, Win10ProcessMemory) and resolved_unit
+                else False
+            ),
+            region_base=(
+                f"0x{resolved_region.base:x}" if resolved_region is not None else ""
+            ),
+            region_size=(
+                f"0x{resolved_region.size:x}" if resolved_region is not None else ""
+            ),
+            region_type=(
+                f"0x{resolved_region.typ:x}" if resolved_region is not None else ""
+            ),
         )
         if not resolved_unit:
             raise RuntimeError(
@@ -10657,18 +10673,21 @@ class War3Trainer:
         handle: int,
         owner: int,
         unit: int,
+        pm: ProcessMemory,
     ) -> "War3Trainer":
         identity = (int(handle), int(owner), int(unit))
         isolated = self._win10_session_trainer
         if (
             isolated is None
+            or not isinstance(isolated, BackupReadWar3Trainer)
             or isolated.pid != self.pid
             or self._win10_session_identity != identity
         ):
-            isolated = War3Trainer(self.pid)
+            isolated = BackupReadWar3Trainer(self.pid)
             self._win10_session_trainer = isolated
             self._win10_session_identity = identity
         self._seed_win10_isolated_state(isolated)
+        isolated.set_readable_pointer_regions(pm.regions())
         return isolated
 
     def _seed_win10_isolated_state(self, isolated: "War3Trainer") -> dict[str, int]:
@@ -10779,9 +10798,12 @@ class War3Trainer:
         )
         try:
             isolated = self._win10_session_trainer
-            reused_isolated = isolated is not None and isolated.pid == self.pid
+            reused_isolated = (
+                isinstance(isolated, BackupReadWar3Trainer)
+                and isolated.pid == self.pid
+            )
             if not reused_isolated:
-                isolated = War3Trainer(self.pid)
+                isolated = BackupReadWar3Trainer(self.pid)
             seeded_state = self._seed_win10_isolated_state(isolated)
             diagnostics.log(
                 "isolated_trainer_created",
@@ -10791,13 +10813,16 @@ class War3Trainer:
             )
             with Win10ProcessMemory(self.pid, diagnostics) as pm:
                 with diagnostics.stage("initial_region_snapshot"):
-                    pm.regions(force_refresh=True)
+                    initial_regions = pm.regions(force_refresh=True)
+                    pointer_layout = isolated.set_readable_pointer_regions(initial_regions)
+                diagnostics.log("backup_pointer_layout", **pointer_layout)
                 with diagnostics.stage("recover_compat_native_handlers"):
                     native_recovered, native_missing = self._recover_win10_native_handlers(
                         isolated,
                         pm,
                         diagnostics,
                     )
+                isolated.set_readable_pointer_regions(pm.regions())
                 candidate: UnitCandidate | None = None
                 try:
                     with diagnostics.stage("locate_selected_unit_jass"):
@@ -10969,7 +10994,7 @@ class War3Trainer:
         unit: int,
     ) -> tuple[VisibleUnitPanel, UnitCandidate, list[UnitMemoryField]]:
         with self._win10_memory_operation("read_unit_fields_by_identity") as (diagnostics, pm):
-            isolated = self._win10_session_for_identity(handle, owner, unit)
+            isolated = self._win10_session_for_identity(handle, owner, unit, pm)
             candidate = self._win10_candidate_from_identity(
                 isolated,
                 pm,
@@ -11816,7 +11841,7 @@ class War3Trainer:
             "write_unit_field_by_identity",
             write=True,
         ) as (diagnostics, pm):
-            isolated = self._win10_session_for_identity(handle, owner, unit)
+            isolated = self._win10_session_for_identity(handle, owner, unit, pm)
             candidate = self._win10_candidate_from_identity(
                 isolated,
                 pm,
@@ -12011,7 +12036,7 @@ class War3Trainer:
             "set_unit_by_identity",
             write=True,
         ) as (diagnostics, pm):
-            isolated = self._win10_session_for_identity(handle, owner, unit)
+            isolated = self._win10_session_for_identity(handle, owner, unit, pm)
             candidate = self._win10_candidate_from_identity(
                 isolated,
                 pm,
@@ -12046,6 +12071,50 @@ class War3Trainer:
                 target_mp_regen=target_mp_regen,
             )
             return candidate
+
+
+class BackupReadWar3Trainer(War3Trainer):
+    """War3 trainer view that accepts verified low virtual addresses."""
+
+    LOW_ADDRESS_LIMIT = 0x100000000
+
+    def __init__(self, pid: int | None = None):
+        super().__init__(pid)
+        self._readable_pointer_bases: tuple[int, ...] = ()
+        self._readable_pointer_ends: tuple[int, ...] = ()
+
+    def set_readable_pointer_regions(self, regions: Iterable[Region]) -> dict[str, object]:
+        ranges: list[tuple[int, int]] = []
+        for region in sorted(regions, key=lambda item: item.base):
+            start = max(int(region.base), 0x10000)
+            end = min(int(region.base + region.size), self.LOW_ADDRESS_LIMIT)
+            if end - start < 8:
+                continue
+            if ranges and start <= ranges[-1][1]:
+                previous_start, previous_end = ranges[-1]
+                ranges[-1] = (previous_start, max(previous_end, end))
+            else:
+                ranges.append((start, end))
+        self._readable_pointer_bases = tuple(start for start, _end in ranges)
+        self._readable_pointer_ends = tuple(end for _start, end in ranges)
+        return {
+            "low_region_count": len(ranges),
+            "low_readable_bytes": sum(end - start for start, end in ranges),
+            "low_min": f"0x{ranges[0][0]:x}" if ranges else "",
+            "low_max": f"0x{ranges[-1][1]:x}" if ranges else "",
+        }
+
+    def _sane_heap_ptr(self, value: int) -> bool:
+        value = int(value)
+        if War3Trainer._sane_heap_ptr(value):
+            return True
+        if value < 0x10000 or value >= self.LOW_ADDRESS_LIMIT:
+            return False
+        index = bisect_right(self._readable_pointer_bases, value) - 1
+        return bool(
+            index >= 0
+            and value + 8 <= self._readable_pointer_ends[index]
+        )
 
 
 def close_float(a: float, b: float, tolerance: float = 0.01) -> bool:

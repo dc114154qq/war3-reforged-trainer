@@ -1,0 +1,15 @@
+[Unit]
+Description=Synchronize Warcraft III trainer releases from GitHub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/bin/python3 /opt/war3-releases/sync_github_releases.py --site-root /srv/war3-releases
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+
+[Install]
+WantedBy=multi-user.target

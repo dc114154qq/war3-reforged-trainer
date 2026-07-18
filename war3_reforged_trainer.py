@@ -18,12 +18,20 @@ import struct
 import sys
 import threading
 import time
+import traceback
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Callable, Iterable, Iterator
 
+from war3_ability_fields import (
+    ABILITY_FIELD_BY_KEY,
+    AbilityFieldSpec,
+    ability_fields_for_effect_class,
+)
 
-APP_VERSION = "1.0.1"
+
+APP_VERSION = "1.0.2"
+WIN10_COMPAT_REVISION = "backup-r4-live-selection"
 
 
 if sys.platform == "win32":
@@ -41,6 +49,7 @@ PROCESS_VM_OPERATION = 0x0008
 
 MEM_COMMIT = 0x1000
 MEM_PRIVATE = 0x20000
+MEM_MAPPED = 0x40000
 MEM_IMAGE = 0x1000000
 PAGE_NOACCESS = 0x01
 PAGE_READWRITE = 0x04
@@ -79,6 +88,7 @@ WAIT_ABANDONED = 0x00000080
 WAIT_TIMEOUT = 0x00000102
 ERROR_NOT_SUPPORTED = 50
 ERROR_NOT_FOUND = 1168
+ERROR_PARTIAL_COPY = 299
 
 
 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -530,6 +540,56 @@ class NativeHelperOpResult:
     arg0: int = 0
     arg1: int = 0
     extra_results: tuple[int, ...] = ()
+
+
+@dataclass(frozen=True)
+class SelectedAbilityFieldContext:
+    candidate: UnitCandidate
+    unit_handle: int
+    ability_handle: int
+    ability_rawcode: int
+    effect_class: int
+    effect_class_verified: bool
+    effect_class_note: str
+    current_level: int
+    handlers: dict[str, NativeHandler]
+
+    @property
+    def unit_identity(self) -> tuple[int, int, int]:
+        return (
+            self.candidate.handle,
+            self.candidate.owner_address,
+            self.candidate.unit_address,
+        )
+
+
+@dataclass(frozen=True)
+class AbilityFieldValue:
+    spec: AbilityFieldSpec
+    value: bool | int | float | None
+    status: str
+    note: str = ""
+
+    def value_text(self) -> str:
+        if self.value is None:
+            return ""
+        if self.spec.value_kind == "boolean":
+            return "true" if bool(self.value) else "false"
+        if self.spec.value_kind == "real":
+            return f"{float(self.value):.7g}"
+        return str(int(self.value))
+
+
+@dataclass(frozen=True)
+class AbilityFieldSnapshot:
+    ability_rawcode: int
+    effect_class: int
+    current_level: int
+    requested_level: int
+    fields: tuple[AbilityFieldValue, ...]
+    unit_identity: tuple[int, int, int] = (0, 0, 0)
+    effect_class_verified: bool = True
+    effect_class_note: str = ""
 
 
 @dataclass(frozen=True)
@@ -1122,6 +1182,466 @@ class ProcessMemory:
         return self.scan_bytes(struct.pack("<f", float(value)))
 
 
+class Win10ReadLogger:
+    def __init__(self, pid: int):
+        self.pid = int(pid)
+        self.started = time.perf_counter()
+        self._lock = threading.Lock()
+        self._files = []
+        stamp = time.strftime("%Y%m%d-%H%M%S") + f"-{int(time.time() * 1000) % 1000:03d}"
+        preferred_root = (
+            Path(sys.executable).resolve().parent
+            if getattr(sys, "frozen", False)
+            else Path(__file__).resolve().parent
+        )
+        roots = (
+            preferred_root / "log",
+            Path(tempfile.gettempdir()) / "War3ReforgedTrainer" / "log",
+        )
+        last_error: OSError | None = None
+        for log_root in roots:
+            opened = []
+            try:
+                log_root.mkdir(parents=True, exist_ok=True)
+                archive_path = log_root / f"win10-read-{stamp}-pid{self.pid}.log"
+                latest_path = log_root / "win10-read-latest.log"
+                for path in (archive_path, latest_path):
+                    opened.append(path.open("w", encoding="utf-8-sig", buffering=1))
+            except OSError as exc:
+                last_error = exc
+                for handle in opened:
+                    handle.close()
+                continue
+            self.archive_path = archive_path
+            self.latest_path = latest_path
+            self.path = latest_path
+            self._files = opened
+            break
+        else:
+            raise RuntimeError(f"无法创建 Win10 读取诊断日志：{last_error}")
+        self.log(
+            "log_start",
+            app_version=APP_VERSION,
+            compat_revision=WIN10_COMPAT_REVISION,
+            pid=self.pid,
+            archive=str(self.archive_path),
+            latest=str(self.latest_path),
+        )
+
+    @staticmethod
+    def _format_value(value: object) -> str:
+        if isinstance(value, str):
+            return repr(value.replace("\r", "\\r").replace("\n", "\\n"))
+        return repr(value)
+
+    def log(self, event: str, **values: object) -> None:
+        elapsed_ms = (time.perf_counter() - self.started) * 1000.0
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        details = " ".join(
+            f"{key}={self._format_value(value)}" for key, value in values.items()
+        )
+        line = (
+            f"[{timestamp}] +{elapsed_ms:010.1f}ms "
+            f"thread={threading.get_ident()} event={event}"
+        )
+        if details:
+            line += " " + details
+        line += "\n"
+        with self._lock:
+            alive = []
+            for handle in self._files:
+                try:
+                    handle.write(line)
+                    handle.flush()
+                except OSError:
+                    try:
+                        handle.close()
+                    except OSError:
+                        pass
+                else:
+                    alive.append(handle)
+            self._files = alive
+
+    def log_traceback(self, event: str, exc: BaseException) -> None:
+        self.log(event, exception=repr(exc), traceback=traceback.format_exc())
+
+    @contextmanager
+    def stage(self, name: str, **values: object) -> Iterator[None]:
+        started = time.perf_counter()
+        self.log("stage_begin", stage=name, **values)
+        try:
+            yield
+        except Exception as exc:
+            self.log(
+                "stage_error",
+                stage=name,
+                elapsed_ms=(time.perf_counter() - started) * 1000.0,
+                exception=repr(exc),
+            )
+            raise
+        self.log(
+            "stage_end",
+            stage=name,
+            elapsed_ms=(time.perf_counter() - started) * 1000.0,
+        )
+
+    def close(self) -> None:
+        if not self._files:
+            return
+        self.log("log_end", elapsed_ms=(time.perf_counter() - self.started) * 1000.0)
+        with self._lock:
+            files, self._files = self._files, []
+        for handle in files:
+            try:
+                handle.close()
+            except OSError:
+                pass
+
+
+# Historical UI label only; this compatibility reader is used on Win10 and Win11.
+class Win10ProcessMemory(ProcessMemory):
+    EXACT_READ_LIMIT = 0x1000
+    SCAN_CHUNK_SIZE = 0x10000
+    PAGE_SIZE = 0x1000
+    EXACT_RETRIES = 3
+
+    def __init__(self, pid: int, diagnostics: Win10ReadLogger, write: bool = False):
+        self.diagnostics = diagnostics
+        self.read_calls = 0
+        self.requested_bytes = 0
+        self.read_failures = 0
+        self.partial_copy_failures = 0
+        self.tolerant_ranges = 0
+        self.zero_filled_bytes = 0
+        self.skipped_unreadable_reads = 0
+        self._readable_region_starts: tuple[int, ...] = ()
+        self._skipped_unreadable_callsites: dict[str, int] = {}
+        self._skipped_unreadable_addresses: dict[int, int] = {}
+        super().__init__(pid, write=write)
+        self.diagnostics.log(
+            "process_open",
+            pid=pid,
+            write=write,
+            pointer_bits=ctypes.sizeof(ctypes.c_void_p) * 8,
+            python=sys.version,
+            windows=str(sys.getwindowsversion()),
+        )
+
+    def close(self) -> None:
+        if self.handle:
+            self.diagnostics.log(
+                "process_memory_summary",
+                read_calls=self.read_calls,
+                requested_bytes=self.requested_bytes,
+                read_failures=self.read_failures,
+                partial_copy_failures=self.partial_copy_failures,
+                tolerant_ranges=self.tolerant_ranges,
+                zero_filled_bytes=self.zero_filled_bytes,
+                skipped_unreadable_reads=self.skipped_unreadable_reads,
+                skipped_unreadable_callsites=sorted(
+                    self._skipped_unreadable_callsites.items(),
+                    key=lambda item: item[1],
+                    reverse=True,
+                )[:20],
+                skipped_unreadable_addresses=[
+                    (f"0x{address:x}", count)
+                    for address, count in sorted(
+                        self._skipped_unreadable_addresses.items(),
+                        key=lambda item: item[1],
+                        reverse=True,
+                    )[:20]
+                ],
+            )
+        super().close()
+
+    def regions(self, force_refresh: bool = False) -> list[Region]:
+        cache_hit = self._regions_cache is not None and not force_refresh
+        regions = super().regions(force_refresh=force_refresh)
+        if not cache_hit or not self._readable_region_starts:
+            self._readable_region_starts = tuple(region.base for region in regions)
+        if cache_hit:
+            return regions
+        type_counts: dict[int, int] = {}
+        type_bytes: dict[int, int] = {}
+        for region in regions:
+            type_counts[region.typ] = type_counts.get(region.typ, 0) + 1
+            type_bytes[region.typ] = type_bytes.get(region.typ, 0) + region.size
+        self.diagnostics.log(
+            "regions_refresh",
+            count=len(regions),
+            private_count=type_counts.get(MEM_PRIVATE, 0),
+            private_bytes=type_bytes.get(MEM_PRIVATE, 0),
+            image_count=type_counts.get(MEM_IMAGE, 0),
+            image_bytes=type_bytes.get(MEM_IMAGE, 0),
+            mapped_count=type_counts.get(MEM_MAPPED, 0),
+            mapped_bytes=type_bytes.get(MEM_MAPPED, 0),
+        )
+        return regions
+
+    def is_readable_range(self, address: int, size: int = 1) -> bool:
+        address = int(address)
+        size = int(size)
+        if address < 0 or size < 0:
+            return False
+        if size == 0:
+            return True
+        end = address + size
+        if end <= address:
+            return False
+        if self._regions_cache is None or not self._readable_region_starts:
+            self.regions()
+        regions = self._regions_cache or []
+        starts = self._readable_region_starts
+        index = bisect_right(starts, address) - 1
+        if index < 0:
+            return False
+        current = address
+        while current < end and index < len(regions):
+            region = regions[index]
+            region_end = region.base + region.size
+            if not region.base <= current < region_end:
+                return False
+            current = min(end, region_end)
+            if current >= end:
+                return True
+            index += 1
+            if index >= len(regions) or regions[index].base != current:
+                return False
+        return False
+
+    def _record_unreadable_skip(self, address: int, size: int) -> None:
+        self.skipped_unreadable_reads += 1
+        callsite = self._callsite()
+        self._skipped_unreadable_callsites[callsite] = (
+            self._skipped_unreadable_callsites.get(callsite, 0) + 1
+        )
+        if len(self._skipped_unreadable_addresses) < 256 or address in self._skipped_unreadable_addresses:
+            self._skipped_unreadable_addresses[address] = (
+                self._skipped_unreadable_addresses.get(address, 0) + 1
+            )
+        if self.skipped_unreadable_reads <= 20:
+            region = self._query_region(address)
+            self.diagnostics.log(
+                "read_skipped_unreadable",
+                address=f"0x{address:x}",
+                requested=f"0x{size:x}",
+                callsite=callsite,
+                region=region,
+            )
+        elif self.skipped_unreadable_reads == 21:
+            self.diagnostics.log("read_skipped_unreadable_suppressed")
+
+    def _query_region(self, address: int) -> dict[str, int]:
+        mbi = MEMORY_BASIC_INFORMATION64()
+        result = kernel32.VirtualQueryEx(
+            self.handle,
+            ctypes.c_void_p(address),
+            ctypes.byref(mbi),
+            ctypes.sizeof(mbi),
+        )
+        if not result:
+            return {}
+        return {
+            "base": int(mbi.BaseAddress),
+            "size": int(mbi.RegionSize),
+            "state": int(mbi.State),
+            "protect": int(mbi.Protect),
+            "type": int(mbi.Type),
+        }
+
+    @staticmethod
+    def _callsite() -> str:
+        frames = traceback.extract_stack(limit=7)[:-2]
+        return " > ".join(f"{frame.name}:{frame.lineno}" for frame in frames[-4:])
+
+    def _read_once(self, address: int, size: int) -> tuple[bytes, int, int, bool]:
+        buf = ctypes.create_string_buffer(size)
+        got = ctypes.c_size_t(0)
+        ctypes.set_last_error(0)
+        ok = bool(
+            kernel32.ReadProcessMemory(
+                self.handle,
+                ctypes.c_void_p(address),
+                buf,
+                ctypes.c_size_t(size),
+                ctypes.byref(got),
+            )
+        )
+        received = int(got.value)
+        error = int(ctypes.get_last_error())
+        if received != size and not error:
+            error = ERROR_PARTIAL_COPY
+        return buf.raw[:received], received, error, ok
+
+    def _log_read_failure(
+        self,
+        address: int,
+        size: int,
+        received: int,
+        error: int,
+        attempt: int,
+        mode: str,
+    ) -> None:
+        self.read_failures += 1
+        if error == ERROR_PARTIAL_COPY:
+            self.partial_copy_failures += 1
+        region = self._query_region(address)
+        self.diagnostics.log(
+            "read_failure",
+            mode=mode,
+            address=f"0x{address:x}",
+            requested=f"0x{size:x}",
+            received=f"0x{received:x}",
+            error=error,
+            attempt=attempt,
+            callsite=self._callsite(),
+            region_base=f"0x{region.get('base', 0):x}",
+            region_size=f"0x{region.get('size', 0):x}",
+            region_state=f"0x{region.get('state', 0):x}",
+            region_protect=f"0x{region.get('protect', 0):x}",
+            region_type=f"0x{region.get('type', 0):x}",
+        )
+
+    @staticmethod
+    def _raise_read_error(address: int, size: int, received: int, error: int) -> None:
+        code = error or ERROR_PARTIAL_COPY
+        exc = ctypes.WinError(code)
+        exc.add_note(
+            "ReadProcessMemory "
+            f"address=0x{address:x} requested=0x{size:x} received=0x{received:x}"
+        )
+        raise exc
+
+    def _read_exact(self, address: int, size: int) -> bytes:
+        last_received = 0
+        last_error = 0
+        for attempt in range(1, self.EXACT_RETRIES + 1):
+            data, received, error, _ok = self._read_once(address, size)
+            if received == size:
+                return data
+            last_received = received
+            last_error = error
+            self._log_read_failure(address, size, received, error, attempt, "exact")
+            if error != ERROR_PARTIAL_COPY or attempt == self.EXACT_RETRIES:
+                break
+            self._regions_cache = None
+            time.sleep(0.002 * attempt)
+        self._raise_read_error(address, size, last_received, last_error)
+
+    def _read_tolerant(self, address: int, size: int) -> bytes:
+        data, received, error, _ok = self._read_once(address, size)
+        if received == size:
+            return data
+        self._log_read_failure(address, size, received, error, 1, "range_initial")
+        if error != ERROR_PARTIAL_COPY:
+            self._raise_read_error(address, size, received, error)
+
+        self.tolerant_ranges += 1
+        result = bytearray(size)
+        recovered = 0
+        if received:
+            result[:received] = data
+            recovered = received
+        current = address + received
+        end = address + size
+        while current < end:
+            chunk_address = current
+            request_size = min(self.SCAN_CHUNK_SIZE, end - current)
+            chunk, got, chunk_error, _chunk_ok = self._read_once(chunk_address, request_size)
+            if got:
+                offset = chunk_address - address
+                result[offset : offset + got] = chunk
+                recovered += got
+                current = chunk_address + got
+                if got == request_size:
+                    continue
+            if got != request_size:
+                self._log_read_failure(
+                    chunk_address,
+                    request_size,
+                    got,
+                    chunk_error,
+                    1,
+                    "range_chunk",
+                )
+            if chunk_error != ERROR_PARTIAL_COPY:
+                self._raise_read_error(current, request_size, got, chunk_error)
+            if got:
+                continue
+
+            page_address = current
+            page_size = min(
+                self.PAGE_SIZE - (page_address & (self.PAGE_SIZE - 1)),
+                end - page_address,
+            )
+            page, page_got, page_error, _page_ok = self._read_once(page_address, page_size)
+            if page_got:
+                offset = page_address - address
+                result[offset : offset + page_got] = page
+                recovered += page_got
+                current = page_address + page_got
+                if page_got == page_size:
+                    continue
+            self._log_read_failure(
+                page_address,
+                page_size,
+                page_got,
+                page_error,
+                1,
+                "range_page",
+            )
+            if page_error != ERROR_PARTIAL_COPY:
+                self._raise_read_error(current, page_size, page_got, page_error)
+            if page_got:
+                continue
+
+            region = self._query_region(current)
+            if region and (
+                region.get("state") != MEM_COMMIT
+                or region.get("protect", 0) & (PAGE_NOACCESS | PAGE_GUARD)
+                or (region.get("protect", 0) & 0xFF) not in READABLE_PROTECTS
+            ):
+                skip = min(
+                    max(1, region["base"] + region["size"] - current),
+                    end - current,
+                )
+            else:
+                skip = page_size
+            self.zero_filled_bytes += skip
+            self.diagnostics.log(
+                "range_skip",
+                address=f"0x{current:x}",
+                size=f"0x{skip:x}",
+                error=page_error,
+                region=region,
+            )
+            current += skip
+
+        zero_filled = size - recovered
+        self.diagnostics.log(
+            "tolerant_read_complete",
+            address=f"0x{address:x}",
+            requested=f"0x{size:x}",
+            recovered=f"0x{recovered:x}",
+            zero_filled=f"0x{zero_filled:x}",
+        )
+        return bytes(result)
+
+    def read(self, address: int, size: int) -> bytes:
+        if size < 0:
+            raise ValueError("读取长度不能为负数")
+        if size == 0:
+            return b""
+        self.read_calls += 1
+        self.requested_bytes += size
+        if size <= self.EXACT_READ_LIMIT:
+            if not self.is_readable_range(address, size):
+                self._record_unreadable_skip(address, size)
+                self._raise_read_error(address, size, 0, ERROR_PARTIAL_COPY)
+            return self._read_exact(address, size)
+        return self._read_tolerant(address, size)
+
+
 def _window_text(hwnd: int) -> str:
     length = user32.GetWindowTextLengthW(hwnd)
     buf = ctypes.create_unicode_buffer(length + 1)
@@ -1316,6 +1836,7 @@ class War3Trainer:
     CPLAYER_SELECTION_MANAGER_OFFSET = 0x168
     SELECTION_MANAGER_ALT_LIST_OFFSET = 0x3D0
     SELECTION_MANAGER_MAX_UNITS = 64
+    WIN10_STRONG_SELECTION_SCORE = 155
     UNIT_OWNER_POINTER_SEARCH_RADIUS = 0x2000000
     HERO_SKILL_SLOT_COUNT = 5
     ABILITY_WRAPPER_SCAN_BACK = 0x70000
@@ -1357,6 +1878,57 @@ class War3Trainer:
         "GetHandleId",
         "DestroyGroup",
     )
+    WIN10_SELECTION_NATIVE_NAMES = (
+        "CreateGroup",
+        "GetLocalPlayer",
+        "GroupEnumUnitsSelected",
+        "FirstOfGroup",
+        "GetHandleId",
+        "DestroyGroup",
+    )
+    NATIVE_RECORD_STRIDE = 0x88
+    NATIVE_RECORD_PROFILE_ANCHORS = {
+        "FogMaskEnable": 0xF0C0,
+        "CreateGroup": 0x143A0,
+        "FirstOfGroup": 0x15280,
+        "GetWidgetLife": 0x158E0,
+        "SetHeroInt": 0x189C0,
+        "SetHeroLevel": 0x18F10,
+        "CreateItem": 0x1DB90,
+        "GetLocalPlayer": 0x1EC90,
+        "EndGame": 0x202E0,
+        "PauseGame": 0x27050,
+        "BlzGetAbilityId": 0x39590,
+    }
+    NATIVE_RECORD_PROFILE_EXTERNALS = {
+        "SetPlayerAlliance": 0xCB90,
+        "IsFogMaskEnabled": 0xF148,
+        "GroupEnumUnitsOfPlayer": 0x14A88,
+        "GroupEnumUnitsSelected": 0x14D30,
+        "UnitStripHeroLevel": 0x18C68,
+        "UnitModifySkillPoints": 0x18CF0,
+        "GetUnitAbilityLevel": 0x192C8,
+        "SetUnitInvulnerable": 0x194E8,
+        "GetHeroInt": 0x18B58,
+        "UnitRemoveAbility": 0x1B330,
+        "UnitApplyTimedLife": 0x1B990,
+        "SetUnitAbilityLevel": 0x1BD48,
+        "UnitResetCooldown": 0x1BDD0,
+        "IssueImmediateOrderById": 0x1C078,
+        "IssuePointOrderById": 0x1C188,
+        "IssueTargetOrderById": 0x1C320,
+        "SetPlayerTechMaxAllowed": 0x1F048,
+        "SetPlayerTechResearched": 0x1F1E0,
+        "SetPlayerHandicapXP": 0x1FD90,
+        "ChooseRandomItem": 0x26390,
+        "BlzSetUnitMaxMana": 0x33B40,
+        "BlzUnitHideAbility": 0x34D50,
+        "BlzIsUnitInvulnerable": 0x34F70,
+        "BlzGetUnitAbility": 0x36FD8,
+        "BlzGetUnitAbilityByIndex": 0x37060,
+        "BlzGetAbilityRealLevelField": 0x39948,
+        "BlzSetAbilityRealLevelField": 0x39FA8,
+    }
     ELEPHANT_NATIVE_NAMES = (
         "SetHeroLevel",
         "GetHeroLevel",
@@ -1430,11 +2002,56 @@ class War3Trainer:
         "UnitApplyTimedLife",
         "IsPlayerEnemy",
     )
+    ABILITY_FIELD_NATIVE_NAMES = (
+        "BlzGetUnitAbility",
+        "BlzGetAbilityId",
+        "GetUnitAbilityLevel",
+        "BlzGetAbilityBooleanField",
+        "BlzSetAbilityBooleanField",
+        "BlzGetAbilityIntegerField",
+        "BlzSetAbilityIntegerField",
+        "BlzGetAbilityRealField",
+        "BlzSetAbilityRealField",
+        "BlzGetAbilityBooleanLevelField",
+        "BlzSetAbilityBooleanLevelField",
+        "BlzGetAbilityIntegerLevelField",
+        "BlzSetAbilityIntegerLevelField",
+        "BlzGetAbilityRealLevelField",
+        "BlzSetAbilityRealLevelField",
+    )
+    ABILITY_FIELD_GETTER_NAMES = {
+        ("boolean", "field"): "BlzGetAbilityBooleanField",
+        ("integer", "field"): "BlzGetAbilityIntegerField",
+        ("real", "field"): "BlzGetAbilityRealField",
+        ("boolean", "level"): "BlzGetAbilityBooleanLevelField",
+        ("integer", "level"): "BlzGetAbilityIntegerLevelField",
+        ("real", "level"): "BlzGetAbilityRealLevelField",
+    }
+    ABILITY_FIELD_SETTER_NAMES = {
+        ("boolean", "field"): "BlzSetAbilityBooleanField",
+        ("integer", "field"): "BlzSetAbilityIntegerField",
+        ("real", "field"): "BlzSetAbilityRealField",
+        ("boolean", "level"): "BlzSetAbilityBooleanLevelField",
+        ("integer", "level"): "BlzSetAbilityIntegerLevelField",
+        ("real", "level"): "BlzSetAbilityRealLevelField",
+    }
     NATIVE_SELECTION_HANDLER_NAMES = (
         "IsUnitSelected",
     )
+    WIN10_COMPAT_NATIVE_NAMES = tuple(
+        dict.fromkeys(
+            (
+                *ELEPHANT_NATIVE_NAMES,
+                *ABILITY_FIELD_NATIVE_NAMES,
+                *NATIVE_HANDLER_NAMES,
+                *JASS_SELECTION_NATIVE_NAMES,
+                *NATIVE_SELECTION_HANDLER_NAMES,
+                "GetHeroInt",
+            )
+        )
+    )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 15
+    NATIVE_HELPER_VERSION = 16
     NATIVE_HELPER_STATUS_PENDING = 1
     NATIVE_HELPER_STATUS_OK = 2
     NATIVE_HELPER_MAX_OPS = 16
@@ -1493,6 +2110,11 @@ class War3Trainer:
     NATIVE_HELPER_OP_DIRECT_ABILITY_ENUM = 106
     NATIVE_HELPER_OP_JASS_ABILITY_REAL_LEVEL_FIELD_SET = 107
     NATIVE_HELPER_OP_JASS_UNIT_RESOLVE = 109
+    NATIVE_HELPER_OP_JASS_ABILITY_FIELD_GET = 110
+    NATIVE_HELPER_OP_JASS_ABILITY_LEVEL_FIELD_GET = 111
+    NATIVE_HELPER_OP_JASS_ABILITY_SCALAR_FIELD_SET = 112
+    NATIVE_HELPER_OP_JASS_ABILITY_REAL_FIELD_SET = 113
+    NATIVE_HELPER_OP_JASS_ABILITY_SCALAR_LEVEL_FIELD_SET = 114
 
     def __init__(self, pid: int | None = None):
         self.hwnd, self.pid = find_war3(pid)
@@ -1519,9 +2141,17 @@ class War3Trainer:
         self._component_index_misses: set[int] = set()
         self._unit_component_layout_confirmed = False
         self._ability_instances_cache: dict[tuple[int, int, int, bool], list[AbilityInstance]] = {}
+        self._ability_field_write_disabled = False
         self._selection_manager_offset = self.CPLAYER_SELECTION_MANAGER_OFFSET
         self._selection_list_offsets = (0, self.SELECTION_MANAGER_ALT_LIST_OFFSET)
         self._resource_candidates_by_start: dict[int, list[ResourceCache]] = {}
+        self._win10_session_trainer: War3Trainer | None = None
+        self._win10_session_identity: tuple[int, int, int] | None = None
+        self._last_win10_jass_unit_handle = 0
+        self._last_win10_jass_player_handle = 0
+        self._last_win10_jass_handle_id = 0
+        self._last_win10_native_recovered = 0
+        self._last_win10_native_missing: tuple[str, ...] = ()
 
     def refresh_window(self, allow_pid_change: bool = False) -> None:
         if is_war3_window(self.hwnd, self.pid):
@@ -1550,9 +2180,17 @@ class War3Trainer:
             self._component_index_misses = set()
             self._unit_component_layout_confirmed = False
             self._ability_instances_cache = {}
+            self._ability_field_write_disabled = False
             self._selection_manager_offset = self.CPLAYER_SELECTION_MANAGER_OFFSET
             self._selection_list_offsets = (0, self.SELECTION_MANAGER_ALT_LIST_OFFSET)
             self._resource_candidates_by_start = {}
+            self._win10_session_trainer = None
+            self._win10_session_identity = None
+            self._last_win10_jass_unit_handle = 0
+            self._last_win10_jass_player_handle = 0
+            self._last_win10_jass_handle_id = 0
+            self._last_win10_native_recovered = 0
+            self._last_win10_native_missing = ()
 
     def focus(self) -> None:
         focus_window(self.hwnd)
@@ -1621,6 +2259,144 @@ class War3Trainer:
             return data.decode("ascii")
         except UnicodeDecodeError:
             return None
+
+    @staticmethod
+    def _decode_native_string_from_blob_win10(
+        pm: ProcessMemory,
+        blob: bytes,
+        base: int,
+        offset: int,
+        external_names: dict[int, str] | None = None,
+    ) -> str | None:
+        if offset < 0 or offset + 24 > len(blob):
+            return None
+        ptr, size, capacity = struct.unpack_from("<QQQ", blob, offset)
+        if not 0 < size < 80:
+            return None
+        record = base + offset
+        inline_capacity = capacity & 0xFF
+        try:
+            if ptr == record + 0x18 and inline_capacity >= size:
+                end = offset + 0x18 + int(size)
+                if end > len(blob):
+                    return None
+                data = blob[offset + 0x18 : end]
+            else:
+                if not War3Trainer._sane_heap_ptr(ptr):
+                    return None
+                known_name = external_names.get(ptr) if external_names is not None else None
+                if known_name is not None and len(known_name) == size:
+                    data = known_name.encode("ascii")
+                elif size <= capacity < 0x1000:
+                    data = pm.read(ptr, int(size))
+                else:
+                    return None
+        except OSError:
+            return None
+        if any(byte < 32 or byte > 126 for byte in data):
+            return None
+        try:
+            return data.decode("ascii")
+        except UnicodeDecodeError:
+            return None
+
+    @staticmethod
+    def _iter_readable_blocks_win10(
+        pm: ProcessMemory,
+        address: int,
+        size: int,
+        block_size: int = 4 * 1024 * 1024,
+        min_block_size: int = 0x1000,
+    ) -> Iterator[tuple[int, bytes]]:
+        def read_block(block_address: int, block_length: int) -> Iterator[tuple[int, bytes]]:
+            try:
+                yield block_address, pm.read(block_address, block_length)
+                return
+            except OSError:
+                if block_length <= min_block_size:
+                    return
+            split = max(min_block_size, (block_length // 2) & ~(min_block_size - 1))
+            if split <= 0 or split >= block_length:
+                return
+            yield from read_block(block_address, split)
+            yield from read_block(block_address + split, block_length - split)
+
+        offset = 0
+        while offset < size:
+            length = min(block_size, size - offset)
+            pending_address = 0
+            pending = bytearray()
+            for piece_address, piece in read_block(address + offset, length):
+                if pending and pending_address + len(pending) != piece_address:
+                    yield pending_address, bytes(pending)
+                    pending.clear()
+                if not pending:
+                    pending_address = piece_address
+                pending.extend(piece)
+            if pending:
+                yield pending_address, bytes(pending)
+            offset += length
+
+    def _scan_bytes_private_win10(
+        self,
+        pm: ProcessMemory,
+        pattern: bytes,
+        max_region_size: int = 64 * 1024 * 1024,
+    ) -> list[int]:
+        hits: list[int] = []
+        tail_len = max(0, len(pattern) - 1)
+        for region in pm.regions():
+            if region.typ != MEM_PRIVATE or region.size > max_region_size:
+                continue
+            tail = b""
+            previous_end = 0
+            for block_address, block in self._iter_readable_blocks_win10(
+                pm,
+                region.base,
+                region.size,
+            ):
+                if previous_end != block_address:
+                    tail = b""
+                data = tail + block
+                start = 0
+                while True:
+                    offset = data.find(pattern, start)
+                    if offset < 0:
+                        break
+                    address = block_address - len(tail) + offset
+                    if address >= region.base:
+                        hits.append(address)
+                    start = offset + 1
+                tail = data[-tail_len:] if tail_len else b""
+                previous_end = block_address + len(block)
+        return hits
+
+    def _scan_native_table_region_candidates_win10(
+        self,
+        pm: ProcessMemory,
+        regions: list[Region],
+        max_region_size: int,
+    ) -> list[Region]:
+        pattern = b"UnitAddAbility\0"
+        candidates: dict[tuple[int, int], Region] = {}
+        for hit in pm.scan_bytes_private(pattern, max_region_size=max_region_size):
+            record = hit - 0x18
+            region = self._region_for_address(regions, hit)
+            if region is None or region.typ != MEM_PRIVATE:
+                continue
+            try:
+                handler = pm.read_u64(record - 8)
+                ptr = pm.read_u64(record)
+                size = pm.read_u64(record + 8)
+            except OSError:
+                continue
+            if (
+                ptr == hit
+                and size == len("UnitAddAbility")
+                and self._is_executable_image_address(regions, handler)
+            ):
+                candidates[(region.base, region.size)] = region
+        return sorted(candidates.values(), key=lambda item: item.base, reverse=True)
 
     def _find_native_table_regions(
         self,
@@ -1819,6 +2595,199 @@ class War3Trainer:
         missing = wanted.difference(self._native_handlers)
         if missing:
             raise RuntimeError("未找到 native 函数：" + ", ".join(sorted(missing)))
+        return {name: self._native_handlers[name] for name in wanted}
+
+    def _discover_native_handlers_near_table_win10(
+        self,
+        pm: ProcessMemory,
+        names: Iterable[str],
+    ) -> dict[str, NativeHandler]:
+        wanted = set(names)
+        missing = wanted.difference(self._native_handlers)
+        if not missing:
+            return {name: self._native_handlers[name] for name in wanted}
+
+        regions = pm.regions()
+        anchors = self._find_native_table_regions(pm, regions)
+        found: dict[str, NativeHandler] = {}
+        external_records: set[tuple[int, int]] = set()
+        executable_regions = sorted(
+            (
+                (region.base, region.base + region.size)
+                for region in regions
+                if (region.protect & 0xFF) in EXECUTABLE_PROTECTS
+            ),
+            key=lambda item: item[0],
+        )
+        executable_starts = [start for start, _end in executable_regions]
+
+        def is_executable(address: int) -> bool:
+            index = bisect_right(executable_starts, address) - 1
+            return index >= 0 and address < executable_regions[index][1]
+
+        def scan_ranges_for(
+            candidate_anchors: Iterable[Region],
+            external_names: dict[int, str] | None = None,
+        ) -> None:
+            scan_ranges: list[tuple[int, int]] = []
+            for anchor in sorted(candidate_anchors, key=lambda item: item.base):
+                start = max(0, anchor.base - 0x80000)
+                end = anchor.base + anchor.size + 0x80000
+                if scan_ranges and start <= scan_ranges[-1][1]:
+                    previous_start, previous_end = scan_ranges[-1]
+                    scan_ranges[-1] = (previous_start, max(previous_end, end))
+                else:
+                    scan_ranges.append((start, end))
+
+            for scan_start, scan_end in scan_ranges:
+                for region in sorted(regions, key=lambda item: item.base):
+                    if region.typ != MEM_PRIVATE:
+                        continue
+                    region_start = max(region.base, scan_start - 8)
+                    region_end = min(region.base + region.size, scan_end)
+                    if region_end - region_start < 32:
+                        continue
+                    for block_start, blob in self._iter_readable_blocks_win10(
+                        pm,
+                        region_start,
+                        region_end - region_start,
+                    ):
+                        if len(blob) < 32:
+                            continue
+                        wanted_lengths = {len(name) for name in missing}
+                        first_record = max(scan_start, (block_start + 7) & ~7)
+                        if first_record - block_start < 8:
+                            first_record += 8
+                        block_end = block_start + len(blob)
+                        for record in range(first_record, block_end - 24, 8):
+                            offset = record - block_start
+                            handler = struct.unpack_from("<Q", blob, offset - 8)[0]
+                            if not is_executable(handler):
+                                continue
+                            size = struct.unpack_from("<Q", blob, offset + 8)[0]
+                            if size not in wanted_lengths:
+                                continue
+                            ptr = struct.unpack_from("<Q", blob, offset)[0]
+                            if ptr != record + 0x18 and self._sane_heap_ptr(ptr):
+                                external_records.add((ptr, int(size)))
+                            name = self._decode_native_string_from_blob_win10(
+                                pm,
+                                blob,
+                                block_start,
+                                offset,
+                                external_names,
+                            )
+                            if name not in missing:
+                                continue
+                            found[name] = NativeHandler(name, record, handler)
+                            missing.remove(name)
+                            if not missing:
+                                return
+
+        def recover_external_names_from_regions() -> dict[int, str]:
+            recovered: dict[int, str] = {}
+            readable_cache: dict[tuple[int, int], list[tuple[int, bytes]]] = {}
+            missing_by_length: dict[int, set[str]] = {}
+            for name in missing:
+                missing_by_length.setdefault(len(name), set()).add(name)
+            for pointer, size in external_records:
+                names_for_size = missing_by_length.get(size)
+                if not names_for_size:
+                    continue
+                region = self._region_for_address(regions, pointer)
+                if region is None or region.typ != MEM_PRIVATE:
+                    continue
+                key = (region.base, region.size)
+                blocks = readable_cache.get(key)
+                if blocks is None:
+                    blocks = list(self._iter_readable_blocks_win10(pm, region.base, region.size))
+                    readable_cache[key] = blocks
+                for block_address, block in blocks:
+                    offset = pointer - block_address
+                    if offset < 0 or offset + size > len(block):
+                        continue
+                    data = block[offset : offset + size]
+                    try:
+                        name = data.decode("ascii")
+                    except UnicodeDecodeError:
+                        break
+                    if name in names_for_size:
+                        recovered[pointer] = name
+                    break
+            return recovered
+
+        def recover_handlers_from_record_profile() -> None:
+            translations: dict[int, int] = {}
+            known_handlers = dict(self._native_handlers)
+            known_handlers.update(found)
+            for name, profile_offset in self.NATIVE_RECORD_PROFILE_ANCHORS.items():
+                handler = known_handlers.get(name)
+                if handler is None:
+                    continue
+                translation = handler.record_address - profile_offset
+                translations[translation] = translations.get(translation, 0) + 1
+            if not translations:
+                return
+            translation, votes = max(translations.items(), key=lambda item: item[1])
+            if votes < 6:
+                return
+            for name, profile_offset in self.NATIVE_RECORD_PROFILE_EXTERNALS.items():
+                if name not in missing:
+                    continue
+                record = translation + profile_offset
+                region = self._region_for_address(regions, record)
+                if region is None or region.typ != MEM_PRIVATE:
+                    continue
+                try:
+                    handler_address = pm.read_u64(record - 8)
+                    size = pm.read_u64(record + 8)
+                except OSError:
+                    continue
+                if size != len(name) or not is_executable(handler_address):
+                    continue
+                found[name] = NativeHandler(name, record, handler_address)
+                missing.remove(name)
+
+        scan_ranges_for(anchors)
+        if missing:
+            external_names = recover_external_names_from_regions()
+            if external_names:
+                scan_ranges_for(anchors, external_names)
+        if missing:
+            recover_handlers_from_record_profile()
+        if missing:
+            broad_anchors = self._scan_native_table_region_candidates_win10(
+                pm,
+                regions,
+                64 * 1024 * 1024,
+            )
+            anchor_by_region = {
+                (anchor.base, anchor.size): anchor
+                for anchor in (*anchors, *broad_anchors)
+            }
+            anchors = list(anchor_by_region.values())
+            scan_ranges_for(anchors)
+            if missing:
+                external_names = recover_external_names_from_regions()
+                if external_names:
+                    scan_ranges_for(anchors, external_names)
+        if missing:
+            patterns = {(name.encode("ascii") + b"\0"): name for name in missing}
+            external_names = {}
+            for pattern, addresses in pm.scan_bytes_private_many(
+                patterns,
+                max_region_size=64 * 1024 * 1024,
+            ).items():
+                name = patterns[pattern]
+                for address in addresses:
+                    external_names[address] = name
+            scan_ranges_for(anchors, external_names)
+
+        self._native_handlers.update(found)
+        if missing:
+            raise RuntimeError(
+                "在 native 表邻域未找到函数：" + ", ".join(sorted(missing))
+            )
         return {name: self._native_handlers[name] for name in wanted}
 
     def _discover_native_handlers_near_table(
@@ -2204,6 +3173,11 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_DIRECT_ABILITY_ENUM,
             self.NATIVE_HELPER_OP_JASS_ABILITY_REAL_LEVEL_FIELD_SET,
             self.NATIVE_HELPER_OP_JASS_UNIT_RESOLVE,
+            self.NATIVE_HELPER_OP_JASS_ABILITY_FIELD_GET,
+            self.NATIVE_HELPER_OP_JASS_ABILITY_LEVEL_FIELD_GET,
+            self.NATIVE_HELPER_OP_JASS_ABILITY_SCALAR_FIELD_SET,
+            self.NATIVE_HELPER_OP_JASS_ABILITY_REAL_FIELD_SET,
+            self.NATIVE_HELPER_OP_JASS_ABILITY_SCALAR_LEVEL_FIELD_SET,
         }
         if any(kind not in allowed_kinds for kind, _rawcode, _handler, _arg0, _arg1 in op_list):
             raise RuntimeError("native helper 仅允许结构化验证后的白名单操作")
@@ -2244,6 +3218,11 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_DIRECT_ABILITY_ENUM,
             self.NATIVE_HELPER_OP_JASS_ABILITY_REAL_LEVEL_FIELD_SET,
             self.NATIVE_HELPER_OP_JASS_UNIT_RESOLVE,
+            self.NATIVE_HELPER_OP_JASS_ABILITY_FIELD_GET,
+            self.NATIVE_HELPER_OP_JASS_ABILITY_LEVEL_FIELD_GET,
+            self.NATIVE_HELPER_OP_JASS_ABILITY_SCALAR_FIELD_SET,
+            self.NATIVE_HELPER_OP_JASS_ABILITY_REAL_FIELD_SET,
+            self.NATIVE_HELPER_OP_JASS_ABILITY_SCALAR_LEVEL_FIELD_SET,
         }
         if any(kind in unit_kinds for kind, _rawcode, _handler, _arg0, _arg1 in op_list) and not unit_address:
             raise RuntimeError("当前单位缺少运行时 unit 指针，不能调用 native helper")
@@ -4051,6 +5030,432 @@ class War3Trainer:
             raise RuntimeError(f"技能等级写入后读回 {actual}，目标为 {target_level}")
         return actual
 
+    @staticmethod
+    def _ability_field_rawcode_text(rawcode: int) -> str:
+        try:
+            return int(rawcode).to_bytes(4, "big").decode("ascii")
+        except (OverflowError, UnicodeDecodeError):
+            return format_rawcode(int(rawcode))
+
+    def _ability_effect_class_for_candidate(
+        self,
+        pm: ProcessMemory,
+        candidate: UnitCandidate,
+        ability_rawcode: int,
+    ) -> tuple[int, bool, str]:
+        try:
+            ability_data = self._find_engine_ability_data(
+                pm,
+                candidate,
+                ability_rawcode,
+            )
+            if not ability_data:
+                return ability_rawcode, False, "找不到运行时技能数据对象"
+            instance = self._ability_instance_from_data_for_candidate(
+                pm,
+                candidate,
+                ability_data,
+                ability_rawcode,
+            )
+            if instance is None:
+                return ability_rawcode, False, "找不到运行时技能包装器"
+            if not instance.class_rawcode:
+                return ability_rawcode, False, "运行时技能没有可验证的效果类"
+            return instance.class_rawcode, True, ""
+        except (OSError, RuntimeError) as exc:
+            return ability_rawcode, False, str(exc)
+
+    def _selected_ability_field_context_locked(
+        self,
+        rawcode: int | str,
+        level: int,
+    ) -> SelectedAbilityFieldContext:
+        ability_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
+        level_number = int(level)
+        if not ability_rawcode or not 1 <= level_number <= 1000:
+            raise ValueError("请提供有效技能 ID，字段等级必须在 1 到 1000 之间")
+        candidate, unit_handle = self._direct_selected_context()
+        with ProcessMemory(self.pid) as pm:
+            handlers = self._discover_native_handlers_near_table(
+                pm,
+                self.ABILITY_FIELD_NATIVE_NAMES,
+            )
+        ability_handle = int(self._run_native_helper_ops(
+            unit_handle,
+            ((
+                self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE,
+                ability_rawcode,
+                handlers["BlzGetUnitAbility"].handler_address,
+                0,
+                0,
+            ),),
+        )[0].result)
+        if not ability_handle:
+            raise RuntimeError(
+                f"当前选中单位没有 {format_rawcode(ability_rawcode)} 的运行时技能实例"
+            )
+        actual_rawcode = int(self._run_native_helper_ops(
+            ability_handle,
+            ((
+                self.NATIVE_HELPER_OP_JASS_UNIT_INT_QUERY,
+                0,
+                handlers["BlzGetAbilityId"].handler_address,
+                0,
+                0,
+            ),),
+        )[0].result) & 0xFFFFFFFF
+        if actual_rawcode != ability_rawcode:
+            raise RuntimeError(
+                "技能实例在解析期间发生变化："
+                f"{format_rawcode(actual_rawcode)}!={format_rawcode(ability_rawcode)}"
+            )
+        current_level = int(self._run_native_helper_ops(
+            unit_handle,
+            ((
+                self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE_LEVEL,
+                ability_rawcode,
+                handlers["GetUnitAbilityLevel"].handler_address,
+                0,
+                0,
+            ),),
+        )[0].result)
+        with ProcessMemory(self.pid) as pm:
+            effect_class, effect_class_verified, effect_class_note = (
+                self._ability_effect_class_for_candidate(
+                    pm,
+                    candidate,
+                    ability_rawcode,
+                )
+            )
+        return SelectedAbilityFieldContext(
+            candidate=candidate,
+            unit_handle=unit_handle,
+            ability_handle=ability_handle,
+            ability_rawcode=ability_rawcode,
+            effect_class=effect_class,
+            effect_class_verified=effect_class_verified,
+            effect_class_note=effect_class_note,
+            current_level=current_level,
+            handlers=handlers,
+        )
+
+    def _ability_field_get_op(
+        self,
+        spec: AbilityFieldSpec,
+        handlers: dict[str, NativeHandler],
+        level_index: int,
+    ) -> tuple[int, int, int, int, int]:
+        handler_name = self.ABILITY_FIELD_GETTER_NAMES[(spec.value_kind, spec.scope)]
+        op_kind = (
+            self.NATIVE_HELPER_OP_JASS_ABILITY_LEVEL_FIELD_GET
+            if spec.scope == "level"
+            else self.NATIVE_HELPER_OP_JASS_ABILITY_FIELD_GET
+        )
+        return (
+            op_kind,
+            spec.field_id,
+            handlers[handler_name].handler_address,
+            level_index if spec.scope == "level" else 0,
+            0,
+        )
+
+    def _decode_ability_field_value(
+        self,
+        spec: AbilityFieldSpec,
+        raw_value: int,
+    ) -> bool | int | float:
+        if spec.value_kind == "boolean":
+            return bool(int(raw_value) & 1)
+        if spec.value_kind == "integer":
+            return ctypes.c_int32(int(raw_value) & 0xFFFFFFFF).value
+        return self._float_from_bits(raw_value)
+
+    def _read_single_ability_field_locked(
+        self,
+        ability_handle: int,
+        handlers: dict[str, NativeHandler],
+        spec: AbilityFieldSpec,
+        level_index: int,
+    ) -> bool | int | float:
+        result = self._run_native_helper_ops(
+            ability_handle,
+            (self._ability_field_get_op(spec, handlers, level_index),),
+        )[0]
+        return self._decode_ability_field_value(spec, result.result)
+
+    def read_selected_ability_fields(
+        self,
+        rawcode: int | str,
+        level: int,
+    ) -> AbilityFieldSnapshot:
+        level_number = int(level)
+        level_index = level_number - 1
+        with self._native_helper_transaction():
+            context = self._selected_ability_field_context_locked(rawcode, level_number)
+            effect_text = self._ability_field_rawcode_text(context.effect_class)
+            specs = ability_fields_for_effect_class(effect_text)
+            values_by_key: dict[tuple[str, str, str], AbilityFieldValue] = {}
+            supported = [
+                spec
+                for spec in specs
+                if spec.runtime_supported
+                and (context.effect_class_verified or not spec.use_specific)
+            ]
+            for start in range(0, len(supported), self.NATIVE_HELPER_MAX_OPS):
+                batch = supported[start : start + self.NATIVE_HELPER_MAX_OPS]
+                try:
+                    results = self._run_native_helper_ops(
+                        context.ability_handle,
+                        tuple(
+                            self._ability_field_get_op(
+                                spec,
+                                context.handlers,
+                                level_index,
+                            )
+                            for spec in batch
+                        ),
+                    )
+                except TimeoutError:
+                    raise
+                except RuntimeError as exc:
+                    for spec in batch:
+                        values_by_key[(spec.rawcode, spec.value_kind, spec.scope)] = (
+                            AbilityFieldValue(spec, None, "读取失败", str(exc))
+                        )
+                    continue
+                for spec, result in zip(batch, results):
+                    value = self._decode_ability_field_value(spec, result.result)
+                    if spec.value_kind == "real" and not math.isfinite(float(value)):
+                        field_value = AbilityFieldValue(
+                            spec,
+                            None,
+                            "读取异常",
+                            "游戏返回了非有限浮点值",
+                        )
+                    else:
+                        field_value = AbilityFieldValue(
+                            spec,
+                            value,
+                            "可尝试" if spec.writable else "只读",
+                        )
+                    values_by_key[(spec.rawcode, spec.value_kind, spec.scope)] = field_value
+            fields: list[AbilityFieldValue] = []
+            for spec in specs:
+                key = (spec.rawcode, spec.value_kind, spec.scope)
+                field_value = values_by_key.get(key)
+                if field_value is None:
+                    if not context.effect_class_verified and spec.use_specific:
+                        field_value = AbilityFieldValue(
+                            spec,
+                            None,
+                            "未确认",
+                            context.effect_class_note or "运行时效果类未解析",
+                        )
+                    else:
+                        reason = (
+                            "字符串字段的 JASS 句柄 ABI 尚未开放"
+                            if spec.value_kind == "string"
+                            else "等级数组字段需要单独的数组索引"
+                        )
+                        field_value = AbilityFieldValue(spec, None, "未开放", reason)
+                fields.append(field_value)
+        return AbilityFieldSnapshot(
+            ability_rawcode=context.ability_rawcode,
+            effect_class=context.effect_class,
+            current_level=context.current_level,
+            requested_level=level_number,
+            fields=tuple(fields),
+            unit_identity=context.unit_identity,
+            effect_class_verified=context.effect_class_verified,
+            effect_class_note=context.effect_class_note,
+        )
+
+    @staticmethod
+    def _coerce_ability_field_value(
+        spec: AbilityFieldSpec,
+        value: bool | int | float | str,
+    ) -> bool | int | float:
+        if spec.value_kind == "boolean":
+            if isinstance(value, str):
+                normalized = value.strip().lower()
+                if normalized in {"1", "true", "yes", "on", "是"}:
+                    return True
+                if normalized in {"0", "false", "no", "off", "否"}:
+                    return False
+                raise ValueError("布尔字段请输入 true/false 或 1/0")
+            return bool(value)
+        if spec.value_kind == "integer":
+            parsed = int(value.strip(), 0) if isinstance(value, str) else int(value)
+            if not -(1 << 31) <= parsed <= 0xFFFFFFFF:
+                raise ValueError("整数字段必须在 -2147483648 到 4294967295 之间")
+            return ctypes.c_int32(parsed & 0xFFFFFFFF).value
+        parsed = float(value)
+        if not math.isfinite(parsed) or not -100_000_000.0 <= parsed <= 100_000_000.0:
+            raise ValueError("实数字段必须是 -100000000 到 100000000 之间的有限数值")
+        return parsed
+
+    def _ability_field_set_op(
+        self,
+        spec: AbilityFieldSpec,
+        handlers: dict[str, NativeHandler],
+        level_index: int,
+        value: bool | int | float,
+    ) -> tuple[int, int, int, int, int]:
+        handler_name = self.ABILITY_FIELD_SETTER_NAMES[(spec.value_kind, spec.scope)]
+        handler = handlers[handler_name].handler_address
+        if spec.value_kind == "real":
+            bits = self._float_bits(float(value))
+            if spec.scope == "level":
+                return (
+                    self.NATIVE_HELPER_OP_JASS_ABILITY_REAL_LEVEL_FIELD_SET,
+                    spec.field_id,
+                    handler,
+                    level_index,
+                    bits,
+                )
+            return (
+                self.NATIVE_HELPER_OP_JASS_ABILITY_REAL_FIELD_SET,
+                spec.field_id,
+                handler,
+                bits,
+                0,
+            )
+        bits = int(bool(value)) if spec.value_kind == "boolean" else int(value) & 0xFFFFFFFF
+        if spec.scope == "level":
+            return (
+                self.NATIVE_HELPER_OP_JASS_ABILITY_SCALAR_LEVEL_FIELD_SET,
+                spec.field_id,
+                handler,
+                level_index,
+                bits,
+            )
+        return (
+            self.NATIVE_HELPER_OP_JASS_ABILITY_SCALAR_FIELD_SET,
+            spec.field_id,
+            handler,
+            bits,
+            0,
+        )
+
+    def _ability_field_values_equal(
+        self,
+        spec: AbilityFieldSpec,
+        actual: bool | int | float,
+        target: bool | int | float,
+    ) -> bool:
+        if spec.value_kind == "real":
+            return self._float_bits(float(actual)) == self._float_bits(float(target))
+        return actual == target
+
+    def set_selected_ability_field(
+        self,
+        rawcode: int | str,
+        level: int,
+        spec: AbilityFieldSpec,
+        value: bool | int | float | str,
+        expected_snapshot: AbilityFieldSnapshot | None = None,
+    ) -> AbilityFieldValue:
+        if self._ability_field_write_disabled:
+            raise RuntimeError("上一次技能字段回滚无法确认，请重新连接游戏后再写入")
+        if not spec.runtime_supported or not spec.writable:
+            raise ValueError("该字段当前未开放运行时写入")
+        level_number = int(level)
+        ability_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
+        if expected_snapshot is not None:
+            if ability_rawcode != expected_snapshot.ability_rawcode:
+                raise RuntimeError("技能 ID 已变化，请重新读取字段")
+            if level_number != expected_snapshot.requested_level:
+                raise RuntimeError("字段等级已变化，请重新读取字段")
+        target = self._coerce_ability_field_value(spec, value)
+        level_index = level_number - 1
+        with self._native_helper_transaction():
+            context = self._selected_ability_field_context_locked(
+                ability_rawcode,
+                level_number,
+            )
+            if expected_snapshot is not None:
+                if (
+                    any(expected_snapshot.unit_identity)
+                    and context.unit_identity != expected_snapshot.unit_identity
+                ):
+                    raise RuntimeError("当前选中单位已变化，请重新读取字段")
+                if context.current_level != expected_snapshot.current_level:
+                    raise RuntimeError("技能当前等级已变化，请重新读取字段")
+                if (
+                    context.effect_class != expected_snapshot.effect_class
+                    or context.effect_class_verified
+                    != expected_snapshot.effect_class_verified
+                ):
+                    raise RuntimeError("当前技能效果类已经变化，请重新读取字段")
+            if spec.use_specific and not context.effect_class_verified:
+                raise RuntimeError(
+                    "运行时效果类未确认，不能写入效果类专用字段："
+                    f"{context.effect_class_note or '请重新读取'}"
+                )
+            applicable = {
+                (field.rawcode, field.value_kind, field.scope)
+                for field in ability_fields_for_effect_class(
+                    self._ability_field_rawcode_text(context.effect_class)
+                )
+            }
+            key = (spec.rawcode, spec.value_kind, spec.scope)
+            if key not in applicable or ABILITY_FIELD_BY_KEY.get(key) != spec:
+                raise RuntimeError("当前技能效果类已经变化，请重新读取字段")
+            original = self._read_single_ability_field_locked(
+                context.ability_handle,
+                context.handlers,
+                spec,
+                level_index,
+            )
+
+            def write_field(field_value: bool | int | float) -> bool:
+                result = self._run_native_helper_ops(
+                    context.ability_handle,
+                    (self._ability_field_set_op(
+                        spec,
+                        context.handlers,
+                        level_index,
+                        field_value,
+                    ),),
+                )[0]
+                return bool(result.result)
+
+            try:
+                if not write_field(target):
+                    raise RuntimeError("游戏拒绝写入该技能字段")
+                actual = self._read_single_ability_field_locked(
+                    context.ability_handle,
+                    context.handlers,
+                    spec,
+                    level_index,
+                )
+                if not self._ability_field_values_equal(spec, actual, target):
+                    raise RuntimeError(
+                        f"字段写入后读回不一致：{actual!s}!={target!s}"
+                    )
+            except Exception as exc:
+                rollback_ok = False
+                try:
+                    write_field(original)
+                    restored = self._read_single_ability_field_locked(
+                        context.ability_handle,
+                        context.handlers,
+                        spec,
+                        level_index,
+                    )
+                    rollback_ok = self._ability_field_values_equal(
+                        spec,
+                        restored,
+                        original,
+                    )
+                except Exception:
+                    rollback_ok = False
+                if not rollback_ok:
+                    self._ability_field_write_disabled = True
+                    raise RuntimeError(f"{exc}；原始字段恢复无法确认") from exc
+                raise
+        return AbilityFieldValue(spec, actual, "已验证")
+
     def set_local_player_tech(self, rawcode: int | str, level: int) -> int:
         tech_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
         target_level = int(level)
@@ -4707,6 +6112,201 @@ class War3Trainer:
             ),
         )
         return self._native_result_i32(results[0].result), self._native_result_i32(results[1].result)
+
+    def _discover_jass_unit_resolver_win10(self, pm: ProcessMemory) -> int:
+        if self._jass_unit_resolver_address:
+            if self._is_executable_image_address(pm.regions(), self._jass_unit_resolver_address):
+                return self._jass_unit_resolver_address
+            self._jass_unit_resolver_address = 0
+        handler = self._discover_native_handlers(pm, ("UnitAddAbility",))["UnitAddAbility"]
+        calls = self._rel32_calls_in_function(pm, handler.handler_address)
+        if len(calls) < 2:
+            raise RuntimeError("备用读取未能从 UnitAddAbility 定位单位句柄解析函数")
+        resolver = calls[0]
+        if not self._is_executable_image_address(pm.regions(), resolver):
+            raise RuntimeError("备用读取的单位句柄解析函数不在游戏可执行代码段")
+        self._jass_unit_resolver_address = resolver
+        return resolver
+
+    def _resolve_jass_unit_handle_win10(
+        self,
+        pm: ProcessMemory,
+        unit_handle: int,
+        *,
+        allow_missing: bool = False,
+    ) -> int:
+        if not unit_handle:
+            return 0
+        resolver = self._discover_jass_unit_resolver_win10(pm)
+        try:
+            return int(
+                self._run_native_helper_ops(
+                    unit_handle,
+                    ((self.NATIVE_HELPER_OP_JASS_UNIT_RESOLVE, 0, resolver, 0, 0),),
+                )[0].result
+            )
+        except RuntimeError as exc:
+            if allow_missing and (
+                f"error={ERROR_NOT_FOUND}" in str(exc)
+                or f"last_error={ERROR_NOT_FOUND}" in str(exc)
+            ):
+                return 0
+            raise
+
+    def _get_hero_intelligence_pair_via_jass_win10(
+        self,
+        pm: ProcessMemory,
+        unit_handle: int,
+    ) -> tuple[int, int]:
+        handlers = self._discover_native_handlers(pm, ("GetHeroInt",))
+        get_handler = handlers["GetHeroInt"].handler_address
+        results = self._run_native_helper_ops(
+            unit_handle,
+            (
+                (self.NATIVE_HELPER_OP_GET_HERO_INT, 0, get_handler, 0, 0),
+                (self.NATIVE_HELPER_OP_GET_HERO_INT, 0, get_handler, 1, 0),
+            ),
+        )
+        return self._native_result_i32(results[0].result), self._native_result_i32(results[1].result)
+
+    def _current_jass_unit_handle_win10(
+        self,
+        pm: ProcessMemory,
+        candidate: UnitCandidate,
+        diagnostics: Win10ReadLogger,
+    ) -> int:
+        unit_handle, handle_id, player_handle = self._read_jass_selected_unit_raw_win10(pm)
+        resolved_unit = self._resolve_jass_unit_handle_win10(
+            pm,
+            unit_handle,
+            allow_missing=True,
+        )
+        diagnostics.log(
+            "backup_current_selection_check",
+            jass_handle=f"0x{unit_handle:x}",
+            handle_id=f"0x{handle_id:x}",
+            player=f"0x{player_handle:x}",
+            resolved_unit=f"0x{resolved_unit:x}",
+            expected_unit=f"0x{candidate.unit_address:x}",
+        )
+        if not resolved_unit or resolved_unit != candidate.unit_address:
+            raise RuntimeError("当前选择已经变化，请重新点击备用读取后再写入")
+        return unit_handle
+
+    def _replace_win10_intelligence_field(
+        self,
+        pm: ProcessMemory,
+        candidate: UnitCandidate,
+        fields: list[UnitMemoryField],
+        diagnostics: Win10ReadLogger,
+    ) -> list[UnitMemoryField]:
+        index = next(
+            (index for index, field in enumerate(fields) if field.key == "intelligence_total"),
+            None,
+        )
+        if index is None:
+            return fields
+        field = fields[index]
+        try:
+            unit_handle = self._current_jass_unit_handle_win10(pm, candidate, diagnostics)
+            base_value, total_value = self._get_hero_intelligence_pair_via_jass_win10(
+                pm,
+                unit_handle,
+            )
+        except Exception as exc:
+            diagnostics.log("backup_intelligence_read_fallback", exception=repr(exc))
+            return fields
+        updated = list(fields)
+        updated[index] = replace(
+            field,
+            value_type="i32",
+            value=total_value,
+            note=(
+                "备用读取通过 JASS GetHeroInt 获取真实总智力；"
+                f"基础智力={base_value}"
+            ),
+        )
+        diagnostics.log(
+            "backup_intelligence_read",
+            base=base_value,
+            total=total_value,
+            unit=f"0x{candidate.unit_address:x}",
+        )
+        return updated
+
+    def _write_hero_intelligence_field_win10(
+        self,
+        pm: ProcessMemory,
+        candidate: UnitCandidate,
+        field: UnitMemoryField,
+        value: int | float | str,
+        diagnostics: Win10ReadLogger,
+    ) -> UnitMemoryField:
+        target_total = self._coerce_hero_intelligence_target(value)
+        unit_handle = self._current_jass_unit_handle_win10(pm, candidate, diagnostics)
+        handlers = self._discover_native_handlers(pm, ("SetHeroInt", "GetHeroInt"))
+        set_handler = handlers["SetHeroInt"].handler_address
+        current_base, current_total = self._get_hero_intelligence_pair_via_jass_win10(
+            pm,
+            unit_handle,
+        )
+        current_bonus = current_total - current_base
+        target_base = target_total - current_bonus
+        if target_base < 0:
+            raise ValueError(f"目标智力低于当前加成 {current_bonus}，无法保持加成并写成该总值")
+
+        def set_base(base_value: int) -> None:
+            self._run_native_helper_ops(
+                unit_handle,
+                (
+                    (
+                        self.NATIVE_HELPER_OP_JASS_UNIT_INT_BOOL,
+                        base_value & 0xFFFFFFFF,
+                        set_handler,
+                        1,
+                        0,
+                    ),
+                ),
+            )
+
+        set_base(target_base)
+        time.sleep(0.05)
+        final_base, final_total = self._get_hero_intelligence_pair_via_jass_win10(
+            pm,
+            unit_handle,
+        )
+        if final_total != target_total:
+            corrected_base = final_base + (target_total - final_total)
+            if corrected_base < 0:
+                raise RuntimeError(
+                    f"备用 SetHeroInt 写入后总智力={final_total}，无法修正到目标 {target_total}"
+                )
+            set_base(corrected_base)
+            time.sleep(0.05)
+            final_base, final_total = self._get_hero_intelligence_pair_via_jass_win10(
+                pm,
+                unit_handle,
+            )
+        if final_total != target_total:
+            raise RuntimeError(f"备用 SetHeroInt 写入后总智力={final_total}，目标={target_total}")
+        diagnostics.log(
+            "backup_intelligence_write",
+            current_base=current_base,
+            current_total=current_total,
+            target_total=target_total,
+            final_base=final_base,
+            final_total=final_total,
+            bonus=current_bonus,
+        )
+        return replace(
+            field,
+            value_type="i32",
+            value=final_total,
+            note=(
+                f"备用 JASS SetHeroInt 已写入；总智力 {current_total}->{final_total}，"
+                f"基础智力 {current_base}->{final_base}，当前加成 {current_bonus}"
+            ),
+        )
 
     @staticmethod
     def _coerce_hero_intelligence_target(value: int | float | str) -> int:
@@ -5742,6 +7342,65 @@ class War3Trainer:
                 start = hit + 1
         return None
 
+    def _owner_for_unit_pointer_win10(
+        self,
+        pm: ProcessMemory,
+        unit: int,
+        handle: int,
+    ) -> int | None:
+        owner = self._owner_for_unit_pointer(pm, unit, handle)
+        if owner is not None:
+            return owner
+
+        pattern = struct.pack("<Q", unit)
+        start_address = unit - self.UNIT_OWNER_POINTER_SEARCH_RADIUS
+        end_address = unit + self.UNIT_OWNER_POINTER_SEARCH_RADIUS
+        for region in pm.regions():
+            if region.typ != MEM_PRIVATE or region.size > 64 * 1024 * 1024:
+                continue
+            if region.base + region.size < start_address or region.base > end_address:
+                continue
+            for block_address, data in self._iter_readable_blocks_win10(
+                pm,
+                region.base,
+                region.size,
+            ):
+                start = 0
+                while True:
+                    hit = data.find(pattern, start)
+                    if hit < 0:
+                        break
+                    candidate_owner = block_address + hit - 0x90
+                    try:
+                        if (
+                            self._looks_like_vtable(pm.read_u64(candidate_owner))
+                            and pm.read_u64(candidate_owner + 0x18) == self.UNIT_OWNER_TAG
+                            and pm.read_u64(candidate_owner + 0x20) == handle
+                            and pm.read_u64(candidate_owner + 0x90) == unit
+                            and self._property_from_owner(pm, candidate_owner, 1) is not None
+                        ):
+                            self._unit_owner_index[handle] = candidate_owner
+                            return candidate_owner
+                    except OSError:
+                        pass
+                    start = hit + 1
+
+        tag_addresses = self._scan_bytes_private_win10(
+            pm,
+            struct.pack("<Q", self.UNIT_OWNER_TAG),
+        )
+        broad_index = self._unit_owner_index_from_tag_addresses(pm, tag_addresses)
+        self._unit_owner_index.update(broad_index)
+        owner = broad_index.get(handle)
+        if owner is None:
+            return None
+        try:
+            if pm.read_u64(owner + 0x90) != unit:
+                return None
+        except OSError:
+            return None
+        return owner
+
     def _build_unit_object_index(self, pm: ProcessMemory, force_refresh: bool = False) -> dict[int, tuple[int, int]]:
         unit_index: dict[int, tuple[int, int]] = {}
         owners = self._build_unit_owner_index(pm) if force_refresh or not self._unit_owner_index else self._unit_owner_index
@@ -6015,6 +7674,110 @@ class War3Trainer:
             return candidate
         return None
 
+    def _selection_unit_pointer_groups_win10(
+        self,
+        pm: Win10ProcessMemory,
+        diagnostics: Win10ReadLogger,
+    ) -> tuple[
+        list[tuple[tuple[int, int], list[int], int]],
+        dict[int, tuple[int, int]],
+    ]:
+        unit_index = self._build_unit_object_index(pm, force_refresh=False)
+        if not unit_index:
+            diagnostics.log("selection_unit_pointer_groups_win10", unit_index=0)
+            return [], {}
+        regions = pm.regions()
+        known_offsets = set(self.KNOWN_SELECTED_UNIT_POINTER_REGION_OFFSETS)
+        groups: dict[tuple[int, int], list[int]] = {}
+        known_total = 0
+        known_skipped = 0
+        known_read_errors = 0
+
+        def add_pointer(address: int, unit: int) -> None:
+            if unit not in unit_index:
+                return
+            region = self._region_for_address(regions, address)
+            region_base = region.base if region is not None else address & ~0xFFFFF
+            groups.setdefault((region_base, unit), []).append(address)
+
+        for address in self._known_selected_unit_pointer_address_candidates(pm):
+            known_total += 1
+            if not pm.is_readable_range(address, 8):
+                known_skipped += 1
+                continue
+            try:
+                add_pointer(address, pm.read_u64(address))
+            except OSError:
+                known_read_errors += 1
+
+        selection_regions = self._selection_state_regions(pm, preferred_only=True)
+        for region in selection_regions:
+            try:
+                data = pm.read(region.base, region.size)
+            except OSError:
+                continue
+            for offset in range(0, max(0, len(data) - 7), 8):
+                unit = struct.unpack_from("<Q", data, offset)[0]
+                if unit in unit_index:
+                    add_pointer(region.base + offset, unit)
+
+        ranked: list[tuple[tuple[int, int], list[int], int]] = []
+        for key, addresses in groups.items():
+            region_base, _unit = key
+            unique_addresses = sorted(set(addresses))
+            known_hits = sum(1 for address in unique_addresses if (address - region_base) in known_offsets)
+            ranked.append((key, unique_addresses, known_hits))
+        ranked.sort(
+            key=lambda item: (item[2], len(item[1]), -item[0][0], -min(item[1])),
+            reverse=True,
+        )
+        diagnostics.log(
+            "selection_unit_pointer_groups_win10",
+            unit_index=len(unit_index),
+            known_total=known_total,
+            known_skipped=known_skipped,
+            known_read_errors=known_read_errors,
+            selection_regions=len(selection_regions),
+            groups=len(ranked),
+        )
+        return ranked, unit_index
+
+    def _locate_selected_unit_by_known_unit_pointer_win10(
+        self,
+        pm: Win10ProcessMemory,
+        diagnostics: Win10ReadLogger,
+    ) -> UnitCandidate | None:
+        ranked, unit_index = self._selection_unit_pointer_groups_win10(pm, diagnostics)
+        if not ranked:
+            return None
+        (region_base, unit), unique_addresses, known_hits = ranked[0]
+        if known_hits < 2:
+            return None
+        if (
+            len(ranked) > 1
+            and ranked[1][2] == known_hits
+            and len(ranked[1][1]) == len(unique_addresses)
+            and ranked[1][0][1] != unit
+        ):
+            return None
+        handle, owner = unit_index[unit]
+        slot_address = min(unique_addresses)
+        candidate = self._candidate_from_owner(
+            pm,
+            owner,
+            870 + known_hits * 20 + min(len(unique_addresses), 20) * 5,
+            (
+                f"selected_unit_slot=0x{unit:x} region=0x{region_base:x} "
+                f"refs={len(unique_addresses)} known={known_hits} slot=0x{slot_address:x}"
+            ),
+            handle,
+            "win10",
+            slot_address,
+        )
+        if candidate is not None and candidate.unit_address == unit:
+            return candidate
+        return None
+
     def _selection_manager_unit_slots(
         self,
         pm: ProcessMemory,
@@ -6133,6 +7896,264 @@ class War3Trainer:
                     continue
                 add(value)
         return candidates
+
+    def _selection_player_pointer_candidates_win10(
+        self,
+        pm: Win10ProcessMemory,
+        diagnostics: Win10ReadLogger,
+        *,
+        discover: bool,
+        scan_components: bool,
+    ) -> list[int]:
+        candidates: list[int] = []
+        seen: set[int] = set()
+        stats = {
+            "cached_inputs": 0,
+            "resource_owners": 0,
+            "component_tags": 0,
+            "pointer_values": 0,
+            "duplicate_values": 0,
+            "rejected_unsane": 0,
+            "rejected_unreadable": 0,
+            "rejected_vtable": 0,
+            "rejected_manager": 0,
+            "read_errors": 0,
+            "accepted": 0,
+        }
+
+        def remember(value: int) -> None:
+            if value in self._selection_player_candidates:
+                self._selection_player_candidates.remove(value)
+            self._selection_player_candidates.append(value)
+
+        def add(value: int, source: str) -> None:
+            stats["pointer_values"] += 1
+            if value in seen:
+                stats["duplicate_values"] += 1
+                return
+            seen.add(value)
+            if not self._sane_heap_ptr(value):
+                stats["rejected_unsane"] += 1
+                return
+            manager_field = value + self._selection_manager_offset
+            if not pm.is_readable_range(value, 8) or not pm.is_readable_range(manager_field, 8):
+                stats["rejected_unreadable"] += 1
+                return
+            try:
+                vtable = pm.read_u64(value)
+                selection_manager = pm.read_u64(manager_field)
+            except OSError:
+                stats["read_errors"] += 1
+                return
+            if not self._looks_like_vtable(vtable):
+                stats["rejected_vtable"] += 1
+                return
+            if not self._sane_heap_ptr(selection_manager):
+                stats["rejected_manager"] += 1
+                return
+            if not any(
+                pm.is_readable_range(selection_manager + list_offset + 0x18, 0x0C)
+                for list_offset in self._selection_list_offsets
+            ):
+                stats["rejected_unreadable"] += 1
+                return
+            candidates.append(value)
+            stats["accepted"] += 1
+            remember(value)
+            diagnostics.log(
+                "selection_player_candidate_accepted",
+                source=source,
+                player=f"0x{value:x}",
+                manager=f"0x{selection_manager:x}",
+            )
+
+        for value in list(self._selection_player_candidates):
+            stats["cached_inputs"] += 1
+            add(value, "cached")
+
+        if discover:
+            resource_owners: list[int] = []
+            resource_owner_seen: set[int] = set()
+            for caches in self._resource_candidates_by_start.values():
+                for cache in caches:
+                    owner = int(cache.owner_key)
+                    if owner in resource_owner_seen or not self._sane_heap_ptr(owner):
+                        continue
+                    resource_owner_seen.add(owner)
+                    resource_owners.append(owner)
+            stats["resource_owners"] = len(resource_owners)
+            for owner in resource_owners:
+                for offset in (0x90, 0x88):
+                    pointer_address = owner + offset
+                    if not pm.is_readable_range(pointer_address, 8):
+                        stats["rejected_unreadable"] += 1
+                        continue
+                    try:
+                        value = pm.read_u64(pointer_address)
+                    except OSError:
+                        stats["read_errors"] += 1
+                        continue
+                    add(value, f"resource_owner+0x{offset:x}")
+
+        if discover and scan_components:
+            tag = struct.pack("<Q", self.PLAYER_COMPONENT_TAG)
+            tag_addresses = self._scan_bytes_private_win10(
+                pm,
+                tag,
+                max_region_size=1024 * 1024,
+            )
+            stats["component_tags"] = len(tag_addresses)
+            for tag_address in tag_addresses:
+                owner = tag_address - 0x18
+                if not self._sane_heap_ptr(owner) or not pm.is_readable_range(owner, 8):
+                    stats["rejected_unreadable"] += 1
+                    continue
+                try:
+                    owner_vtable = pm.read_u64(owner)
+                except OSError:
+                    stats["read_errors"] += 1
+                    continue
+                if not self._looks_like_vtable(owner_vtable):
+                    stats["rejected_vtable"] += 1
+                    continue
+                for offset in (0x90, 0x88):
+                    pointer_address = owner + offset
+                    if not pm.is_readable_range(pointer_address, 8):
+                        stats["rejected_unreadable"] += 1
+                        continue
+                    try:
+                        value = pm.read_u64(pointer_address)
+                    except OSError:
+                        stats["read_errors"] += 1
+                        continue
+                    add(value, f"player_component+0x{offset:x}")
+
+        diagnostics.log(
+            "selection_player_candidates_win10",
+            discover=discover,
+            scan_components=scan_components,
+            stats=stats,
+            candidates=[f"0x{value:x}" for value in candidates],
+        )
+        return candidates
+
+    def _candidate_from_selected_unit_pointer_win10(
+        self,
+        pm: Win10ProcessMemory,
+        unit: int,
+        note: str,
+        score: int,
+        selection_slot_address: int,
+    ) -> UnitCandidate | None:
+        if not self._sane_heap_ptr(unit) or not pm.is_readable_range(unit + 0x18, 8):
+            return None
+        try:
+            handle = pm.read_u64(unit + 0x18)
+        except OSError:
+            return None
+        if not self._looks_like_unit_handle(handle):
+            return None
+        owner = self._owner_for_unit_pointer_win10(pm, unit, handle)
+        if owner is None:
+            owner = self._owner_for_handle(pm, handle)
+        if owner is None:
+            return None
+        return self._candidate_from_identity(
+            pm,
+            handle,
+            owner,
+            unit,
+            note,
+            score,
+            selection_slot_address,
+        )
+
+    def _candidate_from_selection_player_win10(
+        self,
+        pm: Win10ProcessMemory,
+        player: int,
+    ) -> UnitCandidate | None:
+        manager_field = player + self._selection_manager_offset
+        if not pm.is_readable_range(manager_field, 8):
+            return None
+        try:
+            selection_manager = pm.read_u64(manager_field)
+        except OSError:
+            return None
+        if not self._sane_heap_ptr(selection_manager):
+            return None
+
+        for list_offset in self._selection_list_offsets:
+            list_base = selection_manager + list_offset
+            if not pm.is_readable_range(list_base + 0x18, 0x0C):
+                continue
+            for unit, slot_address in self._selection_manager_unit_slots(pm, list_base):
+                candidate = self._candidate_from_selected_unit_pointer_win10(
+                    pm,
+                    unit,
+                    (
+                        f"selected_unit_slot=0x{unit:x} via=selection_manager "
+                        f"player=0x{player:x} manager=0x{selection_manager:x} list=0x{list_base:x}"
+                    ),
+                    990 if list_offset == 0 else 980,
+                    slot_address,
+                )
+                if candidate is None:
+                    continue
+                if player in self._selection_player_candidates:
+                    self._selection_player_candidates.remove(player)
+                self._selection_player_candidates.insert(0, player)
+                return replace(candidate, selection_source="win10")
+        return None
+
+    def _locate_selected_unit_by_selection_manager_win10(
+        self,
+        pm: Win10ProcessMemory,
+        diagnostics: Win10ReadLogger,
+        *,
+        discover: bool,
+    ) -> UnitCandidate | None:
+        cached_players = self._selection_player_pointer_candidates_win10(
+            pm,
+            diagnostics,
+            discover=False,
+            scan_components=False,
+        )
+        for player in cached_players:
+            candidate = self._candidate_from_selection_player_win10(pm, player)
+            if candidate is not None:
+                return candidate
+        if not discover:
+            return None
+
+        resource_players = self._selection_player_pointer_candidates_win10(
+            pm,
+            diagnostics,
+            discover=True,
+            scan_components=False,
+        )
+        cached_set = set(cached_players)
+        for player in resource_players:
+            if player in cached_set:
+                continue
+            candidate = self._candidate_from_selection_player_win10(pm, player)
+            if candidate is not None:
+                return candidate
+
+        component_players = self._selection_player_pointer_candidates_win10(
+            pm,
+            diagnostics,
+            discover=True,
+            scan_components=True,
+        )
+        tried = set(resource_players)
+        for player in component_players:
+            if player in tried:
+                continue
+            candidate = self._candidate_from_selection_player_win10(pm, player)
+            if candidate is not None:
+                return candidate
+        return None
 
     def _candidate_from_selected_unit_pointer(
         self,
@@ -6283,6 +8304,45 @@ class War3Trainer:
             alternate = next((offset for offset in list_offsets if offset), self.SELECTION_MANAGER_ALT_LIST_OFFSET)
         return selection_manager_offset, 0, alternate, handlers
 
+    def _prepare_win10_selection_layout(
+        self,
+        pm: Win10ProcessMemory,
+        diagnostics: Win10ReadLogger,
+    ) -> bool:
+        started = time.perf_counter()
+        previous_manager = self._selection_manager_offset
+        previous_lists = tuple(self._selection_list_offsets)
+        try:
+            manager_offset, primary_offset, alternate_offset, handlers = (
+                self._discover_native_selection_layout(pm)
+            )
+        except Exception as exc:
+            diagnostics.log(
+                "win10_selection_layout_failure",
+                elapsed_ms=(time.perf_counter() - started) * 1000.0,
+                previous_manager=f"0x{previous_manager:x}",
+                previous_lists=[f"0x{offset:x}" for offset in previous_lists],
+                exception=repr(exc),
+            )
+            return False
+        self._selection_manager_offset = manager_offset
+        self._selection_list_offsets = tuple(
+            dict.fromkeys((primary_offset, alternate_offset))
+        )
+        diagnostics.log(
+            "win10_selection_layout",
+            elapsed_ms=(time.perf_counter() - started) * 1000.0,
+            previous_manager=f"0x{previous_manager:x}",
+            manager=f"0x{manager_offset:x}",
+            previous_lists=[f"0x{offset:x}" for offset in previous_lists],
+            lists=[f"0x{offset:x}" for offset in self._selection_list_offsets],
+            handlers={
+                name: f"0x{handler.handler_address:x}"
+                for name, handler in handlers.items()
+            },
+        )
+        return True
+
     def _locate_selected_unit_by_selection_manager(self, pm: ProcessMemory) -> UnitCandidate | None:
         for player in self._selection_player_pointer_candidates(pm, discover=False):
             candidate = self._candidate_from_selection_player(pm, player)
@@ -6380,6 +8440,61 @@ class War3Trainer:
         player_handle = results[2].result
         return unit_handle, handle_id, player_handle
 
+    def _read_jass_selected_unit_raw_win10(
+        self,
+        pm: ProcessMemory,
+    ) -> tuple[int, int, int]:
+        handlers = self._discover_native_handlers(pm, self.WIN10_SELECTION_NATIVE_NAMES)
+        results = self._run_native_helper_ops(
+            0,
+            (
+                (
+                    self.NATIVE_HELPER_OP_JASS_SELECTED_UNIT,
+                    0,
+                    handlers["CreateGroup"].handler_address,
+                    0,
+                    handlers["GetLocalPlayer"].handler_address,
+                ),
+                (
+                    self.NATIVE_HELPER_OP_JASS_SELECTED_UNIT_ARG,
+                    0,
+                    handlers["GroupEnumUnitsSelected"].handler_address,
+                    handlers["FirstOfGroup"].handler_address,
+                    handlers["GetHandleId"].handler_address,
+                ),
+                (
+                    self.NATIVE_HELPER_OP_JASS_SELECTED_UNIT_ARG,
+                    0,
+                    handlers["DestroyGroup"].handler_address,
+                    0,
+                    0,
+                ),
+            ),
+            timeout_ms=1000,
+        )
+        return results[0].result, results[1].result & 0xFFFFFFFF, results[2].result
+
+    def _is_jass_unit_selected_win10(
+        self,
+        pm: ProcessMemory,
+        unit_handle: int,
+        player_handle: int,
+    ) -> bool:
+        handlers = self._discover_native_handlers(pm, ("IsUnitSelected",))
+        result = self._run_native_helper_ops(
+            unit_handle,
+            (
+                (
+                    self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE,
+                    player_handle & 0xFFFFFFFF,
+                    handlers["IsUnitSelected"].handler_address,
+                    0,
+                    0,
+                ),
+            ),
+        )[0].result
+        return bool(result & 0xFFFFFFFF)
+
     def _read_selected_unit_type_id(self, pm: ProcessMemory, candidate: UnitCandidate) -> int:
         if not candidate.unit_address:
             return 0
@@ -6467,6 +8582,138 @@ class War3Trainer:
             if len(unique_by_unit) == 1:
                 return next(iter(unique_by_unit.values()))
         return None
+
+    def _candidate_from_jass_selection_result_win10(
+        self,
+        pm: ProcessMemory,
+        unit_value: int,
+        handle_id: int,
+        player_handle: int,
+    ) -> UnitCandidate | None:
+        note = (
+            f"win10_jass_selected unit=0x{unit_value:x} "
+            f"handle_id=0x{handle_id:x} player=0x{player_handle:x}"
+        )
+
+        def candidate_for(handle: int, owner: int, expected_unit: int = 0) -> UnitCandidate | None:
+            candidate = self._candidate_from_owner(
+                pm,
+                owner,
+                1000,
+                note,
+                handle,
+                "win10_jass",
+                0,
+            )
+            if candidate is None:
+                return None
+            if expected_unit and candidate.unit_address != expected_unit:
+                return None
+            return candidate
+
+        owner = self._unit_owner_index.get(unit_value)
+        if owner is not None:
+            candidate = candidate_for(unit_value, owner)
+            if candidate is not None:
+                return candidate
+
+        if self._sane_heap_ptr(unit_value):
+            try:
+                nested_handle = pm.read_u64(unit_value + 0x18)
+            except OSError:
+                nested_handle = 0
+            owner = self._unit_owner_index.get(nested_handle)
+            if (
+                owner is None
+                and isinstance(pm, Win10ProcessMemory)
+                and self._looks_like_unit_handle(nested_handle)
+            ):
+                owner = self._owner_for_unit_pointer_win10(
+                    pm,
+                    unit_value,
+                    nested_handle,
+                )
+            if owner is not None:
+                candidate = candidate_for(nested_handle, owner, unit_value)
+                if candidate is not None:
+                    return candidate
+
+        if handle_id:
+            matches: dict[int, UnitCandidate] = {}
+            for handle, candidate_owner in self._unit_owner_index.items():
+                low = handle & 0xFFFFFFFF
+                high = (handle >> 32) & 0xFFFFFFFF
+                if handle_id not in {low, high}:
+                    continue
+                candidate = candidate_for(handle, candidate_owner)
+                if candidate is not None and candidate.unit_address:
+                    matches[candidate.unit_address] = candidate
+            if len(matches) == 1:
+                return next(iter(matches.values()))
+        return None
+
+    def locate_selected_unit_by_jass_native_win10(
+        self,
+        pm: ProcessMemory,
+        diagnostics: Win10ReadLogger,
+    ) -> UnitCandidate:
+        started = time.perf_counter()
+        self._last_win10_jass_unit_handle = 0
+        self._last_win10_jass_player_handle = 0
+        self._last_win10_jass_handle_id = 0
+        unit_value, handle_id, player_handle = self._read_jass_selected_unit_raw_win10(pm)
+        diagnostics.log(
+            "win10_jass_selection_raw",
+            elapsed_ms=(time.perf_counter() - started) * 1000.0,
+            unit=f"0x{unit_value:x}",
+            handle_id=f"0x{handle_id:x}",
+            player=f"0x{player_handle:x}",
+        )
+        if not unit_value and not handle_id:
+            raise RuntimeError("JASS 当前选择为空")
+        resolved_unit = self._resolve_jass_unit_handle_win10(
+            pm,
+            unit_value,
+            allow_missing=True,
+        )
+        diagnostics.log(
+            "win10_jass_selection_resolved",
+            jass_handle=f"0x{unit_value:x}",
+            unit=f"0x{resolved_unit:x}",
+        )
+        if not resolved_unit:
+            raise RuntimeError(
+                f"JASS 当前选择句柄无法解析：0x{unit_value:x}"
+            )
+        if not self._is_jass_unit_selected_win10(pm, unit_value, player_handle):
+            raise RuntimeError(
+                "JASS 返回的单位已不在当前单选中，拒绝复用历史单位："
+                f"handle=0x{unit_value:x} unit=0x{resolved_unit:x}"
+            )
+        candidate = self._candidate_from_jass_selection_result_win10(
+            pm,
+            resolved_unit,
+            handle_id,
+            player_handle,
+        )
+        if candidate is None:
+            raise RuntimeError(
+                "JASS 已取得当前选择，但无法映射到可信单位对象："
+                f"handle=0x{unit_value:x} unit=0x{resolved_unit:x} "
+                f"handle_id=0x{handle_id:x}"
+            )
+        self._last_win10_jass_unit_handle = unit_value
+        self._last_win10_jass_player_handle = player_handle
+        self._last_win10_jass_handle_id = handle_id
+        diagnostics.log(
+            "selection_candidate_found",
+            route="jass_no_sync_verified",
+            handle=f"0x{candidate.handle:x}",
+            owner=f"0x{candidate.owner_address:x}",
+            unit=f"0x{candidate.unit_address:x}",
+            note=candidate.note,
+        )
+        return candidate
 
     def probe_jass_selected_unit(self) -> JassSelectionProbeResult:
         with ProcessMemory(self.pid) as pm:
@@ -6581,6 +8828,252 @@ class War3Trainer:
         finally:
             if close_pm:
                 pm.close()
+
+    def locate_selected_unit_win10(
+        self,
+        pm: ProcessMemory | None = None,
+        diagnostics: Win10ReadLogger | None = None,
+    ) -> UnitCandidate:
+        close_pm = False
+        close_diagnostics = False
+        if diagnostics is None and isinstance(pm, Win10ProcessMemory):
+            diagnostics = pm.diagnostics
+        if pm is None:
+            if diagnostics is None:
+                diagnostics = Win10ReadLogger(self.pid)
+                close_diagnostics = True
+            pm = Win10ProcessMemory(self.pid, diagnostics)
+            close_pm = True
+
+        def log(event: str, **values: object) -> None:
+            if diagnostics is not None:
+                diagnostics.log(event, **values)
+
+        try:
+            last_error: str | None = None
+            tried: set[int] = set()
+
+            def try_slot(address: int, min_score: int = 0) -> UnitCandidate | None:
+                nonlocal last_error
+                tried.add(address)
+                if isinstance(pm, Win10ProcessMemory) and not pm.is_readable_range(address, 8):
+                    log(
+                        "selection_slot_skipped_unreadable",
+                        address=f"0x{address:x}",
+                    )
+                    return None
+                try:
+                    handle = pm.read_u64(address)
+                except OSError as exc:
+                    last_error = str(exc)
+                    log(
+                        "selection_slot_read_error",
+                        address=f"0x{address:x}",
+                        exception=repr(exc),
+                    )
+                    return None
+                if not self._looks_like_unit_handle(handle):
+                    last_error = f"0x{address:x} 不是单位 handle"
+                    log(
+                        "selection_slot_invalid_handle",
+                        address=f"0x{address:x}",
+                        value=f"0x{handle:x}",
+                    )
+                    return None
+                owner = self._owner_for_handle(pm, handle)
+                if owner is None:
+                    last_error = f"0x{handle:x} 没有匹配单位对象"
+                    log(
+                        "selection_slot_owner_missing",
+                        address=f"0x{address:x}",
+                        handle=f"0x{handle:x}",
+                    )
+                    return None
+                score = self._score_selected_handle_address(pm, address, handle, owner)
+                if score < min_score:
+                    last_error = f"0x{address:x} 像历史选择槽，不是当前选择槽"
+                    log(
+                        "selection_slot_score_rejected",
+                        address=f"0x{address:x}",
+                        handle=f"0x{handle:x}",
+                        owner=f"0x{owner:x}",
+                        score=score,
+                        min_score=min_score,
+                    )
+                    return None
+                candidate = self._candidate_from_owner(
+                    pm,
+                    owner,
+                    900 + score,
+                    f"selected_handle=0x{handle:x} slot=0x{address:x}",
+                    handle,
+                    "win10",
+                    address,
+                )
+                if candidate is None:
+                    last_error = f"0x{handle:x} 没有生命属性"
+                    log(
+                        "selection_slot_candidate_invalid",
+                        address=f"0x{address:x}",
+                        handle=f"0x{handle:x}",
+                        owner=f"0x{owner:x}",
+                    )
+                    return None
+                if address in self._selected_handle_addresses:
+                    self._selected_handle_addresses.remove(address)
+                self._selected_handle_addresses.insert(0, address)
+                log(
+                    "selection_candidate_found",
+                    route="handle_slot",
+                    address=f"0x{address:x}",
+                    handle=f"0x{handle:x}",
+                    owner=f"0x{owner:x}",
+                    unit=f"0x{candidate.unit_address:x}",
+                    score=score,
+                )
+                return candidate
+
+            retry_delays = (0.0, 0.08, 0.20)
+            for attempt, delay in enumerate(retry_delays, start=1):
+                if delay:
+                    time.sleep(delay)
+                tried.clear()
+                log(
+                    "selection_attempt_begin",
+                    attempt=attempt,
+                    delay=delay,
+                    discover_players=attempt == 1,
+                )
+
+                try:
+                    selection_manager_candidate = self._locate_selected_unit_by_selection_manager_win10(
+                        pm,
+                        diagnostics,
+                        discover=attempt == 1,
+                    )
+                except Exception as exc:
+                    selection_manager_candidate = None
+                    last_error = str(exc)
+                    log(
+                        "selection_manager_error",
+                        attempt=attempt,
+                        exception=repr(exc),
+                    )
+                if selection_manager_candidate is not None:
+                    log(
+                        "selection_candidate_found",
+                        route="selection_manager",
+                        handle=f"0x{selection_manager_candidate.handle:x}",
+                        owner=f"0x{selection_manager_candidate.owner_address:x}",
+                        unit=f"0x{selection_manager_candidate.unit_address:x}",
+                        note=selection_manager_candidate.note,
+                    )
+                    return selection_manager_candidate
+                log("selection_manager_miss", attempt=attempt)
+
+                if attempt == 1:
+                    try:
+                        unit_pointer_candidate = self._locate_selected_unit_by_known_unit_pointer_win10(
+                            pm,
+                            diagnostics,
+                        )
+                    except Exception as exc:
+                        unit_pointer_candidate = None
+                        last_error = str(exc)
+                        log(
+                            "known_unit_pointer_error",
+                            attempt=attempt,
+                            exception=repr(exc),
+                        )
+                    if unit_pointer_candidate is not None:
+                        log(
+                            "selection_candidate_found",
+                            route="known_unit_pointer",
+                            handle=f"0x{unit_pointer_candidate.handle:x}",
+                            owner=f"0x{unit_pointer_candidate.owner_address:x}",
+                            unit=f"0x{unit_pointer_candidate.unit_address:x}",
+                            note=unit_pointer_candidate.note,
+                        )
+                        return unit_pointer_candidate
+                    log("known_unit_pointer_miss", attempt=attempt)
+
+                try:
+                    known_addresses = self._known_selected_handle_address_candidates(pm)
+                except Exception as exc:
+                    known_addresses = []
+                    last_error = str(exc)
+                    log(
+                        "known_selection_slots_error",
+                        attempt=attempt,
+                        exception=repr(exc),
+                    )
+                log(
+                    "known_selection_slots",
+                    attempt=attempt,
+                    count=len(known_addresses),
+                    readable_count=sum(
+                        1
+                        for address in known_addresses
+                        if not isinstance(pm, Win10ProcessMemory)
+                        or pm.is_readable_range(address, 8)
+                    ),
+                    addresses=[f"0x{address:x}" for address in known_addresses],
+                )
+                for address in known_addresses:
+                    candidate = try_slot(
+                        address,
+                        min_score=self.WIN10_STRONG_SELECTION_SCORE,
+                    )
+                    if candidate is not None:
+                        return candidate
+
+                cached_addresses = list(dict.fromkeys(self._selected_handle_addresses))
+                log(
+                    "cached_selection_slots",
+                    attempt=attempt,
+                    count=len(cached_addresses),
+                    addresses=[f"0x{address:x}" for address in cached_addresses],
+                )
+                for address in cached_addresses:
+                    if address in tried:
+                        continue
+                    candidate = try_slot(
+                        address,
+                        min_score=self.WIN10_STRONG_SELECTION_SCORE,
+                    )
+                    if candidate is not None:
+                        return candidate
+
+            try:
+                discovered_addresses = self._discover_selected_handle_addresses(pm)
+            except Exception as exc:
+                discovered_addresses = []
+                last_error = str(exc)
+                log("deep_selection_slots_error", exception=repr(exc))
+            log(
+                "deep_selection_slots",
+                count=len(discovered_addresses),
+                addresses=[f"0x{address:x}" for address in discovered_addresses],
+            )
+            for address in discovered_addresses:
+                if address in tried:
+                    continue
+                candidate = try_slot(
+                    address,
+                    min_score=self.WIN10_STRONG_SELECTION_SCORE,
+                )
+                if candidate is not None:
+                    return candidate
+            detail = f"；最后错误：{last_error}" if last_error else ""
+            log("selection_failed", last_error=last_error, tried=len(tried))
+            raise RuntimeError(
+                f"没有找到当前选中单位 handle，请在游戏里左键选中一个单位后重试{detail}"
+            )
+        finally:
+            if close_pm:
+                pm.close()
+            if close_diagnostics and diagnostics is not None:
+                diagnostics.close()
 
     def locate_selected_unit(
         self,
@@ -8078,6 +10571,376 @@ class War3Trainer:
             panel = self._panel_from_candidate(pm, candidate)
             return panel, candidate, self._unit_fields_from_candidate(pm, candidate)
 
+    def _recover_win10_native_handlers(
+        self,
+        isolated: "War3Trainer",
+        pm: ProcessMemory,
+        diagnostics: Win10ReadLogger,
+    ) -> tuple[int, tuple[str, ...]]:
+        wanted = set(self.WIN10_COMPAT_NATIVE_NAMES)
+        isolated._native_handlers.update(
+            {
+                name: handler
+                for name, handler in self._native_handlers.items()
+                if name in wanted
+            }
+        )
+        discovery_error = ""
+        try:
+            isolated._discover_native_handlers_near_table_win10(pm, wanted)
+        except Exception as exc:
+            discovery_error = repr(exc)
+
+        regions = pm.regions(force_refresh=True)
+        validated: dict[str, NativeHandler] = {}
+        for name in sorted(wanted):
+            handler = isolated._native_handlers.get(name)
+            if handler is None or handler.name != name:
+                continue
+            record_region = self._region_for_address(regions, handler.record_address)
+            if record_region is None or record_region.typ != MEM_PRIVATE:
+                continue
+            if not self._is_executable_image_address(regions, handler.handler_address):
+                continue
+            try:
+                size = pm.read_u64(handler.record_address + 8)
+            except OSError:
+                continue
+            if size != len(name):
+                continue
+            validated[name] = handler
+
+        shared_before = set(self._native_handlers)
+        for name, handler in validated.items():
+            self._native_handlers.setdefault(name, handler)
+
+        profile_names = set(self.NATIVE_RECORD_PROFILE_EXTERNALS)
+        missing_profile = tuple(sorted(profile_names.difference(validated)))
+        recovered_profile = len(profile_names) - len(missing_profile)
+        self._last_win10_native_recovered = recovered_profile
+        self._last_win10_native_missing = missing_profile
+        diagnostics.log(
+            "win10_native_recovery",
+            requested=len(wanted),
+            validated=len(validated),
+            shared_added=len(set(self._native_handlers).difference(shared_before)),
+            profile_recovered=recovered_profile,
+            profile_total=len(profile_names),
+            profile_missing=list(missing_profile),
+            all_missing=sorted(wanted.difference(validated)),
+            discovery_error=discovery_error,
+        )
+        return recovered_profile, missing_profile
+
+    @contextmanager
+    def _win10_memory_operation(
+        self,
+        operation: str,
+        *,
+        write: bool = False,
+    ) -> Iterator[tuple[Win10ReadLogger, Win10ProcessMemory]]:
+        diagnostics = Win10ReadLogger(self.pid)
+        self._last_win10_log_path = str(diagnostics.latest_path)
+        diagnostics.log("win10_operation_begin", operation=operation, write=write)
+        try:
+            with Win10ProcessMemory(self.pid, diagnostics, write=write) as pm:
+                yield diagnostics, pm
+            diagnostics.log("win10_operation_success", operation=operation)
+        except Exception as exc:
+            diagnostics.log_traceback("win10_operation_failure", exc)
+            raise
+        finally:
+            diagnostics.close()
+
+    def _win10_session_for_identity(
+        self,
+        handle: int,
+        owner: int,
+        unit: int,
+    ) -> "War3Trainer":
+        identity = (int(handle), int(owner), int(unit))
+        isolated = self._win10_session_trainer
+        if (
+            isolated is None
+            or isolated.pid != self.pid
+            or self._win10_session_identity != identity
+        ):
+            isolated = War3Trainer(self.pid)
+            self._win10_session_trainer = isolated
+            self._win10_session_identity = identity
+        self._seed_win10_isolated_state(isolated)
+        return isolated
+
+    def _seed_win10_isolated_state(self, isolated: "War3Trainer") -> dict[str, int]:
+        owner_index = dict(self._unit_owner_index)
+        owner_index.update(isolated._unit_owner_index)
+        isolated._unit_owner_index = owner_index
+        isolated._selection_player_candidates = list(
+            dict.fromkeys(
+                [
+                    *isolated._selection_player_candidates,
+                    *self._selection_player_candidates,
+                ]
+            )
+        )
+        # A discovered handle slot can remain readable after the selection changes.
+        # Reusing it pins later reads to the first unit seen in this session.
+        isolated._selected_handle_addresses = list(self.KNOWN_SELECTED_HANDLE_ADDRESSES)
+        resource_candidates = {
+            start: list(caches)
+            for start, caches in self._resource_candidates_by_start.items()
+        }
+        for start, caches in isolated._resource_candidates_by_start.items():
+            resource_candidates[start] = list(
+                dict.fromkeys([*resource_candidates.get(start, []), *caches])
+            )
+        isolated._resource_candidates_by_start = resource_candidates
+
+        component_index: dict[int, dict[str, tuple[int, int]]] = {}
+        if self._component_index_cache is not None:
+            component_index.update(
+                {
+                    owner: dict(components)
+                    for owner, components in self._component_index_cache.items()
+                }
+            )
+        if isolated._component_index_cache is not None:
+            for owner, components in isolated._component_index_cache.items():
+                component_index.setdefault(owner, {}).update(components)
+        isolated._component_index_cache = component_index or None
+
+        selected_components_cache = {
+            key: dict(components)
+            for key, components in self._selected_components_cache.items()
+        }
+        for key, components in isolated._selected_components_cache.items():
+            selected_components_cache[key] = dict(components)
+        isolated._selected_components_cache = selected_components_cache
+        isolated._unit_component_layout_confirmed = bool(
+            self._unit_component_layout_confirmed
+            or isolated._unit_component_layout_confirmed
+        )
+
+        isolated._selection_manager_offset = self._selection_manager_offset
+        isolated._selection_list_offsets = tuple(self._selection_list_offsets)
+        isolated._native_handlers.update(self._native_handlers)
+        return {
+            "owner_cache": len(isolated._unit_owner_index),
+            "selection_player_candidates": len(isolated._selection_player_candidates),
+            "selected_handle_addresses": len(isolated._selected_handle_addresses),
+            "resource_candidate_groups": len(isolated._resource_candidates_by_start),
+            "component_index": len(isolated._component_index_cache or {}),
+            "selected_component_cache": len(isolated._selected_components_cache),
+            "native_handlers": len(isolated._native_handlers),
+        }
+
+    @staticmethod
+    def _win10_candidate_from_identity(
+        isolated: "War3Trainer",
+        pm: ProcessMemory,
+        handle: int,
+        owner: int,
+        unit: int,
+    ) -> UnitCandidate:
+        candidate = isolated._candidate_from_identity(
+            pm,
+            handle,
+            owner,
+            unit,
+            f"win10_candidate handle=0x{handle:x} owner=0x{owner:x} unit=0x{unit:x}",
+            900,
+        )
+        if candidate is None:
+            raise RuntimeError("备用读取的单位身份已经失效，请重新点击备用读取")
+        return candidate
+
+    def read_selected_unit_fields_win10(
+        self,
+    ) -> tuple[VisibleUnitPanel, UnitCandidate, list[UnitMemoryField]]:
+        diagnostics = Win10ReadLogger(self.pid)
+        self._last_win10_log_path = str(diagnostics.latest_path)
+        self._last_win10_native_recovered = 0
+        self._last_win10_native_missing = ()
+        diagnostics.log(
+            "win10_read_begin",
+            compat_revision=WIN10_COMPAT_REVISION,
+            hwnd=f"0x{self.hwnd:x}",
+            shared_native_handlers_before=len(self._native_handlers),
+            shared_native_handler_names=sorted(self._native_handlers),
+            shared_owner_cache_before=len(self._unit_owner_index),
+            shared_selection_player_candidates_before=len(self._selection_player_candidates),
+            shared_selected_handle_addresses_before=len(self._selected_handle_addresses),
+            shared_resource_candidate_groups_before=len(self._resource_candidates_by_start),
+            shared_component_cache_before=(
+                len(self._component_index_cache)
+                if self._component_index_cache is not None
+                else None
+            ),
+        )
+        try:
+            isolated = self._win10_session_trainer
+            reused_isolated = isolated is not None and isolated.pid == self.pid
+            if not reused_isolated:
+                isolated = War3Trainer(self.pid)
+            seeded_state = self._seed_win10_isolated_state(isolated)
+            diagnostics.log(
+                "isolated_trainer_created",
+                trainer_id=id(isolated),
+                reused=reused_isolated,
+                **seeded_state,
+            )
+            with Win10ProcessMemory(self.pid, diagnostics) as pm:
+                with diagnostics.stage("initial_region_snapshot"):
+                    pm.regions(force_refresh=True)
+                with diagnostics.stage("recover_compat_native_handlers"):
+                    native_recovered, native_missing = self._recover_win10_native_handlers(
+                        isolated,
+                        pm,
+                        diagnostics,
+                    )
+                candidate: UnitCandidate | None = None
+                try:
+                    with diagnostics.stage("locate_selected_unit_jass"):
+                        candidate = isolated.locate_selected_unit_by_jass_native_win10(
+                            pm,
+                            diagnostics,
+                        )
+                except Exception as exc:
+                    diagnostics.log(
+                        "win10_jass_selection_fallback",
+                        exception=repr(exc),
+                    )
+                if candidate is None:
+                    with diagnostics.stage("prepare_selection_layout"):
+                        isolated._prepare_win10_selection_layout(pm, diagnostics)
+                    with diagnostics.stage("locate_selected_unit_memory"):
+                        candidate = isolated._locate_selected_unit_by_selection_manager_win10(
+                            pm,
+                            diagnostics,
+                            discover=True,
+                        )
+                    if candidate is None:
+                        raise RuntimeError(
+                            "实时 JASS 选择和 selection manager 都没有定位到当前单选单位；"
+                            "历史 handle 槽已禁用，请重新单击目标后重试"
+                        )
+                    candidate = replace(candidate, selection_source="win10_manager")
+                    diagnostics.log(
+                        "selection_candidate_found",
+                        route="selection_manager_only",
+                        handle=f"0x{candidate.handle:x}",
+                        owner=f"0x{candidate.owner_address:x}",
+                        unit=f"0x{candidate.unit_address:x}",
+                        note=candidate.note,
+                    )
+                diagnostics.log(
+                    "candidate_identity",
+                    handle=f"0x{candidate.handle:x}",
+                    owner=f"0x{candidate.owner_address:x}",
+                    unit=f"0x{candidate.unit_address:x}",
+                    selection_source=candidate.selection_source,
+                    selection_slot=f"0x{candidate.selection_slot_address:x}",
+                    note=candidate.note,
+                )
+                with diagnostics.stage("read_unit_type"):
+                    candidate = isolated._candidate_with_selected_unit_type_id(pm, candidate)
+                with diagnostics.stage("read_panel"):
+                    panel = isolated._panel_from_candidate(pm, candidate)
+                diagnostics.log(
+                    "panel_values",
+                    hp_text=panel.hp_text,
+                    mp_text=panel.mp_text,
+                    current_hp=panel.current_hp,
+                    max_hp=panel.max_hp,
+                    current_mp=panel.current_mp,
+                    max_mp=panel.max_mp,
+                    unit_type_id=(
+                        format_rawcode(candidate.unit_type_id)
+                        if candidate.unit_type_id
+                        else ""
+                    ),
+                )
+                with diagnostics.stage("read_all_fields"):
+                    fields = isolated._unit_fields_from_candidate(pm, candidate)
+                    fields = isolated._replace_win10_intelligence_field(
+                        pm,
+                        candidate,
+                        fields,
+                        diagnostics,
+                    )
+
+                fields_by_category: dict[str, int] = {}
+                for field in fields:
+                    fields_by_category[field.category] = fields_by_category.get(field.category, 0) + 1
+                    diagnostics.log(
+                        "field",
+                        key=field.key,
+                        label=field.label,
+                        category=field.category,
+                        value_type=field.value_type,
+                        value=field.value,
+                        address=f"0x{field.address:x}",
+                        write_address=f"0x{field.write_address:x}",
+                        write_type=field.write_type,
+                        extra_writes=field.extra_writes,
+                        note=field.note,
+                    )
+                diagnostics.log(
+                    "field_summary",
+                    total=len(fields),
+                    by_category=fields_by_category,
+                    owner_cache=len(isolated._unit_owner_index),
+                    component_index=(
+                        len(isolated._component_index_cache)
+                        if isolated._component_index_cache is not None
+                        else None
+                    ),
+                    component_misses=len(isolated._component_index_misses),
+                    selected_component_cache=len(isolated._selected_components_cache),
+                )
+                self._win10_session_trainer = isolated
+                self._win10_session_identity = (
+                    candidate.handle,
+                    candidate.owner_address,
+                    candidate.unit_address,
+                )
+                diagnostics.log(
+                    "shared_state_after_win10",
+                    shared_native_handlers_after=len(self._native_handlers),
+                    shared_owner_cache_after=len(self._unit_owner_index),
+                    shared_component_cache_after=(
+                        len(self._component_index_cache)
+                        if self._component_index_cache is not None
+                        else None
+                    ),
+                    compat_native_recovered=native_recovered,
+                    compat_native_missing=list(native_missing),
+                )
+                diagnostics.log(
+                    "win10_read_success",
+                    field_count=len(fields),
+                    compat_native_recovered=native_recovered,
+                    compat_native_missing=len(native_missing),
+                )
+                return panel, candidate, fields
+        except Exception as exc:
+            diagnostics.log_traceback("win10_read_failure", exc)
+            raise RuntimeError(
+                f"{exc}；完整诊断日志：{diagnostics.latest_path}"
+            ) from exc
+        finally:
+            diagnostics.log(
+                "shared_state_final",
+                shared_native_handlers=len(self._native_handlers),
+                shared_owner_cache=len(self._unit_owner_index),
+                shared_component_cache=(
+                    len(self._component_index_cache)
+                    if self._component_index_cache is not None
+                    else None
+                ),
+            )
+            diagnostics.close()
+
     def read_unit_fields_by_identity(
         self,
         handle: int,
@@ -8098,6 +10961,39 @@ class War3Trainer:
             candidate = self._candidate_with_selected_unit_type_id(pm, candidate)
             panel = self._panel_from_candidate(pm, candidate)
             return panel, candidate, self._unit_fields_from_candidate(pm, candidate)
+
+    def read_unit_fields_by_identity_win10(
+        self,
+        handle: int,
+        owner: int,
+        unit: int,
+    ) -> tuple[VisibleUnitPanel, UnitCandidate, list[UnitMemoryField]]:
+        with self._win10_memory_operation("read_unit_fields_by_identity") as (diagnostics, pm):
+            isolated = self._win10_session_for_identity(handle, owner, unit)
+            candidate = self._win10_candidate_from_identity(
+                isolated,
+                pm,
+                handle,
+                owner,
+                unit,
+            )
+            candidate = isolated._candidate_with_selected_unit_type_id(pm, candidate)
+            panel = isolated._panel_from_candidate(pm, candidate)
+            fields = isolated._unit_fields_from_candidate(pm, candidate)
+            fields = isolated._replace_win10_intelligence_field(
+                pm,
+                candidate,
+                fields,
+                diagnostics,
+            )
+            diagnostics.log(
+                "win10_identity_read",
+                handle=f"0x{handle:x}",
+                owner=f"0x{owner:x}",
+                unit=f"0x{unit:x}",
+                field_count=len(fields),
+            )
+            return panel, candidate, fields
 
     def _skill_index_from_field_key(self, key: str) -> int | None:
         if not key.startswith("skill") or not key.endswith("_name"):
@@ -8908,6 +11804,61 @@ class War3Trainer:
                 raise RuntimeError("候选单位已经失效，请重新读取候选列表")
             return self._write_unit_fields_to_candidate(pm, candidate, [MemoryWriteSpec(key, 0, "", value)])[0]
 
+    def write_unit_field_by_identity_win10(
+        self,
+        handle: int,
+        owner: int,
+        unit: int,
+        key: str,
+        value: int | float | str,
+    ) -> UnitMemoryField:
+        with self._win10_memory_operation(
+            "write_unit_field_by_identity",
+            write=True,
+        ) as (diagnostics, pm):
+            isolated = self._win10_session_for_identity(handle, owner, unit)
+            candidate = self._win10_candidate_from_identity(
+                isolated,
+                pm,
+                handle,
+                owner,
+                unit,
+            )
+            if key in {"int", "intelligence", "intelligence_total"}:
+                if not {"SetHeroInt", "GetHeroInt"}.issubset(isolated._native_handlers):
+                    isolated._recover_win10_native_handlers(isolated, pm, diagnostics)
+                fields = isolated._unit_fields_from_candidate(pm, candidate)
+                field = next(
+                    (item for item in fields if item.key == "intelligence_total"),
+                    None,
+                )
+                if field is None:
+                    raise RuntimeError("当前备用读取单位没有可写的智力字段")
+                field = isolated._write_hero_intelligence_field_win10(
+                    pm,
+                    candidate,
+                    field,
+                    value,
+                    diagnostics,
+                )
+            else:
+                field = isolated._write_unit_fields_to_candidate(
+                    pm,
+                    candidate,
+                    [MemoryWriteSpec(key, 0, "", value)],
+                )[0]
+            diagnostics.log(
+                "win10_identity_write",
+                handle=f"0x{handle:x}",
+                owner=f"0x{owner:x}",
+                unit=f"0x{unit:x}",
+                key=key,
+                value=field.value,
+                address=f"0x{field.address:x}",
+                write_address=f"0x{field.write_address:x}",
+            )
+            return field
+
     def locate_current_selected_unit(self) -> tuple[VisibleUnitPanel, UnitCandidate]:
         with ProcessMemory(self.pid) as pm:
             candidate = self.locate_selected_unit_by_handle(pm, allow_deep_scan=True)
@@ -9040,6 +11991,62 @@ class War3Trainer:
             )
             return candidate
 
+    def set_unit_by_identity_win10(
+        self,
+        handle: int,
+        owner: int,
+        unit: int,
+        current_hp: float,
+        current_mp: float | None,
+        target_hp: float | None,
+        target_mp: float | None,
+        max_hp: float | None = None,
+        max_mp: float | None = None,
+        target_x: float | None = None,
+        target_y: float | None = None,
+        target_hp_regen: float | None = None,
+        target_mp_regen: float | None = None,
+    ) -> UnitCandidate:
+        with self._win10_memory_operation(
+            "set_unit_by_identity",
+            write=True,
+        ) as (diagnostics, pm):
+            isolated = self._win10_session_for_identity(handle, owner, unit)
+            candidate = self._win10_candidate_from_identity(
+                isolated,
+                pm,
+                handle,
+                owner,
+                unit,
+            )
+            isolated._write_basic_unit_values_to_candidate(
+                pm,
+                candidate,
+                target_hp,
+                target_mp,
+                max_hp,
+                max_mp,
+                target_x,
+                target_y,
+                target_hp_regen,
+                target_mp_regen,
+            )
+            diagnostics.log(
+                "win10_identity_basic_write",
+                handle=f"0x{handle:x}",
+                owner=f"0x{owner:x}",
+                unit=f"0x{unit:x}",
+                target_hp=target_hp,
+                target_mp=target_mp,
+                max_hp=max_hp,
+                max_mp=max_mp,
+                target_x=target_x,
+                target_y=target_y,
+                target_hp_regen=target_hp_regen,
+                target_mp_regen=target_mp_regen,
+            )
+            return candidate
+
 
 def close_float(a: float, b: float, tolerance: float = 0.01) -> bool:
     return math.isfinite(a) and abs(a - b) <= tolerance
@@ -9142,6 +12149,14 @@ def run_gui() -> None:
     elephant_item_rawcode = tk.StringVar(value="ckng")
     elephant_ability_rawcode = tk.StringVar(value="AOsh")
     elephant_ability_level = tk.StringVar(value="1")
+    ability_field_rawcode = tk.StringVar(value="AHhb")
+    ability_field_level = tk.StringVar(value="1")
+    ability_field_filter = tk.StringVar(value="")
+    ability_field_value = tk.StringVar(value="")
+    ability_field_summary = tk.StringVar(value="尚未读取技能字段")
+    ability_field_detail = tk.StringVar(value="")
+    ability_field_show_zero = tk.BooleanVar(value=True)
+    ability_field_show_unsupported = tk.BooleanVar(value=True)
     elephant_tech_rawcode = tk.StringVar(value="")
     elephant_tech_level = tk.StringVar(value="1")
     elephant_xp_rate = tk.StringVar(value="1.0")
@@ -9174,6 +12189,7 @@ def run_gui() -> None:
         "local_resource_iid": "",
         "unit_fields": {},
         "selected_unit_identity": None,
+        "selected_unit_win10": False,
         "last_verified_unit_identity": None,
         "selection_candidates": {},
         "manual_unit_identity": None,
@@ -9181,6 +12197,8 @@ def run_gui() -> None:
         "lock_busy": False,
         "active_operations": set(),
         "elephant_game_paused": False,
+        "ability_field_snapshot": None,
+        "ability_field_rows": {},
         "closing": False,
     }
 
@@ -9510,6 +12528,9 @@ def run_gui() -> None:
             return identity
         return None
 
+    def current_display_uses_win10() -> bool:
+        return bool(state.get("selected_unit_win10"))
+
     def remembered_unit_identities() -> list[tuple[int, int, int]]:
         remembered: list[tuple[int, int, int]] = []
         for key in ("manual_unit_identity", "selected_unit_identity", "last_verified_unit_identity"):
@@ -9594,18 +12615,20 @@ def run_gui() -> None:
         cand: UnitCandidate,
         fields: list[UnitMemoryField],
         force_targets: bool = False,
+        win10_compat: bool = False,
     ) -> None:
         state["manual_unit_identity"] = None
-        populate_selected_unit_readout(panel, cand, fields, force_targets)
+        populate_selected_unit_readout(panel, cand, fields, force_targets, win10_compat)
 
     def populate_manual_candidate_readout(
         panel: VisibleUnitPanel,
         cand: UnitCandidate,
         fields: list[UnitMemoryField],
         force_targets: bool = False,
+        win10_compat: bool = False,
     ) -> None:
         state["manual_unit_identity"] = unit_identity(cand)
-        populate_selected_unit_readout(panel, cand, fields, force_targets)
+        populate_selected_unit_readout(panel, cand, fields, force_targets, win10_compat)
 
     def read_selection_candidate_fields() -> str:
         summary = selected_selection_candidate()
@@ -9639,6 +12662,7 @@ def run_gui() -> None:
         ):
             var.set("")
         state["selected_unit_identity"] = None
+        state["selected_unit_win10"] = False
         state["manual_unit_identity"] = None
         state["unit_fields"] = {}
         try:
@@ -9651,11 +12675,13 @@ def run_gui() -> None:
         cand: UnitCandidate,
         fields: list[UnitMemoryField],
         force_targets: bool = False,
+        win10_compat: bool = False,
     ) -> None:
         field_by_key = {field.key: field for field in fields}
         identity = (cand.handle, cand.owner_address, cand.unit_address)
         reset_targets = force_targets or state.get("selected_unit_identity") != identity
         state["selected_unit_identity"] = identity
+        state["selected_unit_win10"] = bool(win10_compat)
         state["last_verified_unit_identity"] = identity
         unit_type_id_current.set(format_rawcode(cand.unit_type_id) if cand.unit_type_id else "")
 
@@ -9731,9 +12757,14 @@ def run_gui() -> None:
         t = trainer()
         target_identity = current_display_unit_identity()
         if target_identity is not None:
-            written = t.write_unit_field_by_identity(*target_identity, field.key, value)
-            panel, cand, fields = t.read_unit_fields_by_identity(*target_identity)
-            root.after(0, populate_manual_candidate_readout, panel, cand, fields, False)
+            if current_display_uses_win10():
+                written = t.write_unit_field_by_identity_win10(*target_identity, field.key, value)
+                panel, cand, fields = t.read_unit_fields_by_identity_win10(*target_identity)
+                root.after(0, populate_manual_candidate_readout, panel, cand, fields, False, True)
+            else:
+                written = t.write_unit_field_by_identity(*target_identity, field.key, value)
+                panel, cand, fields = t.read_unit_fields_by_identity(*target_identity)
+                root.after(0, populate_manual_candidate_readout, panel, cand, fields, False)
         else:
             written = t.write_selected_unit_field(field.key, value)
             panel, cand, fields = t.read_selected_unit_fields()
@@ -9774,6 +12805,7 @@ def run_gui() -> None:
             "label": field.label,
             "value": value,
             "unit_identity": current_display_unit_identity(),
+            "win10_compat": current_display_uses_win10(),
         }
         root.after(0, populate_locks)
         return f"已锁定选中单位字段：{field.label}={value}"
@@ -9838,7 +12870,10 @@ def run_gui() -> None:
                     and len(identity) == 3
                     and all(isinstance(part, int) for part in identity)
                 ):
-                    t.write_unit_field_by_identity(*identity, key, value)
+                    if item.get("win10_compat"):
+                        t.write_unit_field_by_identity_win10(*identity, key, value)
+                    else:
+                        t.write_unit_field_by_identity(*identity, key, value)
                 else:
                     t.write_selected_unit_field(key, value)
                 continue
@@ -9925,21 +12960,46 @@ def run_gui() -> None:
             raise ValueError("至少填写一个目标生命、魔法、回复率或坐标")
         target_identity = current_display_unit_identity()
         if target_identity is not None:
-            cand = t.set_unit_by_identity(
-                *target_identity,
-                hp_now,
-                mp_now,
-                hp_new,
-                mp_new,
-                hp_max_now,
-                mp_max_now,
-                x_new,
-                y_new,
-                hp_regen_new,
-                mp_regen_new,
-            )
-            panel, cand_after, fields = t.read_unit_fields_by_identity(*target_identity)
-            root.after(0, populate_manual_candidate_readout, panel, cand_after, fields, True)
+            if current_display_uses_win10():
+                cand = t.set_unit_by_identity_win10(
+                    *target_identity,
+                    hp_now,
+                    mp_now,
+                    hp_new,
+                    mp_new,
+                    hp_max_now,
+                    mp_max_now,
+                    x_new,
+                    y_new,
+                    hp_regen_new,
+                    mp_regen_new,
+                )
+                panel, cand_after, fields = t.read_unit_fields_by_identity_win10(*target_identity)
+                root.after(
+                    0,
+                    populate_manual_candidate_readout,
+                    panel,
+                    cand_after,
+                    fields,
+                    True,
+                    True,
+                )
+            else:
+                cand = t.set_unit_by_identity(
+                    *target_identity,
+                    hp_now,
+                    mp_now,
+                    hp_new,
+                    mp_new,
+                    hp_max_now,
+                    mp_max_now,
+                    x_new,
+                    y_new,
+                    hp_regen_new,
+                    mp_regen_new,
+                )
+                panel, cand_after, fields = t.read_unit_fields_by_identity(*target_identity)
+                root.after(0, populate_manual_candidate_readout, panel, cand_after, fields, True)
             return (
                 f"候选单位已写入；source={cand.selection_source or 'manual'} "
                 f"base=0x{cand.base:x} unit=0x{cand.unit_address:x} {cand.note}"
@@ -9978,6 +13038,28 @@ def run_gui() -> None:
             f"选中单位：HP {panel.hp_text}，MP {panel.mp_text}；"
             f"source={cand.selection_source or 'unknown'} base=0x{cand.base:x} unit=0x{cand.unit_address:x}；"
             f"耗时 {elapsed_ms:.0f} ms"
+        )
+
+    def read_unit_win10() -> str:
+        started = time.perf_counter()
+        try:
+            t = trainer()
+            panel, cand, fields = t.read_selected_unit_fields_win10()
+        except Exception as exc:
+            root.after(0, clear_selected_unit_readout)
+            raise RuntimeError(f"备用读取失败：{exc}") from exc
+        root.after(0, populate_auto_selected_unit_readout, panel, cand, fields, True, True)
+        elapsed_ms = (time.perf_counter() - started) * 1000
+        log_path = getattr(t, "_last_win10_log_path", "")
+        native_recovered = int(getattr(t, "_last_win10_native_recovered", 0))
+        native_missing = tuple(getattr(t, "_last_win10_native_missing", ()))
+        native_status = f"兼容 native {native_recovered}/{len(t.NATIVE_RECORD_PROFILE_EXTERNALS)}"
+        if native_missing:
+            native_status += f"，仍缺 {len(native_missing)}"
+        return (
+            f"备用读取 [{WIN10_COMPAT_REVISION}]：HP {panel.hp_text}，MP {panel.mp_text}；"
+            f"source={cand.selection_source or 'backup'} unit=0x{cand.unit_address:x}；"
+            f"{native_status}；耗时 {elapsed_ms:.0f} ms；日志：{log_path}"
         )
 
     def read_unit_native_selection() -> str:
@@ -10064,6 +13146,245 @@ def run_gui() -> None:
         level = parse_int(elephant_ability_level.get(), "技能等级")
         actual = trainer().set_selected_unit_ability_level(rawcode, level)
         return f"技能 {rawcode} 等级已设置；native 返回 {actual}"
+
+    def refresh_ability_field_tree() -> None:
+        snapshot = state.get("ability_field_snapshot")
+        rows: dict[str, AbilityFieldValue] = {}
+        ability_field_tree.delete(*ability_field_tree.get_children())
+        if not isinstance(snapshot, AbilityFieldSnapshot):
+            state["ability_field_rows"] = rows
+            return
+        query = ability_field_filter.get().strip().lower()
+        show_zero = ability_field_show_zero.get()
+        show_unsupported = ability_field_show_unsupported.get()
+        type_labels = {
+            "boolean": "布尔",
+            "integer": "整数",
+            "real": "实数",
+            "string": "字符串",
+        }
+        scope_labels = {
+            "field": "全局",
+            "level": "等级",
+            "level_array": "等级数组",
+        }
+        for index, field_value in enumerate(snapshot.fields):
+            spec = field_value.spec
+            if not show_unsupported and field_value.status == "未开放":
+                continue
+            if (
+                not show_zero
+                and field_value.value is not None
+                and (
+                    field_value.value is False
+                    or field_value.value == 0
+                    or field_value.value == 0.0
+                )
+            ):
+                continue
+            searchable = " ".join(
+                (
+                    spec.rawcode,
+                    spec.constant_name,
+                    spec.field_name,
+                    spec.category,
+                    spec.metadata_type,
+                    field_value.note,
+                )
+            ).lower()
+            if query and query not in searchable:
+                continue
+            iid = f"ability-field-{index}"
+            rows[iid] = field_value
+            label = spec.constant_name
+            if label.startswith("METADATA_"):
+                label = spec.field_name or spec.display_name or label
+            ability_field_tree.insert(
+                "",
+                "end",
+                iid=iid,
+                values=(
+                    spec.rawcode,
+                    type_labels.get(spec.value_kind, spec.value_kind),
+                    scope_labels.get(spec.scope, spec.scope),
+                    label,
+                    field_value.value_text(),
+                    field_value.status,
+                ),
+            )
+        state["ability_field_rows"] = rows
+
+    def apply_ability_field_snapshot(snapshot: AbilityFieldSnapshot) -> None:
+        state["ability_field_snapshot"] = snapshot
+        effect_status = "" if snapshot.effect_class_verified else "（未确认）"
+        effect_note = (
+            f"；{snapshot.effect_class_note}"
+            if not snapshot.effect_class_verified and snapshot.effect_class_note
+            else ""
+        )
+        ability_field_summary.set(
+            f"技能 {format_rawcode(snapshot.ability_rawcode)}；"
+            f"效果类 {format_rawcode(snapshot.effect_class)}{effect_status}；"
+            f"当前等级 {snapshot.current_level}；"
+            f"字段等级 {snapshot.requested_level}；"
+            f"候选 {len(snapshot.fields)} 项"
+            f"{effect_note}"
+        )
+        ability_field_value.set("")
+        ability_field_detail.set("")
+        ability_field_write_button.state(["disabled"])
+        refresh_ability_field_tree()
+
+    def read_ability_field_snapshot() -> str:
+        rawcode = ability_field_rawcode.get().strip()
+        if not rawcode:
+            raise ValueError("请填写技能 ID")
+        level = parse_int(ability_field_level.get(), "字段等级")
+        snapshot = trainer().read_selected_ability_fields(rawcode, level)
+        root.after(0, apply_ability_field_snapshot, snapshot)
+        readable = sum(field.value is not None for field in snapshot.fields)
+        writable = sum(
+            field.value is not None and field.spec.writable
+            for field in snapshot.fields
+        )
+        return (
+            f"已读取 {format_rawcode(snapshot.ability_rawcode)}："
+            f"{readable} 项有值，{writable} 项可尝试写入"
+        )
+
+    def select_ability_field(_event: object | None = None) -> None:
+        selected = ability_field_tree.selection()
+        rows = state.get("ability_field_rows")
+        field_value = (
+            rows.get(selected[0])
+            if selected and isinstance(rows, dict)
+            else None
+        )
+        if not isinstance(field_value, AbilityFieldValue):
+            ability_field_value.set("")
+            ability_field_detail.set("")
+            ability_field_write_button.state(["disabled"])
+            return
+        spec = field_value.spec
+        ability_field_value.set(field_value.value_text())
+        bounds = ""
+        if spec.minimum is not None or spec.maximum is not None:
+            bounds = f"；元数据范围 {spec.minimum!s} .. {spec.maximum!s}"
+        specific = ""
+        if spec.use_specific:
+            specific = "；适用 " + ",".join(spec.use_specific)
+        ability_field_detail.set(
+            f"{spec.rawcode} | {spec.constant_name} | {spec.metadata_type or spec.value_kind}"
+            f" | {spec.field_name or '-'}{bounds}{specific}"
+            + (f"；{field_value.note}" if field_value.note else "")
+        )
+        if field_value.value is not None and spec.writable:
+            ability_field_write_button.state(["!disabled"])
+        else:
+            ability_field_write_button.state(["disabled"])
+
+    def write_selected_ability_field(
+        snapshot: AbilityFieldSnapshot,
+        rawcode: str,
+        level: int,
+        field_value: AbilityFieldValue,
+        target_text: str,
+    ) -> str:
+        try:
+            actual = trainer().set_selected_ability_field(
+                rawcode,
+                level,
+                field_value.spec,
+                target_text,
+                expected_snapshot=snapshot,
+            )
+        except RuntimeError as exc:
+            if (
+                "游戏拒绝写入该技能字段" in str(exc)
+                and "恢复无法确认" not in str(exc)
+            ):
+                rejected = replace(field_value, status="游戏拒绝", note=str(exc))
+                key = (
+                    field_value.spec.rawcode,
+                    field_value.spec.value_kind,
+                    field_value.spec.scope,
+                )
+                rejected_snapshot = replace(
+                    snapshot,
+                    fields=tuple(
+                        rejected
+                        if (item.spec.rawcode, item.spec.value_kind, item.spec.scope) == key
+                        else item
+                        for item in snapshot.fields
+                    ),
+                )
+                root.after(
+                    0,
+                    lambda: (
+                        apply_ability_field_snapshot(rejected_snapshot)
+                        if state.get("ability_field_snapshot") is snapshot
+                        else None
+                    ),
+                )
+            raise
+        key = (
+            field_value.spec.rawcode,
+            field_value.spec.value_kind,
+            field_value.spec.scope,
+        )
+        updated_fields = tuple(
+            actual
+            if (item.spec.rawcode, item.spec.value_kind, item.spec.scope) == key
+            else item
+            for item in snapshot.fields
+        )
+        updated_snapshot = replace(snapshot, fields=updated_fields)
+        root.after(
+            0,
+            lambda: (
+                apply_ability_field_snapshot(updated_snapshot)
+                if state.get("ability_field_snapshot") is snapshot
+                else None
+            ),
+        )
+        return (
+            f"字段 {field_value.spec.rawcode} 已写入并读回："
+            f"{actual.value_text()}"
+        )
+
+    def ability_field_write_clicked() -> None:
+        snapshot = state.get("ability_field_snapshot")
+        if not isinstance(snapshot, AbilityFieldSnapshot):
+            messagebox.showerror("错误", "请先读取技能字段")
+            return
+        selected = ability_field_tree.selection()
+        rows = state.get("ability_field_rows")
+        field_value = (
+            rows.get(selected[0])
+            if selected and isinstance(rows, dict)
+            else None
+        )
+        if not isinstance(field_value, AbilityFieldValue):
+            messagebox.showerror("错误", "请先选择一个可写字段")
+            return
+        rawcode = ability_field_rawcode.get().strip()
+        try:
+            level = parse_int(ability_field_level.get(), "字段等级")
+        except ValueError as exc:
+            messagebox.showerror("错误", str(exc))
+            return
+        target_text = ability_field_value.get().strip()
+        call_async(
+            lambda: write_selected_ability_field(
+                snapshot,
+                rawcode,
+                level,
+                field_value,
+                target_text,
+            ),
+            operation_key="ability-field-write",
+            busy_text="正在写入并校验技能字段...",
+        )
 
     def elephant_set_tech() -> str:
         rawcode = elephant_tech_rawcode.get().strip()
@@ -10484,11 +13805,20 @@ def run_gui() -> None:
         command=lambda: call_async(read_unit, "read_unit", read_unit_button)
     )
     read_unit_button.grid(row=6, column=0, pady=12, sticky="w")
-    ttk.Button(unit, text="写入选中单位", command=lambda: call_async(set_unit)).grid(row=6, column=1, pady=12, sticky="w")
-    ttk.Button(unit, text="刷新字段表", command=lambda: call_async(read_unit_fields)).grid(row=6, column=2, pady=12, sticky="w")
-    ttk.Button(unit, text="列出候选单位", command=lambda: call_async(refresh_unit_candidates)).grid(row=6, column=3, pady=12, sticky="w")
-    ttk.Button(unit, text="读取所选候选", command=lambda: call_async(read_selection_candidate_fields)).grid(row=6, column=4, pady=12, sticky="w")
-    ttk.Button(unit, text="Native定位", command=lambda: call_async(read_unit_native_selection)).grid(row=6, column=5, pady=12, sticky="w")
+    backup_read_button = ttk.Button(unit, text="备用读取")
+    backup_read_button.configure(
+        command=lambda: call_async(
+            read_unit_win10,
+            "backup_read",
+            backup_read_button,
+        )
+    )
+    backup_read_button.grid(row=6, column=1, pady=12, sticky="w")
+    ttk.Button(unit, text="写入选中单位", command=lambda: call_async(set_unit)).grid(row=6, column=2, pady=12, sticky="w")
+    ttk.Button(unit, text="刷新字段表", command=lambda: call_async(read_unit_fields)).grid(row=6, column=3, pady=12, sticky="w")
+    ttk.Button(unit, text="列出候选单位", command=lambda: call_async(refresh_unit_candidates)).grid(row=6, column=4, pady=12, sticky="w")
+    ttk.Button(unit, text="读取所选候选", command=lambda: call_async(read_selection_candidate_fields)).grid(row=6, column=5, pady=12, sticky="w")
+    ttk.Button(unit, text="Native定位", command=lambda: call_async(read_unit_native_selection)).grid(row=6, column=6, pady=12, sticky="w")
 
     candidate_frame = ttk.Frame(unit)
     candidate_frame.grid(row=7, column=0, columnspan=7, sticky="nsew", pady=(0, 8))
@@ -10584,6 +13914,130 @@ def run_gui() -> None:
     ttk.Button(locks_tab, text="解锁所选", command=lambda: call_async(remove_selected_lock)).grid(row=1, column=1, sticky="w", pady=(10, 0))
     locks_tab.columnconfigure(0, weight=1)
     locks_tab.rowconfigure(0, weight=1)
+
+    ability_fields_tab = ttk.Frame(notebook, padding=10)
+    notebook.add(ability_fields_tab, text="技能字段")
+    ability_field_toolbar = ttk.Frame(ability_fields_tab)
+    ability_field_toolbar.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+    ttk.Label(ability_field_toolbar, text="技能 ID").grid(row=0, column=0, sticky="w")
+    ttk.Entry(
+        ability_field_toolbar,
+        textvariable=ability_field_rawcode,
+        width=10,
+    ).grid(row=0, column=1, sticky="w", padx=(6, 16))
+    ttk.Label(ability_field_toolbar, text="字段等级").grid(row=0, column=2, sticky="w")
+    ttk.Entry(
+        ability_field_toolbar,
+        textvariable=ability_field_level,
+        width=7,
+    ).grid(row=0, column=3, sticky="w", padx=(6, 16))
+    ability_field_read_button = ttk.Button(
+        ability_field_toolbar,
+        text="读取可修改字段",
+        command=lambda: call_async(
+            read_ability_field_snapshot,
+            operation_key="ability-field-read",
+            busy_widget=ability_field_read_button,
+            busy_text="正在解析技能实例并读取字段...",
+        ),
+    )
+    ability_field_read_button.grid(row=0, column=4, sticky="w")
+    ttk.Label(ability_field_toolbar, text="筛选").grid(
+        row=0,
+        column=5,
+        sticky="e",
+        padx=(24, 6),
+    )
+    ability_field_filter_entry = ttk.Entry(
+        ability_field_toolbar,
+        textvariable=ability_field_filter,
+        width=24,
+    )
+    ability_field_filter_entry.grid(row=0, column=6, sticky="ew")
+    ability_field_filter_entry.bind(
+        "<KeyRelease>",
+        lambda _event: refresh_ability_field_tree(),
+    )
+    ttk.Checkbutton(
+        ability_field_toolbar,
+        text="显示零值",
+        variable=ability_field_show_zero,
+        command=refresh_ability_field_tree,
+    ).grid(row=0, column=7, padx=(14, 0))
+    ttk.Checkbutton(
+        ability_field_toolbar,
+        text="显示未开放",
+        variable=ability_field_show_unsupported,
+        command=refresh_ability_field_tree,
+    ).grid(row=0, column=8, padx=(10, 0))
+    ability_field_toolbar.columnconfigure(6, weight=1)
+
+    ability_field_table_frame = ttk.Frame(ability_fields_tab)
+    ability_field_table_frame.grid(row=1, column=0, sticky="nsew")
+    ability_field_columns = ("field", "type", "scope", "name", "value", "status")
+    ability_field_tree = ttk.Treeview(
+        ability_field_table_frame,
+        columns=ability_field_columns,
+        show="headings",
+        height=18,
+        selectmode="browse",
+    )
+    for column, heading, width, stretch in (
+        ("field", "字段", 72, False),
+        ("type", "类型", 68, False),
+        ("scope", "范围", 78, False),
+        ("name", "字段名称", 480, True),
+        ("value", "当前值", 130, False),
+        ("status", "状态", 90, False),
+    ):
+        ability_field_tree.heading(column, text=heading)
+        ability_field_tree.column(
+            column,
+            width=width,
+            minwidth=width,
+            anchor="w",
+            stretch=stretch,
+        )
+    ability_field_scroll = ttk.Scrollbar(
+        ability_field_table_frame,
+        orient="vertical",
+        command=ability_field_tree.yview,
+    )
+    ability_field_tree.configure(yscrollcommand=ability_field_scroll.set)
+    ability_field_tree.grid(row=0, column=0, sticky="nsew")
+    ability_field_scroll.grid(row=0, column=1, sticky="ns")
+    ability_field_table_frame.rowconfigure(0, weight=1)
+    ability_field_table_frame.columnconfigure(0, weight=1)
+    ability_field_tree.bind("<<TreeviewSelect>>", select_ability_field)
+
+    ability_field_editor = ttk.Frame(ability_fields_tab)
+    ability_field_editor.grid(row=2, column=0, sticky="ew", pady=(10, 0))
+    ttk.Label(ability_field_editor, text="新值").grid(row=0, column=0, sticky="w")
+    ttk.Entry(
+        ability_field_editor,
+        textvariable=ability_field_value,
+        width=28,
+    ).grid(row=0, column=1, sticky="w", padx=(6, 10))
+    ability_field_write_button = ttk.Button(
+        ability_field_editor,
+        text="写入选中字段",
+        command=ability_field_write_clicked,
+    )
+    ability_field_write_button.grid(row=0, column=2, sticky="w")
+    ability_field_write_button.state(["disabled"])
+    ttk.Label(
+        ability_field_editor,
+        textvariable=ability_field_detail,
+        anchor="w",
+    ).grid(row=1, column=0, columnspan=3, sticky="ew", pady=(6, 0))
+    ability_field_editor.columnconfigure(2, weight=1)
+    ttk.Label(
+        ability_fields_tab,
+        textvariable=ability_field_summary,
+        anchor="w",
+    ).grid(row=3, column=0, sticky="ew", pady=(8, 0))
+    ability_fields_tab.rowconfigure(1, weight=1)
+    ability_fields_tab.columnconfigure(0, weight=1)
 
     elephant_tab = ttk.Frame(notebook, padding=8)
     notebook.add(elephant_tab, text="大象功能")

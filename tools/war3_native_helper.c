@@ -3,7 +3,7 @@
 #include <stdio.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 15u
+#define WAR3_NATIVE_VERSION 16u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -62,6 +62,11 @@
 #define WAR3_NATIVE_OP_DIRECT_ABILITY_ENUM 106u
 #define WAR3_NATIVE_OP_JASS_ABILITY_REAL_LEVEL_FIELD_SET 107u
 #define WAR3_NATIVE_OP_JASS_UNIT_RESOLVE 109u
+#define WAR3_NATIVE_OP_JASS_ABILITY_FIELD_GET 110u
+#define WAR3_NATIVE_OP_JASS_ABILITY_LEVEL_FIELD_GET 111u
+#define WAR3_NATIVE_OP_JASS_ABILITY_SCALAR_FIELD_SET 112u
+#define WAR3_NATIVE_OP_JASS_ABILITY_REAL_FIELD_SET 113u
+#define WAR3_NATIVE_OP_JASS_ABILITY_SCALAR_LEVEL_FIELD_SET 114u
 #define WAR3_ITEM_FLAGS_OFFSET 0x38u
 #define WAR3_ITEM_CHARGES_OFFSET 0x8d0u
 #define WAR3_ITEM_CHARGES_EMPTY_FLAG 0x1000u
@@ -175,6 +180,31 @@ typedef uint32_t (__fastcall *JassAbilityRealLevelFieldSetFn)(
     uint32_t field,
     int32_t level,
     float *value
+);
+typedef uint64_t (__fastcall *JassAbilityFieldGetFn)(
+    uint64_t ability,
+    uint32_t field
+);
+typedef uint64_t (__fastcall *JassAbilityLevelFieldGetFn)(
+    uint64_t ability,
+    uint32_t field,
+    int32_t level
+);
+typedef uint32_t (__fastcall *JassAbilityScalarFieldSetFn)(
+    uint64_t ability,
+    uint32_t field,
+    uint32_t value
+);
+typedef uint32_t (__fastcall *JassAbilityRealFieldSetFn)(
+    uint64_t ability,
+    uint32_t field,
+    float *value
+);
+typedef uint32_t (__fastcall *JassAbilityScalarLevelFieldSetFn)(
+    uint64_t ability,
+    uint32_t field,
+    int32_t level,
+    uint32_t value
 );
 typedef struct War3BuffData {
     uint32_t alias;
@@ -2931,6 +2961,108 @@ static void run_command(void) {
                         op->rawcode,
                         (int32_t)op->arg0,
                         &value
+                    );
+                } __except (EXCEPTION_EXECUTE_HANDLER) {
+                    op->last_error = GetExceptionCode();
+                    last_error = op->last_error;
+                    goto finish;
+                }
+                break;
+            }
+            case WAR3_NATIVE_OP_JASS_ABILITY_FIELD_GET: {
+                JassAbilityFieldGetFn fn =
+                    (JassAbilityFieldGetFn)(uintptr_t)op->handler;
+                if (!cmd.unit_handle || !op->rawcode) {
+                    op->last_error = ERROR_INVALID_PARAMETER;
+                    last_error = op->last_error;
+                    goto finish;
+                }
+                __try {
+                    op->result = fn(cmd.unit_handle, op->rawcode);
+                } __except (EXCEPTION_EXECUTE_HANDLER) {
+                    op->last_error = GetExceptionCode();
+                    last_error = op->last_error;
+                    goto finish;
+                }
+                break;
+            }
+            case WAR3_NATIVE_OP_JASS_ABILITY_LEVEL_FIELD_GET: {
+                JassAbilityLevelFieldGetFn fn =
+                    (JassAbilityLevelFieldGetFn)(uintptr_t)op->handler;
+                if (!cmd.unit_handle || !op->rawcode || op->arg0 > 1000u) {
+                    op->last_error = ERROR_INVALID_PARAMETER;
+                    last_error = op->last_error;
+                    goto finish;
+                }
+                __try {
+                    op->result = fn(
+                        cmd.unit_handle,
+                        op->rawcode,
+                        (int32_t)op->arg0
+                    );
+                } __except (EXCEPTION_EXECUTE_HANDLER) {
+                    op->last_error = GetExceptionCode();
+                    last_error = op->last_error;
+                    goto finish;
+                }
+                break;
+            }
+            case WAR3_NATIVE_OP_JASS_ABILITY_SCALAR_FIELD_SET: {
+                JassAbilityScalarFieldSetFn fn =
+                    (JassAbilityScalarFieldSetFn)(uintptr_t)op->handler;
+                if (!cmd.unit_handle || !op->rawcode) {
+                    op->last_error = ERROR_INVALID_PARAMETER;
+                    last_error = op->last_error;
+                    goto finish;
+                }
+                __try {
+                    op->result = fn(
+                        cmd.unit_handle,
+                        op->rawcode,
+                        (uint32_t)op->arg0
+                    );
+                } __except (EXCEPTION_EXECUTE_HANDLER) {
+                    op->last_error = GetExceptionCode();
+                    last_error = op->last_error;
+                    goto finish;
+                }
+                break;
+            }
+            case WAR3_NATIVE_OP_JASS_ABILITY_REAL_FIELD_SET: {
+                JassAbilityRealFieldSetFn fn =
+                    (JassAbilityRealFieldSetFn)(uintptr_t)op->handler;
+                float value = war3_real_from_bits((uint32_t)op->arg0);
+                if (
+                    !cmd.unit_handle || !op->rawcode ||
+                    !(value == value) || value < -100000000.0f || value > 100000000.0f
+                ) {
+                    op->last_error = ERROR_INVALID_PARAMETER;
+                    last_error = op->last_error;
+                    goto finish;
+                }
+                __try {
+                    op->result = fn(cmd.unit_handle, op->rawcode, &value);
+                } __except (EXCEPTION_EXECUTE_HANDLER) {
+                    op->last_error = GetExceptionCode();
+                    last_error = op->last_error;
+                    goto finish;
+                }
+                break;
+            }
+            case WAR3_NATIVE_OP_JASS_ABILITY_SCALAR_LEVEL_FIELD_SET: {
+                JassAbilityScalarLevelFieldSetFn fn =
+                    (JassAbilityScalarLevelFieldSetFn)(uintptr_t)op->handler;
+                if (!cmd.unit_handle || !op->rawcode || op->arg0 > 1000u) {
+                    op->last_error = ERROR_INVALID_PARAMETER;
+                    last_error = op->last_error;
+                    goto finish;
+                }
+                __try {
+                    op->result = fn(
+                        cmd.unit_handle,
+                        op->rawcode,
+                        (int32_t)op->arg0,
+                        (uint32_t)op->arg1
                     );
                 } __except (EXCEPTION_EXECUTE_HANDLER) {
                     op->last_error = GetExceptionCode();

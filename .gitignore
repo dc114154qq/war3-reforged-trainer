@@ -14,3 +14,8 @@ dist/*
 !dist/魔兽争霸3重制版修改器.exe
 
 魔兽争霸3修改器_new.exe
+
+website/__pycache__/
+website/qa-*.png
+website/downloads/
+website/releases.json

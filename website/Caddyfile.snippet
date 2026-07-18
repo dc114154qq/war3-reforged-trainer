@@ -1,0 +1,21 @@
+twomengxi.xyz {
+	root * /srv/war3-releases
+	encode gzip zstd
+
+	@downloads path /downloads/*
+	header @downloads {
+		Content-Disposition "attachment"
+		Cache-Control "public, max-age=86400"
+	}
+
+	@release_index path /releases.json
+	header @release_index Cache-Control "no-cache"
+
+	file_server
+}
+
+http://20.196.72.199 {
+	root * /srv/war3-releases
+	encode gzip zstd
+	file_server
+}

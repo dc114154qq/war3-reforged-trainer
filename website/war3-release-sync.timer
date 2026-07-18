@@ -1,0 +1,11 @@
+[Unit]
+Description=Update Warcraft III trainer release archive every 10 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=10min
+RandomizedDelaySec=30s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

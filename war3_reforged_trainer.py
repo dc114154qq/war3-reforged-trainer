@@ -1184,6 +1184,25 @@ class ProcessMemory:
 
 
 class Win10ReadLogger:
+    MAX_ARCHIVE_LOGS = 128
+
+    @classmethod
+    def _prune_archives(cls, log_root: Path, reserve: int = 1) -> None:
+        try:
+            archives = sorted(
+                log_root.glob("win10-read-*-pid*.log"),
+                key=lambda path: (path.stat().st_mtime_ns, path.name),
+            )
+        except OSError:
+            return
+        keep = max(cls.MAX_ARCHIVE_LOGS - max(int(reserve), 0), 0)
+        expired = archives[:-keep] if keep else archives
+        for path in expired:
+            try:
+                path.unlink()
+            except OSError:
+                pass
+
     def __init__(self, pid: int):
         self.pid = int(pid)
         self.started = time.perf_counter()
@@ -1204,6 +1223,7 @@ class Win10ReadLogger:
             opened = []
             try:
                 log_root.mkdir(parents=True, exist_ok=True)
+                self._prune_archives(log_root)
                 archive_path = log_root / f"win10-read-{stamp}-pid{self.pid}.log"
                 latest_path = log_root / "win10-read-latest.log"
                 for path in (archive_path, latest_path):
@@ -2154,12 +2174,18 @@ class War3Trainer:
         self._last_win10_native_recovered = 0
         self._last_win10_native_missing: tuple[str, ...] = ()
 
+    def _process_memory(self, write: bool = False) -> ProcessMemory:
+        return ProcessMemory(self.pid, write=write)
+
     def refresh_window(self, allow_pid_change: bool = False) -> None:
         if is_war3_window(self.hwnd, self.pid):
             return
         old_pid = self.pid
         self.hwnd, self.pid = find_war3(None if allow_pid_change else self.pid)
         if self.pid != old_pid:
+            previous_win10_session = self._win10_session_trainer
+            if isinstance(previous_win10_session, BackupReadWar3Trainer):
+                previous_win10_session.close_session_diagnostics()
             self._unit_owner_index = {}
             self._selected_handle_addresses = list(self.KNOWN_SELECTED_HANDLE_ADDRESSES)
             self._item_object_cache = {}
@@ -2210,7 +2236,7 @@ class War3Trainer:
             return False
 
     def read_selected_panel(self) -> VisibleUnitPanel:
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             candidate = self.locate_selected_unit_by_handle(pm, allow_deep_scan=True)
             return self._panel_from_candidate(pm, candidate)
 
@@ -2872,7 +2898,7 @@ class War3Trainer:
         return {name: self._native_handlers[name] for name in wanted}
 
     def verify_native_handlers(self) -> dict[str, NativeHandler]:
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             return self._discover_native_handlers(pm, self.NATIVE_HANDLER_NAMES)
 
     @staticmethod
@@ -3346,7 +3372,7 @@ class War3Trainer:
 
     def _direct_selected_context(self) -> tuple[UnitCandidate, int]:
         for _attempt in range(3):
-            with ProcessMemory(self.pid) as pm:
+            with self._process_memory() as pm:
                 candidate = self._elephant_selected_candidate(pm)
                 unit_handle = self._elephant_selected_handle(pm)
             resolved_unit = self._resolve_jass_unit_handle(unit_handle)
@@ -3358,7 +3384,7 @@ class War3Trainer:
     def _resolve_jass_unit_handle(self, unit_handle: int, *, allow_missing: bool = False) -> int:
         if not unit_handle:
             return 0
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             resolver = self._discover_jass_unit_resolver(pm)
         try:
             return int(self._run_native_helper_ops(
@@ -3393,11 +3419,11 @@ class War3Trainer:
                 "临时技能清理前单位身份已变化："
                 f"0x{resolved_unit:x}!=0x{candidate.unit_address:x}"
             )
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             self._remove_engine_ability_instance(pm, candidate, data_address)
 
     def prewarm_elephant_functions(self) -> int:
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             handlers = self._discover_native_handlers_near_table(
                 pm,
                 self.ELEPHANT_NATIVE_NAMES,
@@ -3405,7 +3431,7 @@ class War3Trainer:
         return len(handlers)
 
     def get_selected_hero_level(self) -> int:
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             unit_handle = self._elephant_selected_handle(pm)
             handlers = self._elephant_handlers(pm, ("GetHeroLevel",))
         result = self._run_native_helper_ops(
@@ -3424,7 +3450,7 @@ class War3Trainer:
         target = int(level)
         if not 1 <= target <= 100000:
             raise ValueError("英雄等级必须在 1 到 100000 之间")
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             unit_handle = self._elephant_selected_handle(pm)
             handlers = self._elephant_handlers(
                 pm,
@@ -3525,7 +3551,7 @@ class War3Trainer:
         target = int(value)
         if not 0 <= target <= 1_000_000_000:
             raise ValueError("英雄属性必须在 0 到 1000000000 之间")
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             unit_handle = self._elephant_selected_handle(pm)
             handlers = self._elephant_handlers(pm, ("SetHeroStr", "SetHeroAgi", "SetHeroInt"))
         self._run_native_helper_ops(
@@ -3547,7 +3573,7 @@ class War3Trainer:
         delta = int(amount)
         if not 1 <= delta <= 1_000_000:
             raise ValueError("增加技能点数必须在 1 到 1000000 之间")
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             unit_handle = self._elephant_selected_handle(pm)
             handler = self._elephant_handlers(
                 pm,
@@ -3574,7 +3600,7 @@ class War3Trainer:
         return bool(self._query_elephant_unit_int("IsUnitPaused"))
 
     def _query_elephant_unit_int(self, native_name: str) -> int:
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             unit_handle = self._elephant_selected_handle(pm)
             handlers = self._elephant_handlers(pm, (native_name,))
         return int(self._run_native_helper_ops(
@@ -3589,7 +3615,7 @@ class War3Trainer:
         )[0].result)
 
     def _run_elephant_unit_bool(self, native_name: str, enabled: bool) -> None:
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             unit_handle = self._elephant_selected_handle(pm)
             handlers = self._elephant_handlers(pm, (native_name,))
         self._run_native_helper_ops(
@@ -3604,7 +3630,7 @@ class War3Trainer:
         )
 
     def _run_elephant_unit_void(self, native_name: str) -> None:
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             unit_handle = self._elephant_selected_handle(pm)
             handlers = self._elephant_handlers(pm, (native_name,))
         self._run_native_helper_ops(
@@ -3628,7 +3654,7 @@ class War3Trainer:
         self._run_elephant_unit_void("RemoveUnit")
 
     def explode_selected_unit(self) -> None:
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             unit_handle = self._elephant_selected_handle(pm)
             handlers = self._elephant_handlers(pm, ("SetUnitExploded", "KillUnit"))
         self._run_native_helper_ops(
@@ -3646,7 +3672,7 @@ class War3Trainer:
         target = float(scale)
         if not 0.01 <= target <= 100.0:
             raise ValueError("单位大小必须在 0.01 到 100 之间")
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             unit_handle = self._elephant_selected_handle(pm)
             handlers = self._elephant_handlers(pm, ("SetUnitScale",))
         self._run_native_helper_ops(
@@ -3687,7 +3713,7 @@ class War3Trainer:
             raise ValueError("单位坐标必须是有限数值")
         if abs(target_x) > 1_000_000.0 or abs(target_y) > 1_000_000.0:
             raise ValueError("单位坐标超出允许范围")
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             unit_handle = self._elephant_selected_handle(pm)
             handler = self._elephant_handlers(pm, ("SetUnitPosition",))[
                 "SetUnitPosition"
@@ -3738,7 +3764,7 @@ class War3Trainer:
         ability_data = 0
         try:
             candidate, unit_handle = self._direct_selected_context()
-            with ProcessMemory(self.pid) as pm:
+            with self._process_memory() as pm:
                 get_level = self._elephant_handlers(
                     pm,
                     ("GetUnitAbilityLevel",),
@@ -3754,7 +3780,7 @@ class War3Trainer:
                 ),),
             )[0].result)
             if not level:
-                with ProcessMemory(self.pid) as pm:
+                with self._process_memory() as pm:
                     created_instance, added = self._create_engine_ability_instance(
                         pm,
                         candidate,
@@ -3762,7 +3788,7 @@ class War3Trainer:
                         require_wrapper=False,
                     )
                     ability_data = created_instance.data_address
-            with ProcessMemory(self.pid) as pm:
+            with self._process_memory() as pm:
                 assert candidate is not None
                 ability_data = ability_data or self._find_engine_ability_data(
                     pm,
@@ -3867,7 +3893,7 @@ class War3Trainer:
         ability_data = 0
         try:
             candidate, unit_handle = self._direct_selected_context()
-            with ProcessMemory(self.pid) as pm:
+            with self._process_memory() as pm:
                 get_level = self._elephant_handlers(
                     pm,
                     ("GetUnitAbilityLevel",),
@@ -3883,7 +3909,7 @@ class War3Trainer:
                 ),),
             )[0].result)
             if not level:
-                with ProcessMemory(self.pid) as pm:
+                with self._process_memory() as pm:
                     created_instance, added = self._create_engine_ability_instance(
                         pm,
                         candidate,
@@ -3891,7 +3917,7 @@ class War3Trainer:
                         require_wrapper=False,
                     )
                     ability_data = created_instance.data_address
-            with ProcessMemory(self.pid) as pm:
+            with self._process_memory() as pm:
                 assert candidate is not None
                 ability_data = ability_data or self._find_engine_ability_data(
                     pm,
@@ -3963,7 +3989,7 @@ class War3Trainer:
         ability_data = 0
         try:
             candidate, unit_handle = self._direct_selected_context()
-            with ProcessMemory(self.pid) as pm:
+            with self._process_memory() as pm:
                 handlers = self._elephant_handlers(
                     pm,
                     (
@@ -3994,7 +4020,7 @@ class War3Trainer:
                 ),),
             )[0].result)
             if not level:
-                with ProcessMemory(self.pid) as pm:
+                with self._process_memory() as pm:
                     created_instance, added = self._create_engine_ability_instance(
                         pm,
                         candidate,
@@ -4002,7 +4028,7 @@ class War3Trainer:
                         require_wrapper=False,
                     )
                     ability_data = created_instance.data_address
-            with ProcessMemory(self.pid) as pm:
+            with self._process_memory() as pm:
                 assert candidate is not None
                 ability_data = ability_data or self._find_engine_ability_data(
                     pm,
@@ -4083,7 +4109,7 @@ class War3Trainer:
                 )
 
     def get_selected_unit_position(self) -> tuple[float, float]:
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             unit_handle = self._elephant_selected_handle(pm)
             handlers = self._elephant_handlers(pm, ("GetUnitX", "GetUnitY"))
         results = self._run_native_helper_ops(
@@ -4143,7 +4169,7 @@ class War3Trainer:
         ability_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
         if not ability_rawcode:
             raise ValueError("技能 ID 无效")
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             unit_handle = self._elephant_selected_handle(pm)
             handlers = self._elephant_handlers(
                 pm,
@@ -4289,7 +4315,7 @@ class War3Trainer:
         ability_data = 0
         try:
             candidate, unit_handle = self._direct_selected_context()
-            with ProcessMemory(self.pid) as pm:
+            with self._process_memory() as pm:
                 handlers = self._elephant_handlers(
                     pm,
                     (
@@ -4321,7 +4347,7 @@ class War3Trainer:
                 ),),
             )[0].result)
             if not level:
-                with ProcessMemory(self.pid) as pm:
+                with self._process_memory() as pm:
                     created_instance, added = self._create_engine_ability_instance(
                         pm,
                         candidate,
@@ -4395,7 +4421,7 @@ class War3Trainer:
                         0,
                     ),),
                 )
-            with ProcessMemory(self.pid) as pm:
+            with self._process_memory() as pm:
                 assert candidate is not None
                 ability_data = ability_data or self._find_engine_ability_data(
                     pm,
@@ -4629,7 +4655,7 @@ class War3Trainer:
         item_limit = int(limit)
         if not 0 <= item_limit <= 100000:
             raise ValueError("创建物品测试上限必须在 0 到 100000 之间")
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             handlers = self._elephant_handlers(pm, ("ChooseRandomItem", "CreateItem"))
         encoded_limit = item_limit | (0x80000000 if dry_run else 0)
         result = self._run_native_helper_ops(
@@ -4662,7 +4688,7 @@ class War3Trainer:
         handles = tuple(int(handle) for handle in item_handles if int(handle))
         if not handles:
             return 0
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             handler = self._elephant_handlers(pm, ("RemoveItem",))["RemoveItem"].handler_address
         removed = 0
         for start in range(0, len(handles), 47):
@@ -4690,7 +4716,7 @@ class War3Trainer:
         return removed
 
     def take_selected_unit_control(self) -> int:
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             unit_handle = self._elephant_selected_handle(pm)
             handlers = self._elephant_handlers(pm, ("GetLocalPlayer", "SetUnitOwner"))
         return self._run_native_helper_ops(
@@ -4712,7 +4738,7 @@ class War3Trainer:
         use_selected_lookup: bool = True,
     ) -> tuple[int, int]:
         x, y = self.query_mouse_world_position() if position is None else position
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             if rawcode is None:
                 if not use_selected_lookup:
                     raise ValueError("复制单位缺少已读取的单位 ID")
@@ -4764,7 +4790,7 @@ class War3Trainer:
         item_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
         if not item_rawcode:
             raise ValueError("物品 ID 无效")
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             unit_handle = self._elephant_selected_handle(pm)
             handlers = self._elephant_handlers(pm, ("UnitAddItemById",))
         result = self._run_native_helper_ops(
@@ -4782,7 +4808,7 @@ class War3Trainer:
         return result
 
     def clear_selected_unit_inventory(self) -> int:
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             unit_handle = self._elephant_selected_handle(pm)
             handlers = self._elephant_handlers(pm, ("UnitItemInSlot", "RemoveItem"))
         return int(self._run_native_helper_ops(
@@ -4800,7 +4826,7 @@ class War3Trainer:
         target = int(charges)
         if not 1 <= target <= 1_000_000_000:
             raise ValueError("物品数量必须在 1 到 1000000000 之间")
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             unit_handle = self._elephant_selected_handle(pm)
             handlers = self._elephant_handlers(pm, ("UnitItemInSlot", "SetItemCharges"))
         return int(self._run_native_helper_ops(
@@ -4815,7 +4841,7 @@ class War3Trainer:
         )[0].result)
 
     def duplicate_selected_inventory_items(self) -> int:
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             unit_handle = self._elephant_selected_handle(pm)
             handlers = self._elephant_handlers(
                 pm,
@@ -4833,7 +4859,7 @@ class War3Trainer:
         )[0].result)
 
     def drop_selected_inventory_items(self) -> int:
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             unit_handle = self._elephant_selected_handle(pm)
             handlers = self._elephant_handlers(pm, ("UnitItemInSlot", "UnitRemoveItem"))
         return int(self._run_native_helper_ops(
@@ -4851,7 +4877,7 @@ class War3Trainer:
         ability_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
         if not ability_rawcode:
             raise ValueError("技能 ID 无效")
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             unit_handle = self._elephant_selected_handle(pm)
             handlers = self._elephant_handlers(pm, (native_name,))
         result = self._run_native_helper_ops(
@@ -4881,7 +4907,7 @@ class War3Trainer:
         )
         if not ability_ids or any(not rawcode for rawcode in ability_ids):
             raise ValueError("技能 ID 列表无效")
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             unit_handle = self._elephant_selected_handle(pm)
             handler = self._elephant_handlers(pm, ("UnitAddAbility",))["UnitAddAbility"].handler_address
         added = 0
@@ -4911,7 +4937,7 @@ class War3Trainer:
             raise ValueError("技能组合无效")
         if any(level is not None and not 1 <= level <= 100000 for _rawcode, level in bundle):
             raise ValueError("技能组合等级必须在 1 到 100000 之间")
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             unit_handle = self._elephant_selected_handle(pm)
             handlers = self._elephant_handlers(pm, ("UnitAddAbility", "SetUnitAbilityLevel"))
         add_handler = handlers["UnitAddAbility"].handler_address
@@ -4957,7 +4983,7 @@ class War3Trainer:
             raise ValueError("物品槽位或物品 ID 无效")
         if len({slot for slot, _rawcode in replacements}) != len(replacements):
             raise ValueError("物品组合包含重复槽位")
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             candidate = self._elephant_selected_candidate(pm)
             for slot, rawcode in replacements:
                 self._set_inventory_slot_item_via_native_handler(
@@ -4972,7 +4998,7 @@ class War3Trainer:
         ability_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
         if not ability_rawcode:
             raise ValueError("技能 ID 无效")
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             unit_handle = self._elephant_selected_handle(pm)
             handlers = self._elephant_handlers(pm, ("UnitRemoveAbility", "UnitAddAbility"))
         results = self._run_native_helper_ops(
@@ -4998,7 +5024,7 @@ class War3Trainer:
             raise RuntimeError("游戏拒绝重置该技能；地图中可能没有该对象")
 
     def remove_all_selected_unit_abilities(self) -> int:
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             unit_handle = self._elephant_selected_handle(pm)
             handlers = self._elephant_handlers(
                 pm,
@@ -5020,7 +5046,7 @@ class War3Trainer:
         target_level = int(level)
         if not ability_rawcode or not 1 <= target_level <= 100000:
             raise ValueError("请提供有效技能 ID，等级必须在 1 到 100000 之间")
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             unit_handle = self._elephant_selected_handle(pm)
             handlers = self._elephant_handlers(pm, ("SetUnitAbilityLevel", "GetUnitAbilityLevel"))
         self._run_native_helper_ops(
@@ -5164,7 +5190,7 @@ class War3Trainer:
         level: int,
     ) -> SelectedAbilityFieldContext:
         candidate, unit_handle = self._direct_selected_context()
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             return self._ability_field_context_from_candidate_locked(
                 pm,
                 candidate,
@@ -5224,7 +5250,7 @@ class War3Trainer:
                 self._native_handlers.update(isolated._native_handlers)
                 return context
 
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             candidate = self._candidate_from_identity(
                 pm,
                 handle,
@@ -5596,7 +5622,7 @@ class War3Trainer:
         target_level = int(level)
         if not tech_rawcode or not 0 <= target_level <= 100000:
             raise ValueError("请提供有效科技 ID，等级必须在 0 到 100000 之间")
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             handlers = self._elephant_handlers(
                 pm,
                 ("GetLocalPlayer", "SetPlayerTechMaxAllowed", "SetPlayerTechResearched"),
@@ -5626,7 +5652,7 @@ class War3Trainer:
         target = float(rate)
         if not 0.0 <= target <= 10000.0:
             raise ValueError("经验倍率必须在 0 到 10000 之间")
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             handlers = self._elephant_handlers(pm, ("GetLocalPlayer", "SetPlayerHandicapXP"))
         self._run_native_helper_ops(
             0,
@@ -5641,7 +5667,7 @@ class War3Trainer:
         return target
 
     def get_map_fog_state(self) -> tuple[bool, bool]:
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             handlers = self._elephant_handlers(pm, ("IsFogEnabled", "IsFogMaskEnabled"))
         results = self._run_native_helper_ops(
             0,
@@ -5665,7 +5691,7 @@ class War3Trainer:
         return bool(results[0].result), bool(results[1].result)
 
     def set_map_revealed(self, revealed: bool) -> None:
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             handlers = self._elephant_handlers(pm, ("FogEnable", "FogMaskEnable"))
         fog_enabled = 0 if revealed else 1
         self._run_native_helper_ops(
@@ -5689,7 +5715,7 @@ class War3Trainer:
         )
 
     def set_game_paused(self, paused: bool) -> None:
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             handlers = self._elephant_handlers(pm, ("PauseGame",))
         self._run_native_helper_ops(
             0,
@@ -5703,7 +5729,7 @@ class War3Trainer:
         )
 
     def end_current_game(self, show_score_screen: bool = True) -> None:
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             handlers = self._elephant_handlers(pm, ("EndGame",))
         self._run_native_helper_ops(
             0,
@@ -5717,7 +5743,7 @@ class War3Trainer:
         )
 
     def set_peace_mode(self, enabled: bool) -> int:
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             handlers = self._elephant_handlers(pm, ("Player", "SetPlayerAlliance"))
         return int(self._run_native_helper_ops(
             0,
@@ -5731,7 +5757,7 @@ class War3Trainer:
         )[0].result)
 
     def kill_selected_owner_units(self) -> int:
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             unit_handle = self._elephant_selected_handle(pm)
             handlers = self._elephant_handlers(
                 pm,
@@ -6918,7 +6944,7 @@ class War3Trainer:
         return True
 
     def validate_local_player_resource_cache(self, cache: ResourceCache) -> ResourceCache:
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             for _attempt in range(3):
                 snapshot = self._read_local_player_resources_via_native(pm)
                 expected_start_kind = 1 + snapshot.player_id * 0x28
@@ -6941,7 +6967,7 @@ class War3Trainer:
         if not caches:
             raise RuntimeError("未找到可用于匹配本地玩家的资源组")
 
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             for _attempt in range(4):
                 snapshot = self._read_local_player_resources_via_native(pm)
                 expected_start_kind = 1 + snapshot.player_id * 0x28
@@ -6982,7 +7008,7 @@ class War3Trainer:
         current_food: int | None = None,
         current_food_cap: int | None = None,
     ) -> list[ResourceCache]:
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             groups = self._resource_property_groups(pm, warm_unit_owner_index=True)
             candidates_by_start: dict[int, list[ResourceCache]] = {}
             found: list[ResourceCache] = []
@@ -7026,7 +7052,7 @@ class War3Trainer:
         return replace(cache, gold=gold, lumber=lumber, food_used=food_used, food_cap=food_cap, food_limit=food_limit)
 
     def read_resource_cache_addresses(self, cache: ResourceCache) -> ResourceCache:
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             return self._read_resource_cache_addresses(pm, cache)
 
     def write_resource_cache(
@@ -7046,7 +7072,7 @@ class War3Trainer:
             and target_food_cap is None
         ):
             raise ValueError("至少填写一个目标资源值")
-        with ProcessMemory(self.pid, write=True) as pm:
+        with self._process_memory(write=True) as pm:
             current = self._read_resource_cache_addresses(pm, cache)
             if target_gold is not None:
                 if not 0 <= int(target_gold) <= 10_000_000:
@@ -7086,7 +7112,7 @@ class War3Trainer:
     ) -> ResourceCache | None:
         close_pm = False
         if pm is None:
-            pm = ProcessMemory(self.pid)
+            pm = self._process_memory()
             close_pm = True
         try:
             groups = self._resource_property_groups(pm)
@@ -7133,7 +7159,7 @@ class War3Trainer:
         current_food: int | None = None,
         current_food_cap: int | None = None,
     ) -> ResourceCache:
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             found = self.locate_resource_cache(current_gold, current_lumber, current_food, current_food_cap, pm)
             if found:
                 return found
@@ -7166,7 +7192,7 @@ class War3Trainer:
         cache = self.read_resource_cache(current_gold, current_lumber)
         delta = int(target) - cache.gold
         if delta:
-            with ProcessMemory(self.pid, write=True) as pm:
+            with self._process_memory(write=True) as pm:
                 pm.write_i32(cache.gold_address, int(target) * 10)
         return delta
 
@@ -7174,7 +7200,7 @@ class War3Trainer:
         cache = self.read_resource_cache(current_gold, current_lumber)
         delta = int(target) - cache.lumber
         if delta:
-            with ProcessMemory(self.pid, write=True) as pm:
+            with self._process_memory(write=True) as pm:
                 pm.write_i32(cache.lumber_address, int(target) * 10)
         return delta
 
@@ -7182,21 +7208,21 @@ class War3Trainer:
         if not amount:
             return
         cache = self.read_resource_cache()
-        with ProcessMemory(self.pid, write=True) as pm:
+        with self._process_memory(write=True) as pm:
             pm.write_i32(cache.gold_address, (cache.gold + int(amount)) * 10)
 
     def add_lumber(self, amount: int) -> None:
         if not amount:
             return
         cache = self.read_resource_cache()
-        with ProcessMemory(self.pid, write=True) as pm:
+        with self._process_memory(write=True) as pm:
             pm.write_i32(cache.lumber_address, (cache.lumber + int(amount)) * 10)
 
     def add_gold_and_lumber(self, amount: int) -> None:
         if not amount:
             return
         cache = self.read_resource_cache()
-        with ProcessMemory(self.pid, write=True) as pm:
+        with self._process_memory(write=True) as pm:
             pm.write_i32(cache.gold_address, (cache.gold + int(amount)) * 10)
             pm.write_i32(cache.lumber_address, (cache.lumber + int(amount)) * 10)
 
@@ -7210,7 +7236,7 @@ class War3Trainer:
         current_food_cap: int | None = None,
     ) -> ResourceCache:
         cache = self.read_resource_cache(current_gold, current_lumber, current_food, current_food_cap)
-        with ProcessMemory(self.pid, write=True) as pm:
+        with self._process_memory(write=True) as pm:
             if target_used is not None:
                 if not cache.food_used_address:
                     raise RuntimeError("当前资源块没有可写的人口占用字段")
@@ -8493,7 +8519,7 @@ class War3Trainer:
         return None
 
     def probe_native_selection_manager(self) -> NativeSelectionProbeResult:
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             manager_offset, primary_offset, alternate_offset, handlers = self._discover_native_selection_layout(pm)
             self._selection_manager_offset = manager_offset
             self._selection_list_offsets = tuple(dict.fromkeys((primary_offset, alternate_offset)))
@@ -8521,7 +8547,7 @@ class War3Trainer:
             )
 
     def prewarm_selected_unit_cache(self) -> UnitCandidate:
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             try:
                 candidate = self.locate_selected_unit_by_handle(pm, allow_deep_scan=True)
             except Exception as first_error:
@@ -8867,7 +8893,7 @@ class War3Trainer:
         return candidate
 
     def probe_jass_selected_unit(self) -> JassSelectionProbeResult:
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             unit_handle, handle_id, player_handle = self._read_jass_selected_unit_raw(pm)
             candidate = self._candidate_from_jass_selection_result(pm, unit_handle, handle_id, player_handle)
             note = "mapped" if candidate is not None else "raw_only"
@@ -8876,7 +8902,7 @@ class War3Trainer:
     def locate_selected_unit_by_jass_native(self, pm: ProcessMemory | None = None) -> UnitCandidate:
         close_pm = False
         if pm is None:
-            pm = ProcessMemory(self.pid)
+            pm = self._process_memory()
             close_pm = True
         try:
             unit_handle, handle_id, player_handle = self._read_jass_selected_unit_raw(pm)
@@ -8901,7 +8927,7 @@ class War3Trainer:
     ) -> UnitCandidate:
         close_pm = False
         if pm is None:
-            pm = ProcessMemory(self.pid)
+            pm = self._process_memory()
             close_pm = True
         try:
             last_error: str | None = None
@@ -9303,7 +9329,7 @@ class War3Trainer:
         unit: int,
         note: str = "",
     ) -> UnitSelectionSummary:
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             candidate = self._candidate_from_identity(
                 pm,
                 handle,
@@ -9346,7 +9372,7 @@ class War3Trainer:
         limit: int = 80,
         extra_identities: Iterable[tuple[int, int, int]] | None = None,
     ) -> list[UnitSelectionSummary]:
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             unit_index = self._build_unit_object_index(pm, force_refresh=True)
             summary_by_unit: dict[int, UnitSelectionSummary] = {}
 
@@ -10716,7 +10742,7 @@ class War3Trainer:
         return fields
 
     def read_selected_unit_fields(self) -> tuple[VisibleUnitPanel, UnitCandidate, list[UnitMemoryField]]:
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             candidate = self.locate_selected_unit_by_handle(pm, allow_deep_scan=True)
             candidate = self._candidate_with_selected_unit_type_id(pm, candidate)
             panel = self._panel_from_candidate(pm, candidate)
@@ -10823,6 +10849,25 @@ class War3Trainer:
             self._win10_session_identity = identity
         self._seed_win10_isolated_state(isolated)
         isolated.set_readable_pointer_regions(pm.regions())
+        isolated.bind_selected_identity(identity)
+        return isolated
+
+    def trainer_for_read_source(
+        self,
+        identity: tuple[int, int, int],
+        win10_compat: bool,
+    ) -> "War3Trainer":
+        if not win10_compat:
+            return self
+        normalized = tuple(int(value) for value in identity)
+        isolated = self._win10_session_trainer
+        if (
+            not isinstance(isolated, BackupReadWar3Trainer)
+            or isolated.pid != self.pid
+            or self._win10_session_identity != normalized
+        ):
+            raise RuntimeError("备用读取会话已经失效，请重新点击备用读取")
+        isolated.bind_selected_identity(normalized)
         return isolated
 
     def _seed_win10_isolated_state(self, isolated: "War3Trainer") -> dict[str, int]:
@@ -10911,7 +10956,13 @@ class War3Trainer:
     def read_selected_unit_fields_win10(
         self,
     ) -> tuple[VisibleUnitPanel, UnitCandidate, list[UnitMemoryField]]:
+        previous_win10_session = self._win10_session_trainer
+        if isinstance(previous_win10_session, BackupReadWar3Trainer):
+            previous_win10_session.close_session_diagnostics()
+        self._win10_session_trainer = None
+        self._win10_session_identity = None
         diagnostics = Win10ReadLogger(self.pid)
+        diagnostics_adopted = False
         self._last_win10_log_path = str(diagnostics.latest_path)
         self._last_win10_native_recovered = 0
         self._last_win10_native_missing = ()
@@ -10932,7 +10983,7 @@ class War3Trainer:
             ),
         )
         try:
-            isolated = self._win10_session_trainer
+            isolated = previous_win10_session
             reused_isolated = (
                 isinstance(isolated, BackupReadWar3Trainer)
                 and isolated.pid == self.pid
@@ -11058,12 +11109,21 @@ class War3Trainer:
                     component_misses=len(isolated._component_index_misses),
                     selected_component_cache=len(isolated._selected_components_cache),
                 )
+                isolated.bind_selected_identity(
+                    (
+                        candidate.handle,
+                        candidate.owner_address,
+                        candidate.unit_address,
+                    )
+                )
                 self._win10_session_trainer = isolated
                 self._win10_session_identity = (
                     candidate.handle,
                     candidate.owner_address,
                     candidate.unit_address,
                 )
+                isolated.adopt_session_diagnostics(diagnostics)
+                diagnostics_adopted = True
                 diagnostics.log(
                     "shared_state_after_win10",
                     shared_native_handlers_after=len(self._native_handlers),
@@ -11099,7 +11159,8 @@ class War3Trainer:
                     else None
                 ),
             )
-            diagnostics.close()
+            if not diagnostics_adopted:
+                diagnostics.close()
 
     def read_unit_fields_by_identity(
         self,
@@ -11107,7 +11168,7 @@ class War3Trainer:
         owner: int,
         unit: int,
     ) -> tuple[VisibleUnitPanel, UnitCandidate, list[UnitMemoryField]]:
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             candidate = self._candidate_from_identity(
                 pm,
                 handle,
@@ -12009,7 +12070,7 @@ class War3Trainer:
         specs = list(specs)
         if not specs:
             return []
-        with ProcessMemory(self.pid, write=True) as pm:
+        with self._process_memory(write=True) as pm:
             candidate = self.locate_selected_unit_by_handle(pm, allow_deep_scan=True)
             return self._write_unit_fields_to_candidate(pm, candidate, specs)
 
@@ -12025,7 +12086,7 @@ class War3Trainer:
         key: str,
         value: int | float | str,
     ) -> UnitMemoryField:
-        with ProcessMemory(self.pid, write=True) as pm:
+        with self._process_memory(write=True) as pm:
             candidate = self._candidate_from_identity(
                 pm,
                 handle,
@@ -12094,7 +12155,7 @@ class War3Trainer:
             return field
 
     def locate_current_selected_unit(self) -> tuple[VisibleUnitPanel, UnitCandidate]:
-        with ProcessMemory(self.pid) as pm:
+        with self._process_memory() as pm:
             candidate = self.locate_selected_unit_by_handle(pm, allow_deep_scan=True)
             candidate = self._candidate_with_selected_unit_type_id(pm, candidate)
             return self._panel_from_candidate(pm, candidate), candidate
@@ -12168,7 +12229,7 @@ class War3Trainer:
         target_hp_regen: float | None = None,
         target_mp_regen: float | None = None,
     ) -> UnitCandidate:
-        with ProcessMemory(self.pid, write=True) as pm:
+        with self._process_memory(write=True) as pm:
             candidate = self.locate_selected_unit_by_handle(pm, allow_deep_scan=True)
             self._write_basic_unit_values_to_candidate(
                 pm,
@@ -12200,7 +12261,7 @@ class War3Trainer:
         target_hp_regen: float | None = None,
         target_mp_regen: float | None = None,
     ) -> UnitCandidate:
-        with ProcessMemory(self.pid, write=True) as pm:
+        with self._process_memory(write=True) as pm:
             candidate = self._candidate_from_identity(
                 pm,
                 handle,
@@ -12291,6 +12352,112 @@ class BackupReadWar3Trainer(War3Trainer):
         super().__init__(pid)
         self._readable_pointer_bases: tuple[int, ...] = ()
         self._readable_pointer_ends: tuple[int, ...] = ()
+        self._backup_selected_identity: tuple[int, int, int] | None = None
+        self._backup_diagnostics: Win10ReadLogger | None = None
+
+    def adopt_session_diagnostics(self, diagnostics: Win10ReadLogger) -> None:
+        if self._backup_diagnostics is diagnostics:
+            return
+        self.close_session_diagnostics()
+        self._backup_diagnostics = diagnostics
+
+    def close_session_diagnostics(self) -> None:
+        diagnostics, self._backup_diagnostics = self._backup_diagnostics, None
+        if diagnostics is not None:
+            diagnostics.close()
+
+    def bind_selected_identity(self, identity: tuple[int, int, int]) -> None:
+        normalized = tuple(int(value) for value in identity)
+        if len(normalized) != 3 or not normalized[2]:
+            raise ValueError("备用读取单位身份无效")
+        self._backup_selected_identity = normalized
+
+    def _process_memory(self, write: bool = False) -> ProcessMemory:
+        diagnostics = self._backup_diagnostics
+        if diagnostics is None:
+            raise RuntimeError("备用读取会话已经失效，请重新点击备用读取")
+        pm = Win10ProcessMemory(self.pid, diagnostics, write=write)
+        self._last_win10_log_path = str(diagnostics.latest_path)
+        try:
+            self.set_readable_pointer_regions(pm.regions(force_refresh=True))
+        except Exception:
+            pm.close()
+            raise
+        return pm
+
+    @staticmethod
+    def _require_win10_memory(pm: ProcessMemory) -> Win10ProcessMemory:
+        if not isinstance(pm, Win10ProcessMemory):
+            raise RuntimeError("备用读取操作拒绝回落到普通内存路径")
+        return pm
+
+    def _discover_native_handlers(
+        self,
+        pm: ProcessMemory,
+        names: Iterable[str] | None = None,
+    ) -> dict[str, NativeHandler]:
+        safe_pm = self._require_win10_memory(pm)
+        return War3Trainer._discover_native_handlers_near_table_win10(
+            self,
+            safe_pm,
+            names or self.NATIVE_HANDLER_NAMES,
+        )
+
+    def _discover_native_handlers_near_table(
+        self,
+        pm: ProcessMemory,
+        names: Iterable[str],
+    ) -> dict[str, NativeHandler]:
+        safe_pm = self._require_win10_memory(pm)
+        return War3Trainer._discover_native_handlers_near_table_win10(
+            self,
+            safe_pm,
+            names,
+        )
+
+    def _elephant_selected_candidate(self, pm: ProcessMemory) -> UnitCandidate:
+        safe_pm = self._require_win10_memory(pm)
+        if self._backup_selected_identity is None:
+            raise RuntimeError("请先点击备用读取后再使用大象功能")
+        candidate = self._win10_candidate_from_identity(
+            self,
+            safe_pm,
+            *self._backup_selected_identity,
+        )
+        return self._candidate_with_selected_unit_type_id(safe_pm, candidate)
+
+    def _elephant_selected_handle(self, pm: ProcessMemory) -> int:
+        safe_pm = self._require_win10_memory(pm)
+        candidate = self._elephant_selected_candidate(safe_pm)
+        return self._current_jass_unit_handle_win10(
+            safe_pm,
+            candidate,
+            safe_pm.diagnostics,
+        )
+
+    def _direct_selected_context(self) -> tuple[UnitCandidate, int]:
+        with self._process_memory() as pm:
+            safe_pm = self._require_win10_memory(pm)
+            candidate = self._elephant_selected_candidate(safe_pm)
+            unit_handle = self._current_jass_unit_handle_win10(
+                safe_pm,
+                candidate,
+                safe_pm.diagnostics,
+            )
+            return candidate, unit_handle
+
+    def _resolve_jass_unit_handle(
+        self,
+        unit_handle: int,
+        *,
+        allow_missing: bool = False,
+    ) -> int:
+        with self._process_memory() as pm:
+            return self._resolve_jass_unit_handle_win10(
+                self._require_win10_memory(pm),
+                unit_handle,
+                allow_missing=allow_missing,
+            )
 
     def set_readable_pointer_regions(self, regions: Iterable[Region]) -> dict[str, object]:
         ranges: list[tuple[int, int]] = []
@@ -12817,6 +12984,15 @@ def run_gui() -> None:
         if not isinstance(rawcode, int) or not rawcode:
             raise ValueError("当前读取结果没有有效单位 ID，请重新读取后再执行复制单位")
         return rawcode
+
+    def elephant_trainer() -> War3Trainer:
+        identity = current_display_unit_identity()
+        if identity is None:
+            raise ValueError("请先使用读取当前选中单位或备用读取，再使用大象功能")
+        return trainer().trainer_for_read_source(
+            identity,
+            current_display_uses_win10(),
+        )
 
     def remembered_unit_identities() -> list[tuple[int, int, int]]:
         remembered: list[tuple[int, int, int]] = []
@@ -13379,23 +13555,23 @@ def run_gui() -> None:
         return f"选择缓存已预热；unit=0x{cand.unit_address:x}"
 
     def elephant_prewarm() -> str:
-        count = trainer().prewarm_elephant_functions()
+        count = elephant_trainer().prewarm_elephant_functions()
         return f"大象功能已初始化：{count} 个 native 函数可用"
 
     def elephant_read_hero_level() -> str:
-        level = trainer().get_selected_hero_level()
+        level = elephant_trainer().get_selected_hero_level()
         root.after(0, elephant_hero_level.set, str(level))
         return f"当前英雄等级：{level}"
 
     def elephant_set_hero_level() -> str:
         target = parse_int(elephant_hero_level.get(), "英雄等级")
-        actual = trainer().set_selected_hero_level(target)
+        actual = elephant_trainer().set_selected_hero_level(target)
         root.after(0, elephant_hero_level.set, str(actual))
         return f"英雄等级已设置为 {actual}"
 
     def elephant_set_scale() -> str:
         scale = parse_float(elephant_unit_scale.get(), "单位大小")
-        actual = trainer().set_selected_unit_scale(scale)
+        actual = elephant_trainer().set_selected_unit_scale(scale)
         return f"单位大小已设置为 {actual:g}"
 
     def elephant_create_unit(copy_selected: bool) -> str:
@@ -13408,7 +13584,7 @@ def run_gui() -> None:
             rawcode = elephant_unit_rawcode.get().strip()
         if not copy_selected and not rawcode:
             raise ValueError("请填写单位 ID")
-        unit_rawcode, handle = trainer().create_local_unit(
+        unit_rawcode, handle = elephant_trainer().create_local_unit(
             rawcode,
             use_selected_lookup=not copy_selected,
         )
@@ -13419,31 +13595,31 @@ def run_gui() -> None:
         rawcode = elephant_item_rawcode.get().strip()
         if not rawcode:
             raise ValueError("请填写物品 ID")
-        handle = trainer().add_item_to_selected_unit(rawcode)
+        handle = elephant_trainer().add_item_to_selected_unit(rawcode)
         return f"物品 {rawcode} 已添加；handle=0x{handle:x}"
 
     def elephant_clear_inventory() -> str:
-        removed = trainer().clear_selected_unit_inventory()
+        removed = elephant_trainer().clear_selected_unit_inventory()
         return f"背包已清空，共删除 {removed} 件物品"
 
     def elephant_add_ability() -> str:
         rawcode = elephant_ability_rawcode.get().strip()
         if not rawcode:
             raise ValueError("请填写技能 ID")
-        trainer().add_ability_to_selected_unit(rawcode)
+        elephant_trainer().add_ability_to_selected_unit(rawcode)
         return f"技能 {rawcode} 已添加"
 
     def elephant_remove_ability() -> str:
         rawcode = elephant_ability_rawcode.get().strip()
         if not rawcode:
             raise ValueError("请填写技能 ID")
-        trainer().remove_ability_from_selected_unit(rawcode)
+        elephant_trainer().remove_ability_from_selected_unit(rawcode)
         return f"技能 {rawcode} 已删除"
 
     def elephant_set_ability_level() -> str:
         rawcode = elephant_ability_rawcode.get().strip()
         level = parse_int(elephant_ability_level.get(), "技能等级")
-        actual = trainer().set_selected_unit_ability_level(rawcode, level)
+        actual = elephant_trainer().set_selected_unit_ability_level(rawcode, level)
         return f"技能 {rawcode} 等级已设置；native 返回 {actual}"
 
     def refresh_ability_field_tree() -> None:
@@ -13706,37 +13882,37 @@ def run_gui() -> None:
         if not rawcode:
             raise ValueError("请填写科技 ID")
         level = parse_int(elephant_tech_level.get(), "科技等级")
-        actual = trainer().set_local_player_tech(rawcode, level)
+        actual = elephant_trainer().set_local_player_tech(rawcode, level)
         return f"科技 {rawcode} 已设置为 {actual} 级"
 
     def elephant_set_xp_rate() -> str:
         rate = parse_float(elephant_xp_rate.get(), "经验倍率")
-        actual = trainer().set_local_player_xp_rate(rate)
+        actual = elephant_trainer().set_local_player_xp_rate(rate)
         return f"本地玩家经验倍率已设置为 {actual:g}"
 
     def elephant_set_inventory_charges() -> str:
         charges = parse_int(elephant_item_charges.get(), "物品数量")
-        changed = trainer().set_selected_inventory_charges(charges)
+        changed = elephant_trainer().set_selected_inventory_charges(charges)
         return f"已将 {changed} 件背包物品的数量设为 {charges}"
 
     def elephant_duplicate_inventory() -> str:
-        duplicated = trainer().duplicate_selected_inventory_items()
+        duplicated = elephant_trainer().duplicate_selected_inventory_items()
         return f"已复制 {duplicated} 件背包物品"
 
     def elephant_drop_inventory() -> str:
-        dropped = trainer().drop_selected_inventory_items()
+        dropped = elephant_trainer().drop_selected_inventory_items()
         return f"已丢弃 {dropped} 件背包物品"
 
     def elephant_add_resources() -> str:
         amount = parse_int(elephant_resource_amount.get(), "金币木材增量")
-        trainer().add_gold_and_lumber(amount)
+        elephant_trainer().add_gold_and_lumber(amount)
         return f"金币和木材已增加 {amount}"
 
     def elephant_mass_clone() -> str:
         count = parse_int(elephant_mass_clone_count.get(), "批量复制数量")
         source_rawcode = current_display_unit_rawcode()
         source = "备用读取" if current_display_uses_win10() else "普通读取"
-        rawcode, created = trainer().create_local_units(
+        rawcode, created = elephant_trainer().create_local_units(
             count,
             source_rawcode,
             use_selected_lookup=False,
@@ -13745,27 +13921,27 @@ def run_gui() -> None:
 
     def elephant_set_hero_attributes() -> str:
         value = parse_int(elephant_hero_attributes.get(), "英雄属性")
-        actual = trainer().set_selected_hero_attributes(value)
+        actual = elephant_trainer().set_selected_hero_attributes(value)
         return f"力量、敏捷、智力已设置为 {actual}"
 
     def elephant_add_skill_points() -> str:
         amount = parse_int(elephant_skill_points.get(), "增加技能点数")
-        actual = trainer().add_selected_hero_skill_points(amount)
+        actual = elephant_trainer().add_selected_hero_skill_points(amount)
         return f"英雄技能点已增加 {actual}"
 
     def elephant_reset_ability() -> str:
         rawcode = elephant_reset_ability_rawcode.get().strip()
         if not rawcode:
             raise ValueError("请填写重置技能 ID")
-        trainer().reset_selected_unit_ability(rawcode)
+        elephant_trainer().reset_selected_unit_ability(rawcode)
         return f"技能 {rawcode} 已重置"
 
     def elephant_remove_all_abilities() -> str:
-        removed = trainer().remove_all_selected_unit_abilities()
+        removed = elephant_trainer().remove_all_selected_unit_abilities()
         return f"已删除选中单位的 {removed} 个非基础技能"
 
     def elephant_move_to_mouse() -> str:
-        x, y = trainer().move_selected_unit_to_mouse()
+        x, y = elephant_trainer().move_selected_unit_to_mouse()
         return f"选中单位已移动到鼠标位置 ({x:g}, {y:g})"
 
     def elephant_add_standard_auras() -> str:
@@ -13780,7 +13956,7 @@ def run_gui() -> None:
             ("Aabr", None),
             ("ACac", None),
         )
-        added, total = trainer().add_ability_bundle_to_selected_unit(entries)
+        added, total = elephant_trainer().add_ability_bundle_to_selected_unit(entries)
         return f"全光环已处理 {total} 项，新增 {added} 项"
 
     def elephant_add_standard_passives() -> str:
@@ -13794,12 +13970,12 @@ def run_gui() -> None:
             ("ACrn", None),
             ("ACpv", None),
         )
-        added, total = trainer().add_ability_bundle_to_selected_unit(entries)
+        added, total = elephant_trainer().add_ability_bundle_to_selected_unit(entries)
         return f"全被动已处理 {total} 项，新增 {added} 项"
 
     def elephant_add_six_artifacts() -> str:
-        trainer().add_abilities_to_selected_unit(("AInv",))
-        count = trainer().replace_selected_inventory_items((
+        elephant_trainer().add_abilities_to_selected_unit(("AInv",))
+        count = elephant_trainer().replace_selected_inventory_items((
             (5, "nspi"),
             (4, "frhg"),
             (3, "crdt"),
@@ -13810,17 +13986,17 @@ def run_gui() -> None:
         return f"六神器已写入 {count} 个背包槽位"
 
     def elephant_create_all_items() -> str:
-        total, created, _last_item = trainer().create_all_loaded_items()
+        total, created, _last_item = elephant_trainer().create_all_loaded_items()
         return f"已遍历 {total} 个运行时物品对象，成功创建 {created} 个"
 
     def elephant_apply_all_debuffs() -> str:
-        attempted, succeeded = trainer().apply_standard_debuffs_to_selected_unit()
+        attempted, succeeded = elephant_trainer().apply_standard_debuffs_to_selected_unit()
         if not succeeded:
             raise RuntimeError("游戏没有接受任何减益技能命令")
         return f"减益技能已执行 {succeeded}/{attempted} 次"
 
     def elephant_apply_all_buffs() -> str:
-        attempted, succeeded = trainer().apply_standard_buffs_to_selected_unit()
+        attempted, succeeded = elephant_trainer().apply_standard_buffs_to_selected_unit()
         if not succeeded:
             raise RuntimeError("游戏没有接受任何增益技能命令")
         return f"增益技能已执行 {succeeded}/{attempted} 次"
@@ -13836,7 +14012,7 @@ def run_gui() -> None:
         if not 1 <= count <= 255:
             raise ValueError("自动特效次数必须在 1 到 255 之间")
         return elephant_fullscreen_cast(
-            lambda: trainer().cast_fullscreen_auto_effect(success_limit=count),
+            lambda: elephant_trainer().cast_fullscreen_auto_effect(success_limit=count),
             "全屏自动特效攻击",
         )
 
@@ -13844,25 +14020,25 @@ def run_gui() -> None:
         rawcode = elephant_reinforcement_rawcode.get().strip()
         if not rawcode:
             raise ValueError("请填写增援单位 ID")
-        unit_rawcode, handle = trainer().create_local_unit(rawcode)
+        unit_rawcode, handle = elephant_trainer().create_local_unit(rawcode)
         return f"已呼叫 {format_rawcode(unit_rawcode)}；handle=0x{handle:x}"
 
     def elephant_add_preset_item() -> str:
         rawcode = elephant_preset_item_rawcode.get().strip()
         if not rawcode:
             raise ValueError("请填写快捷物品 ID")
-        handle = trainer().add_item_to_selected_unit(rawcode)
+        handle = elephant_trainer().add_item_to_selected_unit(rawcode)
         return f"物品 {rawcode} 已添加；handle=0x{handle:x}"
 
     def elephant_set_preset_tech() -> str:
         rawcode = elephant_preset_tech_rawcode.get().strip()
         if not rawcode:
             raise ValueError("请填写快捷科技 ID")
-        actual = trainer().set_local_player_tech(rawcode, 1)
+        actual = elephant_trainer().set_local_player_tech(rawcode, 1)
         return f"科技 {rawcode} 已设置为 {actual} 级"
 
     def elephant_set_game_paused(paused: bool) -> str:
-        trainer().set_game_paused(paused)
+        elephant_trainer().set_game_paused(paused)
         state["elephant_game_paused"] = paused
         return "游戏已暂停" if paused else "游戏已恢复"
 
@@ -13870,13 +14046,13 @@ def run_gui() -> None:
         return elephant_set_game_paused(not bool(state.get("elephant_game_paused")))
 
     def elephant_toggle_unit_pause() -> str:
-        t = trainer()
+        t = elephant_trainer()
         paused = not t.is_selected_unit_paused()
         t.set_selected_unit_paused(paused)
         return "选中单位已暂停" if paused else "选中单位已恢复"
 
     def elephant_kill_owner_units() -> str:
-        killed = trainer().kill_selected_owner_units()
+        killed = elephant_trainer().kill_selected_owner_units()
         return f"已击杀该单位所属玩家的 {killed} 个单位"
 
     def elephant_action(action: Callable[[], None], message: str) -> str:
@@ -13886,19 +14062,19 @@ def run_gui() -> None:
     hotkey_callbacks: dict[str, Callable[[], str]] = {
         "hero_level": elephant_set_hero_level,
         "instant_move": elephant_move_to_mouse,
-        "explode_unit": lambda: elephant_action(trainer().explode_selected_unit, "选中单位已爆炸"),
-        "reveal_map": lambda: elephant_action(lambda: trainer().set_map_revealed(True), "全地图视野已开启"),
-        "hide_map": lambda: elephant_action(lambda: trainer().set_map_revealed(False), "战争迷雾已恢复"),
+        "explode_unit": lambda: elephant_action(elephant_trainer().explode_selected_unit, "选中单位已爆炸"),
+        "reveal_map": lambda: elephant_action(lambda: elephant_trainer().set_map_revealed(True), "全地图视野已开启"),
+        "hide_map": lambda: elephant_action(lambda: elephant_trainer().set_map_revealed(False), "战争迷雾已恢复"),
         "invulnerable": lambda: elephant_action(
-            lambda: trainer().set_selected_unit_invulnerable(True),
+            lambda: elephant_trainer().set_selected_unit_invulnerable(True),
             "选中单位已设为无敌",
         ),
         "vulnerable": lambda: elephant_action(
-            lambda: trainer().set_selected_unit_invulnerable(False),
+            lambda: elephant_trainer().set_selected_unit_invulnerable(False),
             "选中单位已取消无敌",
         ),
         "reset_cooldown": lambda: elephant_action(
-            trainer().reset_selected_unit_cooldown,
+            elephant_trainer().reset_selected_unit_cooldown,
             "选中单位技能冷却已重置",
         ),
         "clone_to_self": lambda: elephant_create_unit(True),
@@ -13908,7 +14084,7 @@ def run_gui() -> None:
         "drop_inventory": elephant_drop_inventory,
         "add_ability": elephant_add_ability,
         "clone_unit": lambda: elephant_create_unit(True),
-        "take_control": lambda: elephant_action(trainer().take_selected_unit_control, "已取得选中单位控制权"),
+        "take_control": lambda: elephant_action(elephant_trainer().take_selected_unit_control, "已取得选中单位控制权"),
         "add_resources": elephant_add_resources,
         "mass_clone": elephant_mass_clone,
         "ability_level": elephant_set_ability_level,
@@ -13921,7 +14097,7 @@ def run_gui() -> None:
         "preset_tech": elephant_set_preset_tech,
         "create_all_items": elephant_create_all_items,
         "ignore_collision": lambda: elephant_action(
-            lambda: trainer().set_selected_unit_pathing(False),
+            lambda: elephant_trainer().set_selected_unit_pathing(False),
             "选中单位碰撞已关闭",
         ),
         "hero_attributes": elephant_set_hero_attributes,
@@ -13932,29 +14108,29 @@ def run_gui() -> None:
         "all_debuffs": elephant_apply_all_debuffs,
         "all_buffs": elephant_apply_all_buffs,
         "fullscreen_swarm": lambda: elephant_fullscreen_cast(
-            trainer().cast_fullscreen_swarm,
+            elephant_trainer().cast_fullscreen_swarm,
             "全屏腐臭蜂群",
         ),
         "fullscreen_clap": lambda: elephant_fullscreen_cast(
-            trainer().cast_fullscreen_clap,
+            elephant_trainer().cast_fullscreen_clap,
             "全屏雷霆一击",
         ),
         "fullscreen_monsoon": lambda: elephant_fullscreen_cast(
-            trainer().cast_fullscreen_monsoon,
+            elephant_trainer().cast_fullscreen_monsoon,
             "全屏季风",
         ),
         "fullscreen_starfall": lambda: elephant_fullscreen_cast(
-            trainer().cast_fullscreen_starfall,
+            elephant_trainer().cast_fullscreen_starfall,
             "全屏群星陨落",
         ),
         "fullscreen_forked": lambda: elephant_fullscreen_cast(
-            trainer().cast_fullscreen_forked_lightning,
+            elephant_trainer().cast_fullscreen_forked_lightning,
             "全屏叉状闪电",
         ),
         "fullscreen_auto": elephant_fullscreen_auto,
         "toggle_unit_pause": elephant_toggle_unit_pause,
         "toggle_game_pause": elephant_toggle_game_pause,
-        "end_game": lambda: elephant_action(lambda: trainer().end_current_game(True), "已结束当前游戏"),
+        "end_game": lambda: elephant_action(lambda: elephant_trainer().end_current_game(True), "已结束当前游戏"),
         "remove_all_abilities": elephant_remove_all_abilities,
     }
     hotkey_specs_by_name = {spec.name: spec for spec in ELEPHANT_HOTKEY_SPECS}
@@ -14380,14 +14556,14 @@ def run_gui() -> None:
         world_frame,
         text="开图",
         command=lambda: call_async(
-            lambda: elephant_action(lambda: trainer().set_map_revealed(True), "全地图视野已开启")
+            lambda: elephant_action(lambda: elephant_trainer().set_map_revealed(True), "全地图视野已开启")
         ),
     ).grid(row=0, column=0, sticky="ew", padx=(0, 6), pady=3)
     ttk.Button(
         world_frame,
         text="关图",
         command=lambda: call_async(
-            lambda: elephant_action(lambda: trainer().set_map_revealed(False), "战争迷雾已恢复")
+            lambda: elephant_action(lambda: elephant_trainer().set_map_revealed(False), "战争迷雾已恢复")
         ),
     ).grid(row=0, column=1, sticky="ew", pady=3)
     ttk.Button(
@@ -14406,7 +14582,7 @@ def run_gui() -> None:
         command=lambda: confirm_elephant_action(
             "和平模式",
             "将全部玩家设置为互相结盟，确定继续？",
-            lambda: f"和平模式已开启，共更新 {trainer().set_peace_mode(True)} 项联盟关系",
+            lambda: f"和平模式已开启，共更新 {elephant_trainer().set_peace_mode(True)} 项联盟关系",
         ),
     ).grid(row=2, column=0, sticky="ew", padx=(0, 6), pady=3)
     ttk.Button(
@@ -14415,7 +14591,7 @@ def run_gui() -> None:
         command=lambda: confirm_elephant_action(
             "关闭和平",
             "这会取消全部玩家之间的被动联盟，确定继续？",
-            lambda: f"和平模式已关闭，共更新 {trainer().set_peace_mode(False)} 项联盟关系",
+            lambda: f"和平模式已关闭，共更新 {elephant_trainer().set_peace_mode(False)} 项联盟关系",
         ),
     ).grid(row=2, column=1, sticky="ew", pady=3)
     ttk.Button(
@@ -14424,7 +14600,7 @@ def run_gui() -> None:
         command=lambda: confirm_elephant_action(
             "结束游戏",
             "当前对局会立即结束，确定继续？",
-            lambda: elephant_action(lambda: trainer().end_current_game(True), "已结束当前游戏"),
+            lambda: elephant_action(lambda: elephant_trainer().end_current_game(True), "已结束当前游戏"),
         ),
     ).grid(row=3, column=0, columnspan=2, sticky="ew", pady=(8, 3))
     world_frame.columnconfigure(0, weight=1)
@@ -14440,49 +14616,49 @@ def run_gui() -> None:
         hero_frame,
         text="无敌",
         command=lambda: call_async(
-            lambda: elephant_action(lambda: trainer().set_selected_unit_invulnerable(True), "选中单位已设为无敌")
+            lambda: elephant_action(lambda: elephant_trainer().set_selected_unit_invulnerable(True), "选中单位已设为无敌")
         ),
     ).grid(row=1, column=0, sticky="ew", pady=3)
     ttk.Button(
         hero_frame,
         text="取消无敌",
         command=lambda: call_async(
-            lambda: elephant_action(lambda: trainer().set_selected_unit_invulnerable(False), "选中单位已取消无敌")
+            lambda: elephant_action(lambda: elephant_trainer().set_selected_unit_invulnerable(False), "选中单位已取消无敌")
         ),
     ).grid(row=1, column=1, columnspan=2, sticky="ew", padx=(6, 0), pady=3)
     ttk.Button(
         hero_frame,
         text="重置冷却",
         command=lambda: call_async(
-            lambda: elephant_action(trainer().reset_selected_unit_cooldown, "选中单位技能冷却已重置")
+            lambda: elephant_action(elephant_trainer().reset_selected_unit_cooldown, "选中单位技能冷却已重置")
         ),
     ).grid(row=2, column=0, columnspan=3, sticky="ew", pady=3)
     ttk.Button(
         hero_frame,
         text="关闭碰撞",
         command=lambda: call_async(
-            lambda: elephant_action(lambda: trainer().set_selected_unit_pathing(False), "选中单位碰撞已关闭")
+            lambda: elephant_action(lambda: elephant_trainer().set_selected_unit_pathing(False), "选中单位碰撞已关闭")
         ),
     ).grid(row=3, column=0, sticky="ew", pady=3)
     ttk.Button(
         hero_frame,
         text="开启碰撞",
         command=lambda: call_async(
-            lambda: elephant_action(lambda: trainer().set_selected_unit_pathing(True), "选中单位碰撞已开启")
+            lambda: elephant_action(lambda: elephant_trainer().set_selected_unit_pathing(True), "选中单位碰撞已开启")
         ),
     ).grid(row=3, column=1, columnspan=2, sticky="ew", padx=(6, 0), pady=3)
     ttk.Button(
         hero_frame,
         text="暂停单位",
         command=lambda: call_async(
-            lambda: elephant_action(lambda: trainer().set_selected_unit_paused(True), "选中单位已暂停")
+            lambda: elephant_action(lambda: elephant_trainer().set_selected_unit_paused(True), "选中单位已暂停")
         ),
     ).grid(row=4, column=0, sticky="ew", pady=3)
     ttk.Button(
         hero_frame,
         text="恢复单位",
         command=lambda: call_async(
-            lambda: elephant_action(lambda: trainer().set_selected_unit_paused(False), "选中单位已恢复")
+            lambda: elephant_action(lambda: elephant_trainer().set_selected_unit_paused(False), "选中单位已恢复")
         ),
     ).grid(row=4, column=1, columnspan=2, sticky="ew", padx=(6, 0), pady=3)
     ttk.Label(hero_frame, text="单位大小").grid(row=5, column=0, sticky="w", pady=(8, 3))
@@ -14495,7 +14671,7 @@ def run_gui() -> None:
         target_frame,
         text="获取控制权",
         command=lambda: call_async(
-            lambda: f"已取得选中单位控制权；本地玩家 handle=0x{trainer().take_selected_unit_control():x}"
+            lambda: f"已取得选中单位控制权；本地玩家 handle=0x{elephant_trainer().take_selected_unit_control():x}"
         ),
     ).grid(row=0, column=0, columnspan=2, sticky="ew", pady=3)
     ttk.Button(
@@ -14504,7 +14680,7 @@ def run_gui() -> None:
         command=lambda: confirm_elephant_action(
             "击杀单位",
             "确定击杀当前选中单位？",
-            lambda: elephant_action(trainer().kill_selected_unit, "选中单位已被击杀"),
+            lambda: elephant_action(elephant_trainer().kill_selected_unit, "选中单位已被击杀"),
         ),
     ).grid(row=1, column=0, sticky="ew", padx=(0, 6), pady=3)
     ttk.Button(
@@ -14513,7 +14689,7 @@ def run_gui() -> None:
         command=lambda: confirm_elephant_action(
             "爆炸单位",
             "确定让当前选中单位爆炸死亡？",
-            lambda: elephant_action(trainer().explode_selected_unit, "选中单位已爆炸"),
+            lambda: elephant_action(elephant_trainer().explode_selected_unit, "选中单位已爆炸"),
         ),
     ).grid(row=1, column=1, sticky="ew", pady=3)
     ttk.Button(
@@ -14522,7 +14698,7 @@ def run_gui() -> None:
         command=lambda: confirm_elephant_action(
             "删除单位",
             "单位会从地图中直接删除，确定继续？",
-            lambda: elephant_action(trainer().remove_selected_unit, "选中单位已删除"),
+            lambda: elephant_action(elephant_trainer().remove_selected_unit, "选中单位已删除"),
         ),
     ).grid(row=2, column=0, columnspan=2, sticky="ew", pady=3)
     ttk.Button(

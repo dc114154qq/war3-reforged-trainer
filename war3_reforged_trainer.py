@@ -30,7 +30,7 @@ from war3_ability_fields import (
 )
 
 
-APP_VERSION = "1.0.3"
+APP_VERSION = "1.0.4"
 WIN10_COMPAT_REVISION = "backup-r5-readable-low-va"
 
 
@@ -590,6 +590,7 @@ class AbilityFieldSnapshot:
     unit_identity: tuple[int, int, int] = (0, 0, 0)
     effect_class_verified: bool = True
     effect_class_note: str = ""
+    win10_compat: bool = False
 
 
 @dataclass(frozen=True)
@@ -3397,7 +3398,10 @@ class War3Trainer:
 
     def prewarm_elephant_functions(self) -> int:
         with ProcessMemory(self.pid) as pm:
-            handlers = self._discover_native_handlers_near_table(pm, self.ELEPHANT_NATIVE_NAMES)
+            handlers = self._discover_native_handlers_near_table(
+                pm,
+                self.ELEPHANT_NATIVE_NAMES,
+            )
         return len(handlers)
 
     def get_selected_hero_level(self) -> int:
@@ -4704,15 +4708,18 @@ class War3Trainer:
         self,
         rawcode: int | str | None = None,
         position: tuple[float, float] | None = None,
+        *,
+        use_selected_lookup: bool = True,
     ) -> tuple[int, int]:
         x, y = self.query_mouse_world_position() if position is None else position
         with ProcessMemory(self.pid) as pm:
-            candidate = self._elephant_selected_candidate(pm)
-            unit_rawcode = (
-                candidate.unit_type_id
-                if rawcode is None
-                else int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
-            )
+            if rawcode is None:
+                if not use_selected_lookup:
+                    raise ValueError("复制单位缺少已读取的单位 ID")
+                candidate = self._elephant_selected_candidate(pm)
+                unit_rawcode = candidate.unit_type_id
+            else:
+                unit_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
             if not unit_rawcode:
                 raise ValueError("没有可用于创建单位的有效 ID")
             handlers = self._elephant_handlers(pm, ("GetLocalPlayer", "CreateUnit"))
@@ -4731,7 +4738,13 @@ class War3Trainer:
             raise RuntimeError(f"游戏未能创建单位 {format_rawcode(unit_rawcode)}")
         return unit_rawcode, result
 
-    def create_local_units(self, count: int, rawcode: int | str | None = None) -> tuple[int, int]:
+    def create_local_units(
+        self,
+        count: int,
+        rawcode: int | str | None = None,
+        *,
+        use_selected_lookup: bool = True,
+    ) -> tuple[int, int]:
         total = int(count)
         if not 1 <= total <= 100:
             raise ValueError("批量复制数量必须在 1 到 100 之间")
@@ -4739,7 +4752,11 @@ class War3Trainer:
         created = 0
         unit_rawcode = 0
         for _ in range(total):
-            unit_rawcode, _handle = self.create_local_unit(rawcode, position)
+            unit_rawcode, _handle = self.create_local_unit(
+                rawcode,
+                position,
+                use_selected_lookup=use_selected_lookup,
+            )
             created += 1
         return unit_rawcode, created
 
@@ -5065,17 +5082,20 @@ class War3Trainer:
         except (OSError, RuntimeError) as exc:
             return ability_rawcode, False, str(exc)
 
-    def _selected_ability_field_context_locked(
+    def _ability_field_context_from_candidate_locked(
         self,
+        pm: ProcessMemory,
+        candidate: UnitCandidate,
+        unit_handle: int,
         rawcode: int | str,
         level: int,
+        handlers: dict[str, NativeHandler] | None = None,
     ) -> SelectedAbilityFieldContext:
         ability_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
         level_number = int(level)
         if not ability_rawcode or not 1 <= level_number <= 1000:
             raise ValueError("请提供有效技能 ID，字段等级必须在 1 到 1000 之间")
-        candidate, unit_handle = self._direct_selected_context()
-        with ProcessMemory(self.pid) as pm:
+        if handlers is None:
             handlers = self._discover_native_handlers_near_table(
                 pm,
                 self.ABILITY_FIELD_NATIVE_NAMES,
@@ -5119,14 +5139,13 @@ class War3Trainer:
                 0,
             ),),
         )[0].result)
-        with ProcessMemory(self.pid) as pm:
-            effect_class, effect_class_verified, effect_class_note = (
-                self._ability_effect_class_for_candidate(
-                    pm,
-                    candidate,
-                    ability_rawcode,
-                )
+        effect_class, effect_class_verified, effect_class_note = (
+            self._ability_effect_class_for_candidate(
+                pm,
+                candidate,
+                ability_rawcode,
             )
+        )
         return SelectedAbilityFieldContext(
             candidate=candidate,
             unit_handle=unit_handle,
@@ -5138,6 +5157,95 @@ class War3Trainer:
             current_level=current_level,
             handlers=handlers,
         )
+
+    def _selected_ability_field_context_locked(
+        self,
+        rawcode: int | str,
+        level: int,
+    ) -> SelectedAbilityFieldContext:
+        candidate, unit_handle = self._direct_selected_context()
+        with ProcessMemory(self.pid) as pm:
+            return self._ability_field_context_from_candidate_locked(
+                pm,
+                candidate,
+                unit_handle,
+                rawcode,
+                level,
+            )
+
+    def _ability_field_context_by_identity_locked(
+        self,
+        rawcode: int | str,
+        level: int,
+        unit_identity: tuple[int, int, int],
+        win10_compat: bool,
+    ) -> SelectedAbilityFieldContext:
+        handle, owner, unit = (int(value) for value in unit_identity)
+        if win10_compat:
+            with self._win10_memory_operation("ability_field_context") as (diagnostics, pm):
+                isolated = self._win10_session_for_identity(handle, owner, unit, pm)
+                missing_handlers = set(self.ABILITY_FIELD_NATIVE_NAMES).difference(
+                    isolated._native_handlers
+                )
+                if missing_handlers:
+                    self._recover_win10_native_handlers(isolated, pm, diagnostics)
+                    missing_handlers = set(self.ABILITY_FIELD_NATIVE_NAMES).difference(
+                        isolated._native_handlers
+                    )
+                if missing_handlers:
+                    raise RuntimeError(
+                        "备用读取缺少技能字段 native："
+                        + ", ".join(sorted(missing_handlers))
+                    )
+                candidate = self._win10_candidate_from_identity(
+                    isolated,
+                    pm,
+                    handle,
+                    owner,
+                    unit,
+                )
+                unit_handle = isolated._current_jass_unit_handle_win10(
+                    pm,
+                    candidate,
+                    diagnostics,
+                )
+                handlers = {
+                    name: isolated._native_handlers[name]
+                    for name in self.ABILITY_FIELD_NATIVE_NAMES
+                }
+                context = isolated._ability_field_context_from_candidate_locked(
+                    pm,
+                    candidate,
+                    unit_handle,
+                    rawcode,
+                    level,
+                    handlers,
+                )
+                self._native_handlers.update(isolated._native_handlers)
+                return context
+
+        with ProcessMemory(self.pid) as pm:
+            candidate = self._candidate_from_identity(
+                pm,
+                handle,
+                owner,
+                unit,
+                f"ability_field_candidate handle=0x{handle:x} owner=0x{owner:x} unit=0x{unit:x}",
+                900,
+            )
+            if candidate is None:
+                raise RuntimeError("普通读取的单位身份已经失效，请重新读取当前选中单位")
+            unit_handle = self._elephant_selected_handle(pm)
+            resolved_unit = self._resolve_jass_unit_handle(unit_handle)
+            if resolved_unit != candidate.unit_address:
+                raise RuntimeError("当前选择已经变化，请重新读取当前选中单位")
+            return self._ability_field_context_from_candidate_locked(
+                pm,
+                candidate,
+                unit_handle,
+                rawcode,
+                level,
+            )
 
     def _ability_field_get_op(
         self,
@@ -5187,11 +5295,23 @@ class War3Trainer:
         self,
         rawcode: int | str,
         level: int,
+        *,
+        unit_identity: tuple[int, int, int] | None = None,
+        win10_compat: bool = False,
     ) -> AbilityFieldSnapshot:
         level_number = int(level)
         level_index = level_number - 1
         with self._native_helper_transaction():
-            context = self._selected_ability_field_context_locked(rawcode, level_number)
+            context = (
+                self._ability_field_context_by_identity_locked(
+                    rawcode,
+                    level_number,
+                    unit_identity,
+                    win10_compat,
+                )
+                if unit_identity is not None
+                else self._selected_ability_field_context_locked(rawcode, level_number)
+            )
             effect_text = self._ability_field_rawcode_text(context.effect_class)
             specs = ability_fields_for_effect_class(effect_text)
             values_by_key: dict[tuple[str, str, str], AbilityFieldValue] = {}
@@ -5268,6 +5388,7 @@ class War3Trainer:
             unit_identity=context.unit_identity,
             effect_class_verified=context.effect_class_verified,
             effect_class_note=context.effect_class_note,
+            win10_compat=bool(win10_compat and unit_identity is not None),
         )
 
     @staticmethod
@@ -5354,6 +5475,9 @@ class War3Trainer:
         spec: AbilityFieldSpec,
         value: bool | int | float | str,
         expected_snapshot: AbilityFieldSnapshot | None = None,
+        *,
+        unit_identity: tuple[int, int, int] | None = None,
+        win10_compat: bool = False,
     ) -> AbilityFieldValue:
         if self._ability_field_write_disabled:
             raise RuntimeError("上一次技能字段回滚无法确认，请重新连接游戏后再写入")
@@ -5366,12 +5490,23 @@ class War3Trainer:
                 raise RuntimeError("技能 ID 已变化，请重新读取字段")
             if level_number != expected_snapshot.requested_level:
                 raise RuntimeError("字段等级已变化，请重新读取字段")
+            if bool(win10_compat) != bool(expected_snapshot.win10_compat):
+                raise RuntimeError("技能字段读取来源已变化，请重新读取字段")
         target = self._coerce_ability_field_value(spec, value)
         level_index = level_number - 1
         with self._native_helper_transaction():
-            context = self._selected_ability_field_context_locked(
-                ability_rawcode,
-                level_number,
+            context = (
+                self._ability_field_context_by_identity_locked(
+                    ability_rawcode,
+                    level_number,
+                    unit_identity,
+                    win10_compat,
+                )
+                if unit_identity is not None
+                else self._selected_ability_field_context_locked(
+                    ability_rawcode,
+                    level_number,
+                )
             )
             if expected_snapshot is not None:
                 if (
@@ -11166,6 +11301,34 @@ class War3Trainer:
             instance = replace(instance, slot=index + 1)
             mapped[index] = instance
             instances.append(instance)
+
+        missing_indices = [
+            index
+            for index, rawcode in enumerate(configs)
+            if rawcode and index not in mapped and configs.count(rawcode) == 1
+        ]
+        if missing_indices:
+            fallback_rawcodes = {configs[index] for index in missing_indices}
+            fallback_instances = self._ability_instances_from_candidate(
+                pm,
+                candidate,
+                required_rawcodes=fallback_rawcodes,
+                allow_global_scan=True,
+            )
+            for index in missing_indices:
+                rawcode = configs[index]
+                matches = [
+                    ability
+                    for ability in fallback_instances
+                    if ability.rawcode == rawcode
+                    and ability.data_address not in seen_data
+                ]
+                if len(matches) != 1:
+                    continue
+                instance = replace(matches[0], slot=index + 1)
+                seen_data.add(instance.data_address)
+                mapped[index] = instance
+                instances.append(instance)
         return mapped, instances
 
     def _ability_runtime_template_from_instance(
@@ -11319,6 +11482,44 @@ class War3Trainer:
                 )
         return None
 
+    def _selected_ability_level_for_candidate(
+        self,
+        pm: ProcessMemory,
+        candidate: UnitCandidate,
+        rawcode: int,
+    ) -> int:
+        if isinstance(pm, Win10ProcessMemory):
+            unit_handle = self._current_jass_unit_handle_win10(
+                pm,
+                candidate,
+                pm.diagnostics,
+            )
+            handlers = self._discover_native_handlers_near_table_win10(
+                pm,
+                ("GetUnitAbilityLevel",),
+            )
+        else:
+            unit_handle = self._elephant_selected_handle(pm)
+            resolved_unit = self._resolve_jass_unit_handle(unit_handle)
+            if resolved_unit != candidate.unit_address:
+                raise RuntimeError("当前选择已经变化，请重新读取当前选中单位")
+            handlers = self._discover_native_handlers(
+                pm,
+                ("GetUnitAbilityLevel",),
+            )
+        return int(
+            self._run_native_helper_ops(
+                unit_handle,
+                ((
+                    self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE_LEVEL,
+                    rawcode,
+                    handlers["GetUnitAbilityLevel"].handler_address,
+                    0,
+                    0,
+                ),),
+            )[0].result
+        )
+
     def _write_hero_skill_name_field(
         self,
         pm: ProcessMemory,
@@ -11346,19 +11547,13 @@ class War3Trainer:
             except OSError:
                 configs.append(0)
         old_rawcode = configs[index] if index < len(configs) else 0
-        instance = None
-        if old_rawcode:
-            data_address = self._find_engine_ability_data(pm, candidate, old_rawcode)
-            if data_address:
-                instance = self._ability_instance_from_data_for_candidate(
-                    pm,
-                    candidate,
-                    data_address,
-                    old_rawcode,
-                )
-                if instance is not None:
-                    instance = replace(instance, slot=index + 1)
-        ability_instances = [instance] if instance is not None else []
+        mapped, ability_instances = self._hero_skill_instance_map_for_write(
+            pm,
+            candidate,
+            configs,
+        )
+        instance = mapped.get(index)
+        source_runtime_level: int | None = None
         runtime_needs_update = instance is not None and instance.rawcode != new_rawcode
         needs_runtime_replacement = old_rawcode != new_rawcode or runtime_needs_update
         if needs_runtime_replacement:
@@ -11387,12 +11582,23 @@ class War3Trainer:
                     or (active_source_data and other.data_address == active_source_data)
                 )
             ]
-            if len(source_skill_slots) != 1 or len(source_ability_slots) != 1 or instance is None:
+            ambiguous_source = len(source_skill_slots) != 1 or len(source_ability_slots) > 1
+            if instance is None and not ambiguous_source:
+                source_runtime_level = self._selected_ability_level_for_candidate(
+                    pm,
+                    candidate,
+                    old_rawcode,
+                )
+            missing_learned_instance = instance is None and source_runtime_level != 0
+            mismatched_instance = instance is not None and len(source_ability_slots) != 1
+            if ambiguous_source or missing_learned_instance or mismatched_instance:
                 details: list[str] = []
                 if source_skill_slots:
                     details.append("技能栏" + ",".join(str(slot) for slot in source_skill_slots))
                 if source_ability_slots:
                     details.append("能力实例" + ",".join(str(slot) for slot in source_ability_slots))
+                if source_runtime_level is not None:
+                    details.append(f"native等级{source_runtime_level}")
                 raise RuntimeError(
                     f"技能{index + 1}当前 {format_rawcode(old_rawcode)} "
                     + ("同时出现在" + "；".join(details) if details else "没有匹配的运行时实例")
@@ -11476,7 +11682,10 @@ class War3Trainer:
                     f"{instance.rawcode_text}->{format_rawcode(new_rawcode)}"
                 )
         else:
-            actions.append("未找到已学 ability 实例，仅更新英雄技能栏配置")
+            if source_runtime_level == 0:
+                actions.append("旧技能未学习(native等级0)，仅更新英雄技能栏配置")
+            else:
+                actions.append("未找到已学 ability 实例，仅更新英雄技能栏配置")
 
         time.sleep(0.05)
         final_config = pm.read_u32(config_address)
@@ -12259,6 +12468,7 @@ def run_gui() -> None:
         "unit_fields": {},
         "selected_unit_identity": None,
         "selected_unit_win10": False,
+        "selected_unit_type_id": 0,
         "last_verified_unit_identity": None,
         "selection_candidates": {},
         "manual_unit_identity": None,
@@ -12600,6 +12810,14 @@ def run_gui() -> None:
     def current_display_uses_win10() -> bool:
         return bool(state.get("selected_unit_win10"))
 
+    def current_display_unit_rawcode() -> int:
+        if current_display_unit_identity() is None:
+            raise ValueError("请先使用读取当前选中单位或备用读取，再执行复制单位")
+        rawcode = state.get("selected_unit_type_id")
+        if not isinstance(rawcode, int) or not rawcode:
+            raise ValueError("当前读取结果没有有效单位 ID，请重新读取后再执行复制单位")
+        return rawcode
+
     def remembered_unit_identities() -> list[tuple[int, int, int]]:
         remembered: list[tuple[int, int, int]] = []
         for key in ("manual_unit_identity", "selected_unit_identity", "last_verified_unit_identity"):
@@ -12732,6 +12950,7 @@ def run_gui() -> None:
             var.set("")
         state["selected_unit_identity"] = None
         state["selected_unit_win10"] = False
+        state["selected_unit_type_id"] = 0
         state["manual_unit_identity"] = None
         state["unit_fields"] = {}
         try:
@@ -12751,6 +12970,7 @@ def run_gui() -> None:
         reset_targets = force_targets or state.get("selected_unit_identity") != identity
         state["selected_unit_identity"] = identity
         state["selected_unit_win10"] = bool(win10_compat)
+        state["selected_unit_type_id"] = int(cand.unit_type_id)
         state["last_verified_unit_identity"] = identity
         unit_type_id_current.set(format_rawcode(cand.unit_type_id) if cand.unit_type_id else "")
 
@@ -13179,11 +13399,21 @@ def run_gui() -> None:
         return f"单位大小已设置为 {actual:g}"
 
     def elephant_create_unit(copy_selected: bool) -> str:
-        rawcode = None if copy_selected else elephant_unit_rawcode.get().strip()
+        source = ""
+        rawcode: int | str | None
+        if copy_selected:
+            rawcode = current_display_unit_rawcode()
+            source = "备用读取" if current_display_uses_win10() else "普通读取"
+        else:
+            rawcode = elephant_unit_rawcode.get().strip()
         if not copy_selected and not rawcode:
             raise ValueError("请填写单位 ID")
-        unit_rawcode, handle = trainer().create_local_unit(rawcode)
-        return f"已创建 {format_rawcode(unit_rawcode)}；handle=0x{handle:x}"
+        unit_rawcode, handle = trainer().create_local_unit(
+            rawcode,
+            use_selected_lookup=not copy_selected,
+        )
+        source_text = f"；来源={source}" if source else ""
+        return f"已创建 {format_rawcode(unit_rawcode)}；handle=0x{handle:x}{source_text}"
 
     def elephant_add_item() -> str:
         rawcode = elephant_item_rawcode.get().strip()
@@ -13286,6 +13516,7 @@ def run_gui() -> None:
     def apply_ability_field_snapshot(snapshot: AbilityFieldSnapshot) -> None:
         state["ability_field_snapshot"] = snapshot
         effect_status = "" if snapshot.effect_class_verified else "（未确认）"
+        source = "备用读取" if snapshot.win10_compat else "普通读取"
         effect_note = (
             f"；{snapshot.effect_class_note}"
             if not snapshot.effect_class_verified and snapshot.effect_class_note
@@ -13296,7 +13527,8 @@ def run_gui() -> None:
             f"效果类 {format_rawcode(snapshot.effect_class)}{effect_status}；"
             f"当前等级 {snapshot.current_level}；"
             f"字段等级 {snapshot.requested_level}；"
-            f"候选 {len(snapshot.fields)} 项"
+            f"候选 {len(snapshot.fields)} 项；"
+            f"来源 {source}"
             f"{effect_note}"
         )
         ability_field_value.set("")
@@ -13309,7 +13541,15 @@ def run_gui() -> None:
         if not rawcode:
             raise ValueError("请填写技能 ID")
         level = parse_int(ability_field_level.get(), "字段等级")
-        snapshot = trainer().read_selected_ability_fields(rawcode, level)
+        identity = current_display_unit_identity()
+        if identity is None:
+            raise ValueError("请先使用普通读取或备用读取读取当前单位")
+        snapshot = trainer().read_selected_ability_fields(
+            rawcode,
+            level,
+            unit_identity=identity,
+            win10_compat=current_display_uses_win10() if identity is not None else False,
+        )
         root.after(0, apply_ability_field_snapshot, snapshot)
         readable = sum(field.value is not None for field in snapshot.fields)
         writable = sum(
@@ -13366,6 +13606,12 @@ def run_gui() -> None:
                 field_value.spec,
                 target_text,
                 expected_snapshot=snapshot,
+                unit_identity=(
+                    snapshot.unit_identity
+                    if any(snapshot.unit_identity)
+                    else None
+                ),
+                win10_compat=snapshot.win10_compat,
             )
         except RuntimeError as exc:
             if (
@@ -13488,8 +13734,14 @@ def run_gui() -> None:
 
     def elephant_mass_clone() -> str:
         count = parse_int(elephant_mass_clone_count.get(), "批量复制数量")
-        rawcode, created = trainer().create_local_units(count)
-        return f"已复制 {created} 个 {format_rawcode(rawcode)}"
+        source_rawcode = current_display_unit_rawcode()
+        source = "备用读取" if current_display_uses_win10() else "普通读取"
+        rawcode, created = trainer().create_local_units(
+            count,
+            source_rawcode,
+            use_selected_lookup=False,
+        )
+        return f"已复制 {created} 个 {format_rawcode(rawcode)}；来源={source}"
 
     def elephant_set_hero_attributes() -> str:
         value = parse_int(elephant_hero_attributes.get(), "英雄属性")
@@ -13766,6 +14018,20 @@ def run_gui() -> None:
     top = ttk.Frame(outer)
     top.pack(fill="x")
     ttk.Button(top, text="连接/刷新进程", command=lambda: call_async(connect)).pack(side="left")
+    read_unit_button = ttk.Button(top, text="读取当前选中单位")
+    read_unit_button.configure(
+        command=lambda: call_async(read_unit, "read_unit", read_unit_button)
+    )
+    read_unit_button.pack(side="left", padx=(12, 0))
+    backup_read_button = ttk.Button(top, text="备用读取")
+    backup_read_button.configure(
+        command=lambda: call_async(
+            read_unit_win10,
+            "backup_read",
+            backup_read_button,
+        )
+    )
+    backup_read_button.pack(side="left", padx=(4, 0))
     ttk.Label(top, text="PID").pack(side="left", padx=(16, 4))
     ttk.Entry(top, textvariable=pid_var, width=10, state="readonly").pack(side="left")
     ttk.Label(top, textvariable=status).pack(side="right")
@@ -13869,25 +14135,11 @@ def run_gui() -> None:
     ttk.Entry(unit, textvariable=x_target, width=12).grid(row=5, column=1, sticky="w")
     ttk.Label(unit, text="目标 Y").grid(row=5, column=2, sticky="w", padx=(16, 0))
     ttk.Entry(unit, textvariable=y_target, width=12).grid(row=5, column=3, sticky="w")
-    read_unit_button = ttk.Button(unit, text="读取当前选中单位")
-    read_unit_button.configure(
-        command=lambda: call_async(read_unit, "read_unit", read_unit_button)
-    )
-    read_unit_button.grid(row=6, column=0, pady=12, sticky="w")
-    backup_read_button = ttk.Button(unit, text="备用读取")
-    backup_read_button.configure(
-        command=lambda: call_async(
-            read_unit_win10,
-            "backup_read",
-            backup_read_button,
-        )
-    )
-    backup_read_button.grid(row=6, column=1, pady=12, sticky="w")
-    ttk.Button(unit, text="写入选中单位", command=lambda: call_async(set_unit)).grid(row=6, column=2, pady=12, sticky="w")
-    ttk.Button(unit, text="刷新字段表", command=lambda: call_async(read_unit_fields)).grid(row=6, column=3, pady=12, sticky="w")
-    ttk.Button(unit, text="列出候选单位", command=lambda: call_async(refresh_unit_candidates)).grid(row=6, column=4, pady=12, sticky="w")
-    ttk.Button(unit, text="读取所选候选", command=lambda: call_async(read_selection_candidate_fields)).grid(row=6, column=5, pady=12, sticky="w")
-    ttk.Button(unit, text="Native定位", command=lambda: call_async(read_unit_native_selection)).grid(row=6, column=6, pady=12, sticky="w")
+    ttk.Button(unit, text="写入选中单位", command=lambda: call_async(set_unit)).grid(row=6, column=0, pady=12, sticky="w")
+    ttk.Button(unit, text="刷新字段表", command=lambda: call_async(read_unit_fields)).grid(row=6, column=1, pady=12, sticky="w")
+    ttk.Button(unit, text="列出候选单位", command=lambda: call_async(refresh_unit_candidates)).grid(row=6, column=2, pady=12, sticky="w")
+    ttk.Button(unit, text="读取所选候选", command=lambda: call_async(read_selection_candidate_fields)).grid(row=6, column=3, pady=12, sticky="w")
+    ttk.Button(unit, text="Native定位", command=lambda: call_async(read_unit_native_selection)).grid(row=6, column=4, pady=12, sticky="w")
 
     candidate_frame = ttk.Frame(unit)
     candidate_frame.grid(row=7, column=0, columnspan=7, sticky="nsew", pady=(0, 8))

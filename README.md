@@ -8,7 +8,7 @@
 
 ## 下载和运行
 
-从 GitHub Release 下载 `War3ReforgedTrainer-v1.0.5.exe`，直接双击运行即可。这是 PyInstaller 打包的单文件 GUI 程序，不会额外弹出终端窗口，也不需要安装 Python。
+从 GitHub Release 下载 `War3ReforgedTrainer-v1.0.6.exe`，直接双击运行即可。这是 PyInstaller 打包的单文件 GUI 程序，不会额外弹出终端窗口，也不需要安装 Python。
 
 运行前请先启动《魔兽争霸 III：重制版》，进入地图并选中目标单位。修改器会自动查找正在运行的 `Warcraft III.exe`。
 

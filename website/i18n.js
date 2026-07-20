@@ -145,6 +145,20 @@ window.SITE_I18N = {
   },
   releaseBodies: {
     en: {
+      "v1.0.6": String.raw`# Release notes
+
+## v1.0.6
+
+- Added complete Chinese and English application UI support.
+- The initial language is detected from the Windows user locale: Chinese locales use Chinese, while other locales use English.
+- Added a compact Chinese / English selector in the top toolbar for instant switching while the trainer is running.
+- Tabs, buttons, labels, table headings, status messages, confirmation dialogs, unit and ability field displays, and all 45 hotkey labels switch together.
+- Changing the language only redraws display text. It does not reconnect to the game, reread a unit, or trigger any write.
+- Memory scanning, normal reads, backup reads, the native helper, Elephant features, hotkey registration, and every game modification path are unchanged.
+
+Verified by launching and switching both interfaces, checking layout, covering all 766 Chinese UI, field-note, and diagnostic strings plus all 45 hotkey labels, and passing all existing shortcut/read-source regression tests.
+
+Compatibility: Warcraft III: Reforged 2.0.4.23745.` ,
       "v1.0.5": String.raw`# Release notes
 
 ## v1.0.5

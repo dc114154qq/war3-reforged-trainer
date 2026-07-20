@@ -28,9 +28,10 @@ from war3_ability_fields import (
     AbilityFieldSpec,
     ability_fields_for_effect_class,
 )
+from war3_ui_i18n import detect_ui_language, translate_ui_text
 
 
-APP_VERSION = "1.0.5"
+APP_VERSION = "1.0.6"
 WIN10_COMPAT_REVISION = "backup-r5-readable-low-va"
 
 
@@ -12629,8 +12630,13 @@ def run_gui() -> None:
     import tkinter as tk
     from tkinter import messagebox, ttk
 
+    ui_language = {"code": detect_ui_language()}
+
+    def ui_text(text: object) -> str:
+        return translate_ui_text(text, ui_language["code"])
+
     root = tk.Tk()
-    root.title(f"魔兽争霸3重制版修改器 v{APP_VERSION}")
+    root.title(ui_text(f"魔兽争霸3重制版修改器 v{APP_VERSION}"))
     root.geometry("1180x780")
     root.minsize(1040, 700)
     icon_path = (
@@ -12644,7 +12650,26 @@ def run_gui() -> None:
     except tk.TclError:
         app_icon = None
 
-    status = tk.StringVar(value="正在连接 Warcraft III...")
+    class LocalizedStringVar(tk.StringVar):
+        def __init__(self, value: str = "") -> None:
+            super().__init__(master=root)
+            self._source_text = ""
+            self.set(value)
+
+        def set(self, value: object) -> None:
+            self._source_text = "" if value is None else str(value)
+            super().set(ui_text(self._source_text))
+
+        def refresh(self) -> None:
+            super().set(ui_text(self._source_text))
+
+        def source_text(self) -> str:
+            return self._source_text
+
+    language_choice = tk.StringVar(
+        value="中文" if ui_language["code"] == "zh" else "English"
+    )
+    status = LocalizedStringVar(value="正在连接 Warcraft III...")
     pid_var = tk.StringVar(value="")
     gold_current = tk.StringVar(value="")
     lumber_current = tk.StringVar(value="")
@@ -12681,8 +12706,8 @@ def run_gui() -> None:
     ability_field_level = tk.StringVar(value="1")
     ability_field_filter = tk.StringVar(value="")
     ability_field_value = tk.StringVar(value="")
-    ability_field_summary = tk.StringVar(value="尚未读取技能字段")
-    ability_field_detail = tk.StringVar(value="")
+    ability_field_summary = LocalizedStringVar(value="尚未读取技能字段")
+    ability_field_detail = LocalizedStringVar(value="")
     ability_field_show_zero = tk.BooleanVar(value=True)
     ability_field_show_unsupported = tk.BooleanVar(value=True)
     elephant_tech_rawcode = tk.StringVar(value="")
@@ -12699,7 +12724,7 @@ def run_gui() -> None:
     elephant_reset_ability_rawcode = tk.StringVar(value="Apxf")
     elephant_auto_effect_count = tk.StringVar(value="5")
     elephant_hotkeys_enabled = tk.BooleanVar(value=False)
-    elephant_hotkey_status = tk.StringVar(value="快捷键未启用")
+    elephant_hotkey_status = LocalizedStringVar(value="快捷键未启用")
     elephant_hotkey_checks = {
         spec.name: tk.BooleanVar(value=True)
         for spec in ELEPHANT_HOTKEY_SPECS
@@ -12799,7 +12824,7 @@ def run_gui() -> None:
             if busy_widget is not None:
                 busy_widget.state(["!disabled"])
             if exc is not None:
-                messagebox.showerror("错误", str(exc))
+                messagebox.showerror(ui_text("错误"), ui_text(str(exc)))
                 set_status(f"失败：{exc}")
             elif result:
                 set_status(result)
@@ -13025,12 +13050,12 @@ def run_gui() -> None:
                 "end",
                 iid=field.key,
                 values=(
-                    field.category,
-                    field.label,
-                    field.value_text(),
-                    field.value_type,
+                    ui_text(field.category),
+                    ui_text(field.label),
+                    ui_text(field.value_text()),
+                    ui_text(field.value_type),
                     f"0x{field.address:x}",
-                    field.note,
+                    ui_text(field.note),
                 ),
             )
 
@@ -13099,7 +13124,7 @@ def run_gui() -> None:
             iid = str(index)
             candidate_map[iid] = summary
             candidate = summary.candidate
-            confidence = selection_confidence_text(summary)
+            confidence = ui_text(selection_confidence_text(summary))
             pos = summary.position
             pos_text = f"{pos[0]:.0f},{pos[1]:.0f}" if pos is not None else ""
             components = ",".join(summary.components) if summary.components else "-"
@@ -13332,7 +13357,11 @@ def run_gui() -> None:
                 "",
                 "end",
                 iid=str(lock_id),
-                values=(item.get("scope", ""), item.get("label", ""), item.get("value", "")),
+                values=(
+                    ui_text(item.get("scope", "")),
+                    ui_text(item.get("label", "")),
+                    item.get("value", ""),
+                ),
             )
 
     def add_unit_lock() -> str:
@@ -13763,11 +13792,11 @@ def run_gui() -> None:
                 iid=iid,
                 values=(
                     spec.rawcode,
-                    type_labels.get(spec.value_kind, spec.value_kind),
-                    scope_labels.get(spec.scope, spec.scope),
-                    label,
-                    field_value.value_text(),
-                    field_value.status,
+                    ui_text(type_labels.get(spec.value_kind, spec.value_kind)),
+                    ui_text(scope_labels.get(spec.scope, spec.scope)),
+                    ui_text(label),
+                    ui_text(field_value.value_text()),
+                    ui_text(field_value.status),
                 ),
             )
         state["ability_field_rows"] = rows
@@ -13929,7 +13958,7 @@ def run_gui() -> None:
     def ability_field_write_clicked() -> None:
         snapshot = state.get("ability_field_snapshot")
         if not isinstance(snapshot, AbilityFieldSnapshot):
-            messagebox.showerror("错误", "请先读取技能字段")
+            messagebox.showerror(ui_text("错误"), ui_text("请先读取技能字段"))
             return
         selected = ability_field_tree.selection()
         rows = state.get("ability_field_rows")
@@ -13939,13 +13968,13 @@ def run_gui() -> None:
             else None
         )
         if not isinstance(field_value, AbilityFieldValue):
-            messagebox.showerror("错误", "请先选择一个可写字段")
+            messagebox.showerror(ui_text("错误"), ui_text("请先选择一个可写字段"))
             return
         rawcode = ability_field_rawcode.get().strip()
         try:
             level = parse_int(ability_field_level.get(), "字段等级")
         except ValueError as exc:
-            messagebox.showerror("错误", str(exc))
+            messagebox.showerror(ui_text("错误"), ui_text(str(exc)))
             return
         target_text = ability_field_value.get().strip()
         call_async(
@@ -14281,7 +14310,7 @@ def run_gui() -> None:
             )
         else:
             elephant_hotkey_status.set(f"已注册 {registered} 个全局快捷键")
-        set_status(elephant_hotkey_status.get())
+        set_status(elephant_hotkey_status.source_text())
 
     def set_all_elephant_hotkeys(enabled: bool) -> None:
         for name, variable in elephant_hotkey_checks.items():
@@ -14290,8 +14319,95 @@ def run_gui() -> None:
             refresh_elephant_hotkeys()
 
     def confirm_elephant_action(title: str, prompt: str, fn: Callable[[], str]) -> None:
-        if messagebox.askyesno(title, prompt, parent=root):
+        if messagebox.askyesno(ui_text(title), ui_text(prompt), parent=root):
             call_async(fn, f"elephant:{title}")
+
+    widget_text_sources: dict[object, str] = {}
+    notebook_tab_sources: dict[tuple[object, str], str] = {}
+    tree_heading_sources: dict[tuple[object, str], str] = {}
+
+    def capture_translatable_widgets(widget: object) -> None:
+        try:
+            if "text" in widget.keys():
+                source = str(widget.cget("text"))
+                if source:
+                    widget_text_sources.setdefault(widget, source)
+        except (AttributeError, tk.TclError):
+            pass
+        if isinstance(widget, ttk.Notebook):
+            for tab_id in widget.tabs():
+                key = (widget, str(tab_id))
+                notebook_tab_sources.setdefault(key, str(widget.tab(tab_id, "text")))
+        if isinstance(widget, ttk.Treeview):
+            for column in widget.cget("columns"):
+                key = (widget, str(column))
+                tree_heading_sources.setdefault(
+                    key,
+                    str(widget.heading(column, "text")),
+                )
+        try:
+            children = widget.winfo_children()
+        except (AttributeError, tk.TclError):
+            return
+        for child in children:
+            capture_translatable_widgets(child)
+
+    def refresh_language_dependent_rows() -> None:
+        selections = {
+            unit_field_tree: tuple(unit_field_tree.selection()),
+            lock_tree: tuple(lock_tree.selection()),
+            candidate_tree: tuple(candidate_tree.selection()),
+            ability_field_tree: tuple(ability_field_tree.selection()),
+        }
+        fields = state.get("unit_fields")
+        if isinstance(fields, dict) and fields:
+            populate_unit_fields(list(fields.values()))
+        locks = state.get("locks")
+        if isinstance(locks, dict) and locks:
+            populate_locks()
+        candidates = state.get("selection_candidates")
+        if isinstance(candidates, dict) and candidates:
+            populate_selection_candidates(list(candidates.values()))
+        if isinstance(state.get("ability_field_snapshot"), AbilityFieldSnapshot):
+            refresh_ability_field_tree()
+        for tree_widget, selected_items in selections.items():
+            existing_items = tuple(
+                item for item in selected_items if tree_widget.exists(item)
+            )
+            if existing_items:
+                tree_widget.selection_set(existing_items)
+                tree_widget.focus(existing_items[0])
+
+    def refresh_gui_language() -> None:
+        root.title(ui_text(f"魔兽争霸3重制版修改器 v{APP_VERSION}"))
+        capture_translatable_widgets(root)
+        for widget, source in tuple(widget_text_sources.items()):
+            try:
+                widget.configure(text=ui_text(source))
+            except tk.TclError:
+                pass
+        for (notebook_widget, tab_id), source in tuple(notebook_tab_sources.items()):
+            try:
+                notebook_widget.tab(tab_id, text=ui_text(source))
+            except tk.TclError:
+                pass
+        for (tree_widget, column), source in tuple(tree_heading_sources.items()):
+            try:
+                tree_widget.heading(column, text=ui_text(source))
+            except tk.TclError:
+                pass
+        for variable in (
+            status,
+            ability_field_summary,
+            ability_field_detail,
+            elephant_hotkey_status,
+        ):
+            variable.refresh()
+        refresh_language_dependent_rows()
+
+    def on_language_changed(_event: object | None = None) -> None:
+        ui_language["code"] = "zh" if language_choice.get() == "中文" else "en"
+        refresh_gui_language()
 
     outer = ttk.Frame(root, padding=12)
     outer.pack(fill="both", expand=True)
@@ -14314,7 +14430,19 @@ def run_gui() -> None:
     backup_read_button.pack(side="left", padx=(4, 0))
     ttk.Label(top, text="PID").pack(side="left", padx=(16, 4))
     ttk.Entry(top, textvariable=pid_var, width=10, state="readonly").pack(side="left")
-    ttk.Label(top, textvariable=status).pack(side="right")
+    language_frame = ttk.Frame(top)
+    language_frame.pack(side="right")
+    ttk.Label(language_frame, text="语言").pack(side="left", padx=(8, 4))
+    language_selector = ttk.Combobox(
+        language_frame,
+        textvariable=language_choice,
+        values=("中文", "English"),
+        width=9,
+        state="readonly",
+    )
+    language_selector.pack(side="left")
+    language_selector.bind("<<ComboboxSelected>>", on_language_changed)
+    ttk.Label(top, textvariable=status).pack(side="right", padx=(8, 0))
 
     notebook = ttk.Notebook(outer)
     notebook.pack(fill="both", expand=True, pady=(12, 8))
@@ -14330,7 +14458,7 @@ def run_gui() -> None:
     resource_columns = ("group", "gold", "lumber", "food", "gold_address", "lumber_address", "source")
     resource_tree = ttk.Treeview(resource_frame, columns=resource_columns, show="headings", height=10)
     resource_headings = {
-        "group": ("资源组", 90),
+        "group": ("资源组", 130),
         "gold": ("金币", 80),
         "lumber": ("木材", 80),
         "food": ("人口", 80),
@@ -14950,6 +15078,8 @@ def run_gui() -> None:
         hotkey_body.columnconfigure(column, weight=1, uniform="elephant-hotkeys")
 
     ttk.Label(outer, textvariable=status, anchor="w", wraplength=1000).pack(fill="x", pady=(0, 2))
+
+    refresh_gui_language()
 
     def init() -> None:
         try:

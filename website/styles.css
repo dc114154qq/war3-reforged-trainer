@@ -827,6 +827,62 @@ footer p {
   }
 }
 
+.brand-cluster {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.language-toggle {
+  min-width: 96px;
+  height: 40px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--violet) 28%, var(--line));
+  border-radius: 10px;
+  background: rgba(255, 253, 253, 0.88);
+  color: var(--violet);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(63, 39, 53, 0.05);
+  transition: border-color 160ms ease, background-color 160ms ease, transform 160ms ease;
+}
+
+.language-toggle:hover {
+  border-color: var(--violet);
+  background: var(--surface);
+  transform: translateY(-1px);
+}
+
+.language-toggle svg {
+  width: 17px;
+  height: 17px;
+  stroke-width: 1.9;
+}
+
+@media (max-width: 600px) {
+  .brand-cluster {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .brand-cluster .brand {
+    min-width: 0;
+  }
+
+  .language-toggle {
+    min-width: 86px;
+    height: 44px;
+  }
+}
+
 /* 2026-07 visual refresh: presentation only; content and behavior stay unchanged. */
 :root {
   --page: #f6f2f3;

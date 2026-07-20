@@ -4,7 +4,14 @@ const state = {
   releases: [],
   query: "",
   sort: "newest",
+  language: "zh",
+  manualLanguage: false,
+  generatedAt: "",
 };
+
+const i18n = window.SITE_I18N || { zh: {}, en: {}, releaseNames: {}, releaseBodies: {} };
+const LANGUAGE_STORAGE_KEY = "war3-site-language";
+const CHINESE_COUNTRIES = new Set(["CN", "HK", "MO", "TW"]);
 
 const elements = {
   list: document.querySelector("#release-list"),
@@ -24,7 +31,118 @@ const elements = {
   latestSha: document.querySelector("#latest-sha"),
   latestCopy: document.querySelector("#copy-latest-sha"),
   syncTime: document.querySelector("#sync-time"),
+  languageToggle: document.querySelector("#language-toggle"),
+  siteTitle: document.querySelector("#site-title"),
+  siteDescription: document.querySelector("#site-description"),
 };
+
+function t(key, values = {}) {
+  const dictionary = i18n[state.language] || i18n.zh;
+  let value = dictionary[key] ?? i18n.zh[key] ?? key;
+  Object.entries(values).forEach(([name, replacement]) => {
+    value = value.replaceAll(`{${name}}`, String(replacement));
+  });
+  return value;
+}
+
+function localizedReleaseBody(release) {
+  return i18n.releaseBodies?.[state.language]?.[release.tag] || release.body || "";
+}
+
+function localizedReleaseName(release) {
+  return i18n.releaseNames?.[state.language]?.[release.tag]
+    || release.name
+    || release.tag;
+}
+
+function localizeRoot(root = document) {
+  root.querySelectorAll("[data-i18n]").forEach((element) => {
+    element.textContent = t(element.dataset.i18n);
+  });
+  root.querySelectorAll("[data-i18n-placeholder]").forEach((element) => {
+    element.placeholder = t(element.dataset.i18nPlaceholder);
+  });
+  root.querySelectorAll("[data-i18n-title]").forEach((element) => {
+    element.title = t(element.dataset.i18nTitle);
+  });
+  root.querySelectorAll("[data-i18n-aria-label]").forEach((element) => {
+    element.setAttribute("aria-label", t(element.dataset.i18nAriaLabel));
+  });
+}
+
+function readStoredLanguage() {
+  try {
+    const value = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+    return value === "zh" || value === "en" ? value : "";
+  } catch {
+    return "";
+  }
+}
+
+function browserLanguage() {
+  const languages = navigator.languages?.length ? navigator.languages : [navigator.language];
+  return languages.some((value) => String(value).toLowerCase().startsWith("zh")) ? "zh" : "en";
+}
+
+function countryLanguage(country) {
+  return CHINESE_COUNTRIES.has(String(country || "").toUpperCase()) ? "zh" : "en";
+}
+
+function saveLanguage(language) {
+  try {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
+  } catch {
+    // Private browsing can disable localStorage; the current page still switches.
+  }
+}
+
+function applyLanguage(language, { manual = false } = {}) {
+  state.language = language === "en" ? "en" : "zh";
+  if (manual) {
+    state.manualLanguage = true;
+    saveLanguage(state.language);
+  }
+  document.documentElement.lang = state.language === "en" ? "en" : "zh-CN";
+  document.title = t("siteTitle");
+  elements.siteTitle?.setAttribute("data-i18n", "siteTitle");
+  if (elements.siteDescription) elements.siteDescription.content = t("siteDescription");
+  localizeRoot(document);
+  if (elements.languageToggle) {
+    elements.languageToggle.setAttribute("aria-label", t("languageToggleTitle"));
+    elements.languageToggle.title = t("languageToggleTitle");
+    const targetLanguage = state.language === "zh" ? "en" : "zh";
+    const languageUrl = new URL(window.location.href);
+    languageUrl.searchParams.set("lang", targetLanguage);
+    languageUrl.hash = "";
+    elements.languageToggle.href = `${languageUrl.pathname}${languageUrl.search}`;
+  }
+  if (state.releases.length) {
+    renderLatest(state.releases[0]);
+    renderList();
+    elements.syncTime.textContent = state.generatedAt
+      ? t("indexUpdated", { date: formatDate(state.generatedAt) })
+      : "";
+  }
+}
+
+async function detectCountryLanguage() {
+  if (state.manualLanguage) return;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 1800);
+  try {
+    const response = await fetch("https://api.country.is/", {
+      signal: controller.signal,
+      cache: "no-store",
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    if (!state.manualLanguage && data.country) applyLanguage(countryLanguage(data.country));
+  } catch {
+    // The browser locale is already applied; language detection is best-effort.
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -111,7 +229,7 @@ function markdownToHtml(markdown) {
 
 function formatBytes(bytes) {
   const value = Number(bytes);
-  if (!Number.isFinite(value) || value <= 0) return "未知";
+  if (!Number.isFinite(value) || value <= 0) return t("unknown");
   const units = ["B", "KB", "MB", "GB"];
   const exponent = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
   const amount = value / 1024 ** exponent;
@@ -120,8 +238,8 @@ function formatBytes(bytes) {
 
 function formatDate(value) {
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "未知";
-  return new Intl.DateTimeFormat("zh-CN", {
+  if (Number.isNaN(date.getTime())) return t("unknown");
+  return new Intl.DateTimeFormat(state.language === "en" ? "en-US" : "zh-CN", {
     timeZone: "Asia/Shanghai",
     year: "numeric",
     month: "long",
@@ -136,37 +254,39 @@ function firstParagraph(body) {
     if (!text || text.startsWith("#") || text.startsWith("-") || text.startsWith("```")) continue;
     return text.replaceAll("`", "").replaceAll("**", "");
   }
-  return "查看该版本的完整更新、验证记录和兼容性说明。";
+  return state.language === "en"
+    ? "See the complete release notes, verification details and compatibility information."
+    : "查看该版本的完整更新、验证记录和兼容性说明。";
 }
 
 async function copyText(value, button) {
   try {
     await navigator.clipboard.writeText(value);
     const originalTitle = button.title;
-    button.title = "已复制";
+    button.title = t("copied");
     button.classList.add("is-copied");
     setTimeout(() => {
       button.title = originalTitle;
       button.classList.remove("is-copied");
     }, 1400);
   } catch {
-    button.title = "复制失败";
+    button.title = t("copyFailed");
   }
 }
 
 function renderLatest(release) {
   elements.latestTitle.textContent = release.tag;
-  elements.latestSummary.textContent = firstParagraph(release.body);
+  elements.latestSummary.textContent = firstParagraph(localizedReleaseBody(release));
   elements.latestCompatibility.textContent = release.compatibility || "Warcraft III 2.0.4.23745";
   elements.latestSize.textContent = formatBytes(release.asset?.size);
   elements.latestDate.textContent = formatDate(release.published_at);
-  elements.latestSha.textContent = release.asset?.sha256 || "未提供";
+  elements.latestSha.textContent = release.asset?.sha256 || t("noAsset");
   elements.latestDownload.href = release.asset?.url || "#";
   elements.latestDownload.classList.remove("is-disabled");
   elements.latestDownload.removeAttribute("aria-disabled");
   elements.latestNotesLink.href = `#release-${release.tag.replace(/[^a-zA-Z0-9.-]/g, "-")}`;
   elements.latestCopy.disabled = !release.asset?.sha256;
-  elements.latestCopy.addEventListener("click", () => copyText(release.asset.sha256, elements.latestCopy));
+  elements.latestCopy.onclick = () => copyText(release.asset.sha256, elements.latestCopy);
 }
 
 function createReleaseElement(release, index) {
@@ -175,35 +295,37 @@ function createReleaseElement(release, index) {
   const title = fragment.querySelector("h3");
   const badge = fragment.querySelector(".latest-badge");
   const download = fragment.querySelector(".release-download");
-  const sha = release.asset?.sha256 || "未提供";
+  const sha = release.asset?.sha256 || t("noAsset");
 
   article.id = `release-${release.tag.replace(/[^a-zA-Z0-9.-]/g, "-")}`;
-  title.textContent = release.name && release.name !== release.tag ? `${release.tag} · ${release.name}` : release.tag;
+  const releaseName = localizedReleaseName(release);
+  title.textContent = releaseName !== release.tag ? `${release.tag} · ${releaseName}` : release.tag;
   badge.hidden = index !== 0;
-  fragment.querySelector(".release-date").textContent = `${formatDate(release.published_at)} 发布`;
-  fragment.querySelector(".release-intro").textContent = firstParagraph(release.body);
-  fragment.querySelector(".asset-name").textContent = release.asset?.name || "未提供";
+  fragment.querySelector(".release-date").textContent = `${formatDate(release.published_at)} ${t("published")}`;
+  fragment.querySelector(".release-intro").textContent = firstParagraph(localizedReleaseBody(release));
+  fragment.querySelector(".asset-name").textContent = release.asset?.name || t("noAsset");
   fragment.querySelector(".asset-size").textContent = formatBytes(release.asset?.size);
   fragment.querySelector(".asset-sha").textContent = sha;
-  fragment.querySelector(".markdown-body").innerHTML = markdownToHtml(release.body);
+  fragment.querySelector(".markdown-body").innerHTML = markdownToHtml(localizedReleaseBody(release));
   download.href = release.asset?.url || "#";
   if (!release.asset?.url) {
     download.setAttribute("aria-disabled", "true");
   }
 
   const copyButton = fragment.querySelector(".asset-copy");
+  localizeRoot(fragment);
   copyButton.disabled = !release.asset?.sha256;
   copyButton.addEventListener("click", () => copyText(sha, copyButton));
   return fragment;
 }
 
 function filteredReleases() {
-  const query = state.query.trim().toLocaleLowerCase("zh-CN");
+  const query = state.query.trim().toLocaleLowerCase(state.language === "en" ? "en-US" : "zh-CN");
   const matches = query
     ? state.releases.filter((release) =>
-        [release.tag, release.name, release.body, release.asset?.name]
+        [release.tag, localizedReleaseName(release), localizedReleaseBody(release), release.name, release.body, release.asset?.name]
           .filter(Boolean)
-          .some((value) => String(value).toLocaleLowerCase("zh-CN").includes(query)),
+          .some((value) => String(value).toLocaleLowerCase(state.language === "en" ? "en-US" : "zh-CN").includes(query)),
       )
     : [...state.releases];
   return matches.sort((a, b) => {
@@ -216,7 +338,7 @@ function renderList() {
   const releases = filteredReleases();
   elements.list.replaceChildren();
   elements.empty.hidden = releases.length !== 0;
-  elements.count.textContent = `共 ${releases.length} 个版本`;
+  elements.count.textContent = t("releaseCount", { count: releases.length });
   releases.forEach((release) => elements.list.append(createReleaseElement(release, state.releases.indexOf(release))));
   if (window.lucide) window.lucide.createIcons();
 }
@@ -228,15 +350,16 @@ async function loadReleases() {
     const data = await response.json();
     if (!Array.isArray(data.releases) || data.releases.length === 0) throw new Error("empty release index");
     state.releases = data.releases.sort((a, b) => new Date(b.published_at) - new Date(a.published_at));
+    state.generatedAt = data.generated_at || "";
     renderLatest(state.releases[0]);
     renderList();
-    elements.syncTime.textContent = data.generated_at ? `版本索引更新于 ${formatDate(data.generated_at)}` : "";
+    elements.syncTime.textContent = data.generated_at ? t("indexUpdated", { date: formatDate(data.generated_at) }) : "";
   } catch (error) {
     elements.list.replaceChildren();
     elements.error.hidden = false;
     elements.count.textContent = "";
-    elements.latestTitle.textContent = "版本索引不可用";
-    elements.latestSummary.textContent = "服务器未能返回版本数据。";
+    elements.latestTitle.textContent = t("indexErrorTitle");
+    elements.latestSummary.textContent = t("indexErrorBody");
     console.error(error);
   }
 }
@@ -254,5 +377,17 @@ elements.sort.addEventListener("change", (event) => {
 window.addEventListener("DOMContentLoaded", () => {
   if (window.lucide) window.lucide.createIcons();
 });
+
+const queryLanguage = new URLSearchParams(window.location.search).get("lang");
+const storedLanguage = readStoredLanguage();
+if (queryLanguage === "zh" || queryLanguage === "en") {
+  applyLanguage(queryLanguage, { manual: true });
+} else if (storedLanguage) {
+  state.manualLanguage = true;
+  applyLanguage(storedLanguage);
+} else {
+  applyLanguage(browserLanguage());
+  detectCountryLanguage();
+}
 
 loadReleases();

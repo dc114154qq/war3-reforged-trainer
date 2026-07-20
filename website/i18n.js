@@ -145,6 +145,17 @@ window.SITE_I18N = {
   },
   releaseBodies: {
     en: {
+      "v1.0.5": String.raw`# Release notes
+
+## v1.0.5
+
+- Fixed Elephant global shortcuts being reported only as generic key conflicts.
+- All 45 shortcuts still use Windows RegisterHotKey first. A shortcut switches to compatibility monitoring only when Windows returns WinError 1409.
+- Compatibility monitoring validates Ctrl, Alt, Shift and Windows modifiers exactly and triggers only once per key press.
+- The shortcut status now lists compatibility-monitored keys and unresolved WinError codes instead of showing only a conflict count.
+- Dangerous shortcuts remain disabled by default. Elephant native initialization, normal reads, backup reads and all other feature paths are unchanged.
+
+Verified on Warcraft III: Reforged 2.0.4.23745. Automated tests cover Ctrl, Alt and unmodified shortcuts.` ,
       "v1.0.4": String.raw`# Release notes
 
 ## v1.0.4

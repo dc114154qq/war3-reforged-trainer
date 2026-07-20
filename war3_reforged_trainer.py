@@ -30,7 +30,7 @@ from war3_ability_fields import (
 )
 
 
-APP_VERSION = "1.0.4"
+APP_VERSION = "1.0.5"
 WIN10_COMPAT_REVISION = "backup-r5-readable-low-va"
 
 
@@ -67,14 +67,21 @@ WM_NULL = 0x0000
 WM_QUIT = 0x0012
 WM_HOTKEY = 0x0312
 VK_RETURN = 0x0D
+VK_SHIFT = 0x10
+VK_CONTROL = 0x11
+VK_MENU = 0x12
 VK_F1 = 0x70
 VK_HOME = 0x24
 VK_END = 0x23
+VK_LWIN = 0x5B
+VK_RWIN = 0x5C
 VK_NUMPAD1 = 0x61
 VK_NUMPAD2 = 0x62
 VK_NUMPAD3 = 0x63
 MOD_ALT = 0x0001
 MOD_CONTROL = 0x0002
+MOD_SHIFT = 0x0004
+MOD_WIN = 0x0008
 MOD_NOREPEAT = 0x4000
 SW_RESTORE = 9
 HWND_TOPMOST = -1
@@ -89,6 +96,7 @@ WAIT_TIMEOUT = 0x00000102
 ERROR_NOT_SUPPORTED = 50
 ERROR_NOT_FOUND = 1168
 ERROR_PARTIAL_COPY = 299
+ERROR_HOTKEY_ALREADY_REGISTERED = 1409
 
 
 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -160,6 +168,8 @@ user32.GetMessageW.argtypes = (ctypes.POINTER(MSG), ctypes.c_void_p, ctypes.c_ui
 user32.GetMessageW.restype = ctypes.c_int
 user32.PostThreadMessageW.argtypes = (ctypes.c_ulong, ctypes.c_uint, ctypes.c_size_t, ctypes.c_ssize_t)
 user32.PostThreadMessageW.restype = ctypes.c_bool
+user32.GetAsyncKeyState.argtypes = (ctypes.c_int,)
+user32.GetAsyncKeyState.restype = ctypes.c_short
 
 
 @dataclass(frozen=True)
@@ -168,6 +178,25 @@ class GlobalHotkeySpec:
     label: str
     modifiers: int
     virtual_key: int
+    poll_on_conflict: bool = True
+
+
+def async_hotkey_is_down(spec: GlobalHotkeySpec) -> bool:
+    modifier_states = (
+        (MOD_ALT, bool(int(user32.GetAsyncKeyState(VK_MENU)) & 0x8000)),
+        (MOD_CONTROL, bool(int(user32.GetAsyncKeyState(VK_CONTROL)) & 0x8000)),
+        (MOD_SHIFT, bool(int(user32.GetAsyncKeyState(VK_SHIFT)) & 0x8000)),
+        (
+            MOD_WIN,
+            bool(
+                (int(user32.GetAsyncKeyState(VK_LWIN)) & 0x8000)
+                or (int(user32.GetAsyncKeyState(VK_RWIN)) & 0x8000)
+            ),
+        ),
+    )
+    if any(bool(spec.modifiers & mask) != is_down for mask, is_down in modifier_states):
+        return False
+    return bool(int(user32.GetAsyncKeyState(spec.virtual_key)) & 0x8000)
 
 
 class GlobalHotkeyManager:
@@ -176,11 +205,19 @@ class GlobalHotkeyManager:
         self._thread: threading.Thread | None = None
         self._thread_id = 0
         self._registered_names: tuple[str, ...] = ()
+        self._fallback_thread: threading.Thread | None = None
+        self._fallback_stop: threading.Event | None = None
+        self._fallback_names: tuple[str, ...] = ()
 
     @property
     def registered_names(self) -> tuple[str, ...]:
         with self._lock:
             return self._registered_names
+
+    @property
+    def fallback_names(self) -> tuple[str, ...]:
+        with self._lock:
+            return self._fallback_names
 
     def start(
         self,
@@ -242,12 +279,58 @@ class GlobalHotkeyManager:
         if not ready.wait(3.0):
             self.stop()
             raise RuntimeError("全局快捷键线程启动超时")
+        fallback_specs = tuple(
+            spec
+            for spec in spec_list
+            if errors.get(spec.name) == ERROR_HOTKEY_ALREADY_REGISTERED
+            and spec.poll_on_conflict
+        )
+        if fallback_specs:
+            fallback_stop = threading.Event()
+
+            def fallback_worker() -> None:
+                pressed = {spec.name: False for spec in fallback_specs}
+                try:
+                    while not fallback_stop.is_set():
+                        for spec in fallback_specs:
+                            is_down = async_hotkey_is_down(spec)
+                            if is_down and not pressed[spec.name]:
+                                try:
+                                    on_trigger(spec.name)
+                                except Exception:
+                                    pass
+                            pressed[spec.name] = is_down
+                        fallback_stop.wait(0.02)
+                finally:
+                    current = threading.current_thread()
+                    with self._lock:
+                        if self._fallback_thread is current:
+                            self._fallback_thread = None
+                            self._fallback_stop = None
+                            self._fallback_names = ()
+
+            fallback_thread = threading.Thread(
+                target=fallback_worker,
+                name="war3-global-hotkeys-fallback",
+                daemon=True,
+            )
+            with self._lock:
+                self._fallback_thread = fallback_thread
+                self._fallback_stop = fallback_stop
+                self._fallback_names = tuple(spec.name for spec in fallback_specs)
+            fallback_thread.start()
         return dict(errors)
 
     def stop(self) -> None:
         with self._lock:
             thread = self._thread
             thread_id = self._thread_id
+            fallback_thread = self._fallback_thread
+            fallback_stop = self._fallback_stop
+        if fallback_stop is not None:
+            fallback_stop.set()
+        if fallback_thread is not None and fallback_thread.is_alive():
+            fallback_thread.join(timeout=2.0)
         if thread is None:
             return
         if thread.is_alive() and thread_id:
@@ -14173,8 +14256,29 @@ def run_gui() -> None:
         )
         errors = hotkey_manager.start(enabled_specs, on_global_hotkey)
         registered = len(hotkey_manager.registered_names)
-        if errors:
-            elephant_hotkey_status.set(f"已注册 {registered} 个，{len(errors)} 个按键冲突")
+        fallback_names = hotkey_manager.fallback_names
+        unresolved_errors = {
+            name: error
+            for name, error in errors.items()
+            if name not in fallback_names
+        }
+        active_count = registered + len(fallback_names)
+        if unresolved_errors:
+            conflict_details = "、".join(
+                f"{hotkey_specs_by_name[name].label.split('  ', 1)[0]}（WinError {error}）"
+                for name, error in unresolved_errors.items()
+            )
+            elephant_hotkey_status.set(
+                f"已启用 {active_count} 个，冲突 {len(unresolved_errors)} 个：{conflict_details}"
+            )
+        elif fallback_names:
+            fallback_labels = "、".join(
+                hotkey_specs_by_name[name].label.split("  ", 1)[0]
+                for name in fallback_names
+            )
+            elephant_hotkey_status.set(
+                f"已启用 {active_count} 个（兼容监听：{fallback_labels}）"
+            )
         else:
             elephant_hotkey_status.set(f"已注册 {registered} 个全局快捷键")
         set_status(elephant_hotkey_status.get())

@@ -1,7 +1,7 @@
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(1, 0, 4, 0),
-    prodvers=(1, 0, 4, 0),
+    filevers=(1, 0, 5, 0),
+    prodvers=(1, 0, 5, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -16,11 +16,11 @@ VSVersionInfo(
         [
           StringStruct('CompanyName', 'twomengxi.xyz'),
           StringStruct('FileDescription', '魔兽争霸3重制版修改器'),
-          StringStruct('FileVersion', '1.0.4'),
+          StringStruct('FileVersion', '1.0.5'),
           StringStruct('InternalName', 'War3ReforgedTrainer'),
-          StringStruct('OriginalFilename', 'War3ReforgedTrainer-v1.0.4.exe'),
+          StringStruct('OriginalFilename', 'War3ReforgedTrainer-v1.0.5.exe'),
           StringStruct('ProductName', '魔兽争霸3重制版修改器'),
-          StringStruct('ProductVersion', '1.0.4'),
+          StringStruct('ProductVersion', '1.0.5'),
         ],
       )
     ]),

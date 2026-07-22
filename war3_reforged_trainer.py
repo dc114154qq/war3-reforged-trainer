@@ -28,10 +28,11 @@ from war3_ability_fields import (
     AbilityFieldSpec,
     ability_fields_for_effect_class,
 )
+from war3_id_catalog import CATALOG_COUNTS, search_id_entries
 from war3_ui_i18n import detect_ui_language, translate_ui_text
 
 
-APP_VERSION = "1.0.6"
+APP_VERSION = "1.0.7"
 WIN10_COMPAT_REVISION = "backup-r5-readable-low-va"
 
 
@@ -12710,6 +12711,15 @@ def run_gui() -> None:
     ability_field_detail = LocalizedStringVar(value="")
     ability_field_show_zero = tk.BooleanVar(value=True)
     ability_field_show_unsupported = tk.BooleanVar(value=True)
+    id_catalog_queries = {
+        kind: tk.StringVar(value="")
+        for kind in ("item", "ability", "unit")
+    }
+    id_catalog_statuses = {
+        kind: LocalizedStringVar(value=f"记录数：{CATALOG_COUNTS[kind]}")
+        for kind in ("item", "ability", "unit")
+    }
+    id_catalog_trees: dict[str, ttk.Treeview] = {}
     elephant_tech_rawcode = tk.StringVar(value="")
     elephant_tech_level = tk.StringVar(value="1")
     elephant_xp_rate = tk.StringVar(value="1.0")
@@ -14322,6 +14332,145 @@ def run_gui() -> None:
         if messagebox.askyesno(ui_text(title), ui_text(prompt), parent=root):
             call_async(fn, f"elephant:{title}")
 
+    def refresh_id_catalog_tree(kind: str) -> None:
+        tree = id_catalog_trees.get(kind)
+        if tree is None:
+            return
+        selected = tuple(tree.selection())
+        tree.delete(*tree.get_children())
+        entries = search_id_entries(kind, id_catalog_queries[kind].get())
+        for entry in entries:
+            category = (
+                entry.category_zh
+                if ui_language["code"] == "zh"
+                else entry.category_en
+            )
+            tree.insert(
+                "",
+                "end",
+                iid=entry.rawcode,
+                values=(entry.rawcode, entry.name_zh, entry.name_en, category),
+            )
+        for iid in selected:
+            if tree.exists(iid):
+                tree.selection_add(iid)
+        id_catalog_statuses[kind].set(f"记录数：{len(entries)}")
+
+    def clear_id_catalog_search(kind: str) -> None:
+        id_catalog_queries[kind].set("")
+        refresh_id_catalog_tree(kind)
+
+    def copy_selected_catalog_id(kind: str) -> None:
+        tree = id_catalog_trees[kind]
+        selected = tree.selection()
+        if not selected:
+            messagebox.showerror(
+                ui_text("错误"),
+                ui_text("请先在 ID 表格里选择一项"),
+                parent=root,
+            )
+            return
+        rawcode = str(selected[0])
+        root.clipboard_clear()
+        root.clipboard_append(rawcode)
+        set_status(f"已复制 ID：{rawcode}")
+
+    def copy_catalog_id_from_event(kind: str, event: object) -> None:
+        tree = id_catalog_trees[kind]
+        row_id = tree.identify_row(getattr(event, "y", 0))
+        if not row_id:
+            return
+        tree.selection_set(row_id)
+        tree.focus(row_id)
+        copy_selected_catalog_id(kind)
+
+    def build_id_catalog_tab(kind: str, title: str) -> None:
+        tab = ttk.Frame(notebook, padding=10)
+        notebook.add(tab, text=title)
+        toolbar = ttk.Frame(tab)
+        toolbar.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        ttk.Label(toolbar, text="搜索 ID、中文名或英文名").grid(
+            row=0,
+            column=0,
+            sticky="w",
+        )
+        search_entry = ttk.Entry(
+            toolbar,
+            textvariable=id_catalog_queries[kind],
+            width=36,
+        )
+        search_entry.grid(row=0, column=1, sticky="ew", padx=(8, 6))
+        search_entry.bind(
+            "<KeyRelease>",
+            lambda _event, catalog_kind=kind: refresh_id_catalog_tree(catalog_kind),
+        )
+        ttk.Button(
+            toolbar,
+            text="清空",
+            command=lambda catalog_kind=kind: clear_id_catalog_search(catalog_kind),
+        ).grid(row=0, column=2, padx=(0, 6))
+        ttk.Button(
+            toolbar,
+            text="复制 ID",
+            command=lambda catalog_kind=kind: copy_selected_catalog_id(catalog_kind),
+        ).grid(row=0, column=3)
+        ttk.Label(toolbar, textvariable=id_catalog_statuses[kind]).grid(
+            row=0,
+            column=4,
+            sticky="e",
+            padx=(14, 0),
+        )
+        toolbar.columnconfigure(1, weight=1)
+
+        table_frame = ttk.Frame(tab)
+        table_frame.grid(row=1, column=0, sticky="nsew")
+        tree = ttk.Treeview(
+            table_frame,
+            columns=("rawcode", "name_zh", "name_en", "category"),
+            show="headings",
+            height=20,
+            selectmode="browse",
+        )
+        for column, heading, width, stretch in (
+            ("rawcode", "ID / Rawcode", 130, False),
+            ("name_zh", "中文名称", 300, True),
+            ("name_en", "English Name", 360, True),
+            ("category", "类别", 160, False),
+        ):
+            tree.heading(column, text=heading)
+            tree.column(
+                column,
+                width=width,
+                minwidth=width,
+                anchor="w",
+                stretch=stretch,
+            )
+        scroll = ttk.Scrollbar(table_frame, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=scroll.set)
+        tree.grid(row=0, column=0, sticky="nsew")
+        scroll.grid(row=0, column=1, sticky="ns")
+        table_frame.rowconfigure(0, weight=1)
+        table_frame.columnconfigure(0, weight=1)
+        tree.bind(
+            "<Double-1>",
+            lambda event, catalog_kind=kind: copy_catalog_id_from_event(
+                catalog_kind,
+                event,
+            ),
+        )
+        id_catalog_trees[kind] = tree
+
+        ttk.Label(
+            tab,
+            text="双击表格行可复制 ID。数据来源：W3x2LNI zhCN-1.32.8 与 war3-objectdata 英文社区快照；自定义地图对象不在通用目录内。",
+            anchor="w",
+            justify="left",
+            wraplength=1080,
+        ).grid(row=2, column=0, sticky="ew", pady=(8, 0))
+        tab.rowconfigure(1, weight=1)
+        tab.columnconfigure(0, weight=1)
+        refresh_id_catalog_tree(kind)
+
     widget_text_sources: dict[object, str] = {}
     notebook_tab_sources: dict[tuple[object, str], str] = {}
     tree_heading_sources: dict[tuple[object, str], str] = {}
@@ -14359,6 +14508,12 @@ def run_gui() -> None:
             candidate_tree: tuple(candidate_tree.selection()),
             ability_field_tree: tuple(ability_field_tree.selection()),
         }
+        selections.update(
+            {
+                tree: tuple(tree.selection())
+                for tree in id_catalog_trees.values()
+            }
+        )
         fields = state.get("unit_fields")
         if isinstance(fields, dict) and fields:
             populate_unit_fields(list(fields.values()))
@@ -14370,6 +14525,8 @@ def run_gui() -> None:
             populate_selection_candidates(list(candidates.values()))
         if isinstance(state.get("ability_field_snapshot"), AbilityFieldSnapshot):
             refresh_ability_field_tree()
+        for kind in id_catalog_trees:
+            refresh_id_catalog_tree(kind)
         for tree_widget, selected_items in selections.items():
             existing_items = tuple(
                 item for item in selected_items if tree_widget.exists(item)
@@ -14401,6 +14558,7 @@ def run_gui() -> None:
             ability_field_summary,
             ability_field_detail,
             elephant_hotkey_status,
+            *id_catalog_statuses.values(),
         ):
             variable.refresh()
         refresh_language_dependent_rows()
@@ -15076,6 +15234,10 @@ def run_gui() -> None:
         item.columnconfigure(0, weight=1)
     for column in range(3):
         hotkey_body.columnconfigure(column, weight=1, uniform="elephant-hotkeys")
+
+    build_id_catalog_tab("item", "物品 ID")
+    build_id_catalog_tab("ability", "技能 ID")
+    build_id_catalog_tab("unit", "单位 ID")
 
     ttk.Label(outer, textvariable=status, anchor="w", wraplength=1000).pack(fill="x", pady=(0, 2))
 

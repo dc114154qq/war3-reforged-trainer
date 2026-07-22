@@ -10,7 +10,7 @@
 
 ## 下载和运行
 
-从 GitHub Release 下载 `War3ReforgedTrainer-v1.0.6.exe`，直接双击运行即可。这是 PyInstaller 打包的单文件 GUI 程序，不会额外弹出终端窗口，也不需要安装 Python。
+从 GitHub Release 下载 `War3ReforgedTrainer-v1.0.7.exe`，直接双击运行即可。这是 PyInstaller 打包的单文件 GUI 程序，不会额外弹出终端窗口，也不需要安装 Python。
 
 运行前请先启动《魔兽争霸 III：重制版》，进入地图并选中目标单位。修改器会自动查找正在运行的 `Warcraft III.exe`。
 
@@ -40,6 +40,13 @@
 - 英雄技能：读取并替换已学技能的 rawcode。写入时会同步英雄技能配置和运行时 ability 实例，并刷新命令卡；目标技能不要求当前局已有存活单位模板，只要 Reforged 引擎能从当前地图/对象数据创建该 rawcode 的 ability，即可生成安全的运行时模板。
 - 技能字段：在独立页面输入技能 rawcode 和字段等级，读取当前技能实例已开放的整数、实数、布尔和字符串字段，并对选中字段进行本局临时写入与读回校验。
 - 大象功能与快捷键：提供地图、单位、英雄、物品、技能、科技、增益/减益及全屏效果等功能，并配套 45 个可独立启用的全局快捷键。快捷键优先使用 Windows 全局注册；组合键被占用时会自动切换为兼容监听，并在界面中列出进入兼容监听的按键。
+- ID 目录：在“大象功能”后新增“物品 ID”“技能 ID”“单位 ID”三个查询页，提供 283 个物品、833 个技能和 864 个单位 rawcode。可按 ID、中英文名称搜索并复制四字符 rawcode；目录查询不会写入游戏。
+
+### ID 目录来源
+
+- 中文名称来自社区项目 [W3x2LNI 的 zhCN-1.32.8 预构建对象数据](https://github.com/sumneko/w3x2lni/tree/82916514a12b7edb15252d42225cd8cc8ce61cfd/data/zhCN-1.32.8/prebuilt)。
+- 英文名称来自 MIT 许可的 [war3-objectdata 对象数据](https://github.com/flowtsohg/war3-objectdata/tree/dc5e2da21217dba8e5f750c1e867d691ab193ec1/objectdata)，并以同 rawcode 对齐。
+- 这些是固定版本的社区快照，不代表暴雪每个后续补丁的完整差异。自定义地图新增对象通常不在通用目录内，需要从地图资源读取或手动输入。
 
 ## 当前限制
 

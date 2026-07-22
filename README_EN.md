@@ -10,7 +10,7 @@ This project links to and recognizes the [LINUX DO community](https://linux.do/)
 
 ## Download and Run
 
-Download `War3ReforgedTrainer-v1.0.6.exe` from GitHub Releases and run it directly. It is a single-file GUI application packaged with PyInstaller. It does not open an additional console window and does not require Python to be installed.
+Download `War3ReforgedTrainer-v1.0.7.exe` from GitHub Releases and run it directly. It is a single-file GUI application packaged with PyInstaller. It does not open an additional console window and does not require Python to be installed.
 
 Before running the trainer, start Warcraft III: Reforged, enter a map, and select the target unit. The trainer will automatically find the running `Warcraft III.exe` process.
 
@@ -40,6 +40,13 @@ If clicking `Read Selected Unit` causes `WinError 299`, displays only part of th
 - Hero abilities: read and replace learned ability rawcodes. A write synchronizes the hero ability configuration with the runtime ability instance and refreshes the command card. The target ability does not require a living unit template in the current match. If the Reforged engine can create an ability with that rawcode from the current map/object data, the trainer can produce a safe runtime template.
 - Ability fields: enter an ability rawcode and field level on the dedicated page to read exposed integer, real, Boolean, and string fields from the current ability instance. Selected fields can be modified temporarily for the current match and verified by reading them back.
 - Elephant Features and hotkeys: provides map, unit, hero, item, ability, technology, buff/debuff, and full-screen effect functions, together with 45 independently configurable global hotkeys. Hotkeys first use Windows global registration. If a key combination is already occupied, the trainer automatically switches it to compatibility listening and lists the affected keys in the interface.
+- ID catalogs: after the Elephant Features page, three lookup pages provide Item IDs, Ability IDs, and Unit IDs. They contain 283 items, 833 abilities, and 864 unit rawcodes. Search by ID or either language, copy a selected four-character rawcode, and never write to the game process.
+
+### ID Catalog Sources
+
+- Chinese names come from the community project's [W3x2LNI zhCN-1.32.8 prebuilt object data](https://github.com/sumneko/w3x2lni/tree/82916514a12b7edb15252d42225cd8cc8ce61cfd/data/zhCN-1.32.8/prebuilt).
+- English names come from the MIT-licensed [war3-objectdata object data](https://github.com/flowtsohg/war3-objectdata/tree/dc5e2da21217dba8e5f750c1e867d691ab193ec1/objectdata), aligned by rawcode.
+- These are fixed-version community snapshots and do not represent every later Blizzard patch. Custom map objects are generally outside the general catalog and must be read from map resources or entered manually.
 
 ## Current Limitations
 

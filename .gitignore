@@ -19,3 +19,13 @@ website/__pycache__/
 website/qa-*.png
 website/downloads/
 website/releases.json
+website/hotkey-releases.json
+
+build-hotkeys*/
+dist-hotkeys*/
+tools/*.test.dll
+tools/*.test.exp
+tools/*.test.lib
+tools/*.new.dll
+tools/*.new.exp
+tools/*.new.lib

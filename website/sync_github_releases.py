@@ -16,6 +16,7 @@ from urllib.request import Request, urlopen
 
 DEFAULT_REPOSITORY = "dc114154qq/war3-reforged-trainer"
 DEFAULT_COMPATIBILITY = "Warcraft III 2.0.4.23745"
+HOTKEY_TAG_PREFIX = "hotkeys-"
 USER_AGENT = "war3-release-mirror/1.0"
 
 
@@ -163,7 +164,29 @@ def atomic_write_json(path: Path, value: Any) -> None:
         raise
 
 
-def build_index(site_root: Path, repository: str, download_assets: bool) -> dict[str, Any]:
+def release_index(repository: str, releases: list[dict[str, Any]]) -> dict[str, Any]:
+    if not releases:
+        raise RuntimeError("No releases were found")
+
+    from datetime import datetime, timezone
+
+    ordered = sorted(
+        releases,
+        key=lambda release: str(release.get("published_at") or ""),
+        reverse=True,
+    )
+    return {
+        "repository": repository,
+        "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "release_count": len(ordered),
+        "latest": ordered[0]["tag"],
+        "releases": ordered,
+    }
+
+
+def build_indexes(
+    site_root: Path, repository: str, download_assets: bool
+) -> tuple[dict[str, Any], dict[str, Any]]:
     manual_path = site_root / "manual-releases.json"
     downloads_dir = site_root / "downloads"
     manual_data = json.loads(manual_path.read_text(encoding="utf-8"))
@@ -172,32 +195,25 @@ def build_index(site_root: Path, repository: str, download_assets: bool) -> dict
         for entry in manual_data.get("releases", [])
     }
 
-    github_releases: dict[str, dict[str, Any]] = {}
+    trainer_github_releases: dict[str, dict[str, Any]] = {}
+    hotkey_github_releases: dict[str, dict[str, Any]] = {}
     for release in load_github_releases(repository):
         normalized = normalize_github_release(release, downloads_dir, download_assets)
         if normalized:
-            github_releases[normalized["tag"]] = normalized
+            destination = (
+                hotkey_github_releases
+                if str(normalized["tag"]).startswith(HOTKEY_TAG_PREFIX)
+                else trainer_github_releases
+            )
+            destination[normalized["tag"]] = normalized
 
     # A published GitHub release is authoritative. Manual entries bridge versions
     # that have a local build but have not been published on GitHub yet.
-    combined = {**manual_releases, **github_releases}
-    releases = sorted(
-        combined.values(),
-        key=lambda release: str(release.get("published_at") or ""),
-        reverse=True,
+    trainer_releases = {**manual_releases, **trainer_github_releases}
+    return (
+        release_index(repository, list(trainer_releases.values())),
+        release_index(repository, list(hotkey_github_releases.values())),
     )
-    if not releases:
-        raise RuntimeError("No releases were found")
-
-    from datetime import datetime, timezone
-
-    return {
-        "repository": repository,
-        "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-        "release_count": len(releases),
-        "latest": releases[0]["tag"],
-        "releases": releases,
-    }
 
 
 def parse_args() -> argparse.Namespace:
@@ -221,12 +237,18 @@ def main() -> int:
     args = parse_args()
     site_root = args.site_root.resolve()
     try:
-        index = build_index(site_root, args.repository, not args.no_download)
-        atomic_write_json(site_root / "releases.json", index)
+        trainer_index, hotkey_index = build_indexes(
+            site_root, args.repository, not args.no_download
+        )
+        atomic_write_json(site_root / "releases.json", trainer_index)
+        atomic_write_json(site_root / "hotkey-releases.json", hotkey_index)
     except (HTTPError, URLError, OSError, ValueError, RuntimeError) as error:
         print(f"release sync failed: {error}")
         return 1
-    print(f"synced {index['release_count']} releases; latest is {index['latest']}")
+    print(
+        f"synced {trainer_index['release_count']} trainer releases "
+        f"and {hotkey_index['release_count']} hotkey releases"
+    )
     return 0
 
 

@@ -103,9 +103,10 @@ function applyLanguage(language, { manual = false } = {}) {
     saveLanguage(state.language);
   }
   document.documentElement.lang = state.language === "en" ? "en" : "zh-CN";
-  document.title = t("siteTitle");
-  elements.siteTitle?.setAttribute("data-i18n", "siteTitle");
-  if (elements.siteDescription) elements.siteDescription.content = t("siteDescription");
+  const titleKey = document.body.dataset.siteTitleKey || "siteTitle";
+  const descriptionKey = document.body.dataset.siteDescriptionKey || "siteDescription";
+  document.title = t(titleKey);
+  if (elements.siteDescription) elements.siteDescription.content = t(descriptionKey);
   localizeRoot(document);
   if (elements.languageToggle) {
     elements.languageToggle.setAttribute("aria-label", t("languageToggleTitle"));
@@ -345,7 +346,8 @@ function renderList() {
 
 async function loadReleases() {
   try {
-    const response = await fetch("releases.json", { cache: "no-store" });
+    const releaseIndex = document.body.dataset.releaseIndex || "/releases.json";
+    const response = await fetch(releaseIndex, { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     if (!Array.isArray(data.releases) || data.releases.length === 0) throw new Error("empty release index");

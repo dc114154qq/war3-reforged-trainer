@@ -4,6 +4,41 @@ window.SITE_I18N = {
   zh: {
     siteTitle: "魔兽争霸 III 重制版修改器 - 版本下载",
     siteDescription: "魔兽争霸 III 重制版修改器全部版本下载与更新记录。",
+    homeSiteTitle: "两杯沈梦溪的个人网站 - Warcraft III 工具",
+    homeSiteDescription: "两杯沈梦溪的 Warcraft III 修改器与改键软件下载和版本归档。",
+    homeBrandAria: "返回软件首页",
+    homeEyebrow: "Warcraft III 工具",
+    homeTitle: "选择要下载的软件",
+    homeLead: "查看完整版本历史、更新内容、文件校验值和下载链接。",
+    productListLabel: "软件列表",
+    trainerProductType: "内存修改工具",
+    trainerProductName: "魔兽争霸 III 重制版修改器",
+    trainerProductDesc: "单位、技能、物品、资源与大象功能的版本归档。",
+    hotkeyProductType: "独立改键工具",
+    hotkeyProductName: "魔兽争霸 III 重制版改键软件",
+    hotkeyProductDesc: "格位快捷键、智能施法与辅助操作的版本归档。",
+    homeFooter: "所有安装包均提供版本记录与 SHA256 校验值。",
+    hotkeySiteTitle: "魔兽争霸 III 重制版改键软件 - 版本下载",
+    hotkeySiteDescription: "魔兽争霸 III 重制版改键软件全部版本下载与更新记录。",
+    hotkeyProjectNav: "改键软件项目链接",
+    hotkeyGithubTitle: "魔兽争霸 III 重制版改键软件 GitHub",
+    hotkeyGithubName: "改键软件 GitHub",
+    hotkeyGithubDesc: "源代码、版本说明与发布文件。",
+    trainerPageTitle: "查看魔兽争霸 III 重制版修改器",
+    trainerPageName: "重制版修改器",
+    trainerPageDesc: "进入修改器的完整版本下载页。",
+    hotkeyHeroTitleA: "魔兽争霸 III",
+    hotkeyHeroTitleB: "重制版改键软件",
+    hotkeyFeatureEyebrow: "独立改键工具",
+    hotkeyFeatureTitle: "每个栏目可独立启用，也可只使用智能施法",
+    hotkeyFeatureBody: "按命令栏格位设置技能、物品、学习技能和商店快捷键，并为每个格位单独开启 SmartCast。",
+    hotkeyFeatureListLabel: "改键软件主要功能",
+    hotkeyFeature1: "四个格位栏目可分别启用或关闭。",
+    hotkeyFeature2: "每个格位可独立设置按键和智能施法。",
+    hotkeyFeature3: "可关闭游戏快捷键覆盖，仅运行智能施法与辅助功能。",
+    hotkeyFeatureFootnote: "当前版本适配 Warcraft III: Reforged 2.0.4.23745；软件与修改器相互独立。",
+    hotkeyReleaseHeading: "改键软件全部版本与更新记录",
+    hotkeyReleaseSearch: "搜索改键版本或更新内容",
     brandName: "两杯沈梦溪的个人网站",
     brandAria: "返回版本首页",
     projectNav: "项目与工具下载",
@@ -71,6 +106,41 @@ window.SITE_I18N = {
   en: {
     siteTitle: "Warcraft III: Reforged Trainer - Releases",
     siteDescription: "Download every release of the Warcraft III: Reforged trainer and read the complete release history.",
+    homeSiteTitle: "Shen Mengxi's Warcraft III Tools",
+    homeSiteDescription: "Downloads and release archives for Shen Mengxi's Warcraft III trainer and hotkey tool.",
+    homeBrandAria: "Back to the software home page",
+    homeEyebrow: "Warcraft III tools",
+    homeTitle: "Choose a download",
+    homeLead: "Browse complete release histories, release notes, checksums and download links.",
+    productListLabel: "Software list",
+    trainerProductType: "Memory editing tool",
+    trainerProductName: "Warcraft III: Reforged Trainer",
+    trainerProductDesc: "Release archive for unit, ability, item, resource and Elephant features.",
+    hotkeyProductType: "Standalone hotkey tool",
+    hotkeyProductName: "Warcraft III: Reforged Hotkey Tool",
+    hotkeyProductDesc: "Release archive for grid hotkeys, SmartCast and input helpers.",
+    homeFooter: "Every executable includes release history and a SHA256 checksum.",
+    hotkeySiteTitle: "Warcraft III: Reforged Hotkey Tool - Releases",
+    hotkeySiteDescription: "Download every release of the Warcraft III: Reforged hotkey tool and read the complete release history.",
+    hotkeyProjectNav: "Hotkey tool project links",
+    hotkeyGithubTitle: "Warcraft III: Reforged Hotkey Tool on GitHub",
+    hotkeyGithubName: "Hotkey Tool GitHub",
+    hotkeyGithubDesc: "Source code, release notes and published files.",
+    trainerPageTitle: "View the Warcraft III: Reforged Trainer",
+    trainerPageName: "Reforged Trainer",
+    trainerPageDesc: "Open the trainer's complete release download page.",
+    hotkeyHeroTitleA: "Warcraft III",
+    hotkeyHeroTitleB: "Reforged Hotkey Tool",
+    hotkeyFeatureEyebrow: "Standalone hotkey tool",
+    hotkeyFeatureTitle: "Enable each section independently or use SmartCast alone",
+    hotkeyFeatureBody: "Assign keys by command-card slot for abilities, items, learn menus and shops, with per-slot SmartCast.",
+    hotkeyFeatureListLabel: "Main hotkey tool features",
+    hotkeyFeature1: "Enable or disable all four slot sections independently.",
+    hotkeyFeature2: "Set a key and SmartCast independently for every slot.",
+    hotkeyFeature3: "Disable in-game hotkey overrides while keeping SmartCast and input helpers active.",
+    hotkeyFeatureFootnote: "The current release supports Warcraft III: Reforged 2.0.4.23745 and runs independently from the trainer.",
+    hotkeyReleaseHeading: "All hotkey tool versions and release notes",
+    hotkeyReleaseSearch: "Search hotkey versions or release notes",
     brandName: "Shen Mengxi's Personal Site",
     brandAria: "Back to releases home",
     projectNav: "Projects and downloads",
@@ -137,6 +207,7 @@ window.SITE_I18N = {
   },
   releaseNames: {
     en: {
+      "hotkeys-v1.0.0": "Warcraft III: Reforged Hotkey Tool v1.0.0",
       "v0.2.0": "Stable GUI release",
       "v0.2.4": "War3ReforgedTrainer v0.2.4",
       "v0.25": "War3ReforgedTrainer v0.25",
@@ -144,7 +215,29 @@ window.SITE_I18N = {
     },
   },
   releaseBodies: {
+    zh: {
+      "hotkeys-v1.0.0": String.raw`# 发布说明
+
+## 改键软件 v1.0.0
+
+- 独立的 Warcraft III: Reforged 改键软件，不依赖修改器运行。
+- 支持普通技能、物品、技能书/学习技能和商店四个命令栏栏目独立启用。
+- 每个命令格位可单独设置快捷键和智能施法。
+- 可关闭游戏技能快捷键覆盖，仅使用智能施法及其他辅助功能。
+- 提供中文、英文界面，并按 Windows 用户区域自动选择初始语言。
+- 当前适配 Warcraft III: Reforged 2.0.4.23745。`,
+    },
     en: {
+      "hotkeys-v1.0.0": String.raw`# Release notes
+
+## Hotkey Tool v1.0.0
+
+- A standalone Warcraft III: Reforged hotkey tool that runs independently from the trainer.
+- Ability, item, learn-menu and shop command-card sections can be enabled independently.
+- Every command slot has its own key and SmartCast switch.
+- In-game ability hotkey overrides can be disabled while SmartCast and other input helpers remain active.
+- Includes Chinese and English interfaces, with initial language selected from the Windows user locale.
+- Currently supports Warcraft III: Reforged 2.0.4.23745.`,
       "v1.0.6": String.raw`# Release notes
 
 ## v1.0.6

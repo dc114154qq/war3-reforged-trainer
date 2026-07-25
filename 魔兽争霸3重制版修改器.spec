@@ -31,6 +31,7 @@ exe = EXE(
     runtime_tmpdir=None,
     console=False,
     disable_windowed_traceback=False,
+    uac_admin=True,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,

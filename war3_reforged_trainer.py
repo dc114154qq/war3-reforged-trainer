@@ -48,6 +48,9 @@ PROCESS_QUERY_INFORMATION = 0x0400
 PROCESS_VM_READ = 0x0010
 PROCESS_VM_WRITE = 0x0020
 PROCESS_VM_OPERATION = 0x0008
+TOKEN_ADJUST_PRIVILEGES = 0x0020
+TOKEN_QUERY = 0x0008
+SE_PRIVILEGE_ENABLED = 0x00000002
 
 MEM_COMMIT = 0x1000
 MEM_PRIVATE = 0x20000
@@ -98,13 +101,17 @@ WAIT_TIMEOUT = 0x00000102
 ERROR_NOT_SUPPORTED = 50
 ERROR_NOT_FOUND = 1168
 ERROR_PARTIAL_COPY = 299
+ERROR_ACCESS_DENIED = 5
+ERROR_NOT_ALL_ASSIGNED = 1300
 ERROR_HOTKEY_ALREADY_REGISTERED = 1409
 
 
 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 user32 = ctypes.WinDLL("user32", use_last_error=True)
+advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
 
 kernel32.OpenProcess.restype = ctypes.c_void_p
+kernel32.GetCurrentProcess.restype = ctypes.c_void_p
 kernel32.CreateMutexW.argtypes = (ctypes.c_void_p, ctypes.c_bool, ctypes.c_wchar_p)
 kernel32.CreateMutexW.restype = ctypes.c_void_p
 kernel32.WaitForSingleObject.argtypes = (ctypes.c_void_p, ctypes.c_ulong)
@@ -140,6 +147,97 @@ user32.SendMessageTimeoutW.argtypes = (
     ctypes.POINTER(ctypes.c_void_p),
 )
 user32.SendMessageTimeoutW.restype = ctypes.c_void_p
+
+
+class LUID(ctypes.Structure):
+    _fields_ = [
+        ("LowPart", ctypes.c_ulong),
+        ("HighPart", ctypes.c_long),
+    ]
+
+
+class LUID_AND_ATTRIBUTES(ctypes.Structure):
+    _fields_ = [
+        ("Luid", LUID),
+        ("Attributes", ctypes.c_ulong),
+    ]
+
+
+class TOKEN_PRIVILEGES(ctypes.Structure):
+    _fields_ = [
+        ("PrivilegeCount", ctypes.c_ulong),
+        ("Privileges", LUID_AND_ATTRIBUTES * 1),
+    ]
+
+
+advapi32.OpenProcessToken.argtypes = (
+    ctypes.c_void_p,
+    ctypes.c_ulong,
+    ctypes.POINTER(ctypes.c_void_p),
+)
+advapi32.OpenProcessToken.restype = ctypes.c_bool
+advapi32.LookupPrivilegeValueW.argtypes = (
+    ctypes.c_wchar_p,
+    ctypes.c_wchar_p,
+    ctypes.POINTER(LUID),
+)
+advapi32.LookupPrivilegeValueW.restype = ctypes.c_bool
+advapi32.AdjustTokenPrivileges.argtypes = (
+    ctypes.c_void_p,
+    ctypes.c_bool,
+    ctypes.POINTER(TOKEN_PRIVILEGES),
+    ctypes.c_ulong,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+)
+advapi32.AdjustTokenPrivileges.restype = ctypes.c_bool
+
+
+_debug_privilege_lock = threading.Lock()
+_debug_privilege_enabled = False
+
+
+def enable_debug_privilege() -> bool:
+    global _debug_privilege_enabled
+    if _debug_privilege_enabled:
+        return True
+    with _debug_privilege_lock:
+        if _debug_privilege_enabled:
+            return True
+        token = ctypes.c_void_p()
+        if not advapi32.OpenProcessToken(
+            kernel32.GetCurrentProcess(),
+            TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY,
+            ctypes.byref(token),
+        ):
+            raise ctypes.WinError(ctypes.get_last_error())
+        try:
+            luid = LUID()
+            if not advapi32.LookupPrivilegeValueW(None, "SeDebugPrivilege", ctypes.byref(luid)):
+                raise ctypes.WinError(ctypes.get_last_error())
+            privileges = TOKEN_PRIVILEGES(
+                PrivilegeCount=1,
+                Privileges=(LUID_AND_ATTRIBUTES(luid, SE_PRIVILEGE_ENABLED),),
+            )
+            ctypes.set_last_error(0)
+            if not advapi32.AdjustTokenPrivileges(
+                token,
+                False,
+                ctypes.byref(privileges),
+                0,
+                None,
+                None,
+            ):
+                raise ctypes.WinError(ctypes.get_last_error())
+            error = ctypes.get_last_error()
+            if error == ERROR_NOT_ALL_ASSIGNED:
+                return False
+            if error:
+                raise ctypes.WinError(error)
+            _debug_privilege_enabled = True
+            return True
+        finally:
+            kernel32.CloseHandle(token)
 
 
 class POINT(ctypes.Structure):
@@ -1068,8 +1166,18 @@ class ProcessMemory:
         if write:
             access |= PROCESS_VM_WRITE | PROCESS_VM_OPERATION
         self.handle = kernel32.OpenProcess(access, False, pid)
+        error = ctypes.get_last_error() if not self.handle else 0
+        if not self.handle and error == ERROR_ACCESS_DENIED:
+            try:
+                debug_enabled = enable_debug_privilege()
+            except OSError:
+                debug_enabled = False
+            if debug_enabled:
+                ctypes.set_last_error(0)
+                self.handle = kernel32.OpenProcess(access, False, pid)
+                error = ctypes.get_last_error() if not self.handle else 0
         if not self.handle:
-            raise ctypes.WinError(ctypes.get_last_error())
+            raise ctypes.WinError(error)
         self._regions_cache: list[Region] | None = None
 
     def close(self) -> None:
@@ -3099,6 +3207,24 @@ class War3Trainer:
         return Path(tempfile.gettempdir()) / f"war3_reforged_native_{self.pid}.bin"
 
     @staticmethod
+    def _write_native_helper_command(path: Path, payload: bytes) -> None:
+        last_error: PermissionError | None = None
+        for attempt in range(8):
+            try:
+                path.write_bytes(payload)
+                return
+            except PermissionError as exc:
+                last_error = exc
+                if attempt == 0:
+                    try:
+                        path.chmod(0o600)
+                    except OSError:
+                        pass
+                time.sleep(min(0.01 * (attempt + 1), 0.05))
+        assert last_error is not None
+        raise last_error
+
+    @staticmethod
     def _read_native_helper_command(path: Path) -> bytes | None:
         try:
             return path.read_bytes()
@@ -3339,7 +3465,10 @@ class War3Trainer:
         if any(kind in unit_kinds for kind, _rawcode, _handler, _arg0, _arg1 in op_list) and not unit_address:
             raise RuntimeError("当前单位缺少运行时 unit 指针，不能调用 native helper")
         command_path = self._native_helper_command_path()
-        command_path.write_bytes(self._pack_native_helper_command(unit_address, op_list))
+        self._write_native_helper_command(
+            command_path,
+            self._pack_native_helper_command(unit_address, op_list),
+        )
         dll_path = self._native_helper_dll_path()
         module = kernel32.LoadLibraryW(str(dll_path))
         if not module:

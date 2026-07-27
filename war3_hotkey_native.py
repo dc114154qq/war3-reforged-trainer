@@ -32,7 +32,7 @@ WM_NULL = 0x0000
 SMTO_ABORTIFHUNG = 0x0002
 
 HOTKEY_MAGIC = 0x4B485257
-HOTKEY_VERSION = 3
+HOTKEY_VERSION = 4
 STATUS_PENDING = 1
 STATUS_OK = 2
 MAX_OPS = 16
@@ -41,6 +41,7 @@ OP_QUERY_COMMAND_CONTEXT = 2
 OP_QUERY_SELECTION_CONTEXT = 3
 OP_OVERRIDE_COMMAND_HOTKEY = 4
 OP_REFRESH_COMMAND_BAR = 5
+OP_QUERY_GAME_READY = 6
 
 HOTKEY_FLAG_HERO_ONLY = 1
 HOTKEY_FLAG_QUICK_CAST = 2
@@ -715,6 +716,36 @@ class NativeFrameBridge:
                 timeout_ms=timeout_ms,
             )
             return CommandContext(submenu_active=bool(result & 1))
+
+    def query_game_ready(
+        self,
+        hwnd: int,
+        pid: int,
+        *,
+        timeout_ms: int = 500,
+    ) -> bool:
+        """Return true only after Warcraft has created the local match player."""
+        with self._lock:
+            self.connect(hwnd, pid)
+            operation = OP_STRUCT.pack(
+                OP_QUERY_GAME_READY,
+                0,
+                self._handlers["GetLocalPlayer"].handler_address,
+                0,
+                0,
+                0,
+                0,
+                0,
+            )
+            result = self._dispatch(
+                hwnd,
+                pid,
+                operation,
+                expected_kind=OP_QUERY_GAME_READY,
+                operation_name="game readiness query",
+                timeout_ms=timeout_ms,
+            )
+            return bool(result)
 
     def query_selection_context(
         self,

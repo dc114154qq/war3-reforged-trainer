@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.0.1"
 APP_NAME_ZH = "魔兽争霸3重制版改键工具"
 APP_NAME_EN = "Warcraft III: Reforged Hotkey Tool"
 
@@ -482,6 +482,7 @@ TRANSLATIONS = {
         "disabled": "未启用",
         "game_not_found": "未检测到 Warcraft III",
         "game_background": "已检测到游戏，等待游戏窗口置前",
+        "game_waiting": "已检测到游戏，等待进入可操作对局",
         "game_active": "Warcraft III 前台生效中",
         "suspended": "改键已临时暂停",
         "chat_paused": "聊天输入中，改键暂时停用",
@@ -506,7 +507,7 @@ TRANSLATIONS = {
         "smartcast_delay": "智能施法延迟 (ms)",
         "repeat_delay": "连发间隔 (ms)",
         "self_modifier": "自身施法修饰键",
-        "autocast_modifier": "自动施法切换修饰键",
+        "autocast_modifier": "游戏自动施法开关修饰键",
         "suspend_hotkey": "暂停/恢复热键",
         "right_repeat": "按住右键连续点击",
         "right_repeat_delay": "右键连点间隔 (ms)",
@@ -564,6 +565,7 @@ TRANSLATIONS = {
         "disabled": "Not enabled",
         "game_not_found": "Warcraft III was not detected",
         "game_background": "Game detected; waiting for its window to be foreground",
+        "game_waiting": "Game detected; waiting for an active match",
         "game_active": "Active in foreground Warcraft III",
         "suspended": "Hotkeys are temporarily suspended",
         "chat_paused": "Chat input is active; hotkeys are paused",
@@ -588,7 +590,7 @@ TRANSLATIONS = {
         "smartcast_delay": "SmartCast delay (ms)",
         "repeat_delay": "Repeat interval (ms)",
         "self_modifier": "Self-cast modifier",
-        "autocast_modifier": "Autocast-toggle modifier",
+        "autocast_modifier": "In-game autocast toggle modifier",
         "suspend_hotkey": "Suspend/resume hotkey",
         "right_repeat": "Repeat while right mouse is held",
         "right_repeat_delay": "Right-click interval (ms)",

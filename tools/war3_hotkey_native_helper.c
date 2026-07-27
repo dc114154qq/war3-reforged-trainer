@@ -3,7 +3,7 @@
 #include <stdio.h>
 
 #define WAR3_HOTKEY_MAGIC 0x4B485257u
-#define WAR3_HOTKEY_VERSION 3u
+#define WAR3_HOTKEY_VERSION 4u
 #define WAR3_HOTKEY_STATUS_PENDING 1u
 #define WAR3_HOTKEY_STATUS_OK 2u
 #define WAR3_HOTKEY_STATUS_FAILED 3u
@@ -14,6 +14,7 @@
 #define WAR3_HOTKEY_OP_QUERY_SELECTION_CONTEXT 3u
 #define WAR3_HOTKEY_OP_OVERRIDE_COMMAND_HOTKEY 4u
 #define WAR3_HOTKEY_OP_REFRESH_COMMAND_BAR 5u
+#define WAR3_HOTKEY_OP_QUERY_GAME_READY 6u
 
 typedef uint64_t (__fastcall *ConvertOriginFrameTypeFn)(int32_t value);
 typedef uint64_t (__fastcall *BlzGetOriginFrameFn)(uint64_t frame_type, int32_t index);
@@ -196,6 +197,21 @@ static DWORD query_command_context(NativeOp *op) {
         }
         submenu_link = *(uint64_t *)(uintptr_t)(command_bar + submenu_link_offset);
         op->result = submenu_link != 0 && (submenu_link & 1u) == 0 ? 1u : 0u;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return GetExceptionCode();
+    }
+    return ERROR_SUCCESS;
+}
+
+static DWORD query_game_ready(NativeOp *op) {
+    JassNoArgU64Fn get_local_player;
+
+    if (!executable_pointer((void *)(uintptr_t)op->handler)) {
+        return ERROR_INVALID_ADDRESS;
+    }
+    get_local_player = (JassNoArgU64Fn)(uintptr_t)op->handler;
+    __try {
+        op->result = get_local_player() ? 1u : 0u;
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         return GetExceptionCode();
     }
@@ -406,6 +422,8 @@ static void run_command(void) {
             op->last_error = override_command_hotkey(&command, op);
         } else if (op->kind == WAR3_HOTKEY_OP_REFRESH_COMMAND_BAR) {
             op->last_error = refresh_command_bar(op);
+        } else if (op->kind == WAR3_HOTKEY_OP_QUERY_GAME_READY) {
+            op->last_error = query_game_ready(op);
         } else {
             op->last_error = ERROR_NOT_SUPPORTED;
         }

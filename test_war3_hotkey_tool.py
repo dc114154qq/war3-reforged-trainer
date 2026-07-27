@@ -8,7 +8,11 @@ from pathlib import Path
 from war3_hotkey_engine import (
     CompiledBinding,
     HotkeyEngine,
+    InputSender,
     KBDLLHOOKSTRUCT,
+    KEYEVENTF_KEYUP,
+    INPUT_KEYBOARD,
+    INPUT_MOUSE,
     WM_KEYDOWN,
     WM_KEYUP,
     command_context_for,
@@ -20,8 +24,10 @@ from war3_hotkey_native import (
     CommandBarInternals,
     CommandContext,
     HOTKEY_FLAG_SAVE,
+    NativeHandler,
     NativeFrameBridge,
     OP_OVERRIDE_COMMAND_HOTKEY,
+    OP_QUERY_GAME_READY,
     OP_REFRESH_COMMAND_BAR,
     OP_STRUCT,
     ORIGIN_FRAME_COMMAND_BUTTON,
@@ -175,6 +181,46 @@ class NativeFrameBridgeTests(unittest.TestCase):
         self.assertEqual(refresh[7], 0)
         self.assertEqual(kwargs["expected_kind"], OP_REFRESH_COMMAND_BAR)
 
+    def test_game_ready_query_uses_only_get_local_player(self):
+        bridge = NativeFrameBridge(Path("missing-test-helper.dll"))
+        bridge.connect = lambda _hwnd, _pid: None
+        bridge._handlers = {
+            "GetLocalPlayer": NativeHandler("GetLocalPlayer", 0x1000, 0x2000),
+        }
+        captured = []
+        bridge._dispatch = lambda _hwnd, _pid, operation, **_kwargs: captured.append(operation) or 1
+
+        self.assertTrue(bridge.query_game_ready(10, 20))
+
+        operation = OP_STRUCT.unpack(captured[0])
+        self.assertEqual(operation[0], OP_QUERY_GAME_READY)
+        self.assertEqual(operation[2], 0x2000)
+
+
+class InputSenderTests(unittest.TestCase):
+    def test_autocast_click_temporarily_releases_and_restores_shift(self):
+        class Guard:
+            @staticmethod
+            def is_foreground():
+                return True
+
+        sender = InputSender(Guard())
+        captured = []
+        sender._send = lambda inputs: captured.extend(inputs) or True
+
+        self.assertTrue(sender.send_click("right", release_modifiers=frozenset({"SHIFT"})))
+
+        self.assertEqual([item.type for item in captured], [
+            INPUT_KEYBOARD,
+            INPUT_MOUSE,
+            INPUT_MOUSE,
+            INPUT_KEYBOARD,
+        ])
+        self.assertEqual(captured[0].ki.dwFlags, KEYEVENTF_KEYUP)
+        self.assertEqual(captured[-1].ki.dwFlags, 0)
+
+
+class HotkeyEngineTests(unittest.TestCase):
     def test_disabled_group_is_not_compiled_into_input_hooks(self):
         profile = default_profile()
         profile.enabled_groups["ability"] = False
@@ -279,6 +325,7 @@ class NativeFrameBridgeTests(unittest.TestCase):
 
         clicks = []
         engine = HotkeyEngine(profile, guard=Guard(), frame_bridge=FrameBridge())
+        engine._game_ready.set()
         engine.sender.send_click = lambda button, **_kwargs: clicks.append(button) or True
         action = plan_binding_action(binding, frozenset(), profile)
 
@@ -324,6 +371,7 @@ class NativeFrameBridgeTests(unittest.TestCase):
                 return 777
 
         engine = HotkeyEngine(profile, guard=Guard())
+        engine._game_ready.set()
         event = KBDLLHOOKSTRUCT(ord("Q"), 0, 0, 0, 0)
         with patch("war3_hotkey_engine.user32", User32):
             self.assertEqual(engine._keyboard_callback(0, WM_KEYDOWN, ctypes.addressof(event)), 777)
@@ -332,6 +380,101 @@ class NativeFrameBridgeTests(unittest.TestCase):
         self.assertTrue(action.smartcast)
         self.assertFalse(action.send_target)
         self.assertFalse(engine._active_binding_keys)
+
+    def test_loading_screen_never_swallows_or_dispatches_remapped_keys(self):
+        profile = default_profile()
+        profile.bindings[0].source = "F1"
+        profile.bindings[0].target = "Q"
+
+        class Guard:
+            @staticmethod
+            def is_foreground():
+                return True
+
+        class User32:
+            @staticmethod
+            def CallNextHookEx(*_args):
+                return 777
+
+        engine = HotkeyEngine(profile, guard=Guard())
+        event = KBDLLHOOKSTRUCT(0x70, 0, 0, 0, 0)
+        with patch("war3_hotkey_engine.user32", User32):
+            self.assertEqual(engine._keyboard_callback(0, WM_KEYDOWN, ctypes.addressof(event)), 777)
+
+        self.assertTrue(engine._actions.empty())
+
+    def test_native_loop_does_not_touch_command_ui_before_match_ready(self):
+        calls = []
+
+        class Guard:
+            @staticmethod
+            def snapshot(*, force=False):
+                return GameWindowSnapshot(hwnd=10, pid=20, foreground=True)
+
+        class Bridge:
+            ready = False
+
+            def connect(self, *_args):
+                calls.append("connect")
+
+            def query_game_ready(self, *_args):
+                calls.append("ready")
+                engine._stop_event.set()
+                return False
+
+            def close(self):
+                calls.append("close")
+
+            def query_command_context(self, *_args):
+                raise AssertionError("command UI queried before match readiness")
+
+            def override_command_hotkeys(self, *_args):
+                raise AssertionError("hotkeys written before match readiness")
+
+        engine = HotkeyEngine(default_profile(), guard=Guard(), frame_bridge=Bridge())
+        engine._native_loop()
+
+        self.assertEqual(calls, ["connect", "ready", "close"])
+        self.assertFalse(engine.game_ready)
+
+    def test_native_loop_proves_game_ui_before_writing_hotkeys(self):
+        calls = []
+
+        class Guard:
+            @staticmethod
+            def snapshot(*, force=False):
+                return GameWindowSnapshot(hwnd=10, pid=20, foreground=True)
+
+        class Bridge:
+            ready = False
+
+            def connect(self, *_args):
+                calls.append("connect")
+
+            def query_game_ready(self, *_args):
+                calls.append("ready")
+                return True
+
+            def query_command_context(self, *_args):
+                calls.append("command")
+                return CommandContext(False)
+
+            def override_command_hotkeys(self, *_args):
+                calls.append("override")
+
+            def query_selection_context(self, *_args):
+                calls.append("selection")
+                engine._stop_event.set()
+                return SelectionContext(False, False, None)
+
+            def close(self):
+                calls.append("close")
+
+        engine = HotkeyEngine(default_profile(), guard=Guard(), frame_bridge=Bridge())
+        engine._native_loop()
+
+        self.assertEqual(calls, ["connect", "ready", "command", "override", "selection"])
+        self.assertTrue(engine.game_ready)
 
 
 class ConfigTests(unittest.TestCase):

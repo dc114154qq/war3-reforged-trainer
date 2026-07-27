@@ -15,6 +15,7 @@ from typing import Callable
 from war3_hotkey_model import (
     BindingConfig,
     KEY_NAME_TO_VK,
+    MODIFIER_ORDER,
     MODIFIER_VKS,
     KeyStroke,
     ProfileConfig,
@@ -360,16 +361,39 @@ class InputSender:
                 inputs.append(self._keyboard_input(MODIFIER_VKS[modifier], False))
             return self._send(inputs)
 
-    def send_click(self, button: str, *, point: tuple[int, int] | None = None) -> bool:
+    def send_click(
+        self,
+        button: str,
+        *,
+        point: tuple[int, int] | None = None,
+        release_modifiers: frozenset[str] = frozenset(),
+    ) -> bool:
         with self._lock:
             original = POINT()
             moved = False
             if point is not None and user32.GetCursorPos(ctypes.byref(original)):
                 moved = bool(user32.SetCursorPos(int(point[0]), int(point[1])))
+            released = tuple(
+                modifier for modifier in MODIFIER_ORDER if modifier in release_modifiers
+            )
+            inputs: list[INPUT] = [
+                self._keyboard_input(MODIFIER_VKS[modifier], True)
+                for modifier in released
+            ]
             if button == "left":
-                inputs = [self._mouse_input(MOUSEEVENTF_LEFTDOWN), self._mouse_input(MOUSEEVENTF_LEFTUP)]
+                inputs.extend((
+                    self._mouse_input(MOUSEEVENTF_LEFTDOWN),
+                    self._mouse_input(MOUSEEVENTF_LEFTUP),
+                ))
             else:
-                inputs = [self._mouse_input(MOUSEEVENTF_RIGHTDOWN), self._mouse_input(MOUSEEVENTF_RIGHTUP)]
+                inputs.extend((
+                    self._mouse_input(MOUSEEVENTF_RIGHTDOWN),
+                    self._mouse_input(MOUSEEVENTF_RIGHTUP),
+                ))
+            inputs.extend(
+                self._keyboard_input(MODIFIER_VKS[modifier], False)
+                for modifier in reversed(released)
+            )
             sent = self._send(inputs)
             if moved:
                 user32.SetCursorPos(original.x, original.y)
@@ -549,6 +573,7 @@ class HotkeyEngine:
         self._capture_suppressed_mouse: set[str] = set()
         self._command_context = "ability"
         self._profile_revision = 0
+        self._game_ready = threading.Event()
 
     @property
     def running(self) -> bool:
@@ -561,6 +586,10 @@ class HotkeyEngine:
     @property
     def chat_mode(self) -> bool:
         return self._chat_mode
+
+    @property
+    def game_ready(self) -> bool:
+        return self._game_ready.is_set()
 
     def apply_profile(self, profile: ProfileConfig) -> None:
         with self._profile_lock:
@@ -587,6 +616,7 @@ class HotkeyEngine:
             return
         self._stop_event.clear()
         self._hook_ready.clear()
+        self._game_ready.clear()
         self._action_thread = threading.Thread(target=self._action_loop, name="war3-hotkey-actions", daemon=True)
         self._maintenance_thread = threading.Thread(target=self._maintenance_loop, name="war3-hotkey-maintenance", daemon=True)
         self._native_thread = threading.Thread(target=self._native_loop, name="war3-hotkey-native", daemon=True)
@@ -607,6 +637,7 @@ class HotkeyEngine:
             if thread and thread.is_alive() and thread is not threading.current_thread():
                 thread.join(timeout=2.0)
         self._release_cursor_clip()
+        self._game_ready.clear()
         self.frame_bridge.close()
         self._hook_ready.clear()
 
@@ -617,6 +648,7 @@ class HotkeyEngine:
             "suspended": self._suspended,
             "chat_mode": self._chat_mode,
             "native_ready": self.frame_bridge.ready,
+            "game_ready": self.game_ready,
             "command_context": self._command_context,
             "game": game,
         }
@@ -686,8 +718,9 @@ class HotkeyEngine:
         if self._handle_key_capture(vk, is_down, is_up, was_down, modifiers):
             return 1
         game_foreground = self.guard.is_foreground()
+        game_ready = self.game_ready
 
-        if game_foreground and self._handle_toggle_key(vk, is_down, is_up, modifiers):
+        if game_foreground and game_ready and self._handle_toggle_key(vk, is_down, is_up, modifiers):
             return 1
 
         with self._profile_lock:
@@ -695,11 +728,11 @@ class HotkeyEngine:
             enabled = profile.enabled and not self._suspended
             pause_in_chat = profile.pause_in_chat
 
-        if game_foreground and pause_in_chat and vk == KEY_NAME_TO_VK["ENTER"] and is_down and not was_down:
+        if game_foreground and game_ready and pause_in_chat and vk == KEY_NAME_TO_VK["ENTER"] and is_down and not was_down:
             self._chat_mode = not self._chat_mode
             self._publish_state()
             return user32.CallNextHookEx(self._keyboard_hook, code, wparam, lparam)
-        if game_foreground and pause_in_chat and vk == KEY_NAME_TO_VK["ESC"] and is_down:
+        if game_foreground and game_ready and pause_in_chat and vk == KEY_NAME_TO_VK["ESC"] and is_down:
             self._chat_mode = False
 
         identity = ("keyboard", vk)
@@ -708,7 +741,7 @@ class HotkeyEngine:
             self._repeat_due.pop(binding.config.binding_id, None)
             return 1
 
-        if not game_foreground or not enabled or self._chat_mode or not is_down:
+        if not game_foreground or not game_ready or not enabled or self._chat_mode or not is_down:
             return user32.CallNextHookEx(self._keyboard_hook, code, wparam, lparam)
 
         binding = self._matching_binding(self._keyboard_bindings.get(vk, ()), modifiers)
@@ -748,7 +781,7 @@ class HotkeyEngine:
             capture_up = message == WM_MBUTTONUP
         if capture_mouse_key and self._handle_mouse_capture(capture_mouse_key, capture_down, capture_up):
             return 1
-        if not self.guard.is_foreground():
+        if not self.guard.is_foreground() or not self.game_ready:
             return user32.CallNextHookEx(self._mouse_hook, code, wparam, lparam)
         with self._profile_lock:
             profile = self._profile
@@ -945,7 +978,7 @@ class HotkeyEngine:
 
     def _execute_binding(self, action: BindingAction) -> None:
         game = self.guard.snapshot(force=True)
-        if not game.foreground:
+        if not game.foreground or not self.game_ready:
             return
         with self._profile_lock:
             profile = self._profile
@@ -953,7 +986,11 @@ class HotkeyEngine:
         if action.autocast_toggle:
             point = self._automatic_command_slot_point(action.binding.config.slot_index)
             if point is not None:
-                self.sender.send_click("right", point=point)
+                self.sender.send_click(
+                    "right",
+                    point=point,
+                    release_modifiers=action.modifiers,
+                )
             return
         if not action.send_target:
             if action.smartcast:
@@ -998,22 +1035,53 @@ class HotkeyEngine:
         last_hotkey_revision = -1
         reported_error = ""
         neutral_selected = False
+        command_context = CommandContext(False)
+        next_native_attempt = 0.0
+        next_ready_query = 0.0
+        next_context_query = 0.0
         next_selection_query = 0.0
         while not self._stop_event.wait(0.05):
             game = self.guard.snapshot(force=True)
             identity = (game.hwnd, game.pid)
-            if not game.found:
+            if not game.found or not game.foreground:
                 if last_identity != (0, 0):
                     self.frame_bridge.close()
+                self._game_ready.clear()
                 last_identity = (0, 0)
                 last_hotkey_identity = (0, 0)
                 last_hotkey_revision = -1
                 self._command_context = "ability"
                 neutral_selected = False
+                command_context = CommandContext(False)
+                next_native_attempt = 0.0
+                next_ready_query = 0.0
+                next_context_query = 0.0
                 next_selection_query = 0.0
+                continue
+            now = time.monotonic()
+            if now < next_native_attempt:
                 continue
             try:
                 self.frame_bridge.connect(game.hwnd, game.pid)
+                if identity != last_identity or now >= next_ready_query:
+                    if not self.frame_bridge.query_game_ready(game.hwnd, game.pid):
+                        self._game_ready.clear()
+                        self.frame_bridge.close()
+                        last_identity = (0, 0)
+                        last_hotkey_identity = (0, 0)
+                        last_hotkey_revision = -1
+                        self._command_context = "ability"
+                        neutral_selected = False
+                        command_context = CommandContext(False)
+                        next_native_attempt = now + 1.0
+                        next_ready_query = 0.0
+                        next_context_query = 0.0
+                        next_selection_query = 0.0
+                        continue
+                    next_ready_query = now + 0.5
+                if identity != last_identity or now >= next_context_query:
+                    command_context = self.frame_bridge.query_command_context(game.hwnd, game.pid)
+                    next_context_query = now + 0.1
                 with self._profile_lock:
                     profile = self._profile
                     profile_revision = self._profile_revision
@@ -1032,17 +1100,16 @@ class HotkeyEngine:
                         )
                     last_hotkey_identity = identity
                     last_hotkey_revision = profile_revision
-                context = self.frame_bridge.query_command_context(game.hwnd, game.pid)
-                now = time.monotonic()
                 if identity != last_identity or now >= next_selection_query:
                     selection = self.frame_bridge.query_selection_context(game.hwnd, game.pid)
                     neutral_selected = selection.neutral_selected
                     next_selection_query = now + 0.25
                 self._command_context = command_context_for(
-                    context,
+                    command_context,
                     SelectionContext(True, neutral_selected, None),
                 )
                 last_identity = identity
+                self._game_ready.set()
                 reported_error = ""
             except Exception as exc:
                 message = f"native frame bridge initialization failed: {exc}"
@@ -1050,12 +1117,17 @@ class HotkeyEngine:
                     self.on_error(message)
                     reported_error = message
                 self._command_context = "ability"
+                self._game_ready.clear()
                 neutral_selected = False
+                command_context = CommandContext(False)
+                next_native_attempt = time.monotonic() + 2.0
+                next_ready_query = 0.0
+                next_context_query = 0.0
                 next_selection_query = 0.0
-                if identity != last_identity:
-                    self.frame_bridge.close()
-                    last_identity = identity
-                self._stop_event.wait(0.25)
+                self.frame_bridge.close()
+                last_identity = (0, 0)
+                last_hotkey_identity = (0, 0)
+                last_hotkey_revision = -1
 
     def _maintenance_loop(self) -> None:
         while not self._stop_event.wait(0.015):
@@ -1063,7 +1135,7 @@ class HotkeyEngine:
             with self._profile_lock:
                 profile = self._profile
                 enabled = profile.enabled and not self._suspended and not self._chat_mode
-            if enabled and self.guard.is_foreground():
+            if enabled and self.game_ready and self.guard.is_foreground():
                 active_by_id = {binding.config.binding_id: binding for binding in self._active_binding_keys.values()}
                 for binding_id, due in tuple(self._repeat_due.items()):
                     if now < due:
@@ -1102,11 +1174,15 @@ class HotkeyEngine:
         game = self.guard.snapshot()
         if not game.found:
             state = "game_not_found"
+        elif not game.foreground:
+            state = "game_background"
+        elif not self.game_ready:
+            state = "game_waiting"
         elif self._suspended:
             state = "suspended"
         elif self._chat_mode:
             state = "chat_paused"
-        elif game.foreground and self._profile.enabled:
+        elif self._profile.enabled:
             state = "game_active"
         else:
             state = "game_background"

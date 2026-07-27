@@ -207,6 +207,7 @@ window.SITE_I18N = {
   },
   releaseNames: {
     en: {
+      "hotkeys-v1.0.1": "Warcraft III: Reforged Hotkey Tool v1.0.1",
       "hotkeys-v1.0.0": "Warcraft III: Reforged Hotkey Tool v1.0.0",
       "v0.2.0": "Stable GUI release",
       "v0.2.4": "War3ReforgedTrainer v0.2.4",
@@ -216,6 +217,17 @@ window.SITE_I18N = {
   },
   releaseBodies: {
     zh: {
+      "hotkeys-v1.0.1": String.raw`# 发布说明
+
+## 改键软件 v1.0.1
+
+- 修复在游戏大厅、地图载入和玩家名称输入阶段启动软件时可能卡顿、未响应或导致游戏崩溃的问题。
+- native 桥接现在必须先确认本地玩家和游戏命令栏均已就绪，才会修改快捷键或处理输入。
+- 对局未就绪、游戏切到后台或初始化失败时，所有改键输入原样放行，并立即卸载桥接。
+- 降低命令栏与选择状态轮询频率，避免持续占用游戏 UI 线程。
+- 修复 Shift + 技能键只能开启、不能关闭游戏自动施法的问题；右键切换期间会临时释放 Shift，完成后再恢复。
+- 闪电按钮仍用于逐格开启或关闭本工具的智能施法；Shift 设置用于切换游戏技能自身的自动施法。
+- 当前适配 Warcraft III: Reforged 2.0.4.23745。`,
       "hotkeys-v1.0.0": String.raw`# 发布说明
 
 ## 改键软件 v1.0.0
@@ -228,6 +240,17 @@ window.SITE_I18N = {
 - 当前适配 Warcraft III: Reforged 2.0.4.23745。`,
     },
     en: {
+      "hotkeys-v1.0.1": String.raw`# Release notes
+
+## Hotkey Tool v1.0.1
+
+- Fixed hangs, input lag and Warcraft crashes when the tool was started in menus, during map loading or while entering a player name.
+- The native bridge now proves both the local player and in-game command UI are ready before writing hotkeys or handling input.
+- Hotkeys pass through unchanged and the bridge is unloaded whenever the match is not ready, Warcraft is in the background or initialization fails.
+- Reduced command-context and selection polling to avoid continuously occupying the game UI thread.
+- Fixed Shift + ability key enabling but not disabling in-game autocast. Shift is temporarily released for the right-click toggle and then restored.
+- Lightning buttons still enable or disable this tool's per-slot SmartCast; the Shift setting toggles an ability's native in-game autocast.
+- Currently supports Warcraft III: Reforged 2.0.4.23745.`,
       "hotkeys-v1.0.0": String.raw`# Release notes
 
 ## Hotkey Tool v1.0.0

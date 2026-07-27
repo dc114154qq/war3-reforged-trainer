@@ -718,6 +718,7 @@ class HotkeyToolApp:
                     color = {
                         "game_active": "#36b66f",
                         "game_background": "#d3a52d",
+                        "game_waiting": "#d3a52d",
                         "chat_paused": "#d3a52d",
                         "suspended": "#d85d55",
                         "game_not_found": "#8f9691",

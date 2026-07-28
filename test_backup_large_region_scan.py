@@ -50,6 +50,38 @@ def test_backup_native_table_expands_beyond_64mb(monkeypatch):
     assert instance._native_table_blob is None
 
 
+def test_backup_native_table_keeps_existing_fast_path(monkeypatch):
+    instance = _bare_trainer()
+    expected = trainer.Region(
+        0x200000000,
+        0x20000,
+        trainer.PAGE_READWRITE,
+        trainer.MEM_PRIVATE,
+    )
+
+    monkeypatch.setattr(
+        instance,
+        "_find_native_table_regions",
+        lambda _pm, _regions: [expected],
+    )
+    monkeypatch.setattr(
+        instance,
+        "_scan_native_table_region_candidates_win10",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("fast-path success must not start backup scanning")
+        ),
+    )
+    monkeypatch.setattr(
+        instance,
+        "_scan_native_table_reference_candidates_win10",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("fast-path success must not start reference scanning")
+        ),
+    )
+
+    assert instance._find_native_table_regions_win10(object(), [expected]) == [expected]
+
+
 def test_backup_resource_scan_expands_in_stages(monkeypatch):
     instance = _bare_trainer()
     resource_tag = trainer.struct.pack("<Q", trainer.War3Trainer.RESOURCE_PROP_TAG)
@@ -57,6 +89,16 @@ def test_backup_resource_scan_expands_in_stages(monkeypatch):
     resource_address = 0x210000018
     owner_address = 0x220000018
     limits = []
+
+    class Memory:
+        refreshes = 0
+
+        def regions(self, force_refresh=False):
+            if force_refresh:
+                self.refreshes += 1
+            return []
+
+    pm = Memory()
 
     def scan(_pm, patterns, max_region_size):
         limits.append(max_region_size)
@@ -81,11 +123,12 @@ def test_backup_resource_scan_expands_in_stages(monkeypatch):
     )
 
     groups = instance._resource_property_groups_win10(
-        object(),
+        pm,
         warm_unit_owner_index=True,
     )
 
     assert limits == [1024 * 1024, 64 * 1024 * 1024, None]
+    assert pm.refreshes == 1
     assert groups[0x30][3].value == 5000
     assert instance._unit_owner_index == {0x30: owner_address}
 
@@ -112,3 +155,204 @@ def test_backup_component_scan_keeps_existing_fast_path(monkeypatch):
     )
 
     assert result == expected
+
+
+def test_backup_component_fallback_refreshes_regions(monkeypatch):
+    instance = _bare_trainer()
+
+    class Memory:
+        refreshes = 0
+
+        def regions(self, force_refresh=False):
+            if force_refresh:
+                self.refreshes += 1
+            return []
+
+    pm = Memory()
+    monkeypatch.setattr(
+        trainer.War3Trainer,
+        "_scan_component_index",
+        lambda _self, _pm: {},
+    )
+
+    assert instance._scan_component_index_win10(pm) == {}
+    assert pm.refreshes == 1
+
+
+def test_backup_scan_skips_region_that_became_unreadable():
+    instance = _bare_trainer()
+
+    class Memory:
+        @staticmethod
+        def _query_region(_address):
+            return {
+                "base": 0x200000,
+                "size": 0x4000,
+                "state": 0x10000,
+                "protect": trainer.PAGE_NOACCESS,
+                "type": 0,
+            }
+
+        @staticmethod
+        def read(_address, _size):
+            raise AssertionError("an address confirmed as free must not be read")
+
+    assert list(
+        instance._iter_readable_blocks_win10(
+            Memory(),
+            0x200000,
+            0x4000,
+        )
+    ) == []
+
+
+def test_backup_scan_keeps_stable_readable_region_behavior():
+    instance = _bare_trainer()
+    payload = b"stable backup region"
+
+    class Memory:
+        @staticmethod
+        def _query_region(address):
+            return {
+                "base": address,
+                "size": len(payload),
+                "state": trainer.MEM_COMMIT,
+                "protect": trainer.PAGE_READWRITE,
+                "type": trainer.MEM_PRIVATE,
+            }
+
+        @staticmethod
+        def read(_address, size):
+            return payload[:size]
+
+    assert list(
+        instance._iter_readable_blocks_win10(
+            Memory(),
+            0x300000,
+            len(payload),
+        )
+    ) == [(0x300000, payload)]
+
+
+def test_backup_scan_keeps_old_read_behavior_when_live_query_fails():
+    instance = _bare_trainer()
+    payload = b"query unavailable"
+
+    class Memory:
+        @staticmethod
+        def _query_region(_address):
+            return {}
+
+        @staticmethod
+        def read(_address, size):
+            return payload[:size]
+
+    assert list(
+        instance._iter_readable_blocks_win10(
+            Memory(),
+            0x400000,
+            len(payload),
+        )
+    ) == [(0x400000, payload)]
+
+
+def test_backup_native_table_falls_back_to_external_string_reference(monkeypatch):
+    instance = _bare_trainer()
+    mapped_table = trainer.Region(
+        0x500000,
+        0x20000,
+        trainer.PAGE_READWRITE,
+        trainer.MEM_MAPPED,
+    )
+    executable = trainer.Region(
+        0x140000000,
+        0x100000,
+        trainer.PAGE_EXECUTE_READ,
+        trainer.MEM_IMAGE,
+    )
+    regions = [mapped_table, executable]
+    string_address = 0x510000
+    record = 0x51F000
+    handler = executable.base + 0x1000
+
+    class Memory:
+        refreshes = 0
+
+        def regions(self, force_refresh=False):
+            if force_refresh:
+                self.refreshes += 1
+            return regions
+
+        @staticmethod
+        def read_u64(address):
+            values = {
+                record - 8: handler,
+                record: string_address,
+                record + 8: len("UnitAddAbility"),
+                record + 16: 31,
+            }
+            return values[address]
+
+    pm = Memory()
+    monkeypatch.setattr(
+        instance,
+        "_find_native_table_regions",
+        lambda _pm, _regions: (_ for _ in ()).throw(
+            RuntimeError("未找到 Warcraft III native 函数表")
+        ),
+    )
+    monkeypatch.setattr(
+        instance,
+        "_scan_native_table_region_candidates_win10",
+        lambda *_args: [],
+    )
+
+    def scan(_pm, pattern, **_kwargs):
+        if pattern == b"UnitAddAbility":
+            return [string_address]
+        return []
+
+    monkeypatch.setattr(instance, "_scan_bytes_regions_win10", scan)
+    monkeypatch.setattr(
+        instance,
+        "_scan_bytes_regions_many_win10",
+        lambda _pm, patterns, **_kwargs: {
+            pattern: [record]
+            for pattern in patterns
+        },
+    )
+
+    found = instance._find_native_table_regions_win10(pm, regions)
+
+    assert found == [mapped_table]
+    assert pm.refreshes >= 1
+
+
+def test_backup_external_native_name_reads_only_requested_bytes():
+    instance = _bare_trainer()
+    name = "UnitAddAbility"
+    pointer = 0x700001000
+    mapped_region = trainer.Region(
+        0x700000000,
+        2 * 1024 * 1024 * 1024,
+        trainer.PAGE_READWRITE,
+        trainer.MEM_MAPPED,
+    )
+
+    class Memory:
+        reads = []
+
+        def read(self, address, size):
+            self.reads.append((address, size))
+            return name.encode("ascii")
+
+    pm = Memory()
+    recovered = instance._recover_native_external_names_win10(
+        pm,
+        [mapped_region],
+        {(pointer, len(name))},
+        {name},
+    )
+
+    assert recovered == {pointer: name}
+    assert pm.reads == [(pointer, len(name))]

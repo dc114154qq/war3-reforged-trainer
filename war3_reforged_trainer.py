@@ -33,8 +33,8 @@ from war3_id_catalog import CATALOG_COUNTS, search_id_entries
 from war3_ui_i18n import detect_ui_language, translate_ui_text
 
 
-APP_VERSION = "1.0.9"
-WIN10_COMPAT_REVISION = "backup-r6-large-private-regions"
+APP_VERSION = "1.0.10"
+WIN10_COMPAT_REVISION = "backup-r7-live-regions-external-native"
 
 
 if sys.platform == "win32":
@@ -2581,6 +2581,33 @@ class War3Trainer:
         block_size: int = 4 * 1024 * 1024,
         min_block_size: int = 0x1000,
     ) -> Iterator[tuple[int, bytes]]:
+        def live_readable_ranges(
+            range_address: int,
+            range_length: int,
+        ) -> Iterator[tuple[int, int]]:
+            query_region = getattr(pm, "_query_region", None)
+            if not callable(query_region):
+                yield range_address, range_length
+                return
+            current = range_address
+            end = range_address + range_length
+            while current < end:
+                region = query_region(current)
+                if not region:
+                    yield current, end - current
+                    return
+                region_base = int(region.get("base", current))
+                region_end = region_base + max(1, int(region.get("size", 1)))
+                next_address = min(end, max(current + 1, region_end))
+                protect = int(region.get("protect", 0))
+                if (
+                    int(region.get("state", 0)) == MEM_COMMIT
+                    and not protect & (PAGE_NOACCESS | PAGE_GUARD)
+                    and (protect & 0xFF) in READABLE_PROTECTS
+                ):
+                    yield current, next_address - current
+                current = next_address
+
         def read_block(block_address: int, block_length: int) -> Iterator[tuple[int, bytes]]:
             try:
                 yield block_address, pm.read(block_address, block_length)
@@ -2599,16 +2626,79 @@ class War3Trainer:
             length = min(block_size, size - offset)
             pending_address = 0
             pending = bytearray()
-            for piece_address, piece in read_block(address + offset, length):
-                if pending and pending_address + len(pending) != piece_address:
-                    yield pending_address, bytes(pending)
-                    pending.clear()
-                if not pending:
-                    pending_address = piece_address
-                pending.extend(piece)
+            for live_address, live_length in live_readable_ranges(
+                address + offset,
+                length,
+            ):
+                for piece_address, piece in read_block(live_address, live_length):
+                    if pending and pending_address + len(pending) != piece_address:
+                        yield pending_address, bytes(pending)
+                        pending.clear()
+                    if not pending:
+                        pending_address = piece_address
+                    pending.extend(piece)
             if pending:
                 yield pending_address, bytes(pending)
             offset += length
+
+    def _scan_bytes_regions_win10(
+        self,
+        pm: ProcessMemory,
+        pattern: bytes,
+        *,
+        region_types: tuple[int, ...],
+        max_region_size: int | None,
+    ) -> list[int]:
+        return self._scan_bytes_regions_many_win10(
+            pm,
+            (pattern,),
+            region_types=region_types,
+            max_region_size=max_region_size,
+        )[pattern]
+
+    def _scan_bytes_regions_many_win10(
+        self,
+        pm: ProcessMemory,
+        patterns: Iterable[bytes],
+        *,
+        region_types: tuple[int, ...],
+        max_region_size: int | None,
+    ) -> dict[bytes, list[int]]:
+        unique_patterns = tuple(dict.fromkeys(patterns))
+        hits = {pattern: [] for pattern in unique_patterns}
+        if not unique_patterns:
+            return hits
+        tail_len = max(len(pattern) for pattern in unique_patterns) - 1
+        for region in pm.regions():
+            if (
+                region.typ not in region_types
+                or (max_region_size is not None and region.size > max_region_size)
+            ):
+                continue
+            tail = b""
+            previous_end = 0
+            for block_address, block in self._iter_readable_blocks_win10(
+                pm,
+                region.base,
+                region.size,
+            ):
+                if previous_end != block_address:
+                    tail = b""
+                data = tail + block
+                data_base = block_address - len(tail)
+                for pattern in unique_patterns:
+                    start = 0
+                    while True:
+                        offset = data.find(pattern, start)
+                        if offset < 0:
+                            break
+                        hit = data_base + offset
+                        if hit >= region.base:
+                            hits[pattern].append(hit)
+                        start = offset + 1
+                tail = data[-tail_len:] if tail_len else b""
+                previous_end = block_address + len(block)
+        return hits
 
     def _scan_bytes_private_win10(
         self,
@@ -2720,6 +2810,59 @@ class War3Trainer:
                 candidates[(region.base, region.size)] = region
         return sorted(candidates.values(), key=lambda item: item.base, reverse=True)
 
+    def _scan_native_table_reference_candidates_win10(
+        self,
+        pm: ProcessMemory,
+        regions: list[Region],
+        max_region_size: int | None,
+    ) -> list[Region]:
+        name = "UnitAddAbility"
+        record_types = (MEM_PRIVATE, MEM_MAPPED)
+        string_addresses = self._scan_bytes_regions_win10(
+            pm,
+            name.encode("ascii"),
+            region_types=(MEM_PRIVATE, MEM_MAPPED, MEM_IMAGE),
+            max_region_size=max_region_size,
+        )
+        if not string_addresses:
+            return []
+
+        string_addresses = list(dict.fromkeys(string_addresses))
+        pointer_patterns = {
+            struct.pack("<Q", address): address
+            for address in string_addresses
+        }
+        pointer_hits = self._scan_bytes_regions_many_win10(
+            pm,
+            pointer_patterns,
+            region_types=record_types,
+            max_region_size=max_region_size,
+        )
+        candidates: dict[tuple[int, int], Region] = {}
+        for pointer_pattern, records in pointer_hits.items():
+            string_address = pointer_patterns[pointer_pattern]
+            for record in records:
+                if record & 7:
+                    continue
+                region = self._region_for_address(regions, record)
+                if region is None or region.typ not in record_types:
+                    continue
+                try:
+                    handler = pm.read_u64(record - 8)
+                    ptr = pm.read_u64(record)
+                    size = pm.read_u64(record + 8)
+                    capacity = pm.read_u64(record + 16)
+                except OSError:
+                    continue
+                if (
+                    ptr == string_address
+                    and size == len(name)
+                    and size <= capacity < 0x1000
+                    and self._is_executable_image_address(regions, handler)
+                ):
+                    candidates[(region.base, region.size)] = region
+        return sorted(candidates.values(), key=lambda item: item.base, reverse=True)
+
     def _find_native_table_regions_win10(
         self,
         pm: ProcessMemory,
@@ -2738,6 +2881,20 @@ class War3Trainer:
         )
         if not candidates:
             candidates = self._scan_native_table_region_candidates_win10(
+                pm,
+                regions,
+                None,
+            )
+        if not candidates:
+            regions = pm.regions(force_refresh=True)
+            candidates = self._scan_native_table_reference_candidates_win10(
+                pm,
+                regions,
+                64 * 1024 * 1024,
+            )
+        if not candidates:
+            regions = pm.regions(force_refresh=True)
+            candidates = self._scan_native_table_reference_candidates_win10(
                 pm,
                 regions,
                 None,
@@ -2913,6 +3070,38 @@ class War3Trainer:
                 return NativeHandler(name, record, handler)
         return None
 
+    def _recover_native_external_names_win10(
+        self,
+        pm: ProcessMemory,
+        regions: list[Region],
+        external_records: Iterable[tuple[int, int]],
+        missing: Iterable[str],
+    ) -> dict[int, str]:
+        missing_by_length: dict[int, set[str]] = {}
+        for name in missing:
+            missing_by_length.setdefault(len(name), set()).add(name)
+
+        recovered: dict[int, str] = {}
+        for pointer, size in external_records:
+            names_for_size = missing_by_length.get(size)
+            if not names_for_size:
+                continue
+            region = self._region_for_address(regions, pointer)
+            if (
+                region is None
+                or region.typ not in (MEM_PRIVATE, MEM_MAPPED, MEM_IMAGE)
+                or pointer + size > region.base + region.size
+            ):
+                continue
+            try:
+                data = pm.read(pointer, size)
+                name = data.decode("ascii")
+            except (OSError, UnicodeDecodeError):
+                continue
+            if name in names_for_size:
+                recovered[pointer] = name
+        return recovered
+
     def _discover_native_handlers(
         self,
         pm: ProcessMemory,
@@ -2967,6 +3156,7 @@ class War3Trainer:
 
         regions = pm.regions()
         anchors = self._find_native_table_regions_win10(pm, regions)
+        regions = pm.regions()
         found: dict[str, NativeHandler] = {}
         external_records: set[tuple[int, int]] = set()
         executable_regions = sorted(
@@ -2999,7 +3189,7 @@ class War3Trainer:
 
             for scan_start, scan_end in scan_ranges:
                 for region in sorted(regions, key=lambda item: item.base):
-                    if region.typ != MEM_PRIVATE:
+                    if region.typ not in (MEM_PRIVATE, MEM_MAPPED):
                         continue
                     region_start = max(region.base, scan_start - 8)
                     region_end = min(region.base + region.size, scan_end)
@@ -3042,38 +3232,6 @@ class War3Trainer:
                             if not missing:
                                 return
 
-        def recover_external_names_from_regions() -> dict[int, str]:
-            recovered: dict[int, str] = {}
-            readable_cache: dict[tuple[int, int], list[tuple[int, bytes]]] = {}
-            missing_by_length: dict[int, set[str]] = {}
-            for name in missing:
-                missing_by_length.setdefault(len(name), set()).add(name)
-            for pointer, size in external_records:
-                names_for_size = missing_by_length.get(size)
-                if not names_for_size:
-                    continue
-                region = self._region_for_address(regions, pointer)
-                if region is None or region.typ != MEM_PRIVATE:
-                    continue
-                key = (region.base, region.size)
-                blocks = readable_cache.get(key)
-                if blocks is None:
-                    blocks = list(self._iter_readable_blocks_win10(pm, region.base, region.size))
-                    readable_cache[key] = blocks
-                for block_address, block in blocks:
-                    offset = pointer - block_address
-                    if offset < 0 or offset + size > len(block):
-                        continue
-                    data = block[offset : offset + size]
-                    try:
-                        name = data.decode("ascii")
-                    except UnicodeDecodeError:
-                        break
-                    if name in names_for_size:
-                        recovered[pointer] = name
-                    break
-            return recovered
-
         def recover_handlers_from_record_profile() -> None:
             translations: dict[int, int] = {}
             known_handlers = dict(self._native_handlers)
@@ -3094,7 +3252,7 @@ class War3Trainer:
                     continue
                 record = translation + profile_offset
                 region = self._region_for_address(regions, record)
-                if region is None or region.typ != MEM_PRIVATE:
+                if region is None or region.typ not in (MEM_PRIVATE, MEM_MAPPED):
                     continue
                 try:
                     handler_address = pm.read_u64(record - 8)
@@ -3108,7 +3266,12 @@ class War3Trainer:
 
         scan_ranges_for(anchors)
         if missing:
-            external_names = recover_external_names_from_regions()
+            external_names = self._recover_native_external_names_win10(
+                pm,
+                regions,
+                external_records,
+                missing,
+            )
             if external_names:
                 scan_ranges_for(anchors, external_names)
         if missing:
@@ -3132,7 +3295,12 @@ class War3Trainer:
             anchors = list(anchor_by_region.values())
             scan_ranges_for(anchors)
             if missing:
-                external_names = recover_external_names_from_regions()
+                external_names = self._recover_native_external_names_win10(
+                    pm,
+                    regions,
+                    external_records,
+                    missing,
+                )
                 if external_names:
                     scan_ranges_for(anchors, external_names)
         if missing:
@@ -7225,6 +7393,9 @@ class War3Trainer:
             or (warm_unit_owner_index and not tag_hits[unit_owner_tag])
         )
         if needs_expand:
+            regions = getattr(pm, "regions", None)
+            if callable(regions):
+                regions(force_refresh=True)
             tag_hits = self._scan_bytes_private_many_win10(
                 pm,
                 patterns,
@@ -10344,6 +10515,7 @@ class War3Trainer:
         if components_by_owner:
             return components_by_owner
 
+        pm.regions(force_refresh=True)
         patterns = tuple(
             (struct.pack("<Q", tag), tag, name)
             for tag, name in self.COMPONENT_NAMES.items()
@@ -11325,7 +11497,7 @@ class War3Trainer:
             if handler is None or handler.name != name:
                 continue
             record_region = self._region_for_address(regions, handler.record_address)
-            if record_region is None or record_region.typ != MEM_PRIVATE:
+            if record_region is None or record_region.typ not in (MEM_PRIVATE, MEM_MAPPED):
                 continue
             if not self._is_executable_image_address(regions, handler.handler_address):
                 continue
@@ -15085,12 +15257,12 @@ def run_gui() -> None:
     top = ttk.Frame(outer)
     top.pack(fill="x")
     ttk.Button(top, text="连接/刷新进程", command=lambda: call_async(connect)).pack(side="left")
-    read_unit_button = ttk.Button(top, text="读取当前选中单位")
+    read_unit_button = ttk.Button(top, text="读取当前选中单位 (Ctrl+F11)")
     read_unit_button.configure(
         command=lambda: call_async(read_unit_with_sound, "read_unit", read_unit_button)
     )
     read_unit_button.pack(side="left", padx=(12, 0))
-    backup_read_button = ttk.Button(top, text="备用读取")
+    backup_read_button = ttk.Button(top, text="备用读取 (Ctrl+F12)")
     backup_read_button.configure(
         command=lambda: call_async(
             read_unit_win10_with_sound,

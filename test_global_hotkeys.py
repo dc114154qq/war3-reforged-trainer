@@ -5,6 +5,7 @@ import unittest
 from unittest.mock import patch
 
 import war3_reforged_trainer as trainer
+from war3_ui_i18n import translate_ui_text
 
 
 class GlobalHotkeyManagerTests(unittest.TestCase):
@@ -43,6 +44,20 @@ class GlobalHotkeyManagerTests(unittest.TestCase):
                     lambda: (_ for _ in ()).throw(RuntimeError("failed"))
                 )
             sound.assert_not_called()
+
+    def test_read_buttons_show_shortcuts_in_both_languages(self):
+        labels = (
+            "读取当前选中单位 (Ctrl+F11)",
+            "备用读取 (Ctrl+F12)",
+        )
+        self.assertEqual(
+            translate_ui_text(labels[0], "en"),
+            "Read Selected Unit (Ctrl+F11)",
+        )
+        self.assertEqual(
+            translate_ui_text(labels[1], "en"),
+            "Backup Read (Ctrl+F12)",
+        )
 
     def test_poll_fallback_is_available_for_every_shortcut(self):
         fallback_names = {

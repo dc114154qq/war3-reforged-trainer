@@ -236,6 +236,40 @@ main {
   gap: 12px;
 }
 
+.copy-workflow-notice {
+  max-width: 760px;
+  margin-top: 22px;
+  padding: 15px 16px;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 11px;
+  border: 1px solid #d8a24a;
+  border-left-width: 4px;
+  background: #fff8e8;
+  color: var(--text);
+}
+
+.copy-workflow-notice svg {
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  color: #9a5a00;
+  stroke-width: 2;
+}
+
+.copy-workflow-notice strong {
+  display: block;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.copy-workflow-notice p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
 .primary-button,
 .secondary-button,
 .release-download {

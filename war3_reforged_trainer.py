@@ -33,7 +33,7 @@ from war3_id_catalog import CATALOG_COUNTS, search_id_entries
 from war3_ui_i18n import detect_ui_language, translate_ui_text
 
 
-APP_VERSION = "1.0.8"
+APP_VERSION = "1.0.9"
 WIN10_COMPAT_REVISION = "backup-r6-large-private-regions"
 
 
@@ -77,6 +77,8 @@ VK_SHIFT = 0x10
 VK_CONTROL = 0x11
 VK_MENU = 0x12
 VK_F1 = 0x70
+VK_F11 = 0x7A
+VK_F12 = 0x7B
 VK_HOME = 0x24
 VK_END = 0x23
 VK_LWIN = 0x5B
@@ -89,6 +91,7 @@ MOD_CONTROL = 0x0002
 MOD_SHIFT = 0x0004
 MOD_WIN = 0x0008
 MOD_NOREPEAT = 0x4000
+MB_ICONASTERISK = 0x00000040
 SW_RESTORE = 9
 HWND_TOPMOST = -1
 HWND_NOTOPMOST = -2
@@ -271,6 +274,21 @@ user32.PostThreadMessageW.argtypes = (ctypes.c_ulong, ctypes.c_uint, ctypes.c_si
 user32.PostThreadMessageW.restype = ctypes.c_bool
 user32.GetAsyncKeyState.argtypes = (ctypes.c_int,)
 user32.GetAsyncKeyState.restype = ctypes.c_short
+user32.MessageBeep.argtypes = (ctypes.c_uint,)
+user32.MessageBeep.restype = ctypes.c_bool
+
+
+def play_read_success_sound() -> None:
+    try:
+        user32.MessageBeep(MB_ICONASTERISK)
+    except Exception:
+        pass
+
+
+def call_with_read_success_sound(fn: Callable[[], str]) -> str:
+    result = fn()
+    play_read_success_sound()
+    return result
 
 
 @dataclass(frozen=True)
@@ -445,6 +463,8 @@ class GlobalHotkeyManager:
 
 
 ELEPHANT_HOTKEY_SPECS = (
+    GlobalHotkeySpec("read_unit", "Ctrl+F11  读取当前选中单位", MOD_CONTROL, VK_F11),
+    GlobalHotkeySpec("backup_read_unit", "Ctrl+F12  备用读取", MOD_CONTROL, VK_F12),
     GlobalHotkeySpec("hero_level", "Ctrl+Q  英雄等级", MOD_CONTROL, ord("Q")),
     GlobalHotkeySpec("instant_move", "Ctrl+X  瞬间移动", MOD_CONTROL, ord("X")),
     GlobalHotkeySpec("explode_unit", "Ctrl+W  瞬间爆炸目标单位", MOD_CONTROL, ord("W")),
@@ -14134,6 +14154,12 @@ def run_gui() -> None:
             f"{native_status}；耗时 {elapsed_ms:.0f} ms；日志：{log_path}"
         )
 
+    def read_unit_with_sound() -> str:
+        return call_with_read_success_sound(read_unit)
+
+    def read_unit_win10_with_sound() -> str:
+        return call_with_read_success_sound(read_unit_win10)
+
     def read_unit_native_selection() -> str:
         try:
             t = trainer()
@@ -14667,6 +14693,8 @@ def run_gui() -> None:
         return message
 
     hotkey_callbacks: dict[str, Callable[[], str]] = {
+        "read_unit": read_unit_with_sound,
+        "backup_read_unit": read_unit_win10_with_sound,
         "hero_level": elephant_set_hero_level,
         "instant_move": elephant_move_to_mouse,
         "explode_unit": lambda: elephant_action(elephant_trainer().explode_selected_unit, "选中单位已爆炸"),
@@ -15059,13 +15087,13 @@ def run_gui() -> None:
     ttk.Button(top, text="连接/刷新进程", command=lambda: call_async(connect)).pack(side="left")
     read_unit_button = ttk.Button(top, text="读取当前选中单位")
     read_unit_button.configure(
-        command=lambda: call_async(read_unit, "read_unit", read_unit_button)
+        command=lambda: call_async(read_unit_with_sound, "read_unit", read_unit_button)
     )
     read_unit_button.pack(side="left", padx=(12, 0))
     backup_read_button = ttk.Button(top, text="备用读取")
     backup_read_button.configure(
         command=lambda: call_async(
-            read_unit_win10,
+            read_unit_win10_with_sound,
             "backup_read",
             backup_read_button,
         )
@@ -15700,7 +15728,7 @@ def run_gui() -> None:
         "reset_ability": elephant_reset_ability_rawcode,
         "fullscreen_auto": elephant_auto_effect_count,
     }
-    hotkeys_per_column = 15
+    hotkeys_per_column = (len(ELEPHANT_HOTKEY_SPECS) + 2) // 3
     for index, spec in enumerate(ELEPHANT_HOTKEY_SPECS):
         column = index // hotkeys_per_column
         row = index % hotkeys_per_column

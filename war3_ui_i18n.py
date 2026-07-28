@@ -84,6 +84,8 @@ _EN_TRANSLATIONS = {
     "复制选中单位给自己": "Copy Selected Unit to Self",
     "秒杀所属玩家全部单位": "Kill All Units Owned by Player",
     "启用全局快捷键": "Enable Global Hotkeys",
+    "Ctrl+F11  读取当前选中单位": "Ctrl+F11  Read Selected Unit",
+    "Ctrl+F12  备用读取": "Ctrl+F12  Backup Read",
     "读取可修改字段": "Read Editable Fields",
     "写入选中字段": "Write Selected Field",
     "显示未开放": "Show Unavailable",

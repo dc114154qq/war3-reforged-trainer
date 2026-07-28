@@ -2,11 +2,48 @@ import ctypes
 import threading
 import time
 import unittest
+from unittest.mock import patch
 
 import war3_reforged_trainer as trainer
 
 
 class GlobalHotkeyManagerTests(unittest.TestCase):
+    def test_read_shortcuts_use_ctrl_function_keys(self):
+        specs = {
+            spec.name: spec
+            for spec in trainer.ELEPHANT_HOTKEY_SPECS
+        }
+
+        self.assertEqual(
+            (
+                specs["read_unit"].modifiers,
+                specs["read_unit"].virtual_key,
+            ),
+            (trainer.MOD_CONTROL, trainer.VK_F11),
+        )
+        self.assertEqual(
+            (
+                specs["backup_read_unit"].modifiers,
+                specs["backup_read_unit"].virtual_key,
+            ),
+            (trainer.MOD_CONTROL, trainer.VK_F12),
+        )
+
+    def test_read_success_sound_only_plays_after_success(self):
+        with patch.object(trainer, "play_read_success_sound") as sound:
+            self.assertEqual(
+                trainer.call_with_read_success_sound(lambda: "ok"),
+                "ok",
+            )
+            sound.assert_called_once_with()
+
+        with patch.object(trainer, "play_read_success_sound") as sound:
+            with self.assertRaisesRegex(RuntimeError, "failed"):
+                trainer.call_with_read_success_sound(
+                    lambda: (_ for _ in ()).throw(RuntimeError("failed"))
+                )
+            sound.assert_not_called()
+
     def test_poll_fallback_is_available_for_every_shortcut(self):
         fallback_names = {
             spec.name

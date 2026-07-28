@@ -12,6 +12,7 @@ import argparse
 from bisect import bisect_right
 from contextlib import contextmanager
 import ctypes
+from decimal import Decimal, InvalidOperation
 import math
 import tempfile
 import struct
@@ -32,8 +33,8 @@ from war3_id_catalog import CATALOG_COUNTS, search_id_entries
 from war3_ui_i18n import detect_ui_language, translate_ui_text
 
 
-APP_VERSION = "1.0.7"
-WIN10_COMPAT_REVISION = "backup-r5-readable-low-va"
+APP_VERSION = "1.0.8"
+WIN10_COMPAT_REVISION = "backup-r6-large-private-regions"
 
 
 if sys.platform == "win32":
@@ -614,7 +615,7 @@ class UnitMemoryField:
         if self.value_type in {"u64", "ptr"}:
             return f"0x{int(self.value):x}"
         if isinstance(self.value, float):
-            return f"{self.value:.6g}"
+            return format_editable_float32(self.value)
         return str(self.value)
 
 
@@ -759,7 +760,7 @@ class AbilityFieldValue:
         if self.spec.value_kind == "boolean":
             return "true" if bool(self.value) else "false"
         if self.spec.value_kind == "real":
-            return f"{float(self.value):.7g}"
+            return format_editable_float32(float(self.value))
         return str(int(self.value))
 
 
@@ -802,6 +803,38 @@ def format_rawcode(raw: int) -> str:
     if all(32 <= byte < 127 for byte in data):
         return data.decode("ascii")
     return f"0x{raw:08x}"
+
+
+def format_editable_float32(value: float) -> str:
+    numeric = float(value)
+    if not math.isfinite(numeric):
+        return str(numeric)
+    text = format(numeric, ".9g")
+    if "e" in text.lower():
+        text = format(Decimal(text), "f")
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return "0" if text in {"-0", ""} else text
+
+
+def parse_integer_number(value: int | float | str) -> int:
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        if not math.isfinite(value) or not value.is_integer():
+            raise ValueError("not an integer")
+        return int(value)
+    text = str(value).strip()
+    try:
+        return int(text, 0)
+    except ValueError:
+        try:
+            numeric = Decimal(text)
+        except InvalidOperation as exc:
+            raise ValueError("not an integer") from exc
+        if not numeric.is_finite() or numeric != numeric.to_integral_value():
+            raise ValueError("not an integer")
+        return int(numeric)
 
 
 OCR_TEMPLATE_WIDTH = 24
@@ -2561,12 +2594,15 @@ class War3Trainer:
         self,
         pm: ProcessMemory,
         pattern: bytes,
-        max_region_size: int = 64 * 1024 * 1024,
+        max_region_size: int | None = 64 * 1024 * 1024,
     ) -> list[int]:
         hits: list[int] = []
         tail_len = max(0, len(pattern) - 1)
         for region in pm.regions():
-            if region.typ != MEM_PRIVATE or region.size > max_region_size:
+            if (
+                region.typ != MEM_PRIVATE
+                or (max_region_size is not None and region.size > max_region_size)
+            ):
                 continue
             tail = b""
             previous_end = 0
@@ -2591,15 +2627,61 @@ class War3Trainer:
                 previous_end = block_address + len(block)
         return hits
 
+    def _scan_bytes_private_many_win10(
+        self,
+        pm: ProcessMemory,
+        patterns: Iterable[bytes],
+        max_region_size: int | None = 64 * 1024 * 1024,
+    ) -> dict[bytes, list[int]]:
+        unique_patterns = tuple(dict.fromkeys(patterns))
+        hits = {pattern: [] for pattern in unique_patterns}
+        if not unique_patterns:
+            return hits
+        tail_len = max(len(pattern) for pattern in unique_patterns) - 1
+        for region in pm.regions():
+            if (
+                region.typ != MEM_PRIVATE
+                or (max_region_size is not None and region.size > max_region_size)
+            ):
+                continue
+            tail = b""
+            previous_end = 0
+            for block_address, block in self._iter_readable_blocks_win10(
+                pm,
+                region.base,
+                region.size,
+            ):
+                if previous_end != block_address:
+                    tail = b""
+                data = tail + block
+                data_base = block_address - len(tail)
+                for pattern in unique_patterns:
+                    start = 0
+                    while True:
+                        offset = data.find(pattern, start)
+                        if offset < 0:
+                            break
+                        address = data_base + offset
+                        if address >= region.base:
+                            hits[pattern].append(address)
+                        start = offset + 1
+                tail = data[-tail_len:] if tail_len else b""
+                previous_end = block_address + len(block)
+        return hits
+
     def _scan_native_table_region_candidates_win10(
         self,
         pm: ProcessMemory,
         regions: list[Region],
-        max_region_size: int,
+        max_region_size: int | None,
     ) -> list[Region]:
         pattern = b"UnitAddAbility\0"
         candidates: dict[tuple[int, int], Region] = {}
-        for hit in pm.scan_bytes_private(pattern, max_region_size=max_region_size):
+        for hit in self._scan_bytes_private_win10(
+            pm,
+            pattern,
+            max_region_size=max_region_size,
+        ):
             record = hit - 0x18
             region = self._region_for_address(regions, hit)
             if region is None or region.typ != MEM_PRIVATE:
@@ -2617,6 +2699,42 @@ class War3Trainer:
             ):
                 candidates[(region.base, region.size)] = region
         return sorted(candidates.values(), key=lambda item: item.base, reverse=True)
+
+    def _find_native_table_regions_win10(
+        self,
+        pm: ProcessMemory,
+        regions: list[Region],
+    ) -> list[Region]:
+        discovery_error: RuntimeError | None = None
+        try:
+            return self._find_native_table_regions(pm, regions)
+        except RuntimeError as exc:
+            discovery_error = exc
+
+        candidates = self._scan_native_table_region_candidates_win10(
+            pm,
+            regions,
+            64 * 1024 * 1024,
+        )
+        if not candidates:
+            candidates = self._scan_native_table_region_candidates_win10(
+                pm,
+                regions,
+                None,
+            )
+        if not candidates:
+            if discovery_error is not None:
+                raise discovery_error
+            raise RuntimeError("未找到 Warcraft III native 函数表")
+
+        self._native_table_regions = [
+            (region.base, region.size)
+            for region in candidates
+        ]
+        primary = candidates[0]
+        self._native_table_region = (primary.base, primary.size)
+        self._native_table_blob = None
+        return candidates
 
     def _find_native_table_regions(
         self,
@@ -2828,7 +2946,7 @@ class War3Trainer:
             return {name: self._native_handlers[name] for name in wanted}
 
         regions = pm.regions()
-        anchors = self._find_native_table_regions(pm, regions)
+        anchors = self._find_native_table_regions_win10(pm, regions)
         found: dict[str, NativeHandler] = {}
         external_records: set[tuple[int, int]] = set()
         executable_regions = sorted(
@@ -2981,6 +3099,12 @@ class War3Trainer:
                 regions,
                 64 * 1024 * 1024,
             )
+            if not broad_anchors:
+                broad_anchors = self._scan_native_table_region_candidates_win10(
+                    pm,
+                    regions,
+                    None,
+                )
             anchor_by_region = {
                 (anchor.base, anchor.size): anchor
                 for anchor in (*anchors, *broad_anchors)
@@ -2994,9 +3118,10 @@ class War3Trainer:
         if missing:
             patterns = {(name.encode("ascii") + b"\0"): name for name in missing}
             external_names = {}
-            for pattern, addresses in pm.scan_bytes_private_many(
+            for pattern, addresses in self._scan_bytes_private_many_win10(
+                pm,
                 patterns,
-                max_region_size=64 * 1024 * 1024,
+                max_region_size=None,
             ).items():
                 name = patterns[pattern]
                 for address in addresses:
@@ -5646,7 +5771,10 @@ class War3Trainer:
                 raise ValueError("布尔字段请输入 true/false 或 1/0")
             return bool(value)
         if spec.value_kind == "integer":
-            parsed = int(value.strip(), 0) if isinstance(value, str) else int(value)
+            try:
+                parsed = parse_integer_number(value)
+            except ValueError as exc:
+                raise ValueError("整数字段必须是整数") from exc
             if not -(1 << 31) <= parsed <= 0xFFFFFFFF:
                 raise ValueError("整数字段必须在 -2147483648 到 4294967295 之间")
             return ctypes.c_int32(parsed & 0xFFFFFFFF).value
@@ -7055,6 +7183,56 @@ class War3Trainer:
                 owner_group[prop.kind] = prop
         return groups
 
+    def _resource_property_groups_win10(
+        self,
+        pm: ProcessMemory,
+        warm_unit_owner_index: bool = False,
+    ) -> dict[int, dict[int, ResourceProperty]]:
+        resource_tag = struct.pack("<Q", self.RESOURCE_PROP_TAG)
+        unit_owner_tag = struct.pack("<Q", self.UNIT_OWNER_TAG)
+        patterns = (
+            (resource_tag, unit_owner_tag)
+            if warm_unit_owner_index
+            else (resource_tag,)
+        )
+        tag_hits = self._scan_bytes_private_many_win10(
+            pm,
+            patterns,
+            max_region_size=1024 * 1024,
+        )
+        needs_expand = (
+            not tag_hits[resource_tag]
+            or (warm_unit_owner_index and not tag_hits[unit_owner_tag])
+        )
+        if needs_expand:
+            tag_hits = self._scan_bytes_private_many_win10(
+                pm,
+                patterns,
+                max_region_size=64 * 1024 * 1024,
+            )
+        needs_expand = (
+            not tag_hits[resource_tag]
+            or (warm_unit_owner_index and not tag_hits[unit_owner_tag])
+        )
+        if needs_expand:
+            tag_hits = self._scan_bytes_private_many_win10(
+                pm,
+                patterns,
+                max_region_size=None,
+            )
+        if warm_unit_owner_index:
+            self._unit_owner_index = self._unit_owner_index_from_tag_addresses(
+                pm,
+                tag_hits[unit_owner_tag],
+            )
+        groups: dict[int, dict[int, ResourceProperty]] = {}
+        for prop in self._iter_resource_properties(pm, tag_hits[resource_tag]):
+            owner_group = groups.setdefault(prop.owner_key, {})
+            current = owner_group.get(prop.kind)
+            if current is None or prop.address > current.address:
+                owner_group[prop.kind] = prop
+        return groups
+
     def _read_local_player_resources_via_native(self, pm: ProcessMemory) -> LocalPlayerResources:
         handlers = self._discover_native_handlers(pm, ("GetLocalPlayer", "GetPlayerId", "GetPlayerState"))
         get_local_player = handlers["GetLocalPlayer"].handler_address
@@ -7182,38 +7360,136 @@ class War3Trainer:
             raise RuntimeError("未找到可用于匹配本地玩家的资源组")
 
         with self._process_memory() as pm:
-            for _attempt in range(4):
-                snapshot = self._read_local_player_resources_via_native(pm)
-                expected_start_kind = 1 + snapshot.player_id * 0x28
-                candidate_pool = list(caches)
-                candidate_pool.extend(self._resource_candidates_by_start.get(expected_start_kind, ()))
-                unique_pool = {
-                    (cache.gold_address, cache.lumber_address): cache
-                    for cache in candidate_pool
-                }
-                current_caches: list[ResourceCache] = []
-                for cache in unique_pool.values():
-                    try:
-                        current_caches.append(self._read_resource_cache_addresses(pm, cache))
-                    except (OSError, RuntimeError):
-                        continue
-
-                slot_matches = [
-                    cache
-                    for cache in current_caches
-                    if cache.block_start_kind == expected_start_kind
-                    and self._resource_cache_matches_local_snapshot(cache, snapshot)
-                ]
-                if len(slot_matches) == 1:
-                    match = slot_matches[0]
-                    self._remember_selection_player_from_resource_owner(
-                        pm,
-                        match.owner_key,
-                        current_caches,
-                    )
-                    return replace(match, source=match.source + f" local_player={snapshot.player_id}")
+            match = self._locate_local_player_resource_cache_with_pm(pm, caches)
+            if match is not None:
+                return match
 
         raise RuntimeError("无法按玩家槽唯一匹配本地玩家资源组；已拒绝自动选择，避免修改其他阵营")
+
+    def _locate_local_player_resource_cache_with_pm(
+        self,
+        pm: ProcessMemory,
+        caches: list[ResourceCache],
+    ) -> ResourceCache | None:
+        for _attempt in range(4):
+            snapshot = self._read_local_player_resources_via_native(pm)
+            expected_start_kind = 1 + snapshot.player_id * 0x28
+            candidate_pool = list(caches)
+            candidate_pool.extend(self._resource_candidates_by_start.get(expected_start_kind, ()))
+            unique_pool = {
+                (cache.gold_address, cache.lumber_address): cache
+                for cache in candidate_pool
+            }
+            current_caches: list[ResourceCache] = []
+            for cache in unique_pool.values():
+                try:
+                    current_caches.append(self._read_resource_cache_addresses(pm, cache))
+                except (OSError, RuntimeError):
+                    continue
+
+            slot_matches = [
+                cache
+                for cache in current_caches
+                if cache.block_start_kind == expected_start_kind
+                and self._resource_cache_matches_local_snapshot(cache, snapshot)
+            ]
+            if len(slot_matches) == 1:
+                match = slot_matches[0]
+                self._remember_selection_player_from_resource_owner(
+                    pm,
+                    match.owner_key,
+                    current_caches,
+                )
+                return replace(match, source=match.source + f" local_player={snapshot.player_id}")
+        return None
+
+    def list_resource_caches_win10(
+        self,
+        current_gold: int | None = None,
+        current_lumber: int | None = None,
+        current_food: int | None = None,
+        current_food_cap: int | None = None,
+    ) -> tuple[list[ResourceCache], ResourceCache]:
+        with self._win10_memory_operation(
+            "list_resource_caches",
+        ) as (diagnostics, pm):
+            isolated = BackupReadWar3Trainer(self.pid)
+            self._seed_win10_isolated_state(isolated)
+            regions = pm.regions(force_refresh=True)
+            pointer_layout = isolated.set_readable_pointer_regions(regions)
+            diagnostics.log("backup_resource_pointer_layout", **pointer_layout)
+            self._recover_win10_native_handlers(isolated, pm, diagnostics)
+            groups = isolated._resource_property_groups_win10(
+                pm,
+                warm_unit_owner_index=True,
+            )
+            caches = isolated._resource_caches_from_groups(
+                groups,
+                current_gold,
+                current_lumber,
+                current_food,
+                current_food_cap,
+            )
+            if not caches:
+                raise RuntimeError("备用扫描未找到可用于匹配本地玩家的资源组")
+            local_cache = isolated._locate_local_player_resource_cache_with_pm(
+                pm,
+                caches,
+            )
+            if local_cache is None:
+                raise RuntimeError(
+                    "备用扫描无法按玩家槽唯一匹配本地玩家资源组；"
+                    "已拒绝自动选择，避免修改其他阵营"
+                )
+            self._resource_candidates_by_start = {
+                start: list(items)
+                for start, items in isolated._resource_candidates_by_start.items()
+            }
+            self._unit_owner_index.update(isolated._unit_owner_index)
+            diagnostics.log(
+                "backup_resource_success",
+                group_count=len(caches),
+                local_owner=f"0x{local_cache.owner_key:x}",
+                local_start_kind=f"0x{local_cache.block_start_kind:x}",
+            )
+            return caches, local_cache
+
+    def _resource_caches_from_groups(
+        self,
+        groups: dict[int, dict[int, ResourceProperty]],
+        current_gold: int | None = None,
+        current_lumber: int | None = None,
+        current_food: int | None = None,
+        current_food_cap: int | None = None,
+    ) -> list[ResourceCache]:
+        candidates_by_start: dict[int, list[ResourceCache]] = {}
+        found: list[ResourceCache] = []
+        seen: set[tuple[int, int]] = set()
+        for group in groups.values():
+            candidates = self._resource_cache_candidates_from_group(
+                group, current_gold, current_lumber, current_food, current_food_cap
+            )
+            if not candidates:
+                continue
+            for _candidate_score, candidate_cache in candidates:
+                candidates_by_start.setdefault(candidate_cache.block_start_kind, []).append(candidate_cache)
+            player_slot_candidates = [
+                candidate
+                for candidate in candidates
+                if candidate[1].block_start_kind >= 1
+                and (candidate[1].block_start_kind - 1) % 0x28 == 0
+            ]
+            if not player_slot_candidates:
+                continue
+            candidate = max(player_slot_candidates, key=lambda item: item[0])
+            _score, cache = candidate
+            key = (cache.gold_address, cache.lumber_address)
+            if key in seen:
+                continue
+            seen.add(key)
+            found.append(cache)
+        self._resource_candidates_by_start = candidates_by_start
+        return sorted(found, key=lambda cache: (cache.block_start_kind, cache.owner_key))
 
     def list_resource_caches(
         self,
@@ -7224,34 +7500,13 @@ class War3Trainer:
     ) -> list[ResourceCache]:
         with self._process_memory() as pm:
             groups = self._resource_property_groups(pm, warm_unit_owner_index=True)
-            candidates_by_start: dict[int, list[ResourceCache]] = {}
-            found: list[ResourceCache] = []
-            seen: set[tuple[int, int]] = set()
-            for group in groups.values():
-                candidates = self._resource_cache_candidates_from_group(
-                    group, current_gold, current_lumber, current_food, current_food_cap
-                )
-                if not candidates:
-                    continue
-                for _candidate_score, candidate_cache in candidates:
-                    candidates_by_start.setdefault(candidate_cache.block_start_kind, []).append(candidate_cache)
-                player_slot_candidates = [
-                    candidate
-                    for candidate in candidates
-                    if candidate[1].block_start_kind >= 1
-                    and (candidate[1].block_start_kind - 1) % 0x28 == 0
-                ]
-                if not player_slot_candidates:
-                    continue
-                candidate = max(player_slot_candidates, key=lambda item: item[0])
-                _score, cache = candidate
-                key = (cache.gold_address, cache.lumber_address)
-                if key in seen:
-                    continue
-                seen.add(key)
-                found.append(cache)
-            self._resource_candidates_by_start = candidates_by_start
-            return sorted(found, key=lambda cache: (cache.block_start_kind, cache.owner_key))
+            return self._resource_caches_from_groups(
+                groups,
+                current_gold,
+                current_lumber,
+                current_food,
+                current_food_cap,
+            )
 
     def _read_resource_cache_addresses(self, pm: ProcessMemory, cache: ResourceCache) -> ResourceCache:
         gold10 = pm.read_i32(cache.gold_address)
@@ -9771,20 +10026,16 @@ class War3Trainer:
         if value_type == "f32":
             return float(str(value).strip()) if isinstance(value, str) else float(value)
         if value_type in {"i32", "u32"}:
-            if isinstance(value, str):
-                return int(value.strip(), 0)
-            return int(value)
+            return parse_integer_number(value)
         if value_type in {"u64", "ptr"}:
-            if isinstance(value, str):
-                return int(value.strip(), 0)
-            return int(value)
+            return parse_integer_number(value)
         if value_type == "rawcode":
             if isinstance(value, str):
                 text = value.strip()
                 if len(text) == 4 and not text.lower().startswith("0x"):
                     return struct.unpack(">I", text.encode("ascii"))[0]
-                return int(text, 0)
-            return int(value)
+                return parse_integer_number(text)
+            return parse_integer_number(value)
         raise ValueError(f"不支持的字段类型：{value_type}")
 
     @classmethod
@@ -10063,6 +10314,71 @@ class War3Trainer:
                         components_by_owner.setdefault(owner, {}).setdefault(name, (wrapper, data))
                 tail = block[-tail_len:]
                 offset += size
+        return components_by_owner
+
+    def _scan_component_index_win10(
+        self,
+        pm: ProcessMemory,
+    ) -> dict[int, dict[str, tuple[int, int]]]:
+        components_by_owner = War3Trainer._scan_component_index(self, pm)
+        if components_by_owner:
+            return components_by_owner
+
+        patterns = tuple(
+            (struct.pack("<Q", tag), tag, name)
+            for tag, name in self.COMPONENT_NAMES.items()
+        )
+        for region in pm.regions():
+            if region.typ != MEM_PRIVATE:
+                continue
+            tail = b""
+            previous_end = 0
+            for block_address, block in self._iter_readable_blocks_win10(
+                pm,
+                region.base,
+                region.size,
+            ):
+                if previous_end != block_address:
+                    tail = b""
+                data = tail + block
+                data_base = block_address - len(tail)
+                for pattern, expected_tag, name in patterns:
+                    search = 0
+                    while True:
+                        index = data.find(pattern, search)
+                        if index < 0:
+                            break
+                        search = index + 1
+                        tag_address = data_base + index
+                        if tag_address < region.base:
+                            continue
+                        wrapper = tag_address - 0x18
+                        try:
+                            vtable = pm.read_u64(wrapper)
+                            tag = pm.read_u64(wrapper + 0x18)
+                            owner = pm.read_u64(wrapper + 0x50)
+                            component_data = pm.read_u64(wrapper + 0x90)
+                        except OSError:
+                            continue
+                        if tag != expected_tag or not self._sane_heap_ptr(owner):
+                            continue
+                        if (
+                            not self._looks_like_vtable(vtable)
+                            or not self._sane_heap_ptr(component_data)
+                        ):
+                            continue
+                        try:
+                            data_vtable = pm.read_u64(component_data)
+                        except OSError:
+                            continue
+                        if not self._looks_like_vtable(data_vtable):
+                            continue
+                        components_by_owner.setdefault(owner, {}).setdefault(
+                            name,
+                            (wrapper, component_data),
+                        )
+                tail = data[-7:]
+                previous_end = block_address + len(block)
         return components_by_owner
 
     def _rebuild_component_index(self, pm: ProcessMemory) -> None:
@@ -12629,6 +12945,28 @@ class BackupReadWar3Trainer(War3Trainer):
             names,
         )
 
+    def _resource_property_groups(
+        self,
+        pm: ProcessMemory,
+        warm_unit_owner_index: bool = False,
+    ) -> dict[int, dict[int, ResourceProperty]]:
+        safe_pm = self._require_win10_memory(pm)
+        return War3Trainer._resource_property_groups_win10(
+            self,
+            safe_pm,
+            warm_unit_owner_index,
+        )
+
+    def _scan_component_index(
+        self,
+        pm: ProcessMemory,
+    ) -> dict[int, dict[str, tuple[int, int]]]:
+        safe_pm = self._require_win10_memory(pm)
+        return War3Trainer._scan_component_index_win10(
+            self,
+            safe_pm,
+        )
+
     def _elephant_selected_candidate(self, pm: ProcessMemory) -> UnitCandidate:
         safe_pm = self._require_win10_memory(pm)
         if self._backup_selected_identity is None:
@@ -12713,7 +13051,7 @@ def close_float(a: float, b: float, tolerance: float = 0.01) -> bool:
 
 def parse_int(text: str, name: str) -> int:
     try:
-        return int(str(text).strip())
+        return parse_integer_number(text)
     except ValueError as exc:
         raise ValueError(f"{name} 必须是整数") from exc
 
@@ -13101,20 +13439,38 @@ def run_gui() -> None:
 
     def refresh_resources() -> str:
         t = trainer()
-        caches = t.list_resource_caches()
-        if not caches:
-            cg = int(gold_current.get()) if gold_current.get().strip() else None
-            cl = int(lumber_current.get()) if lumber_current.get().strip() else None
-            cf = int(food_current.get()) if food_current.get().strip() else None
-            cfc = int(food_cap_current.get()) if food_cap_current.get().strip() else None
-            caches = [t.read_resource_cache(cg, cl, cf, cfc)]
-        local_cache = t.locate_local_player_resource_cache(caches)
+        cg = int(gold_current.get()) if gold_current.get().strip() else None
+        cl = int(lumber_current.get()) if lumber_current.get().strip() else None
+        cf = int(food_current.get()) if food_current.get().strip() else None
+        cfc = int(food_cap_current.get()) if food_cap_current.get().strip() else None
+        used_backup = current_display_uses_win10()
+        if used_backup:
+            caches, local_cache = t.list_resource_caches_win10(cg, cl, cf, cfc)
+        else:
+            try:
+                caches = t.list_resource_caches()
+                if not caches:
+                    caches = [t.read_resource_cache(cg, cl, cf, cfc)]
+                local_cache = t.locate_local_player_resource_cache(caches)
+            except (OSError, RuntimeError) as normal_error:
+                try:
+                    caches, local_cache = t.list_resource_caches_win10(cg, cl, cf, cfc)
+                    used_backup = True
+                except Exception as backup_error:
+                    raise RuntimeError(
+                        f"普通资源读取失败：{normal_error}；"
+                        f"备用资源读取失败：{backup_error}"
+                    ) from backup_error
         local_iid = resource_iid(local_cache)
         caches = [cache for cache in caches if cache.owner_key != local_cache.owner_key]
         caches.append(local_cache)
         caches.sort(key=lambda cache: (cache.block_start_kind, cache.owner_key))
         root.after(0, populate_resource_caches, caches, local_iid, local_iid)
-        return f"已读取 {len(caches)} 个资源组；已识别并选中本地玩家资源组"
+        source = "备用扫描" if used_backup else "普通扫描"
+        return (
+            f"已读取 {len(caches)} 个资源组；"
+            f"已识别并选中本地玩家资源组（{source}）"
+        )
 
     def set_resource(kind: str) -> str:
         t = trainer()

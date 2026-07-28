@@ -7,6 +7,7 @@ import ctypes
 import json
 import queue
 import sys
+import threading
 import traceback
 from pathlib import Path
 import tkinter as tk
@@ -34,7 +35,7 @@ from war3_hotkey_model import (
 
 
 ROOT = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
-ICON_PATH = ROOT / "assets" / "app_icon.ico"
+ICON_PATH = ROOT / "assets" / "hotkey_icon.ico"
 
 SOURCE_KEY_CHOICES = (
     "Q", "W", "E", "R", "T", "Y", "A", "S", "D", "F", "G", "H", "Z", "X", "C", "V", "B", "N",
@@ -73,6 +74,7 @@ class HotkeyToolApp:
         self.slot_buttons: dict[str, ttk.Button] = {}
         self.smartcast_buttons: dict[str, tk.Button] = {}
         self._capturing_binding_id: str | None = None
+        self._engine_start_thread: threading.Thread | None = None
         self.state_key = ""
         self.status_key = "ready"
         self.status_kwargs: dict[str, object] = {}
@@ -82,12 +84,9 @@ class HotkeyToolApp:
         self._build_ui()
         self._load_profile_to_ui(self.current_profile)
         self._apply_language()
-        if not self.no_hooks:
-            try:
-                self.engine.start()
-            except Exception as exc:
-                self._show_error(str(exc))
         self.root.protocol("WM_DELETE_WINDOW", self.close)
+        if not self.no_hooks:
+            self.root.after_idle(self._start_engine_async)
         self.root.after(120, self._poll)
 
     @property
@@ -707,6 +706,22 @@ class HotkeyToolApp:
         self.status_key = key
         self.status_kwargs = kwargs
         self.status_var.set(self.tr(key, **kwargs))
+
+    def _start_engine_async(self) -> None:
+        if self._engine_start_thread and self._engine_start_thread.is_alive():
+            return
+        self._engine_start_thread = threading.Thread(
+            target=self._start_engine_worker,
+            name="war3-hotkey-startup",
+            daemon=True,
+        )
+        self._engine_start_thread.start()
+
+    def _start_engine_worker(self) -> None:
+        try:
+            self.engine.start()
+        except Exception as exc:
+            self.state_events.put(("error", str(exc)))
 
     def _poll(self) -> None:
         try:

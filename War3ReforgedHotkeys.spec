@@ -5,7 +5,7 @@ a = Analysis(
     ['war3_hotkey_tool.py'],
     pathex=[],
     binaries=[('tools/war3_hotkey_native_helper.dll', 'tools')],
-    datas=[('assets/app_icon.ico', 'assets')],
+    datas=[('assets/hotkey_icon.ico', 'assets')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -35,5 +35,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='assets/app_icon.ico',
+    icon='assets/hotkey_icon.ico',
 )

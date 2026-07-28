@@ -225,7 +225,9 @@ window.SITE_I18N = {
 
 ## 改键软件 v1.0.1
 
+- 修复软件打开后持续“未响应”的问题：窗口识别不再查询其他程序的窗口标题，引擎初始化改为后台执行。
 - 修复在游戏大厅、地图载入和玩家名称输入阶段启动软件时可能卡顿、未响应或导致游戏崩溃的问题。
+- 使用独立的改键软件图标。
 - native 桥接现在必须先确认本地玩家和游戏命令栏均已就绪，才会修改快捷键或处理输入。
 - 对局未就绪、游戏切到后台或初始化失败时，所有改键输入原样放行，并立即卸载桥接。
 - 降低命令栏与选择状态轮询频率，避免持续占用游戏 UI 线程。
@@ -248,7 +250,9 @@ window.SITE_I18N = {
 
 ## Hotkey Tool v1.0.1
 
+- Fixed the application remaining unresponsive after launch. Window detection no longer queries other applications' window titles, and engine initialization now runs in the background.
 - Fixed hangs, input lag and Warcraft crashes when the tool was started in menus, during map loading or while entering a player name.
+- Added a dedicated icon for the hotkey tool.
 - The native bridge now proves both the local player and in-game command UI are ready before writing hotkeys or handling input.
 - Hotkeys pass through unchanged and the bridge is unloaded whenever the match is not ready, Warcraft is in the background or initialization fails.
 - Reduced command-context and selection polling to avoid continuously occupying the game UI thread.

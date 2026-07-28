@@ -172,10 +172,6 @@ user32.EnumWindows.argtypes = (WNDENUMPROC, wintypes.LPARAM)
 user32.EnumWindows.restype = wintypes.BOOL
 user32.IsWindowVisible.argtypes = (wintypes.HWND,)
 user32.IsWindowVisible.restype = wintypes.BOOL
-user32.GetWindowTextLengthW.argtypes = (wintypes.HWND,)
-user32.GetWindowTextLengthW.restype = ctypes.c_int
-user32.GetWindowTextW.argtypes = (wintypes.HWND, wintypes.LPWSTR, ctypes.c_int)
-user32.GetWindowTextW.restype = ctypes.c_int
 user32.PostThreadMessageW.argtypes = (wintypes.DWORD, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM)
 user32.PostThreadMessageW.restype = wintypes.BOOL
 kernel32.GetModuleHandleW.argtypes = (wintypes.LPCWSTR,)
@@ -281,19 +277,11 @@ class WarcraftWindowGuard:
         def enum_callback(hwnd: int, _lparam: int) -> bool:
             if not user32.IsWindowVisible(hwnd):
                 return True
-            length = user32.GetWindowTextLengthW(hwnd)
-            if length <= 0:
-                return True
-            buffer = ctypes.create_unicode_buffer(length + 1)
-            user32.GetWindowTextW(hwnd, buffer, len(buffer))
-            title = buffer.value.strip()
-            if title.lower() != "warcraft iii":
-                return True
             pid_value = wintypes.DWORD()
             user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid_value))
             executable = self._process_path(pid_value.value)
             if Path(executable).name.lower() == "warcraft iii.exe":
-                matches.append((int(hwnd), int(pid_value.value), executable, title))
+                matches.append((int(hwnd), int(pid_value.value), executable, "Warcraft III"))
             return True
 
         user32.EnumWindows(enum_callback, 0)
@@ -621,12 +609,12 @@ class HotkeyEngine:
         self._maintenance_thread = threading.Thread(target=self._maintenance_loop, name="war3-hotkey-maintenance", daemon=True)
         self._native_thread = threading.Thread(target=self._native_loop, name="war3-hotkey-native", daemon=True)
         self._hook_thread = threading.Thread(target=self._hook_loop, name="war3-hotkey-hooks", daemon=True)
-        self._action_thread.start()
-        self._maintenance_thread.start()
-        self._native_thread.start()
         self._hook_thread.start()
         if not self._hook_ready.wait(3.0):
             raise RuntimeError("input hook startup timed out")
+        self._action_thread.start()
+        self._maintenance_thread.start()
+        self._native_thread.start()
 
     def stop(self) -> None:
         self._stop_event.set()
@@ -642,7 +630,7 @@ class HotkeyEngine:
         self._hook_ready.clear()
 
     def status_snapshot(self) -> dict[str, object]:
-        game = self.guard.snapshot(force=True)
+        game = self.guard.snapshot()
         return {
             "running": self.running,
             "suspended": self._suspended,
@@ -1010,7 +998,7 @@ class HotkeyEngine:
         )
         if action.self_cast or action.smartcast:
             time.sleep(delay)
-            game = self.guard.snapshot(force=True)
+            game = self.guard.snapshot()
             if not game.foreground:
                 return
             if action.self_cast:
@@ -1041,7 +1029,7 @@ class HotkeyEngine:
         next_context_query = 0.0
         next_selection_query = 0.0
         while not self._stop_event.wait(0.05):
-            game = self.guard.snapshot(force=True)
+            game = self.guard.snapshot()
             identity = (game.hwnd, game.pid)
             if not game.found or not game.foreground:
                 if last_identity != (0, 0):

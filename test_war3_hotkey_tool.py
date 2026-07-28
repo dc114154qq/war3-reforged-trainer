@@ -239,6 +239,52 @@ class HotkeyEngineTests(unittest.TestCase):
         self.assertEqual(snapshot.hwnd, 123)
         self.assertEqual(snapshot.client_rect, (0, 0, 100, 100))
 
+    def test_window_scan_does_not_query_window_titles(self):
+        class User32WithoutWindowText:
+            @staticmethod
+            def EnumWindows(callback, _lparam):
+                callback(123, 0)
+                return True
+
+            @staticmethod
+            def IsWindowVisible(_hwnd):
+                return True
+
+            @staticmethod
+            def GetWindowThreadProcessId(_hwnd, pid_pointer):
+                pid_pointer._obj.value = 456
+                return 1
+
+            @staticmethod
+            def GetForegroundWindow():
+                return 123
+
+        guard = WarcraftWindowGuard()
+        guard._process_path = lambda _pid: r"C:\Games\Warcraft III\_retail_\x86_64\Warcraft III.exe"
+        guard._client_screen_rect = lambda _hwnd: (0, 0, 1920, 1080)
+
+        with patch("war3_hotkey_engine.user32", User32WithoutWindowText):
+            snapshot = guard._scan()
+
+        self.assertTrue(snapshot.found)
+        self.assertEqual(snapshot.hwnd, 123)
+        self.assertEqual(snapshot.pid, 456)
+        self.assertEqual(snapshot.title, "Warcraft III")
+
+    def test_native_loop_uses_throttled_window_snapshot(self):
+        forces = []
+
+        class Guard:
+            def snapshot(self, *, force=False):
+                forces.append(force)
+                engine._stop_event.set()
+                return GameWindowSnapshot()
+
+        engine = HotkeyEngine(default_profile(), guard=Guard())
+        engine._native_loop()
+
+        self.assertEqual(forces, [False])
+
     def test_command_context_prioritizes_submenu_then_neutral_shop(self):
         owned = SelectionContext(True, False, 0)
         neutral = SelectionContext(True, True, 24)

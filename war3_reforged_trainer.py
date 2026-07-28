@@ -7453,6 +7453,12 @@ class War3Trainer:
             raise RuntimeError("GetPlayerState 返回的人口数值超出合理范围")
         return snapshot
 
+    def probe_game_ready(self) -> int:
+        """Return the local player slot only after the in-map JASS state exists."""
+
+        with self._process_memory() as pm:
+            return self._read_local_player_resources_via_native(pm).player_id
+
     def _set_local_player_food_cap_via_native(self, pm: ProcessMemory, target_food_cap: int) -> None:
         handlers = self._discover_native_handlers(
             pm,
@@ -13286,6 +13292,12 @@ def parse_unit_identity(text: str) -> tuple[int, int, int]:
     return values["handle"], values["owner"], values["unit"]
 
 
+def create_ready_war3_session() -> tuple[War3Trainer, int]:
+    candidate = War3Trainer()
+    player_id = candidate.probe_game_ready()
+    return candidate, player_id
+
+
 def run_gui() -> None:
     import tkinter as tk
     from tkinter import messagebox, ttk
@@ -13423,6 +13435,9 @@ def run_gui() -> None:
         "ability_field_snapshot": None,
         "ability_field_rows": {},
         "closing": False,
+        "lifecycle_probe_busy": False,
+        "lifecycle_ready_pid": 0,
+        "lifecycle_warm_complete": False,
     }
 
     def start_operation_thread(target: Callable[[], None], name: str) -> None:
@@ -13515,18 +13530,30 @@ def run_gui() -> None:
     def trainer() -> War3Trainer:
         obj = state.get("trainer")
         if obj is None:
-            obj = War3Trainer()
-            state["trainer"] = obj
-        else:
-            assert isinstance(obj, War3Trainer)
-            obj.refresh_window(allow_pid_change=True)
+            raise RuntimeError("正在等待 Warcraft III 进入游戏地图")
+        assert isinstance(obj, War3Trainer)
+        obj.refresh_window(allow_pid_change=False)
         root.after(0, pid_var.set, str(obj.pid))
         return obj
 
+    def replace_trainer_session(obj: War3Trainer, player_id: int) -> None:
+        previous = state.get("trainer")
+        if isinstance(previous, War3Trainer) and previous is not obj:
+            backup = previous._win10_session_trainer
+            if isinstance(backup, BackupReadWar3Trainer):
+                backup.close_session_diagnostics()
+        state["trainer"] = obj
+        state["lifecycle_ready_pid"] = obj.pid
+        state["lifecycle_warm_complete"] = False
+        root.after(0, pid_var.set, str(obj.pid))
+
     def connect() -> str:
-        state["trainer"] = War3Trainer()
-        root.after(0, pid_var.set, str(state["trainer"].pid))
-        return f"已连接 Warcraft III，PID {state['trainer'].pid}"
+        candidate, player_id = create_ready_war3_session()
+        replace_trainer_session(candidate, player_id)
+        return (
+            f"已连接 Warcraft III，PID {candidate.pid}；"
+            f"游戏地图已就绪，玩家槽 {player_id}"
+        )
 
     def resource_iid(cache: ResourceCache) -> str:
         return f"{cache.gold_address:x}:{cache.lumber_address:x}"
@@ -15928,20 +15955,152 @@ def run_gui() -> None:
 
     refresh_gui_language()
 
-    def init() -> None:
+    def clear_process_session() -> None:
+        previous = state.get("trainer")
+        if isinstance(previous, War3Trainer):
+            backup = previous._win10_session_trainer
+            if isinstance(backup, BackupReadWar3Trainer):
+                backup.close_session_diagnostics()
+        state["trainer"] = None
+        state["lifecycle_ready_pid"] = 0
+        state["lifecycle_warm_complete"] = False
+        state["resource_caches"] = {}
+        state["resource_labels"] = {}
+        state["selected_resource_iid"] = ""
+        state["local_resource_iid"] = ""
+        state["selection_candidates"] = {}
+        state["locks"] = {}
+        pid_var.set("")
+        for item in resource_tree.get_children():
+            resource_tree.delete(item)
+        populate_selection_candidates([])
+        populate_locks()
+        clear_selected_unit_readout()
+
+    def warm_ready_session() -> str:
         try:
-            msg = connect()
-            set_status(msg)
-            try:
-                refresh_resources()
-            except Exception:
-                pass
-            root.after(
-                300,
-                lambda: call_async(prewarm_selection_cache, busy_text="正在预热，请稍候..."),
-            )
+            resource_message = refresh_resources()
         except Exception as exc:
-            set_status(f"未连接：{exc}")
+            state["lifecycle_warm_complete"] = False
+            current = trainer()
+            return (
+                f"Warcraft III 游戏地图已就绪，PID {current.pid}；"
+                f"资源预热暂未完成，将自动重试：{exc}"
+            )
+        state["lifecycle_warm_complete"] = True
+        try:
+            trainer().prewarm_selected_unit_cache()
+            selection_status = "选择缓存已预热"
+        except Exception:
+            selection_status = "请在游戏中选择单位后读取"
+        current = trainer()
+        return (
+            f"Warcraft III 游戏地图已就绪，PID {current.pid}；"
+            f"{selection_status}；{resource_message}"
+        )
+
+    def schedule_ready_warmup() -> None:
+        root.after(
+            100,
+            lambda: call_async(
+                warm_ready_session,
+                "startup:warm_ready_session",
+                busy_text="游戏地图已就绪，正在预热，请稍候...",
+            ),
+        )
+
+    def lifecycle_tick() -> None:
+        if state.get("closing"):
+            return
+        current = state.get("trainer")
+        if isinstance(current, War3Trainer):
+            if not is_war3_window(current.hwnd, current.pid):
+                clear_process_session()
+                set_status("Warcraft III 已关闭，正在等待重新启动...")
+            elif state.get("lifecycle_probe_busy"):
+                root.after(500, lifecycle_tick)
+                return
+            else:
+                state["lifecycle_probe_busy"] = True
+
+                def finish_current_probe(error: Exception | None) -> None:
+                    state["lifecycle_probe_busy"] = False
+                    if state.get("closing"):
+                        return
+                    if error is not None:
+                        clear_process_session()
+                        set_status("Warcraft III 已离开游戏地图，正在等待下一局...")
+                    elif not state.get("lifecycle_warm_complete"):
+                        schedule_ready_warmup()
+                    root.after(1500, lifecycle_tick)
+
+                def current_probe_worker() -> None:
+                    error: Exception | None = None
+                    try:
+                        with operation_lock:
+                            current.probe_game_ready()
+                    except Exception as exc:
+                        error = exc
+                    root.after(0, finish_current_probe, error)
+
+                start_operation_thread(
+                    current_probe_worker,
+                    "war3-current-session-probe",
+                )
+                return
+
+        if state.get("lifecycle_probe_busy"):
+            root.after(500, lifecycle_tick)
+            return
+        state["lifecycle_probe_busy"] = True
+
+        def finish_probe(
+            candidate: War3Trainer | None,
+            player_id: int,
+            error: Exception | None,
+        ) -> None:
+            state["lifecycle_probe_busy"] = False
+            if state.get("closing"):
+                return
+            if candidate is None:
+                message = str(error or "")
+                if "没有找到标题为 Warcraft III" in message:
+                    set_status("正在等待 Warcraft III 启动...")
+                else:
+                    set_status("已检测到 Warcraft III，正在等待进入游戏地图...")
+                root.after(1500, lifecycle_tick)
+                return
+            replace_trainer_session(candidate, player_id)
+            set_status(
+                f"Warcraft III 游戏地图已就绪，PID {candidate.pid}，"
+                f"玩家槽 {player_id}；正在初始化资源和选择缓存..."
+            )
+            schedule_ready_warmup()
+            root.after(1500, lifecycle_tick)
+
+        def probe_worker() -> None:
+            candidate: War3Trainer | None = None
+            player_id = -1
+            error: Exception | None = None
+            try:
+                with operation_lock:
+                    candidate, player_id = create_ready_war3_session()
+            except Exception as exc:
+                candidate = None
+                error = exc
+            root.after(
+                0,
+                finish_probe,
+                candidate,
+                player_id,
+                error,
+            )
+
+        start_operation_thread(probe_worker, "war3-lifecycle-probe")
+
+    def init() -> None:
+        set_status("正在等待 Warcraft III 启动...")
+        lifecycle_tick()
 
     root.after(100, init)
     root.after(1500, lock_tick)

@@ -248,6 +248,23 @@ window.SITE_I18N = {
 - 当前适配 Warcraft III: Reforged 2.0.4.23745。`,
     },
     en: {
+      "v1.0.10": String.raw`# Release notes
+
+## v1.0.10
+
+- Fixed startup-order failures when the trainer was launched before Warcraft III.
+- The trainer now waits for the game process, then waits for a valid in-map local player before creating the live editing session.
+- Readiness validates the local player slot together with gold, lumber, food used and food cap. Failed pre-map probes are discarded and cannot contaminate native, resource, component or selection caches.
+- Resource and selection warm-up starts only after the game map is ready. Temporary resource warm-up failures are retried automatically, while an unselected unit no longer produces a startup error.
+- Leaving a map, closing Warcraft III or restarting the game invalidates the old PID session, clears old locks and addresses, and returns the trainer to automatic detection.
+- Preserved the existing backup-read fast path. The live-region and external-string native fallbacks still run only when the original backup path fails.
+- Read buttons continue to show Ctrl+F11 for Normal Read and Ctrl+F12 for Backup Read.
+
+Verified with 95 automated tests and an in-game launch-order test where the trainer was started before Warcraft III.
+
+SHA256: 69AC6A414D08EBFC89E6B4A151E40D3D5166098006952976BEB6E6ADA4B60E94.
+
+Compatibility: Warcraft III: Reforged 2.0.4.23745.`,
       "hotkeys-v1.0.1": String.raw`# Release notes
 
 ## Hotkey Tool v1.0.1

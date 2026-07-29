@@ -36,6 +36,7 @@ from war3_hotkey_model import (
 
 ROOT = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
 ICON_PATH = ROOT / "assets" / "hotkey_icon.ico"
+ICON_PNG_PATH = ROOT / "assets" / "hotkey_icon.png"
 
 SOURCE_KEY_CHOICES = (
     "Q", "W", "E", "R", "T", "Y", "A", "S", "D", "F", "G", "H", "Z", "X", "C", "V", "B", "N",
@@ -137,6 +138,14 @@ class HotkeyToolApp:
         self.root.title(f"{self.tr('app_name')} v{APP_VERSION}")
         self.root.geometry("1220x790")
         self.root.minsize(1060, 700)
+        self.app_icon = None
+        if ICON_PNG_PATH.exists():
+            try:
+                self.app_icon = tk.PhotoImage(file=str(ICON_PNG_PATH))
+                self.root.iconphoto(True, self.app_icon)
+                return
+            except tk.TclError:
+                self.app_icon = None
         if ICON_PATH.exists():
             try:
                 self.root.iconbitmap(default=str(ICON_PATH))

@@ -5,7 +5,10 @@ a = Analysis(
     ['war3_hotkey_tool.py'],
     pathex=[],
     binaries=[('tools/war3_hotkey_native_helper.dll', 'tools')],
-    datas=[('assets/hotkey_icon.ico', 'assets')],
+    datas=[
+        ('assets/hotkey_icon.ico', 'assets'),
+        ('assets/hotkey_icon.png', 'assets'),
+    ],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

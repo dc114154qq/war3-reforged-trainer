@@ -13985,6 +13985,12 @@ def run_gui() -> None:
     ttk.Button(top, text="连接/刷新进程", command=lambda: call_async(connect)).pack(side="left")
     ttk.Label(top, text="PID").pack(side="left", padx=(16, 4))
     ttk.Entry(top, textvariable=pid_var, width=10, state="readonly").pack(side="left")
+    ttk.Checkbutton(
+        top,
+        text="启用全局快捷键",
+        variable=elephant_hotkeys_enabled,
+        command=refresh_elephant_hotkeys,
+    ).pack(side="left", padx=(20, 0))
     ttk.Label(top, textvariable=status).pack(side="right")
 
     notebook = ttk.Notebook(outer)
@@ -14557,17 +14563,11 @@ def run_gui() -> None:
 
     hotkey_toolbar = ttk.Frame(elephant_hotkeys_tab)
     hotkey_toolbar.pack(fill="x", pady=(0, 8))
-    ttk.Checkbutton(
-        hotkey_toolbar,
-        text="启用全局快捷键",
-        variable=elephant_hotkeys_enabled,
-        command=refresh_elephant_hotkeys,
-    ).pack(side="left")
     ttk.Button(
         hotkey_toolbar,
         text="全选可用",
         command=lambda: set_all_elephant_hotkeys(True),
-    ).pack(side="left", padx=(12, 4))
+    ).pack(side="left", padx=(0, 4))
     ttk.Button(
         hotkey_toolbar,
         text="清空",

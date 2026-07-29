@@ -33,7 +33,7 @@ from war3_id_catalog import CATALOG_COUNTS, search_id_entries
 from war3_ui_i18n import detect_ui_language, translate_ui_text
 
 
-APP_VERSION = "1.0.10"
+APP_VERSION = "1.0.11"
 WIN10_COMPAT_REVISION = "backup-r7-live-regions-external-native"
 
 
@@ -855,6 +855,17 @@ def parse_integer_number(value: int | float | str) -> int:
         if not numeric.is_finite() or numeric != numeric.to_integral_value():
             raise ValueError("not an integer")
         return int(numeric)
+
+
+def coerce_finite_float32(value: int | float | str) -> float:
+    try:
+        numeric = float(str(value).strip()) if isinstance(value, str) else float(value)
+        stored = struct.unpack("<f", struct.pack("<f", numeric))[0]
+    except (OverflowError, TypeError, ValueError, struct.error) as exc:
+        raise ValueError("数值必须是有限且可写入的 float32") from exc
+    if not math.isfinite(numeric) or not math.isfinite(stored):
+        raise ValueError("数值必须是有限且可写入的 float32")
+    return stored
 
 
 OCR_TEMPLATE_WIDTH = 24
@@ -7995,8 +8006,7 @@ class War3Trainer:
         return (
             math.isfinite(current)
             and math.isfinite(limit)
-            and -1000000.0 <= current <= 10000000.0
-            and 0.0 <= limit <= 10000000.0
+            and limit >= 0.0
         )
 
     def _candidate_from_owner(
@@ -10215,7 +10225,7 @@ class War3Trainer:
     @staticmethod
     def _coerce_memory_value(value_type: str, value: int | float | str) -> int | float:
         if value_type == "f32":
-            return float(str(value).strip()) if isinstance(value, str) else float(value)
+            return coerce_finite_float32(value)
         if value_type in {"i32", "u32"}:
             return parse_integer_number(value)
         if value_type in {"u64", "ptr"}:
@@ -10618,7 +10628,7 @@ class War3Trainer:
         except OSError:
             return
         if isinstance(value, float):
-            if not math.isfinite(value) or abs(value) > 100000000.0:
+            if not math.isfinite(value):
                 return
         fields.append(
             UnitMemoryField(
@@ -12895,6 +12905,22 @@ class War3Trainer:
         target_hp_regen: float | None = None,
         target_mp_regen: float | None = None,
     ) -> None:
+        target_hp = coerce_finite_float32(target_hp) if target_hp is not None else None
+        target_mp = coerce_finite_float32(target_mp) if target_mp is not None else None
+        max_hp = coerce_finite_float32(max_hp) if max_hp is not None else None
+        max_mp = coerce_finite_float32(max_mp) if max_mp is not None else None
+        target_x = coerce_finite_float32(target_x) if target_x is not None else None
+        target_y = coerce_finite_float32(target_y) if target_y is not None else None
+        target_hp_regen = (
+            coerce_finite_float32(target_hp_regen)
+            if target_hp_regen is not None
+            else None
+        )
+        target_mp_regen = (
+            coerce_finite_float32(target_mp_regen)
+            if target_mp_regen is not None
+            else None
+        )
         if max_hp is not None or target_hp is not None:
             try:
                 old_max_hp = pm.read_f32(candidate.hp_max_address)
@@ -13250,7 +13276,7 @@ def parse_int(text: str, name: str) -> int:
 
 def parse_float(text: str, name: str) -> float:
     try:
-        return float(str(text).strip())
+        return coerce_finite_float32(text)
     except ValueError as exc:
         raise ValueError(f"{name} 必须是数字") from exc
 

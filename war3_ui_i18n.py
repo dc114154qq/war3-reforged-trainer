@@ -787,6 +787,7 @@ _EN_TRANSLATIONS.update(
     "备用读取缺少技能字段 native：": "Alternate read missing skill field native:",
     "读取异常": "Reading exception",
     "游戏返回了非有限浮点值": "The game returned a non-finite floating point value",
+    "数值必须是有限且可写入的 float32": "The value must be finite and representable as float32",
     "字符串字段的 JASS 句柄 ABI 尚未开放": "The JASS handle ABI for string fields is not yet open",
     "等级数组字段需要单独的数组索引": "Hierarchical array fields require separate array indexes",
     "；原始字段恢复无法确认": "; Original field recovery cannot be confirmed",

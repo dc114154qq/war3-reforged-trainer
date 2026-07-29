@@ -110,7 +110,9 @@ class HotkeyToolApp:
         self.pause_chat_var = tk.BooleanVar(value=profile.pause_in_chat)
         self.smartcast_delay_var = tk.StringVar(value=str(profile.smartcast_delay_ms))
         self.repeat_delay_var = tk.StringVar(value=str(profile.repeat_delay_ms))
+        self.self_cast_enabled_var = tk.BooleanVar(value=profile.self_cast_enabled)
         self.self_modifier_var = tk.StringVar(value=profile.self_cast_modifier)
+        self.autocast_toggle_enabled_var = tk.BooleanVar(value=profile.autocast_toggle_enabled)
         self.autocast_modifier_var = tk.StringVar(value=profile.autocast_modifier)
         self.suspend_hotkey_var = tk.StringVar(value=profile.suspend_hotkey)
         self.mouse_lock_var = tk.BooleanVar(value=profile.mouse_lock_enabled)
@@ -301,6 +303,8 @@ class HotkeyToolApp:
         row = 0
         for key, variable in (
             ("pause_in_chat", self.pause_chat_var),
+            ("self_cast_enabled", self.self_cast_enabled_var),
+            ("autocast_toggle_enabled", self.autocast_toggle_enabled_var),
             ("right_repeat", self.right_repeat_var),
             ("mouse_lock", self.mouse_lock_var),
         ):
@@ -409,7 +413,9 @@ class HotkeyToolApp:
         self.pause_chat_var.set(profile.pause_in_chat)
         self.smartcast_delay_var.set(str(profile.smartcast_delay_ms))
         self.repeat_delay_var.set(str(profile.repeat_delay_ms))
+        self.self_cast_enabled_var.set(profile.self_cast_enabled)
         self.self_modifier_var.set(profile.self_cast_modifier)
+        self.autocast_toggle_enabled_var.set(profile.autocast_toggle_enabled)
         self.autocast_modifier_var.set(profile.autocast_modifier)
         self.suspend_hotkey_var.set(profile.suspend_hotkey)
         self.mouse_lock_var.set(profile.mouse_lock_enabled)
@@ -474,7 +480,9 @@ class HotkeyToolApp:
             pause_in_chat=bool(self.pause_chat_var.get()),
             smartcast_delay_ms=int(self.smartcast_delay_var.get()),
             repeat_delay_ms=int(self.repeat_delay_var.get()),
+            self_cast_enabled=bool(self.self_cast_enabled_var.get()),
             self_cast_modifier=self.self_modifier_var.get().upper(),
+            autocast_toggle_enabled=bool(self.autocast_toggle_enabled_var.get()),
             autocast_modifier=self.autocast_modifier_var.get().upper(),
             suspend_hotkey=parse_keystroke(self.suspend_hotkey_var.get(), allow_mouse=False).canonical(),
             mouse_lock_enabled=bool(self.mouse_lock_var.get()),

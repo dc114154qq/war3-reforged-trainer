@@ -456,9 +456,14 @@ class BindingAction:
 def plan_binding_action(binding: CompiledBinding, modifiers: frozenset[str], profile: ProfileConfig) -> BindingAction:
     self_modifier = profile.self_cast_modifier.upper()
     auto_modifier = profile.autocast_modifier.upper()
-    self_cast = self_modifier in modifiers and self_modifier not in binding.source.modifiers
+    self_cast = (
+        profile.self_cast_enabled
+        and self_modifier in modifiers
+        and self_modifier not in binding.source.modifiers
+    )
     autocast_toggle = (
-        binding.config.group == "ability"
+        profile.autocast_toggle_enabled
+        and binding.config.group == "ability"
         and auto_modifier in modifiers
         and auto_modifier not in binding.source.modifiers
     )

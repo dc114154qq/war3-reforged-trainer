@@ -225,16 +225,19 @@ window.SITE_I18N = {
 
 ## 改键软件 v1.0.1
 
+- 基础改键只使用游戏原生快捷键覆盖，不再触发点击、按键或滚轮模拟。
+- 新增“自身施法辅助”和“自动施法开关辅助”独立开关，两项均默认关闭。
+- 智能施法、按住连发、右键连点、鼠标锁定和滚轮组合控制均只在用户明确开启后生效；滚轮组合控制的新配置默认关闭。
 - 修复软件打开后持续“未响应”的问题：窗口识别不再查询其他程序的窗口标题，引擎初始化改为后台执行。
 - 修复在游戏大厅、地图载入和玩家名称输入阶段启动软件时可能卡顿、未响应或导致游戏崩溃的问题。
-- 同版本重新打包：使用图二完整画面制作高分辨率多尺寸改键软件图标，改善桌面、任务栏和窗口标题栏图标模糊的问题。
+- 同版本重新打包：保留图二角色画面，为 16、20、24、32、40、48、64、128、256 像素分别制作独立图层；小尺寸使用更紧的主体取景和逐层锐化，改善桌面、任务栏和窗口标题栏图标模糊的问题。
 - 使用独立的改键软件图标。
 - native 桥接现在必须先确认本地玩家和游戏命令栏均已就绪，才会修改快捷键或处理输入。
 - 对局未就绪、游戏切到后台或初始化失败时，所有改键输入原样放行，并立即卸载桥接。
 - 降低命令栏与选择状态轮询频率，避免持续占用游戏 UI 线程。
-- 修复 Shift + 技能键只能开启、不能关闭游戏自动施法的问题；右键切换期间会临时释放 Shift，完成后再恢复。
-- 闪电按钮仍用于逐格开启或关闭本工具的智能施法；Shift 设置用于切换游戏技能自身的自动施法。
-- SHA256：33fb148ff962db8110b8dd617ec7470a6a04d7c820190b6a560f09b67a5e9f9c。
+- 修复 Shift + 技能键只能开启、不能关闭游戏自动施法的问题；启用自动施法开关辅助后，右键切换期间会临时释放 Shift，完成后再恢复。
+- 闪电按钮仍用于逐格开启或关闭本工具的智能施法；自动施法辅助需要在“鼠标与相机”页面明确勾选。
+- SHA256：5986f5b8f5b431eddd4c54a9d9bc83205b4710ff0ee8c53df60c46db050d7fa1。
 - 当前适配 Warcraft III: Reforged 2.0.4.23745。`,
       "hotkeys-v1.0.0": String.raw`# 发布说明
 
@@ -269,16 +272,19 @@ Compatibility: Warcraft III: Reforged 2.0.4.23745.`,
 
 ## Hotkey Tool v1.0.1
 
+- Basic remapping now uses only the game's native hotkey override and does not generate simulated clicks, keys or wheel input.
+- Added separate opt-in switches for the self-cast helper and the in-game autocast toggle helper; both are disabled by default.
+- SmartCast, hold repeat, right-click repeat, mouse lock and wheel combinations run only when explicitly enabled. Wheel combinations are disabled in new profiles by default.
 - Fixed the application remaining unresponsive after launch. Window detection no longer queries other applications' window titles, and engine initialization now runs in the background.
 - Fixed hangs, input lag and Warcraft crashes when the tool was started in menus, during map loading or while entering a player name.
-- Repacked the same version with a high-resolution multi-size icon based on the full requested artwork to improve sharpness on the desktop, taskbar, and window title bar.
+- Repacked the same version while preserving the requested character artwork. The icon now contains separately optimized 16, 20, 24, 32, 40, 48, 64, 128 and 256 pixel layers, with tighter framing and size-specific sharpening for small desktop, taskbar and title-bar rendering.
 - Added a dedicated icon for the hotkey tool.
 - The native bridge now proves both the local player and in-game command UI are ready before writing hotkeys or handling input.
 - Hotkeys pass through unchanged and the bridge is unloaded whenever the match is not ready, Warcraft is in the background or initialization fails.
 - Reduced command-context and selection polling to avoid continuously occupying the game UI thread.
-- Fixed Shift + ability key enabling but not disabling in-game autocast. Shift is temporarily released for the right-click toggle and then restored.
-- Lightning buttons still enable or disable this tool's per-slot SmartCast; the Shift setting toggles an ability's native in-game autocast.
-- SHA256: 33fb148ff962db8110b8dd617ec7470a6a04d7c820190b6a560f09b67a5e9f9c.
+- Fixed Shift + ability key enabling but not disabling in-game autocast. When the autocast toggle helper is enabled, Shift is temporarily released for the right-click toggle and then restored.
+- Lightning buttons still enable or disable per-slot SmartCast; the autocast helper must now be explicitly enabled on the Mouse & Camera page.
+- SHA256: 5986f5b8f5b431eddd4c54a9d9bc83205b4710ff0ee8c53df60c46db050d7fa1.
 - Currently supports Warcraft III: Reforged 2.0.4.23745.`,
       "hotkeys-v1.0.0": String.raw`# Release notes
 

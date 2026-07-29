@@ -215,14 +215,16 @@ class ProfileConfig:
     pause_in_chat: bool = True
     smartcast_delay_ms: int = 28
     repeat_delay_ms: int = 90
+    self_cast_enabled: bool = False
     self_cast_modifier: str = "CTRL"
+    autocast_toggle_enabled: bool = False
     autocast_modifier: str = "SHIFT"
     suspend_hotkey: str = "Ctrl+F12"
     mouse_lock_enabled: bool = False
     mouse_lock_hotkey: str = "Ctrl+F10"
     right_repeat_enabled: bool = False
     right_repeat_delay_ms: int = 80
-    camera_enabled: bool = True
+    camera_enabled: bool = False
     camera_distance_modifier: str = "CTRL"
     camera_rotation_modifier: str = "ALT"
     camera_incline_modifier: str = "SHIFT"
@@ -506,7 +508,9 @@ TRANSLATIONS = {
         "pause_in_chat": "聊天输入时自动暂停",
         "smartcast_delay": "智能施法延迟 (ms)",
         "repeat_delay": "连发间隔 (ms)",
+        "self_cast_enabled": "启用自身施法辅助",
         "self_modifier": "自身施法修饰键",
+        "autocast_toggle_enabled": "启用游戏自动施法开关辅助",
         "autocast_modifier": "游戏自动施法开关修饰键",
         "suspend_hotkey": "暂停/恢复热键",
         "right_repeat": "按住右键连续点击",
@@ -589,7 +593,9 @@ TRANSLATIONS = {
         "pause_in_chat": "Pause automatically while typing chat",
         "smartcast_delay": "SmartCast delay (ms)",
         "repeat_delay": "Repeat interval (ms)",
+        "self_cast_enabled": "Enable self-cast helper",
         "self_modifier": "Self-cast modifier",
+        "autocast_toggle_enabled": "Enable in-game autocast toggle helper",
         "autocast_modifier": "In-game autocast toggle modifier",
         "suspend_hotkey": "Suspend/resume hotkey",
         "right_repeat": "Repeat while right mouse is held",

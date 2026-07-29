@@ -93,8 +93,16 @@ class ActionPlannerTests(unittest.TestCase):
         self.assertFalse(action.send_target)
         self.assertTrue(action.smartcast)
 
-    def test_self_cast_modifier_forces_target_and_self_click(self):
+    def test_self_cast_modifier_is_inactive_by_default(self):
         action = plan_binding_action(self.compiled(smartcast=True), frozenset({"CTRL"}), default_profile())
+        self.assertFalse(action.send_target)
+        self.assertFalse(action.self_cast)
+        self.assertTrue(action.smartcast)
+
+    def test_enabled_self_cast_modifier_forces_target_and_self_click(self):
+        profile = default_profile()
+        profile.self_cast_enabled = True
+        action = plan_binding_action(self.compiled(smartcast=True), frozenset({"CTRL"}), profile)
         self.assertTrue(action.send_target)
         self.assertTrue(action.self_cast)
         self.assertTrue(action.smartcast)
@@ -108,11 +116,22 @@ class ActionPlannerTests(unittest.TestCase):
         self.assertTrue(action.send_target)
         self.assertFalse(action.self_cast)
 
-    def test_autocast_modifier_right_clicks_command_slot(self):
+    def test_autocast_modifier_is_inactive_by_default(self):
         action = plan_binding_action(
             self.compiled(slot_index=2, group="ability"),
             frozenset({"SHIFT"}),
             default_profile(),
+        )
+        self.assertFalse(action.autocast_toggle)
+        self.assertFalse(action.send_target)
+
+    def test_enabled_autocast_modifier_right_clicks_command_slot(self):
+        profile = default_profile()
+        profile.autocast_toggle_enabled = True
+        action = plan_binding_action(
+            self.compiled(slot_index=2, group="ability"),
+            frozenset({"SHIFT"}),
+            profile,
         )
         self.assertTrue(action.autocast_toggle)
         self.assertFalse(action.send_target)
@@ -530,6 +549,12 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(len([item for item in profile.bindings if item.group == "item"]), 6)
         self.assertEqual(len([item for item in profile.bindings if item.group == "spellbook"]), 12)
         self.assertEqual(len([item for item in profile.bindings if item.group == "shop"]), 12)
+        self.assertFalse(profile.self_cast_enabled)
+        self.assertFalse(profile.autocast_toggle_enabled)
+        self.assertFalse(profile.mouse_lock_enabled)
+        self.assertFalse(profile.right_repeat_enabled)
+        self.assertFalse(profile.camera_enabled)
+        self.assertTrue(all(not item.smartcast and not item.repeat for item in profile.bindings))
         validate_profile(profile)
 
     def test_config_round_trip_preserves_all_slot_bindings(self):

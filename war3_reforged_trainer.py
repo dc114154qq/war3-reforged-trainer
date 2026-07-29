@@ -11167,6 +11167,34 @@ class War3Trainer:
             instance = replace(instance, slot=index + 1)
             mapped[index] = instance
             instances.append(instance)
+
+        missing_indices = [
+            index
+            for index, rawcode in enumerate(configs)
+            if rawcode and index not in mapped and configs.count(rawcode) == 1
+        ]
+        if missing_indices:
+            fallback_rawcodes = {configs[index] for index in missing_indices}
+            fallback_instances = self._ability_instances_from_candidate(
+                pm,
+                candidate,
+                required_rawcodes=fallback_rawcodes,
+                allow_global_scan=True,
+            )
+            for index in missing_indices:
+                rawcode = configs[index]
+                matches = [
+                    ability
+                    for ability in fallback_instances
+                    if ability.rawcode == rawcode
+                    and ability.data_address not in seen_data
+                ]
+                if len(matches) != 1:
+                    continue
+                instance = replace(matches[0], slot=index + 1)
+                seen_data.add(instance.data_address)
+                mapped[index] = instance
+                instances.append(instance)
         return mapped, instances
 
     def _ability_runtime_template_from_instance(
@@ -11320,6 +11348,44 @@ class War3Trainer:
                 )
         return None
 
+    def _selected_ability_level_for_candidate(
+        self,
+        pm: ProcessMemory,
+        candidate: UnitCandidate,
+        rawcode: int,
+    ) -> int:
+        if isinstance(pm, Win10ProcessMemory):
+            unit_handle = self._current_jass_unit_handle_win10(
+                pm,
+                candidate,
+                pm.diagnostics,
+            )
+            handlers = self._discover_native_handlers_near_table_win10(
+                pm,
+                ("GetUnitAbilityLevel",),
+            )
+        else:
+            unit_handle = self._elephant_selected_handle(pm)
+            resolved_unit = self._resolve_jass_unit_handle(unit_handle)
+            if resolved_unit != candidate.unit_address:
+                raise RuntimeError("当前选择已经变化，请重新读取当前选中单位")
+            handlers = self._discover_native_handlers(
+                pm,
+                ("GetUnitAbilityLevel",),
+            )
+        return int(
+            self._run_native_helper_ops(
+                unit_handle,
+                ((
+                    self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE_LEVEL,
+                    rawcode,
+                    handlers["GetUnitAbilityLevel"].handler_address,
+                    0,
+                    0,
+                ),),
+            )[0].result
+        )
+
     def _write_hero_skill_name_field(
         self,
         pm: ProcessMemory,
@@ -11347,19 +11413,13 @@ class War3Trainer:
             except OSError:
                 configs.append(0)
         old_rawcode = configs[index] if index < len(configs) else 0
-        instance = None
-        if old_rawcode:
-            data_address = self._find_engine_ability_data(pm, candidate, old_rawcode)
-            if data_address:
-                instance = self._ability_instance_from_data_for_candidate(
-                    pm,
-                    candidate,
-                    data_address,
-                    old_rawcode,
-                )
-                if instance is not None:
-                    instance = replace(instance, slot=index + 1)
-        ability_instances = [instance] if instance is not None else []
+        mapped, ability_instances = self._hero_skill_instance_map_for_write(
+            pm,
+            candidate,
+            configs,
+        )
+        instance = mapped.get(index)
+        source_runtime_level: int | None = None
         runtime_needs_update = instance is not None and instance.rawcode != new_rawcode
         needs_runtime_replacement = old_rawcode != new_rawcode or runtime_needs_update
         if needs_runtime_replacement:
@@ -11388,12 +11448,23 @@ class War3Trainer:
                     or (active_source_data and other.data_address == active_source_data)
                 )
             ]
-            if len(source_skill_slots) != 1 or len(source_ability_slots) != 1 or instance is None:
+            ambiguous_source = len(source_skill_slots) != 1 or len(source_ability_slots) > 1
+            if instance is None and not ambiguous_source:
+                source_runtime_level = self._selected_ability_level_for_candidate(
+                    pm,
+                    candidate,
+                    old_rawcode,
+                )
+            missing_learned_instance = instance is None and source_runtime_level != 0
+            mismatched_instance = instance is not None and len(source_ability_slots) != 1
+            if ambiguous_source or missing_learned_instance or mismatched_instance:
                 details: list[str] = []
                 if source_skill_slots:
                     details.append("技能栏" + ",".join(str(slot) for slot in source_skill_slots))
                 if source_ability_slots:
                     details.append("能力实例" + ",".join(str(slot) for slot in source_ability_slots))
+                if source_runtime_level is not None:
+                    details.append(f"native等级{source_runtime_level}")
                 raise RuntimeError(
                     f"技能{index + 1}当前 {format_rawcode(old_rawcode)} "
                     + ("同时出现在" + "；".join(details) if details else "没有匹配的运行时实例")
@@ -11477,7 +11548,10 @@ class War3Trainer:
                     f"{instance.rawcode_text}->{format_rawcode(new_rawcode)}"
                 )
         else:
-            actions.append("未找到已学 ability 实例，仅更新英雄技能栏配置")
+            if source_runtime_level == 0:
+                actions.append("旧技能未学习(native等级0)，仅更新英雄技能栏配置")
+            else:
+                actions.append("未找到已学 ability 实例，仅更新英雄技能栏配置")
 
         time.sleep(0.05)
         final_config = pm.read_u32(config_address)

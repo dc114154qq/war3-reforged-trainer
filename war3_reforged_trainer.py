@@ -12,6 +12,7 @@ import argparse
 from bisect import bisect_right
 from contextlib import contextmanager
 import ctypes
+from decimal import Decimal, InvalidOperation
 import math
 import tempfile
 import struct
@@ -432,7 +433,7 @@ class UnitMemoryField:
         if self.value_type in {"u64", "ptr"}:
             return f"0x{int(self.value):x}"
         if isinstance(self.value, float):
-            return f"{self.value:.6g}"
+            return format_editable_float32(self.value)
         return str(self.value)
 
 
@@ -577,7 +578,7 @@ class AbilityFieldValue:
         if self.spec.value_kind == "boolean":
             return "true" if bool(self.value) else "false"
         if self.spec.value_kind == "real":
-            return f"{float(self.value):.7g}"
+            return format_editable_float32(float(self.value))
         return str(int(self.value))
 
 
@@ -619,6 +620,49 @@ def format_rawcode(raw: int) -> str:
     if all(32 <= byte < 127 for byte in data):
         return data.decode("ascii")
     return f"0x{raw:08x}"
+
+
+def format_editable_float32(value: float) -> str:
+    numeric = float(value)
+    if not math.isfinite(numeric):
+        return str(numeric)
+    text = format(numeric, ".9g")
+    if "e" in text.lower():
+        text = format(Decimal(text), "f")
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return "0" if text in {"-0", ""} else text
+
+
+def parse_integer_number(value: int | float | str) -> int:
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        if not math.isfinite(value) or not value.is_integer():
+            raise ValueError("not an integer")
+        return int(value)
+    text = str(value).strip()
+    try:
+        return int(text, 0)
+    except ValueError:
+        try:
+            numeric = Decimal(text)
+        except InvalidOperation as exc:
+            raise ValueError("not an integer") from exc
+        if not numeric.is_finite() or numeric != numeric.to_integral_value():
+            raise ValueError("not an integer")
+        return int(numeric)
+
+
+def coerce_finite_float32(value: int | float | str) -> float:
+    try:
+        numeric = float(str(value).strip()) if isinstance(value, str) else float(value)
+        stored = struct.unpack("<f", struct.pack("<f", numeric))[0]
+    except (OverflowError, TypeError, ValueError, struct.error) as exc:
+        raise ValueError("not a finite float32") from exc
+    if not math.isfinite(numeric) or not math.isfinite(stored):
+        raise ValueError("not a finite float32")
+    return stored
 
 
 OCR_TEMPLATE_WIDTH = 24
@@ -7175,8 +7219,7 @@ class War3Trainer:
         return (
             math.isfinite(current)
             and math.isfinite(limit)
-            and -1000000.0 <= current <= 10000000.0
-            and 0.0 <= limit <= 10000000.0
+            and limit >= 0.0
         )
 
     def _candidate_from_owner(
@@ -9395,22 +9438,18 @@ class War3Trainer:
     @staticmethod
     def _coerce_memory_value(value_type: str, value: int | float | str) -> int | float:
         if value_type == "f32":
-            return float(str(value).strip()) if isinstance(value, str) else float(value)
+            return coerce_finite_float32(value)
         if value_type in {"i32", "u32"}:
-            if isinstance(value, str):
-                return int(value.strip(), 0)
-            return int(value)
+            return parse_integer_number(value)
         if value_type in {"u64", "ptr"}:
-            if isinstance(value, str):
-                return int(value.strip(), 0)
-            return int(value)
+            return parse_integer_number(value)
         if value_type == "rawcode":
             if isinstance(value, str):
                 text = value.strip()
                 if len(text) == 4 and not text.lower().startswith("0x"):
                     return struct.unpack(">I", text.encode("ascii"))[0]
-                return int(text, 0)
-            return int(value)
+                return parse_integer_number(text)
+            return parse_integer_number(value)
         raise ValueError(f"不支持的字段类型：{value_type}")
 
     @classmethod
@@ -9736,7 +9775,7 @@ class War3Trainer:
         except OSError:
             return
         if isinstance(value, float):
-            if not math.isfinite(value) or abs(value) > 100000000.0:
+            if not math.isfinite(value):
                 return
         fields.append(
             UnitMemoryField(
@@ -11978,6 +12017,22 @@ class War3Trainer:
         target_hp_regen: float | None = None,
         target_mp_regen: float | None = None,
     ) -> None:
+        target_hp = coerce_finite_float32(target_hp) if target_hp is not None else None
+        target_mp = coerce_finite_float32(target_mp) if target_mp is not None else None
+        max_hp = coerce_finite_float32(max_hp) if max_hp is not None else None
+        max_mp = coerce_finite_float32(max_mp) if max_mp is not None else None
+        target_x = coerce_finite_float32(target_x) if target_x is not None else None
+        target_y = coerce_finite_float32(target_y) if target_y is not None else None
+        target_hp_regen = (
+            coerce_finite_float32(target_hp_regen)
+            if target_hp_regen is not None
+            else None
+        )
+        target_mp_regen = (
+            coerce_finite_float32(target_mp_regen)
+            if target_mp_regen is not None
+            else None
+        )
         if max_hp is not None or target_hp is not None:
             try:
                 old_max_hp = pm.read_f32(candidate.hp_max_address)
@@ -12198,16 +12253,16 @@ def close_float(a: float, b: float, tolerance: float = 0.01) -> bool:
 
 def parse_int(text: str, name: str) -> int:
     try:
-        return int(str(text).strip())
+        return parse_integer_number(text)
     except ValueError as exc:
         raise ValueError(f"{name} 必须是整数") from exc
 
 
 def parse_float(text: str, name: str) -> float:
     try:
-        return float(str(text).strip())
+        return coerce_finite_float32(text)
     except ValueError as exc:
-        raise ValueError(f"{name} 必须是数字") from exc
+        raise ValueError(f"{name} 必须是有限且可写入的 float32 数字") from exc
 
 
 def parse_unit_identity(text: str) -> tuple[int, int, int]:

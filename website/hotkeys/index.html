@@ -7,9 +7,9 @@
   <meta name="theme-color" content="#f4f3f0">
   <title id="site-title">魔兽争霸 III 重制版改键软件 - 版本下载</title>
   <link rel="icon" href="../assets/app-icon.png?v=d37af36b" type="image/png">
-  <link rel="stylesheet" href="../styles.css?v=20260724">
+  <link rel="stylesheet" href="../styles.css?v=20260805">
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
-  <script src="../i18n.js?v=20260724" defer></script>
+  <script src="../i18n.js?v=20260805" defer></script>
   <script src="../app.js?v=20260724" defer></script>
 </head>
 <body data-release-index="/hotkey-releases.json" data-site-title-key="hotkeySiteTitle" data-site-description-key="hotkeySiteDescription">
@@ -89,6 +89,29 @@
         <div><strong>3</strong><span data-i18n="hotkeyFeature3">可关闭游戏快捷键覆盖，仅运行智能施法与辅助功能。</span></div>
       </div>
       <p class="read-help-footnote" data-i18n="hotkeyFeatureFootnote">当前版本适配 Warcraft III: Reforged 2.0.4.23745；软件与修改器相互独立。</p>
+    </section>
+
+    <section class="read-help-band hotkey-guide-band" aria-labelledby="hotkey-guide-title">
+      <div class="read-help-heading">
+        <div>
+          <p class="eyebrow" data-i18n="hotkeyGuideEyebrow">功能说明</p>
+          <h2 id="hotkey-guide-title" data-i18n="hotkeyGuideTitle">哪些功能会改键，哪些功能会模拟操作？</h2>
+        </div>
+        <p data-i18n="hotkeyGuideIntro">普通改键只修改游戏命令栏里的快捷键。带有“辅助”或 SmartCast 的功能会在你明确开启后模拟点击，默认全部关闭。</p>
+      </div>
+      <dl class="hotkey-guide-list" aria-label="改键软件功能说明" data-i18n-aria-label="hotkeyGuideLabel">
+        <div><dt data-i18n="hotkeyGuideNativeTitle">普通改键</dt><dd data-i18n="hotkeyGuideNativeBody">把每个格位的游戏快捷键改成你设置的按键，使用游戏原生快捷键覆盖，不模拟鼠标或键盘输入。</dd></div>
+        <div><dt data-i18n="hotkeyGuideSectionTitle">启用栏目</dt><dd data-i18n="hotkeyGuideSectionBody">普通技能、物品、技能书/学习技能、商店四个栏目可分别启用。关闭某栏目后，该栏的设置不会参与改键。</dd></div>
+        <div><dt data-i18n="hotkeyGuideSmartcastTitle">智能施法 SmartCast</dt><dd data-i18n="hotkeyGuideSmartcastBody">点击格位下方的闪电按钮后，按该格快捷键会先选中技能，再在当前鼠标位置左键施放。每个格位独立设置，默认关闭。</dd></div>
+        <div><dt data-i18n="hotkeyGuideSelfTitle">自身施法辅助</dt><dd data-i18n="hotkeyGuideSelfBody">明确开启后，按住设置的修饰键（默认 Ctrl）再按技能键，会自动点击英雄头像，对允许对自身使用的技能快速施法。默认关闭。</dd></div>
+        <div><dt data-i18n="hotkeyGuideAutocastTitle">自动施法开关辅助</dt><dd data-i18n="hotkeyGuideAutocastBody">明确开启后，按住设置的修饰键（默认 Shift）再按普通技能键，会右键点击对应技能格，切换魔兽原生自动施法的开/关。它不是 SmartCast，默认关闭。</dd></div>
+        <div><dt data-i18n="hotkeyGuideRepeatTitle">按住连发</dt><dd data-i18n="hotkeyGuideRepeatBody">对单个格位开启后，按住触发键会按设定间隔重复执行该格位。默认关闭，适合需要连续使用的命令。</dd></div>
+        <div><dt data-i18n="hotkeyGuideRightTitle">右键连点</dt><dd data-i18n="hotkeyGuideRightBody">明确开启后，按住鼠标右键会自动重复发送右键。默认关闭，和普通改键没有关系。</dd></div>
+        <div><dt data-i18n="hotkeyGuideMouseTitle">鼠标锁定</dt><dd data-i18n="hotkeyGuideMouseBody">明确开启并使用开关热键后，可在游戏前台时限制鼠标留在游戏窗口区域。默认关闭。</dd></div>
+        <div><dt data-i18n="hotkeyGuideCameraTitle">滚轮相机控制</dt><dd data-i18n="hotkeyGuideCameraBody">明确开启后，使用 Ctrl/Alt/Shift 加滚轮可控制镜头距离、旋转或倾角。默认关闭，不会影响普通滚轮。</dd></div>
+        <div><dt data-i18n="hotkeyGuidePauseTitle">聊天暂停与总开关</dt><dd data-i18n="hotkeyGuidePauseBody">聊天输入时可自动暂停改键；顶部“已启用/未启用”和暂停热键控制当前方案是否工作，不会修改游戏数据。</dd></div>
+        <div><dt data-i18n="hotkeyGuideOverrideTitle">修改游戏快捷键开关</dt><dd data-i18n="hotkeyGuideOverrideBody">关闭“修改游戏技能快捷键”后，软件不会写入原生命令栏快捷键，但仍可单独使用已开启的 SmartCast 或辅助功能。</dd></div>
+      </dl>
     </section>
 
     <section id="all-releases" class="release-section" aria-labelledby="release-heading">

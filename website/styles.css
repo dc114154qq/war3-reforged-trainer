@@ -1565,6 +1565,41 @@ dt {
   line-height: 1.7;
 }
 
+.hotkey-guide-band {
+  background: #fbfcfa;
+}
+
+.hotkey-guide-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 34px 0 0;
+  border-top: 1px solid color-mix(in srgb, var(--teal) 22%, var(--line));
+}
+
+.hotkey-guide-list > div {
+  min-width: 0;
+  padding: 20px 22px 21px;
+  border-bottom: 1px solid color-mix(in srgb, var(--teal) 22%, var(--line));
+}
+
+.hotkey-guide-list > div:nth-child(even) {
+  border-left: 1px solid color-mix(in srgb, var(--teal) 22%, var(--line));
+}
+
+.hotkey-guide-list dt {
+  margin: 0 0 8px;
+  color: var(--teal);
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.hotkey-guide-list dd {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.72;
+  overflow-wrap: anywhere;
+}
+
 .section-heading {
   align-items: center;
 }
@@ -1779,6 +1814,18 @@ footer {
   .read-help-steps > div + div {
     border-top: 1px solid color-mix(in srgb, var(--teal) 22%, var(--line));
     border-left: 0;
+  }
+
+  .hotkey-guide-list {
+    grid-template-columns: 1fr;
+  }
+
+  .hotkey-guide-list > div:nth-child(even) {
+    border-left: 0;
+  }
+
+  .hotkey-guide-list > div + div {
+    border-top: 1px solid color-mix(in srgb, var(--teal) 22%, var(--line));
   }
 }
 

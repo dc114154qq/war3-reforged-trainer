@@ -238,7 +238,7 @@ class ElephantSourceRoutingTests(unittest.TestCase):
         self.assertEqual((rawcode, handle), (0x68666F6F, 0x4444))
         trainer._elephant_selected_candidate.assert_not_called()
 
-    def test_elephant_gui_functions_do_not_call_main_trainer_directly(self):
+    def test_unit_bound_elephant_gui_functions_do_not_call_main_trainer_directly(self):
         tree = ast.parse(SOURCE_PATH.read_text(encoding="utf-8"))
         run_gui = next(
             node
@@ -251,7 +251,7 @@ class ElephantSourceRoutingTests(unittest.TestCase):
             for node in run_gui.body
             if isinstance(node, ast.FunctionDef)
             and node.name.startswith("elephant_")
-            and node.name != "elephant_trainer"
+            and node.name not in {"elephant_trainer", "elephant_add_resources"}
         ):
             for node in ast.walk(function):
                 if (
@@ -261,6 +261,27 @@ class ElephantSourceRoutingTests(unittest.TestCase):
                 ):
                     offenders.append((function.name, node.lineno))
         self.assertEqual(offenders, [])
+
+    def test_resource_hotkey_uses_main_resource_locator_without_unit_read(self):
+        tree = ast.parse(SOURCE_PATH.read_text(encoding="utf-8"))
+        run_gui = next(
+            node
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == "run_gui"
+        )
+        function = next(
+            node
+            for node in run_gui.body
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "elephant_add_resources"
+        )
+        calls = {
+            node.func.id
+            for node in ast.walk(function)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        }
+        self.assertIn("trainer", calls)
+        self.assertNotIn("elephant_trainer", calls)
 
     def test_hotkeys_do_not_bind_main_trainer(self):
         tree = ast.parse(SOURCE_PATH.read_text(encoding="utf-8"))

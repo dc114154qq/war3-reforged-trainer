@@ -1,4 +1,5 @@
 import ctypes
+from pathlib import Path
 import threading
 import time
 import unittest
@@ -9,6 +10,15 @@ from war3_ui_i18n import translate_ui_text
 
 
 class GlobalHotkeyManagerTests(unittest.TestCase):
+    def test_global_toggle_is_in_top_toolbar_and_title_is_branded(self):
+        source = Path(trainer.__file__).read_text(encoding="utf-8")
+        self.assertIn("by B站 两杯沈梦溪", source)
+        self.assertEqual(source.count('text="启用全局快捷键"'), 1)
+        self.assertLess(
+            source.index("top = ttk.Frame(outer)"),
+            source.index('text="启用全局快捷键"'),
+        )
+
     def test_read_shortcuts_use_ctrl_function_keys(self):
         specs = {
             spec.name: spec

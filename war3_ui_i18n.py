@@ -36,6 +36,7 @@ def detect_ui_language(locale_name: str | None = None) -> str:
 
 _EN_TRANSLATIONS = {
     "魔兽争霸3重制版修改器": "Warcraft III: Reforged Trainer",
+    " by B站 两杯沈梦溪": " by Bilibili Two Cups of Shen Mengxi",
     "正在连接 Warcraft III...": "Connecting to Warcraft III...",
     "尚未读取技能字段": "Ability fields have not been read",
     "快捷键未启用": "Hotkeys are disabled",

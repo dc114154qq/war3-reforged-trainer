@@ -33,7 +33,7 @@ from war3_id_catalog import CATALOG_COUNTS, search_id_entries
 from war3_ui_i18n import detect_ui_language, translate_ui_text
 
 
-APP_VERSION = "1.0.11"
+APP_VERSION = "1.0.12"
 WIN10_COMPAT_REVISION = "backup-r7-live-regions-external-native"
 
 
@@ -13322,7 +13322,7 @@ def run_gui() -> None:
         return translate_ui_text(text, ui_language["code"])
 
     root = tk.Tk()
-    root.title(ui_text(f"魔兽争霸3重制版修改器 v{APP_VERSION}"))
+    root.title(ui_text(f"魔兽争霸3重制版修改器 v{APP_VERSION} by B站 两杯沈梦溪"))
     root.geometry("1180x780")
     root.minsize(1040, 700)
     icon_path = (
@@ -14736,7 +14736,7 @@ def run_gui() -> None:
 
     def elephant_add_resources() -> str:
         amount = parse_int(elephant_resource_amount.get(), "金币木材增量")
-        elephant_trainer().add_gold_and_lumber(amount)
+        trainer().add_gold_and_lumber(amount)
         return f"金币和木材已增加 {amount}"
 
     def elephant_mass_clone() -> str:
@@ -15247,7 +15247,7 @@ def run_gui() -> None:
                 tree_widget.focus(existing_items[0])
 
     def refresh_gui_language() -> None:
-        root.title(ui_text(f"魔兽争霸3重制版修改器 v{APP_VERSION}"))
+        root.title(ui_text(f"魔兽争霸3重制版修改器 v{APP_VERSION} by B站 两杯沈梦溪"))
         capture_translatable_widgets(root)
         for widget, source in tuple(widget_text_sources.items()):
             try:
@@ -15297,6 +15297,12 @@ def run_gui() -> None:
         )
     )
     backup_read_button.pack(side="left", padx=(4, 0))
+    ttk.Checkbutton(
+        top,
+        text="启用全局快捷键",
+        variable=elephant_hotkeys_enabled,
+        command=refresh_elephant_hotkeys,
+    ).pack(side="left", padx=(12, 0))
     ttk.Label(top, text="PID").pack(side="left", padx=(16, 4))
     ttk.Entry(top, textvariable=pid_var, width=10, state="readonly").pack(side="left")
     language_frame = ttk.Frame(top)
@@ -15869,12 +15875,6 @@ def run_gui() -> None:
 
     hotkey_toolbar = ttk.Frame(elephant_hotkeys_tab)
     hotkey_toolbar.pack(fill="x", pady=(0, 8))
-    ttk.Checkbutton(
-        hotkey_toolbar,
-        text="启用全局快捷键",
-        variable=elephant_hotkeys_enabled,
-        command=refresh_elephant_hotkeys,
-    ).pack(side="left")
     ttk.Button(
         hotkey_toolbar,
         text="全选可用",

@@ -7878,24 +7878,30 @@ class War3Trainer:
     def add_gold(self, amount: int) -> None:
         if not amount:
             return
-        cache = self.read_resource_cache()
-        with self._process_memory(write=True) as pm:
-            pm.write_i32(cache.gold_address, (cache.gold + int(amount)) * 10)
+        cache = self.validate_local_player_resource_cache(
+            self.locate_local_player_resource_cache()
+        )
+        self.write_resource_cache(cache, target_gold=cache.gold + int(amount))
 
     def add_lumber(self, amount: int) -> None:
         if not amount:
             return
-        cache = self.read_resource_cache()
-        with self._process_memory(write=True) as pm:
-            pm.write_i32(cache.lumber_address, (cache.lumber + int(amount)) * 10)
+        cache = self.validate_local_player_resource_cache(
+            self.locate_local_player_resource_cache()
+        )
+        self.write_resource_cache(cache, target_lumber=cache.lumber + int(amount))
 
     def add_gold_and_lumber(self, amount: int) -> None:
         if not amount:
             return
-        cache = self.read_resource_cache()
-        with self._process_memory(write=True) as pm:
-            pm.write_i32(cache.gold_address, (cache.gold + int(amount)) * 10)
-            pm.write_i32(cache.lumber_address, (cache.lumber + int(amount)) * 10)
+        cache = self.validate_local_player_resource_cache(
+            self.locate_local_player_resource_cache()
+        )
+        self.write_resource_cache(
+            cache,
+            target_gold=cache.gold + int(amount),
+            target_lumber=cache.lumber + int(amount),
+        )
 
     def set_food(
         self,

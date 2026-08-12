@@ -113,6 +113,14 @@ def normalize_github_release(
         for asset in release.get("assets", [])
         if str(asset.get("name", "")).lower().endswith(".exe")
     ]
+    assets.sort(
+        key=lambda asset: (
+            0
+            if str(asset.get("name", "")).lower().endswith("-normal.exe")
+            else 1,
+            str(asset.get("name", "")).lower(),
+        )
+    )
     if not assets:
         return None
     normalized_assets = []

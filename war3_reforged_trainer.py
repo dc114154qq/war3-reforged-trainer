@@ -30,6 +30,7 @@ from war3_ability_fields import (
     ability_fields_for_effect_class,
 )
 from war3_id_catalog import CATALOG_COUNTS, search_id_entries
+from war3_item_fields import ITEM_FIELD_BY_KEY, ITEM_FIELD_CATALOG, ItemFieldSpec
 from war3_ui_i18n import detect_ui_language, translate_ui_text
 
 
@@ -795,6 +796,50 @@ class AbilityFieldSnapshot:
     unit_identity: tuple[int, int, int] = (0, 0, 0)
     effect_class_verified: bool = True
     effect_class_note: str = ""
+    win10_compat: bool = False
+
+
+@dataclass(frozen=True)
+class ItemFieldContext:
+    candidate: UnitCandidate
+    slot: int
+    item_handle: int
+    item_rawcode: int
+    handlers: dict[str, NativeHandler]
+
+    @property
+    def unit_identity(self) -> tuple[int, int, int]:
+        return (
+            self.candidate.handle,
+            self.candidate.owner_address,
+            self.candidate.unit_address,
+        )
+
+
+@dataclass(frozen=True)
+class ItemFieldValue:
+    spec: ItemFieldSpec
+    value: bool | int | float | None
+    status: str
+    note: str = ""
+
+    def value_text(self) -> str:
+        if self.value is None:
+            return ""
+        if self.spec.value_kind == "boolean":
+            return "true" if bool(self.value) else "false"
+        if self.spec.value_kind == "real":
+            return format_editable_float32(float(self.value))
+        return str(int(self.value))
+
+
+@dataclass(frozen=True)
+class ItemFieldSnapshot:
+    slot: int
+    item_handle: int
+    item_rawcode: int
+    fields: tuple[ItemFieldValue, ...]
+    unit_identity: tuple[int, int, int] = (0, 0, 0)
     win10_compat: bool = False
 
 
@@ -2314,6 +2359,26 @@ class War3Trainer:
         ("integer", "level"): "BlzSetAbilityIntegerLevelField",
         ("real", "level"): "BlzSetAbilityRealLevelField",
     }
+    ITEM_FIELD_NATIVE_NAMES = (
+        "UnitItemInSlot",
+        "GetItemTypeId",
+        "BlzGetItemBooleanField",
+        "BlzSetItemBooleanField",
+        "BlzGetItemIntegerField",
+        "BlzSetItemIntegerField",
+        "BlzGetItemRealField",
+        "BlzSetItemRealField",
+    )
+    ITEM_FIELD_GETTER_NAMES = {
+        "boolean": "BlzGetItemBooleanField",
+        "integer": "BlzGetItemIntegerField",
+        "real": "BlzGetItemRealField",
+    }
+    ITEM_FIELD_SETTER_NAMES = {
+        "boolean": "BlzSetItemBooleanField",
+        "integer": "BlzSetItemIntegerField",
+        "real": "BlzSetItemRealField",
+    }
     NATIVE_SELECTION_HANDLER_NAMES = (
         "IsUnitSelected",
     )
@@ -2322,6 +2387,7 @@ class War3Trainer:
             (
                 *ELEPHANT_NATIVE_NAMES,
                 *ABILITY_FIELD_NATIVE_NAMES,
+                *ITEM_FIELD_NATIVE_NAMES,
                 *NATIVE_HANDLER_NAMES,
                 *JASS_SELECTION_NATIVE_NAMES,
                 *NATIVE_SELECTION_HANDLER_NAMES,
@@ -2330,7 +2396,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 16
+    NATIVE_HELPER_VERSION = 17
     NATIVE_HELPER_STATUS_PENDING = 1
     NATIVE_HELPER_STATUS_OK = 2
     NATIVE_HELPER_MAX_OPS = 16
@@ -2394,6 +2460,8 @@ class War3Trainer:
     NATIVE_HELPER_OP_JASS_ABILITY_SCALAR_FIELD_SET = 112
     NATIVE_HELPER_OP_JASS_ABILITY_REAL_FIELD_SET = 113
     NATIVE_HELPER_OP_JASS_ABILITY_SCALAR_LEVEL_FIELD_SET = 114
+    NATIVE_HELPER_OP_JASS_ITEM_FIELD_GET = 115
+    NATIVE_HELPER_OP_JASS_ITEM_FIELD_SET = 116
 
     def __init__(self, pid: int | None = None):
         self.hwnd, self.pid = find_war3(pid)
@@ -2421,6 +2489,7 @@ class War3Trainer:
         self._unit_component_layout_confirmed = False
         self._ability_instances_cache: dict[tuple[int, int, int, bool], list[AbilityInstance]] = {}
         self._ability_field_write_disabled = False
+        self._item_field_write_disabled = False
         self._selection_manager_offset = self.CPLAYER_SELECTION_MANAGER_OFFSET
         self._selection_list_offsets = (0, self.SELECTION_MANAGER_ALT_LIST_OFFSET)
         self._resource_candidates_by_start: dict[int, list[ResourceCache]] = {}
@@ -2466,6 +2535,7 @@ class War3Trainer:
             self._unit_component_layout_confirmed = False
             self._ability_instances_cache = {}
             self._ability_field_write_disabled = False
+            self._item_field_write_disabled = False
             self._selection_manager_offset = self.CPLAYER_SELECTION_MANAGER_OFFSET
             self._selection_list_offsets = (0, self.SELECTION_MANAGER_ALT_LIST_OFFSET)
             self._resource_candidates_by_start = {}
@@ -3741,6 +3811,8 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_JASS_ABILITY_SCALAR_FIELD_SET,
             self.NATIVE_HELPER_OP_JASS_ABILITY_REAL_FIELD_SET,
             self.NATIVE_HELPER_OP_JASS_ABILITY_SCALAR_LEVEL_FIELD_SET,
+            self.NATIVE_HELPER_OP_JASS_ITEM_FIELD_GET,
+            self.NATIVE_HELPER_OP_JASS_ITEM_FIELD_SET,
         }
         if any(kind not in allowed_kinds for kind, _rawcode, _handler, _arg0, _arg1 in op_list):
             raise RuntimeError("native helper 仅允许结构化验证后的白名单操作")
@@ -3786,6 +3858,8 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_JASS_ABILITY_SCALAR_FIELD_SET,
             self.NATIVE_HELPER_OP_JASS_ABILITY_REAL_FIELD_SET,
             self.NATIVE_HELPER_OP_JASS_ABILITY_SCALAR_LEVEL_FIELD_SET,
+            self.NATIVE_HELPER_OP_JASS_ITEM_FIELD_GET,
+            self.NATIVE_HELPER_OP_JASS_ITEM_FIELD_SET,
         }
         if any(kind in unit_kinds for kind, _rawcode, _handler, _arg0, _arg1 in op_list) and not unit_address:
             raise RuntimeError("当前单位缺少运行时 unit 指针，不能调用 native helper")
@@ -6158,6 +6232,318 @@ class War3Trainer:
                     raise RuntimeError(f"{exc}；原始字段恢复无法确认") from exc
                 raise
         return AbilityFieldValue(spec, actual, "已验证")
+
+    def _item_field_context_from_candidate_locked(
+        self,
+        pm: ProcessMemory,
+        candidate: UnitCandidate,
+        unit_handle: int,
+        slot: int,
+        handlers: dict[str, NativeHandler] | None = None,
+    ) -> ItemFieldContext:
+        slot_number = int(slot)
+        if not 1 <= slot_number <= 6:
+            raise ValueError("物品槽位必须在 1 到 6 之间")
+        if handlers is None:
+            handlers = self._discover_native_handlers_near_table(
+                pm,
+                self.ITEM_FIELD_NATIVE_NAMES,
+            )
+        item_handle = int(self._run_native_helper_ops(
+            unit_handle,
+            ((
+                self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE,
+                slot_number - 1,
+                handlers["UnitItemInSlot"].handler_address,
+                0,
+                0,
+            ),),
+        )[0].result)
+        if not item_handle:
+            raise RuntimeError(f"当前选中单位的物品栏 {slot_number} 为空")
+        item_rawcode = int(self._run_native_helper_ops(
+            item_handle,
+            ((
+                self.NATIVE_HELPER_OP_JASS_UNIT_INT_QUERY,
+                0,
+                handlers["GetItemTypeId"].handler_address,
+                0,
+                0,
+            ),),
+        )[0].result) & 0xFFFFFFFF
+        if not item_rawcode:
+            raise RuntimeError(f"无法确认物品栏 {slot_number} 的物品 ID")
+        return ItemFieldContext(
+            candidate=candidate,
+            slot=slot_number,
+            item_handle=item_handle,
+            item_rawcode=item_rawcode,
+            handlers=handlers,
+        )
+
+    def _item_field_context_by_identity_locked(
+        self,
+        slot: int,
+        unit_identity: tuple[int, int, int],
+        win10_compat: bool,
+    ) -> ItemFieldContext:
+        handle, owner, unit = (int(value) for value in unit_identity)
+        if win10_compat:
+            with self._win10_memory_operation("item_field_context") as (diagnostics, pm):
+                isolated = self._win10_session_for_identity(handle, owner, unit, pm)
+                missing_handlers = set(self.ITEM_FIELD_NATIVE_NAMES).difference(
+                    isolated._native_handlers
+                )
+                if missing_handlers:
+                    self._recover_win10_native_handlers(isolated, pm, diagnostics)
+                    missing_handlers = set(self.ITEM_FIELD_NATIVE_NAMES).difference(
+                        isolated._native_handlers
+                    )
+                if missing_handlers:
+                    raise RuntimeError(
+                        "备用读取缺少物品字段 native："
+                        + ", ".join(sorted(missing_handlers))
+                    )
+                candidate = self._win10_candidate_from_identity(
+                    isolated,
+                    pm,
+                    handle,
+                    owner,
+                    unit,
+                )
+                unit_handle = isolated._current_jass_unit_handle_win10(
+                    pm,
+                    candidate,
+                    diagnostics,
+                )
+                handlers = {
+                    name: isolated._native_handlers[name]
+                    for name in self.ITEM_FIELD_NATIVE_NAMES
+                }
+                context = isolated._item_field_context_from_candidate_locked(
+                    pm,
+                    candidate,
+                    unit_handle,
+                    slot,
+                    handlers,
+                )
+                self._native_handlers.update(isolated._native_handlers)
+                return context
+
+        with self._process_memory() as pm:
+            candidate = self._candidate_from_identity(
+                pm,
+                handle,
+                owner,
+                unit,
+                f"item_field_candidate handle=0x{handle:x} owner=0x{owner:x} unit=0x{unit:x}",
+                900,
+            )
+            if candidate is None:
+                raise RuntimeError("普通读取的单位身份已经失效，请重新读取当前选中单位")
+            unit_handle = self._elephant_selected_handle(pm)
+            resolved_unit = self._resolve_jass_unit_handle(unit_handle)
+            if resolved_unit != candidate.unit_address:
+                raise RuntimeError("当前选择已经变化，请重新读取当前选中单位")
+            return self._item_field_context_from_candidate_locked(
+                pm,
+                candidate,
+                unit_handle,
+                slot,
+            )
+
+    def _item_field_get_op(
+        self,
+        spec: ItemFieldSpec,
+        handlers: dict[str, NativeHandler],
+    ) -> tuple[int, int, int, int, int]:
+        return (
+            self.NATIVE_HELPER_OP_JASS_ITEM_FIELD_GET,
+            spec.field_id,
+            handlers[self.ITEM_FIELD_GETTER_NAMES[spec.value_kind]].handler_address,
+            0,
+            0,
+        )
+
+    def _decode_item_field_value(
+        self,
+        spec: ItemFieldSpec,
+        raw_value: int,
+    ) -> bool | int | float:
+        if spec.value_kind == "boolean":
+            return bool(int(raw_value) & 1)
+        if spec.value_kind == "integer":
+            return ctypes.c_int32(int(raw_value) & 0xFFFFFFFF).value
+        return self._float_from_bits(raw_value)
+
+    def _read_single_item_field_locked(
+        self,
+        item_handle: int,
+        handlers: dict[str, NativeHandler],
+        spec: ItemFieldSpec,
+    ) -> bool | int | float:
+        result = self._run_native_helper_ops(
+            item_handle,
+            (self._item_field_get_op(spec, handlers),),
+        )[0]
+        return self._decode_item_field_value(spec, result.result)
+
+    def read_selected_item_fields(
+        self,
+        slot: int,
+        *,
+        unit_identity: tuple[int, int, int],
+        win10_compat: bool = False,
+    ) -> ItemFieldSnapshot:
+        with self._native_helper_transaction():
+            context = self._item_field_context_by_identity_locked(
+                slot,
+                unit_identity,
+                win10_compat,
+            )
+            fields: list[ItemFieldValue] = []
+            for spec in ITEM_FIELD_CATALOG:
+                if not spec.runtime_supported:
+                    fields.append(
+                        ItemFieldValue(
+                            spec,
+                            None,
+                            "未开放",
+                            "native helper 当前未开放字符串传输",
+                        )
+                    )
+                    continue
+                try:
+                    value = self._read_single_item_field_locked(
+                        context.item_handle,
+                        context.handlers,
+                        spec,
+                    )
+                    fields.append(ItemFieldValue(spec, value, "可写" if spec.writable else "只读"))
+                except (OSError, RuntimeError) as exc:
+                    fields.append(ItemFieldValue(spec, None, "读取失败", str(exc)))
+        return ItemFieldSnapshot(
+            slot=context.slot,
+            item_handle=context.item_handle,
+            item_rawcode=context.item_rawcode,
+            fields=tuple(fields),
+            unit_identity=context.unit_identity,
+            win10_compat=bool(win10_compat),
+        )
+
+    def _coerce_item_field_value(
+        self,
+        spec: ItemFieldSpec,
+        value: bool | int | float | str,
+    ) -> bool | int | float:
+        if spec.value_kind == "boolean":
+            if isinstance(value, str):
+                normalized = value.strip().lower()
+                if normalized in {"1", "true", "yes", "on", "是"}:
+                    return True
+                if normalized in {"0", "false", "no", "off", "否"}:
+                    return False
+                raise ValueError("布尔字段请输入 true/false 或 1/0")
+            return bool(value)
+        if spec.value_kind == "integer":
+            return int(self._coerce_memory_value("i32", value))
+        target = float(value)
+        if not math.isfinite(target):
+            raise ValueError("实数字段必须是有限数值")
+        return self._float_from_bits(self._float_bits(target))
+
+    def _item_field_set_op(
+        self,
+        spec: ItemFieldSpec,
+        handlers: dict[str, NativeHandler],
+        value: bool | int | float,
+    ) -> tuple[int, int, int, int, int]:
+        bits = (
+            self._float_bits(float(value))
+            if spec.value_kind == "real"
+            else int(value) & 0xFFFFFFFF
+        )
+        return (
+            self.NATIVE_HELPER_OP_JASS_ITEM_FIELD_SET,
+            spec.field_id,
+            handlers[self.ITEM_FIELD_SETTER_NAMES[spec.value_kind]].handler_address,
+            bits,
+            2 if spec.value_kind == "real" else 0,
+        )
+
+    def set_selected_item_field(
+        self,
+        slot: int,
+        spec: ItemFieldSpec,
+        value: bool | int | float | str,
+        expected_snapshot: ItemFieldSnapshot,
+        *,
+        unit_identity: tuple[int, int, int],
+        win10_compat: bool = False,
+    ) -> ItemFieldValue:
+        if self._item_field_write_disabled:
+            raise RuntimeError("上一次物品字段回滚无法确认，请重新连接游戏后再写入")
+        if not spec.runtime_supported or not spec.writable:
+            raise ValueError("该字段当前未开放运行时写入")
+        if int(slot) != expected_snapshot.slot:
+            raise RuntimeError("物品槽位已变化，请重新读取字段")
+        if bool(win10_compat) != bool(expected_snapshot.win10_compat):
+            raise RuntimeError("物品字段读取来源已变化，请重新读取字段")
+        if ITEM_FIELD_BY_KEY.get((spec.rawcode, spec.value_kind)) != spec:
+            raise RuntimeError("物品字段目录已变化，请重新读取字段")
+        target = self._coerce_item_field_value(spec, value)
+        with self._native_helper_transaction():
+            context = self._item_field_context_by_identity_locked(
+                slot,
+                unit_identity,
+                win10_compat,
+            )
+            if (
+                context.unit_identity != expected_snapshot.unit_identity
+                or context.item_handle != expected_snapshot.item_handle
+                or context.item_rawcode != expected_snapshot.item_rawcode
+            ):
+                raise RuntimeError("当前物品已经变化，请重新读取字段")
+            original = self._read_single_item_field_locked(
+                context.item_handle,
+                context.handlers,
+                spec,
+            )
+
+            def write_field(field_value: bool | int | float) -> bool:
+                result = self._run_native_helper_ops(
+                    context.item_handle,
+                    (self._item_field_set_op(spec, context.handlers, field_value),),
+                )[0]
+                return bool(result.result)
+
+            try:
+                if not write_field(target):
+                    raise RuntimeError("游戏拒绝写入该物品字段")
+                actual = self._read_single_item_field_locked(
+                    context.item_handle,
+                    context.handlers,
+                    spec,
+                )
+                if not self._ability_field_values_equal(spec, actual, target):
+                    raise RuntimeError(f"字段写入后读回不一致：{actual!s}!={target!s}")
+            except Exception as exc:
+                rollback_ok = False
+                try:
+                    write_field(original)
+                    restored = self._read_single_item_field_locked(
+                        context.item_handle,
+                        context.handlers,
+                        spec,
+                    )
+                    rollback_ok = self._ability_field_values_equal(spec, restored, original)
+                except Exception:
+                    rollback_ok = False
+                if not rollback_ok:
+                    self._item_field_write_disabled = True
+                    raise RuntimeError(f"{exc}；原始字段恢复无法确认") from exc
+                raise
+        return ItemFieldValue(spec, actual, "已验证")
 
     def set_local_player_tech(self, rawcode: int | str, level: int) -> int:
         tech_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
@@ -13403,6 +13789,13 @@ def run_gui() -> None:
     ability_field_detail = LocalizedStringVar(value="")
     ability_field_show_zero = tk.BooleanVar(value=True)
     ability_field_show_unsupported = tk.BooleanVar(value=True)
+    item_field_slot = tk.StringVar(value="1")
+    item_field_filter = tk.StringVar(value="")
+    item_field_value = tk.StringVar(value="")
+    item_field_summary = LocalizedStringVar(value="尚未读取物品字段")
+    item_field_detail = LocalizedStringVar(value="")
+    item_field_show_zero = tk.BooleanVar(value=True)
+    item_field_show_unsupported = tk.BooleanVar(value=True)
     id_catalog_queries = {
         kind: tk.StringVar(value="")
         for kind in ("item", "ability", "unit")
@@ -13455,6 +13848,8 @@ def run_gui() -> None:
         "elephant_game_paused": False,
         "ability_field_snapshot": None,
         "ability_field_rows": {},
+        "item_field_snapshot": None,
+        "item_field_rows": {},
         "closing": False,
     }
 
@@ -14691,6 +15086,173 @@ def run_gui() -> None:
             busy_text="正在写入并校验技能字段...",
         )
 
+    def refresh_item_field_tree() -> None:
+        snapshot = state.get("item_field_snapshot")
+        rows: dict[str, ItemFieldValue] = {}
+        item_field_tree.delete(*item_field_tree.get_children())
+        if not isinstance(snapshot, ItemFieldSnapshot):
+            state["item_field_rows"] = rows
+            return
+        query = item_field_filter.get().strip().lower()
+        show_zero = item_field_show_zero.get()
+        show_unsupported = item_field_show_unsupported.get()
+        type_labels = {
+            "boolean": "布尔",
+            "integer": "整数",
+            "real": "实数",
+            "string": "字符串",
+        }
+        for index, field_value in enumerate(snapshot.fields):
+            spec = field_value.spec
+            if not show_unsupported and field_value.status == "未开放":
+                continue
+            if (
+                not show_zero
+                and field_value.value is not None
+                and field_value.value in (False, 0, 0.0)
+            ):
+                continue
+            searchable = " ".join(
+                (spec.rawcode, spec.value_kind, spec.name, field_value.note)
+            ).lower()
+            if query and query not in searchable:
+                continue
+            iid = f"item-field-{index}"
+            rows[iid] = field_value
+            item_field_tree.insert(
+                "",
+                "end",
+                iid=iid,
+                values=(
+                    spec.rawcode,
+                    ui_text(type_labels.get(spec.value_kind, spec.value_kind)),
+                    ui_text(spec.name),
+                    ui_text(field_value.value_text()),
+                    ui_text(field_value.status),
+                ),
+            )
+        state["item_field_rows"] = rows
+
+    def apply_item_field_snapshot(snapshot: ItemFieldSnapshot) -> None:
+        state["item_field_snapshot"] = snapshot
+        source = "备用读取" if snapshot.win10_compat else "普通读取"
+        item_field_summary.set(
+            f"物品栏 {snapshot.slot}；"
+            f"物品 {format_rawcode(snapshot.item_rawcode)}；"
+            f"handle=0x{snapshot.item_handle:x}；"
+            f"候选 {len(snapshot.fields)} 项；来源 {source}"
+        )
+        item_field_value.set("")
+        item_field_detail.set("")
+        item_field_write_button.state(["disabled"])
+        refresh_item_field_tree()
+
+    def read_item_field_snapshot() -> str:
+        slot = parse_int(item_field_slot.get(), "物品槽位")
+        identity = current_display_unit_identity()
+        if identity is None:
+            raise ValueError("请先读取当前单位")
+        snapshot = trainer().read_selected_item_fields(
+            slot,
+            unit_identity=identity,
+            win10_compat=current_display_uses_win10(),
+        )
+        root.after(0, apply_item_field_snapshot, snapshot)
+        readable = sum(field.value is not None for field in snapshot.fields)
+        writable = sum(
+            field.value is not None and field.spec.writable
+            for field in snapshot.fields
+        )
+        return (
+            f"已读取物品栏 {snapshot.slot} 的 {format_rawcode(snapshot.item_rawcode)}："
+            f"{readable} 项有值，{writable} 项可尝试写入"
+        )
+
+    def select_item_field(_event: object | None = None) -> None:
+        selected = item_field_tree.selection()
+        rows = state.get("item_field_rows")
+        field_value = (
+            rows.get(selected[0])
+            if selected and isinstance(rows, dict)
+            else None
+        )
+        if not isinstance(field_value, ItemFieldValue):
+            item_field_value.set("")
+            item_field_detail.set("")
+            item_field_write_button.state(["disabled"])
+            return
+        spec = field_value.spec
+        item_field_value.set(field_value.value_text())
+        item_field_detail.set(
+            f"{spec.rawcode} | {spec.value_kind} | {spec.name}"
+            + (f"；{field_value.note}" if field_value.note else "")
+        )
+        if field_value.value is not None and spec.writable:
+            item_field_write_button.state(["!disabled"])
+        else:
+            item_field_write_button.state(["disabled"])
+
+    def write_selected_item_field(
+        snapshot: ItemFieldSnapshot,
+        field_value: ItemFieldValue,
+        target_text: str,
+    ) -> str:
+        actual = trainer().set_selected_item_field(
+            snapshot.slot,
+            field_value.spec,
+            target_text,
+            snapshot,
+            unit_identity=snapshot.unit_identity,
+            win10_compat=snapshot.win10_compat,
+        )
+        key = (field_value.spec.rawcode, field_value.spec.value_kind)
+        updated_snapshot = replace(
+            snapshot,
+            fields=tuple(
+                actual
+                if (item.spec.rawcode, item.spec.value_kind) == key
+                else item
+                for item in snapshot.fields
+            ),
+        )
+        root.after(
+            0,
+            lambda: (
+                apply_item_field_snapshot(updated_snapshot)
+                if state.get("item_field_snapshot") is snapshot
+                else None
+            ),
+        )
+        return (
+            f"物品字段 {field_value.spec.rawcode} 已写入并读回："
+            f"{actual.value_text()}"
+        )
+
+    def item_field_write_clicked() -> None:
+        snapshot = state.get("item_field_snapshot")
+        if not isinstance(snapshot, ItemFieldSnapshot):
+            messagebox.showerror(ui_text("错误"), ui_text("请先读取物品字段"))
+            return
+        selected = item_field_tree.selection()
+        rows = state.get("item_field_rows")
+        field_value = (
+            rows.get(selected[0])
+            if selected and isinstance(rows, dict)
+            else None
+        )
+        if not isinstance(field_value, ItemFieldValue):
+            messagebox.showerror(ui_text("错误"), ui_text("请先选择一个可写字段"))
+            return
+        call_async(
+            lambda: write_selected_item_field(
+                snapshot,
+                field_value,
+                item_field_value.get().strip(),
+            ),
+            operation_key="item-field-write",
+            busy_text="正在写入并校验物品字段...",
+        )
+
     def elephant_set_tech() -> str:
         rawcode = elephant_tech_rawcode.get().strip()
         if not rawcode:
@@ -15198,6 +15760,7 @@ def run_gui() -> None:
             lock_tree: tuple(lock_tree.selection()),
             candidate_tree: tuple(candidate_tree.selection()),
             ability_field_tree: tuple(ability_field_tree.selection()),
+            item_field_tree: tuple(item_field_tree.selection()),
         }
         selections.update(
             {
@@ -15216,6 +15779,8 @@ def run_gui() -> None:
             populate_selection_candidates(list(candidates.values()))
         if isinstance(state.get("ability_field_snapshot"), AbilityFieldSnapshot):
             refresh_ability_field_tree()
+        if isinstance(state.get("item_field_snapshot"), ItemFieldSnapshot):
+            refresh_item_field_tree()
         for kind in id_catalog_trees:
             refresh_id_catalog_tree(kind)
         for tree_widget, selected_items in selections.items():
@@ -15248,6 +15813,8 @@ def run_gui() -> None:
             status,
             ability_field_summary,
             ability_field_detail,
+            item_field_summary,
+            item_field_detail,
             elephant_hotkey_status,
             *id_catalog_statuses.values(),
         ):
@@ -15613,6 +16180,125 @@ def run_gui() -> None:
     ).grid(row=3, column=0, sticky="ew", pady=(8, 0))
     ability_fields_tab.rowconfigure(1, weight=1)
     ability_fields_tab.columnconfigure(0, weight=1)
+
+    item_fields_tab = ttk.Frame(notebook, padding=10)
+    notebook.add(item_fields_tab, text="物品字段")
+    item_field_toolbar = ttk.Frame(item_fields_tab)
+    item_field_toolbar.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+    ttk.Label(item_field_toolbar, text="物品槽位").grid(row=0, column=0, sticky="w")
+    ttk.Spinbox(
+        item_field_toolbar,
+        textvariable=item_field_slot,
+        from_=1,
+        to=6,
+        width=5,
+    ).grid(row=0, column=1, sticky="w", padx=(6, 16))
+    item_field_read_button = ttk.Button(
+        item_field_toolbar,
+        text="读取可修改字段",
+        command=lambda: call_async(
+            read_item_field_snapshot,
+            operation_key="item-field-read",
+            busy_widget=item_field_read_button,
+            busy_text="正在解析物品实例并读取字段...",
+        ),
+    )
+    item_field_read_button.grid(row=0, column=2, sticky="w")
+    ttk.Label(item_field_toolbar, text="筛选").grid(
+        row=0,
+        column=3,
+        sticky="e",
+        padx=(24, 6),
+    )
+    item_field_filter_entry = ttk.Entry(
+        item_field_toolbar,
+        textvariable=item_field_filter,
+        width=24,
+    )
+    item_field_filter_entry.grid(row=0, column=4, sticky="ew")
+    item_field_filter_entry.bind(
+        "<KeyRelease>",
+        lambda _event: refresh_item_field_tree(),
+    )
+    ttk.Checkbutton(
+        item_field_toolbar,
+        text="显示零值",
+        variable=item_field_show_zero,
+        command=refresh_item_field_tree,
+    ).grid(row=0, column=5, padx=(14, 0))
+    ttk.Checkbutton(
+        item_field_toolbar,
+        text="显示未开放",
+        variable=item_field_show_unsupported,
+        command=refresh_item_field_tree,
+    ).grid(row=0, column=6, padx=(10, 0))
+    item_field_toolbar.columnconfigure(4, weight=1)
+
+    item_field_table_frame = ttk.Frame(item_fields_tab)
+    item_field_table_frame.grid(row=1, column=0, sticky="nsew")
+    item_field_columns = ("field", "type", "name", "value", "status")
+    item_field_tree = ttk.Treeview(
+        item_field_table_frame,
+        columns=item_field_columns,
+        show="headings",
+        height=18,
+        selectmode="browse",
+    )
+    for column, heading, width, stretch in (
+        ("field", "字段", 82, False),
+        ("type", "类型", 78, False),
+        ("name", "字段名称", 520, True),
+        ("value", "当前值", 150, False),
+        ("status", "状态", 100, False),
+    ):
+        item_field_tree.heading(column, text=heading)
+        item_field_tree.column(
+            column,
+            width=width,
+            minwidth=width,
+            anchor="w",
+            stretch=stretch,
+        )
+    item_field_scroll = ttk.Scrollbar(
+        item_field_table_frame,
+        orient="vertical",
+        command=item_field_tree.yview,
+    )
+    item_field_tree.configure(yscrollcommand=item_field_scroll.set)
+    item_field_tree.grid(row=0, column=0, sticky="nsew")
+    item_field_scroll.grid(row=0, column=1, sticky="ns")
+    item_field_table_frame.rowconfigure(0, weight=1)
+    item_field_table_frame.columnconfigure(0, weight=1)
+    item_field_tree.bind("<<TreeviewSelect>>", select_item_field)
+
+    item_field_editor = ttk.Frame(item_fields_tab)
+    item_field_editor.grid(row=2, column=0, sticky="ew", pady=(10, 0))
+    ttk.Label(item_field_editor, text="新值").grid(row=0, column=0, sticky="w")
+    ttk.Entry(
+        item_field_editor,
+        textvariable=item_field_value,
+        width=28,
+    ).grid(row=0, column=1, sticky="w", padx=(6, 10))
+    item_field_write_button = ttk.Button(
+        item_field_editor,
+        text="写入选中字段",
+        command=item_field_write_clicked,
+    )
+    item_field_write_button.grid(row=0, column=2, sticky="w")
+    item_field_write_button.state(["disabled"])
+    ttk.Label(
+        item_field_editor,
+        textvariable=item_field_detail,
+        anchor="w",
+    ).grid(row=1, column=0, columnspan=3, sticky="ew", pady=(6, 0))
+    item_field_editor.columnconfigure(2, weight=1)
+    ttk.Label(
+        item_fields_tab,
+        textvariable=item_field_summary,
+        anchor="w",
+    ).grid(row=3, column=0, sticky="ew", pady=(8, 0))
+    item_fields_tab.rowconfigure(1, weight=1)
+    item_fields_tab.columnconfigure(0, weight=1)
 
     elephant_tab = ttk.Frame(notebook, padding=8)
     notebook.add(elephant_tab, text="大象功能")

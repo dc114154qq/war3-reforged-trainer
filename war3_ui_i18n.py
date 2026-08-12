@@ -36,6 +36,7 @@ def detect_ui_language(locale_name: str | None = None) -> str:
 
 _EN_TRANSLATIONS = {
     "魔兽争霸3重制版修改器": "Warcraft III: Reforged Trainer",
+    "备用读取版": "Backup Read Edition",
     " by B站 两杯沈梦溪": " by Bilibili Two Cups of Shen Mengxi",
     "正在连接 Warcraft III...": "Connecting to Warcraft III...",
     "尚未读取技能字段": "Ability fields have not been read",
@@ -76,6 +77,7 @@ _EN_TRANSLATIONS = {
     "当前选中单位背包内的物品会被删除，确定继续？": "Items in the selected unit's inventory will be deleted. Continue?",
     "连接/刷新进程": "Connect / Refresh Process",
     "读取当前选中单位": "Read Selected Unit",
+    "已通过备用路径读取当前单位": "Read the current unit through the backup path",
     "读取当前选中单位 (Ctrl+F11)": "Read Selected Unit (Ctrl+F11)",
     "读取全部资源组": "Read All Resource Groups",
     "写入选中单位": "Write Selected Unit",

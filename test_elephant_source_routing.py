@@ -283,6 +283,13 @@ class ElephantSourceRoutingTests(unittest.TestCase):
         self.assertIn("trainer", calls)
         self.assertNotIn("elephant_trainer", calls)
 
+    def test_backup_product_elephant_operations_refresh_live_backup_selection(self):
+        source = SOURCE_PATH.read_text(encoding="utf-8")
+        self.assertIn('PRODUCT_READ_MODE = "backup"', source)
+        self.assertIn("_panel, candidate, _fields = t.read_selected_unit_fields_win10()", source)
+        self.assertIn("rawcode = None", source)
+        self.assertIn("use_selected_lookup=True", source)
+
     def test_hotkeys_do_not_bind_main_trainer(self):
         tree = ast.parse(SOURCE_PATH.read_text(encoding="utf-8"))
         run_gui = next(

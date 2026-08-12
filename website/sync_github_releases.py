@@ -115,19 +115,36 @@ def normalize_github_release(
     ]
     if not assets:
         return None
-    asset = assets[0]
-    filename = Path(str(asset["name"])).name
-    local_file = downloads_dir / filename
-    if download_assets:
-        download_file(str(asset["browser_download_url"]), local_file, int(asset.get("size") or 0))
-    if not local_file.is_file():
-        raise RuntimeError(f"GitHub release file is missing: {local_file}")
+    normalized_assets = []
+    for asset in assets:
+        filename = Path(str(asset["name"])).name
+        local_file = downloads_dir / filename
+        if download_assets:
+            download_file(
+                str(asset["browser_download_url"]),
+                local_file,
+                int(asset.get("size") or 0),
+            )
+        if not local_file.is_file():
+            raise RuntimeError(f"GitHub release file is missing: {local_file}")
 
-    api_digest = str(asset.get("digest") or "")
-    expected_digest = api_digest.removeprefix("sha256:") if api_digest.startswith("sha256:") else ""
-    actual_digest = sha256_file(local_file)
-    if expected_digest and actual_digest.lower() != expected_digest.lower():
-        raise RuntimeError(f"SHA256 mismatch for {filename}")
+        api_digest = str(asset.get("digest") or "")
+        expected_digest = (
+            api_digest.removeprefix("sha256:")
+            if api_digest.startswith("sha256:")
+            else ""
+        )
+        actual_digest = sha256_file(local_file)
+        if expected_digest and actual_digest.lower() != expected_digest.lower():
+            raise RuntimeError(f"SHA256 mismatch for {filename}")
+        normalized_assets.append(
+            {
+                "name": filename,
+                "url": f"/downloads/{filename}",
+                "size": local_file.stat().st_size,
+                "sha256": actual_digest,
+            }
+        )
 
     return {
         "tag": release["tag_name"],
@@ -137,12 +154,8 @@ def normalize_github_release(
         "body": release.get("body") or "该版本未提供更新说明。",
         "source": "github",
         "source_url": release.get("html_url"),
-        "asset": {
-            "name": filename,
-            "url": f"/downloads/{filename}",
-            "size": local_file.stat().st_size,
-            "sha256": actual_digest,
-        },
+        "asset": normalized_assets[0],
+        "assets": normalized_assets,
     }
 
 

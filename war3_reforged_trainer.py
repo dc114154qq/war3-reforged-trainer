@@ -33,7 +33,9 @@ from war3_id_catalog import CATALOG_COUNTS, search_id_entries
 from war3_ui_i18n import detect_ui_language, translate_ui_text
 
 
-APP_VERSION = "1.0.12"
+APP_VERSION = "1.0.13"
+PRODUCT_READ_MODE = "normal"
+PRODUCT_EDITION_LABEL = "普通读取版"
 WIN10_COMPAT_REVISION = "backup-r7-live-regions-external-native"
 
 
@@ -464,7 +466,6 @@ class GlobalHotkeyManager:
 
 ELEPHANT_HOTKEY_SPECS = (
     GlobalHotkeySpec("read_unit", "Ctrl+F11  读取当前选中单位", MOD_CONTROL, VK_F11),
-    GlobalHotkeySpec("backup_read_unit", "Ctrl+F12  备用读取", MOD_CONTROL, VK_F12),
     GlobalHotkeySpec("hero_level", "Ctrl+Q  英雄等级", MOD_CONTROL, ord("Q")),
     GlobalHotkeySpec("instant_move", "Ctrl+X  瞬间移动", MOD_CONTROL, ord("X")),
     GlobalHotkeySpec("explode_unit", "Ctrl+W  瞬间爆炸目标单位", MOD_CONTROL, ord("W")),
@@ -13328,7 +13329,7 @@ def run_gui() -> None:
         return translate_ui_text(text, ui_language["code"])
 
     root = tk.Tk()
-    root.title(ui_text(f"魔兽争霸3重制版修改器 v{APP_VERSION} by B站 两杯沈梦溪"))
+    root.title(ui_text(f"魔兽争霸3重制版修改器 v{APP_VERSION} {PRODUCT_EDITION_LABEL} by B站 两杯沈梦溪"))
     root.geometry("1180x780")
     root.minsize(1040, 700)
     icon_path = (
@@ -13667,33 +13668,18 @@ def run_gui() -> None:
         cl = int(lumber_current.get()) if lumber_current.get().strip() else None
         cf = int(food_current.get()) if food_current.get().strip() else None
         cfc = int(food_cap_current.get()) if food_cap_current.get().strip() else None
-        used_backup = current_display_uses_win10()
-        if used_backup:
-            caches, local_cache = t.list_resource_caches_win10(cg, cl, cf, cfc)
-        else:
-            try:
-                caches = t.list_resource_caches()
-                if not caches:
-                    caches = [t.read_resource_cache(cg, cl, cf, cfc)]
-                local_cache = t.locate_local_player_resource_cache(caches)
-            except (OSError, RuntimeError) as normal_error:
-                try:
-                    caches, local_cache = t.list_resource_caches_win10(cg, cl, cf, cfc)
-                    used_backup = True
-                except Exception as backup_error:
-                    raise RuntimeError(
-                        f"普通资源读取失败：{normal_error}；"
-                        f"备用资源读取失败：{backup_error}"
-                    ) from backup_error
+        caches = t.list_resource_caches()
+        if not caches:
+            caches = [t.read_resource_cache(cg, cl, cf, cfc)]
+        local_cache = t.locate_local_player_resource_cache(caches)
         local_iid = resource_iid(local_cache)
         caches = [cache for cache in caches if cache.owner_key != local_cache.owner_key]
         caches.append(local_cache)
         caches.sort(key=lambda cache: (cache.block_start_kind, cache.owner_key))
         root.after(0, populate_resource_caches, caches, local_iid, local_iid)
-        source = "备用扫描" if used_backup else "普通扫描"
         return (
             f"已读取 {len(caches)} 个资源组；"
-            f"已识别并选中本地玩家资源组（{source}）"
+            "已识别并选中本地玩家资源组（普通扫描）"
         )
 
     def set_resource(kind: str) -> str:
@@ -13802,7 +13788,7 @@ def run_gui() -> None:
         return None
 
     def current_display_uses_win10() -> bool:
-        return bool(state.get("selected_unit_win10"))
+        return PRODUCT_READ_MODE == "backup"
 
     def current_display_unit_rawcode() -> int:
         if current_display_unit_identity() is None:
@@ -13813,13 +13799,7 @@ def run_gui() -> None:
         return rawcode
 
     def elephant_trainer() -> War3Trainer:
-        identity = current_display_unit_identity()
-        if identity is None:
-            raise ValueError("请先使用读取当前选中单位或备用读取，再使用大象功能")
-        return trainer().trainer_for_read_source(
-            identity,
-            current_display_uses_win10(),
-        )
+        return trainer()
 
     def remembered_unit_identities() -> list[tuple[int, int, int]]:
         remembered: list[tuple[int, int, int]] = []
@@ -14412,21 +14392,18 @@ def run_gui() -> None:
         return f"单位大小已设置为 {actual:g}"
 
     def elephant_create_unit(copy_selected: bool) -> str:
-        source = ""
         rawcode: int | str | None
         if copy_selected:
-            rawcode = current_display_unit_rawcode()
-            source = "备用读取" if current_display_uses_win10() else "普通读取"
+            rawcode = None
         else:
             rawcode = elephant_unit_rawcode.get().strip()
         if not copy_selected and not rawcode:
             raise ValueError("请填写单位 ID")
         unit_rawcode, handle = elephant_trainer().create_local_unit(
             rawcode,
-            use_selected_lookup=not copy_selected,
+            use_selected_lookup=True,
         )
-        source_text = f"；来源={source}" if source else ""
-        return f"已创建 {format_rawcode(unit_rawcode)}；handle=0x{handle:x}{source_text}"
+        return f"已创建 {format_rawcode(unit_rawcode)}；handle=0x{handle:x}"
 
     def elephant_add_item() -> str:
         rawcode = elephant_item_rawcode.get().strip()
@@ -14747,14 +14724,12 @@ def run_gui() -> None:
 
     def elephant_mass_clone() -> str:
         count = parse_int(elephant_mass_clone_count.get(), "批量复制数量")
-        source_rawcode = current_display_unit_rawcode()
-        source = "备用读取" if current_display_uses_win10() else "普通读取"
         rawcode, created = elephant_trainer().create_local_units(
             count,
-            source_rawcode,
-            use_selected_lookup=False,
+            None,
+            use_selected_lookup=True,
         )
-        return f"已复制 {created} 个 {format_rawcode(rawcode)}；来源={source}"
+        return f"已复制 {created} 个 {format_rawcode(rawcode)}"
 
     def elephant_set_hero_attributes() -> str:
         value = parse_int(elephant_hero_attributes.get(), "英雄属性")
@@ -14898,7 +14873,6 @@ def run_gui() -> None:
 
     hotkey_callbacks: dict[str, Callable[[], str]] = {
         "read_unit": read_unit_with_sound,
-        "backup_read_unit": read_unit_win10_with_sound,
         "hero_level": elephant_set_hero_level,
         "instant_move": elephant_move_to_mouse,
         "explode_unit": lambda: elephant_action(elephant_trainer().explode_selected_unit, "选中单位已爆炸"),
@@ -15253,7 +15227,7 @@ def run_gui() -> None:
                 tree_widget.focus(existing_items[0])
 
     def refresh_gui_language() -> None:
-        root.title(ui_text(f"魔兽争霸3重制版修改器 v{APP_VERSION} by B站 两杯沈梦溪"))
+        root.title(ui_text(f"魔兽争霸3重制版修改器 v{APP_VERSION} {PRODUCT_EDITION_LABEL} by B站 两杯沈梦溪"))
         capture_translatable_widgets(root)
         for widget, source in tuple(widget_text_sources.items()):
             try:
@@ -15294,15 +15268,6 @@ def run_gui() -> None:
         command=lambda: call_async(read_unit_with_sound, "read_unit", read_unit_button)
     )
     read_unit_button.pack(side="left", padx=(12, 0))
-    backup_read_button = ttk.Button(top, text="备用读取 (Ctrl+F12)")
-    backup_read_button.configure(
-        command=lambda: call_async(
-            read_unit_win10_with_sound,
-            "backup_read",
-            backup_read_button,
-        )
-    )
-    backup_read_button.pack(side="left", padx=(4, 0))
     ttk.Checkbutton(
         top,
         text="启用全局快捷键",

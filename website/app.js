@@ -276,18 +276,40 @@ async function copyText(value, button) {
 }
 
 function renderLatest(release) {
+  const assets = release.assets?.length ? release.assets : release.asset ? [release.asset] : [];
+  const primaryAsset = assets[0];
   elements.latestTitle.textContent = release.tag;
   elements.latestSummary.textContent = firstParagraph(localizedReleaseBody(release));
   elements.latestCompatibility.textContent = release.compatibility || "Warcraft III 2.0.4.23745";
-  elements.latestSize.textContent = formatBytes(release.asset?.size);
+  elements.latestSize.textContent = assets.map((asset) => formatBytes(asset.size)).join(" / ");
   elements.latestDate.textContent = formatDate(release.published_at);
-  elements.latestSha.textContent = release.asset?.sha256 || t("noAsset");
-  elements.latestDownload.href = release.asset?.url || "#";
+  elements.latestSha.textContent = primaryAsset?.sha256 || t("noAsset");
+  elements.latestDownload.href = primaryAsset?.url || "#";
   elements.latestDownload.classList.remove("is-disabled");
   elements.latestDownload.removeAttribute("aria-disabled");
+  elements.latestDownload.querySelector("span").textContent =
+    assets.length > 1 ? assetLabel(primaryAsset) : t("latestDownload");
+  elements.latestDownload.parentElement
+    .querySelectorAll(".latest-extra-download")
+    .forEach((button) => button.remove());
+  assets.slice(1).forEach((asset) => {
+    const button = elements.latestDownload.cloneNode(true);
+    button.removeAttribute("id");
+    button.classList.add("latest-extra-download");
+    button.href = asset.url || "#";
+    button.querySelector("span").textContent = assetLabel(asset);
+    elements.latestDownload.after(button);
+  });
   elements.latestNotesLink.href = `#release-${release.tag.replace(/[^a-zA-Z0-9.-]/g, "-")}`;
-  elements.latestCopy.disabled = !release.asset?.sha256;
-  elements.latestCopy.onclick = () => copyText(release.asset.sha256, elements.latestCopy);
+  elements.latestCopy.disabled = !primaryAsset?.sha256;
+  elements.latestCopy.onclick = () => copyText(primaryAsset.sha256, elements.latestCopy);
+}
+
+function assetLabel(asset) {
+  const name = String(asset?.name || "");
+  if (/-Normal\.exe$/i.test(name)) return state.language === "en" ? "Normal edition" : "普通读取版";
+  if (/-Backup\.exe$/i.test(name)) return state.language === "en" ? "Backup edition" : "备用读取版";
+  return t("download");
 }
 
 function createReleaseElement(release, index) {
@@ -295,8 +317,9 @@ function createReleaseElement(release, index) {
   const article = fragment.querySelector(".release-item");
   const title = fragment.querySelector("h3");
   const badge = fragment.querySelector(".latest-badge");
-  const download = fragment.querySelector(".release-download");
-  const sha = release.asset?.sha256 || t("noAsset");
+  const assets = release.assets?.length ? release.assets : release.asset ? [release.asset] : [];
+  const assetTemplate = fragment.querySelector(".release-asset");
+  const assetList = fragment.querySelector(".release-assets");
 
   article.id = `release-${release.tag.replace(/[^a-zA-Z0-9.-]/g, "-")}`;
   const releaseName = localizedReleaseName(release);
@@ -304,19 +327,41 @@ function createReleaseElement(release, index) {
   badge.hidden = index !== 0;
   fragment.querySelector(".release-date").textContent = `${formatDate(release.published_at)} ${t("published")}`;
   fragment.querySelector(".release-intro").textContent = firstParagraph(localizedReleaseBody(release));
-  fragment.querySelector(".asset-name").textContent = release.asset?.name || t("noAsset");
-  fragment.querySelector(".asset-size").textContent = formatBytes(release.asset?.size);
-  fragment.querySelector(".asset-sha").textContent = sha;
   fragment.querySelector(".markdown-body").innerHTML = markdownToHtml(localizedReleaseBody(release));
-  download.href = release.asset?.url || "#";
-  if (!release.asset?.url) {
-    download.setAttribute("aria-disabled", "true");
-  }
-
-  const copyButton = fragment.querySelector(".asset-copy");
   localizeRoot(fragment);
-  copyButton.disabled = !release.asset?.sha256;
-  copyButton.addEventListener("click", () => copyText(sha, copyButton));
+  if (!assetTemplate || !assetList) {
+    const asset = assets[0] || {};
+    const download = fragment.querySelector(".release-download");
+    const sha = asset.sha256 || t("noAsset");
+    fragment.querySelector(".asset-name").textContent = asset.name || t("noAsset");
+    fragment.querySelector(".asset-size").textContent = formatBytes(asset.size);
+    fragment.querySelector(".asset-sha").textContent = sha;
+    download.href = asset.url || "#";
+    if (!asset.url) download.setAttribute("aria-disabled", "true");
+    const copyButton = fragment.querySelector(".asset-copy");
+    copyButton.disabled = !asset.sha256;
+    copyButton.addEventListener("click", () => copyText(sha, copyButton));
+    return fragment;
+  }
+  assetTemplate.remove();
+  assets.forEach((asset) => {
+    const assetElement = assetTemplate.cloneNode(true);
+    const download = assetElement.querySelector(".release-download");
+    const sha = asset.sha256 || t("noAsset");
+    assetElement.querySelector(".asset-edition").textContent =
+      assets.length > 1 ? assetLabel(asset) : "";
+    assetElement.querySelector(".asset-name").textContent = asset.name || t("noAsset");
+    assetElement.querySelector(".asset-size").textContent = formatBytes(asset.size);
+    assetElement.querySelector(".asset-sha").textContent = sha;
+    download.href = asset.url || "#";
+    download.querySelector("span").removeAttribute("data-i18n");
+    download.querySelector("span").textContent = assetLabel(asset);
+    if (!asset.url) download.setAttribute("aria-disabled", "true");
+    const copyButton = assetElement.querySelector(".asset-copy");
+    copyButton.disabled = !asset.sha256;
+    copyButton.addEventListener("click", () => copyText(sha, copyButton));
+    assetList.append(assetElement);
+  });
   return fragment;
 }
 
@@ -324,7 +369,7 @@ function filteredReleases() {
   const query = state.query.trim().toLocaleLowerCase(state.language === "en" ? "en-US" : "zh-CN");
   const matches = query
     ? state.releases.filter((release) =>
-        [release.tag, localizedReleaseName(release), localizedReleaseBody(release), release.name, release.body, release.asset?.name]
+        [release.tag, localizedReleaseName(release), localizedReleaseBody(release), release.name, release.body, release.asset?.name, ...(release.assets || []).map((asset) => asset.name)]
           .filter(Boolean)
           .some((value) => String(value).toLocaleLowerCase(state.language === "en" ? "en-US" : "zh-CN").includes(query)),
       )

@@ -536,8 +536,31 @@ code {
   color: var(--text);
 }
 
-.release-file-meta {
+.release-assets {
   margin: 20px 24px 24px;
+  display: grid;
+  gap: 12px;
+}
+
+.release-asset {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.release-asset-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.asset-edition:empty {
+  display: none;
+}
+
+.release-file-meta {
+  margin: 12px 0 0;
   display: grid;
   grid-template-columns: minmax(180px, 1fr) 110px minmax(260px, 1.2fr);
   gap: 14px 24px;

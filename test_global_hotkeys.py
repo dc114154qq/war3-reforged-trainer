@@ -19,7 +19,7 @@ class GlobalHotkeyManagerTests(unittest.TestCase):
             source.index('text="启用全局快捷键"'),
         )
 
-    def test_read_shortcuts_use_ctrl_function_keys(self):
+    def test_normal_product_exposes_only_normal_read_shortcut(self):
         specs = {
             spec.name: spec
             for spec in trainer.ELEPHANT_HOTKEY_SPECS
@@ -32,13 +32,7 @@ class GlobalHotkeyManagerTests(unittest.TestCase):
             ),
             (trainer.MOD_CONTROL, trainer.VK_F11),
         )
-        self.assertEqual(
-            (
-                specs["backup_read_unit"].modifiers,
-                specs["backup_read_unit"].virtual_key,
-            ),
-            (trainer.MOD_CONTROL, trainer.VK_F12),
-        )
+        self.assertNotIn("backup_read_unit", specs)
 
     def test_read_success_sound_only_plays_after_success(self):
         with patch.object(trainer, "play_read_success_sound") as sound:

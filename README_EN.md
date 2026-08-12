@@ -10,7 +10,7 @@ This project links to and recognizes the [LINUX DO community](https://linux.do/)
 
 ## Download and Run
 
-Download `War3ReforgedTrainer-v1.0.12.exe` from GitHub Releases, run it directly, and accept the Windows UAC administrator prompt. It is a single-file GUI application packaged with PyInstaller. It does not open an additional console window and does not require Python to be installed. Administrator access plus on-demand `SeDebugPrivilege` enables access to Warcraft III processes with restrictive permissions and prevents `WinError 5: Access is denied`.
+Download `War3ReforgedTrainer-v1.0.13-Normal.exe` from GitHub Releases, run it directly, and accept the Windows UAC administrator prompt. It is a single-file GUI application packaged with PyInstaller. It does not open an additional console window and does not require Python to be installed. Administrator access plus on-demand `SeDebugPrivilege` enables access to Warcraft III processes with restrictive permissions and prevents `WinError 5: Access is denied`.
 
 Before running the trainer, start Warcraft III: Reforged, enter a map, and select the target unit. The trainer will automatically find the running `Warcraft III.exe` process.
 

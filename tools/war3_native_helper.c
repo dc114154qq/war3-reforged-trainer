@@ -3,7 +3,7 @@
 #include <stdio.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 16u
+#define WAR3_NATIVE_VERSION 17u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -67,6 +67,8 @@
 #define WAR3_NATIVE_OP_JASS_ABILITY_SCALAR_FIELD_SET 112u
 #define WAR3_NATIVE_OP_JASS_ABILITY_REAL_FIELD_SET 113u
 #define WAR3_NATIVE_OP_JASS_ABILITY_SCALAR_LEVEL_FIELD_SET 114u
+#define WAR3_NATIVE_OP_JASS_ITEM_FIELD_GET 115u
+#define WAR3_NATIVE_OP_JASS_ITEM_FIELD_SET 116u
 #define WAR3_ITEM_FLAGS_OFFSET 0x38u
 #define WAR3_ITEM_CHARGES_OFFSET 0x8d0u
 #define WAR3_ITEM_CHARGES_EMPTY_FLAG 0x1000u
@@ -205,6 +207,17 @@ typedef uint32_t (__fastcall *JassAbilityScalarLevelFieldSetFn)(
     uint32_t field,
     int32_t level,
     uint32_t value
+);
+typedef uint64_t (__fastcall *JassItemFieldGetFn)(uint64_t item, uint32_t field);
+typedef uint32_t (__fastcall *JassItemScalarFieldSetFn)(
+    uint64_t item,
+    uint32_t field,
+    uint32_t value
+);
+typedef uint32_t (__fastcall *JassItemRealFieldSetFn)(
+    uint64_t item,
+    uint32_t field,
+    float *value
 );
 typedef struct War3BuffData {
     uint32_t alias;
@@ -3064,6 +3077,60 @@ static void run_command(void) {
                         (int32_t)op->arg0,
                         (uint32_t)op->arg1
                     );
+                } __except (EXCEPTION_EXECUTE_HANDLER) {
+                    op->last_error = GetExceptionCode();
+                    last_error = op->last_error;
+                    goto finish;
+                }
+                break;
+            }
+            case WAR3_NATIVE_OP_JASS_ITEM_FIELD_GET: {
+                JassItemFieldGetFn fn =
+                    (JassItemFieldGetFn)(uintptr_t)op->handler;
+                if (!cmd.unit_handle || !op->rawcode) {
+                    op->last_error = ERROR_INVALID_PARAMETER;
+                    last_error = op->last_error;
+                    goto finish;
+                }
+                __try {
+                    op->result = fn(cmd.unit_handle, op->rawcode);
+                } __except (EXCEPTION_EXECUTE_HANDLER) {
+                    op->last_error = GetExceptionCode();
+                    last_error = op->last_error;
+                    goto finish;
+                }
+                break;
+            }
+            case WAR3_NATIVE_OP_JASS_ITEM_FIELD_SET: {
+                if (!cmd.unit_handle || !op->rawcode) {
+                    op->last_error = ERROR_INVALID_PARAMETER;
+                    last_error = op->last_error;
+                    goto finish;
+                }
+                __try {
+                    if (op->arg1 == 2u) {
+                        JassItemRealFieldSetFn fn =
+                            (JassItemRealFieldSetFn)(uintptr_t)op->handler;
+                        float value = war3_real_from_bits((uint32_t)op->arg0);
+                        if (
+                            !(value == value) ||
+                            value < -100000000.0f ||
+                            value > 100000000.0f
+                        ) {
+                            op->last_error = ERROR_INVALID_PARAMETER;
+                            last_error = op->last_error;
+                            goto finish;
+                        }
+                        op->result = fn(cmd.unit_handle, op->rawcode, &value);
+                    } else {
+                        JassItemScalarFieldSetFn fn =
+                            (JassItemScalarFieldSetFn)(uintptr_t)op->handler;
+                        op->result = fn(
+                            cmd.unit_handle,
+                            op->rawcode,
+                            (uint32_t)op->arg0
+                        );
+                    }
                 } __except (EXCEPTION_EXECUTE_HANDLER) {
                     op->last_error = GetExceptionCode();
                     last_error = op->last_error;

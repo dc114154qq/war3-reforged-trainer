@@ -29,9 +29,9 @@ class ItemFieldCatalogTests(unittest.TestCase):
         self.assertIn('"BlzGetItemIntegerField"', source)
         self.assertIn('"BlzSetItemRealField"', source)
 
-    def test_normal_edition_item_fields_use_fixed_normal_source(self):
+    def test_backup_edition_item_fields_use_fixed_backup_source(self):
         source = Path(trainer.__file__).read_text(encoding="utf-8")
-        self.assertIn('PRODUCT_READ_MODE = "normal"', source)
+        self.assertIn('PRODUCT_READ_MODE = "backup"', source)
         self.assertIn("win10_compat=current_display_uses_win10()", source)
 
 

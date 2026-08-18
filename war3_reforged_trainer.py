@@ -5370,20 +5370,22 @@ class War3Trainer:
         use_selected_lookup: bool = True,
     ) -> tuple[int, int]:
         x, y = self.query_mouse_world_position() if position is None else position
+        unit_handle = 0
+        if rawcode is None:
+            if not use_selected_lookup:
+                raise ValueError("复制单位缺少已读取的单位 ID")
+            candidate, unit_handle = self._direct_selected_context()
+            unit_rawcode = candidate.unit_type_id
+        else:
+            unit_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
+        if not unit_rawcode:
+            raise ValueError("没有可用于创建单位的有效 ID")
         with self._process_memory() as pm:
-            if rawcode is None:
-                if not use_selected_lookup:
-                    raise ValueError("复制单位缺少已读取的单位 ID")
-                candidate = self._elephant_selected_candidate(pm)
-                unit_rawcode = candidate.unit_type_id
-                unit_handle = candidate.handle
-            else:
-                unit_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
-            if not unit_rawcode:
-                raise ValueError("没有可用于创建单位的有效 ID")
             handler_names = ["GetLocalPlayer", "CreateUnit"]
             if rawcode is None:
                 handler_names.extend((
+                    "GetUnitTypeId",
+                    "RemoveUnit",
                     "GetUnitFacing",
                     "GetHeroLevel",
                     "SetHeroLevel",
@@ -5521,8 +5523,8 @@ class War3Trainer:
                     self.NATIVE_HELPER_OP_JASS_MULTI_ARG,
                     0,
                     handlers["SetUnitAbilityLevel"].handler_address,
-                    0,
-                    0,
+                    handlers["GetUnitTypeId"].handler_address,
+                    handlers["RemoveUnit"].handler_address,
                 ),
             )
             result = self._run_native_helper_ops(
@@ -14860,7 +14862,13 @@ def run_gui() -> None:
                         operation_lock.release()
                         state["ally_health_lock_busy"] = False
 
-                start_operation_thread(worker, "war3-ally-health-lock")
+                try:
+                    start_operation_thread(worker, "war3-ally-health-lock")
+                except Exception:
+                    state["ally_health_lock_busy"] = False
+                    state["ally_health_lock"] = False
+                    state["ally_health_lock_trainer"] = None
+                    raise
         if not state.get("closing"):
             root.after(100, ally_health_lock_tick)
 

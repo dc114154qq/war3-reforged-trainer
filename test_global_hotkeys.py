@@ -34,6 +34,19 @@ class GlobalHotkeyManagerTests(unittest.TestCase):
         )
         self.assertNotIn("backup_read_unit", specs)
 
+    def test_ally_health_lock_hotkey_is_available(self):
+        specs = {
+            spec.name: spec
+            for spec in trainer.ELEPHANT_HOTKEY_SPECS
+        }
+        self.assertEqual(
+            (
+                specs["ally_health_lock"].modifiers,
+                specs["ally_health_lock"].virtual_key,
+            ),
+            (trainer.MOD_ALT, ord("K")),
+        )
+
     def test_read_success_sound_only_plays_after_success(self):
         with patch.object(trainer, "play_read_success_sound") as sound:
             self.assertEqual(

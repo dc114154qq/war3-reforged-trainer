@@ -29,7 +29,9 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
     def test_selected_clone_uses_single_runtime_clone_transaction(self):
         trainer = self.make_trainer()
         candidate = Mock(handle=0x4455, unit_type_id=0x48666F6F)
-        trainer._elephant_selected_candidate = Mock(return_value=candidate)
+        trainer._direct_selected_context = Mock(
+            return_value=(candidate, candidate.handle)
+        )
         trainer._run_native_helper_ops = Mock(
             return_value=[
                 trainer_module.NativeHelperOpResult(
@@ -60,6 +62,7 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
         trainer = self.make_trainer()
         trainer._coerce_memory_value = Mock(return_value=0x68666F6F)
         trainer._elephant_selected_candidate = Mock()
+        trainer._direct_selected_context = Mock()
         trainer._run_native_helper_ops = Mock(
             return_value=[
                 trainer_module.NativeHelperOpResult(
@@ -79,6 +82,7 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
             trainer.NATIVE_HELPER_OP_JASS_CREATE_LOCAL_UNIT,
         )
         trainer._elephant_selected_candidate.assert_not_called()
+        trainer._direct_selected_context.assert_not_called()
 
     def test_health_lock_heals_local_units_without_invulnerability(self):
         trainer = self.make_trainer()
@@ -110,6 +114,9 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
         )
         self.assertIn("WAR3_NATIVE_OP_JASS_HEAL_LOCAL_UNITS 117u", helper_source)
         self.assertIn("WAR3_NATIVE_OP_JASS_CLONE_SELECTED_UNIT 118u", helper_source)
+        self.assertIn("while (processed < 100000u)", helper_source)
+        self.assertIn("get_unit_type_id(cmd.unit_handle) != op->rawcode", helper_source)
+        self.assertIn("remove_unit(target)", helper_source)
 
 
 if __name__ == "__main__":

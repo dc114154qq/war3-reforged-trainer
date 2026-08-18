@@ -897,7 +897,7 @@ static int war3_is_essential_ability(uint32_t rawcode) {
     return 0;
 }
 
-static void war3_copy_item_instance_fields(
+static int war3_copy_item_instance_fields(
     uint64_t source_item,
     uint64_t target_item,
     JassItemFieldGetFn get_integer,
@@ -938,11 +938,13 @@ static void war3_copy_item_instance_fields(
         index < sizeof(integer_fields) / sizeof(integer_fields[0]);
         ++index
     ) {
-        set_integer(
+        if (!set_integer(
             target_item,
             integer_fields[index],
             (uint32_t)get_integer(source_item, integer_fields[index])
-        );
+        )) {
+            return 0;
+        }
     }
     for (
         size_t index = 0;
@@ -951,8 +953,8 @@ static void war3_copy_item_instance_fields(
     ) {
         uint32_t bits = (uint32_t)get_real(source_item, real_fields[index]);
         float value = war3_real_from_bits(bits);
-        if (value == value) {
-            set_real(target_item, real_fields[index], &value);
+        if (!(value == value) || !set_real(target_item, real_fields[index], &value)) {
+            return 0;
         }
     }
     for (
@@ -960,12 +962,15 @@ static void war3_copy_item_instance_fields(
         index < sizeof(boolean_fields) / sizeof(boolean_fields[0]);
         ++index
     ) {
-        set_boolean(
+        if (!set_boolean(
             target_item,
             boolean_fields[index],
             (uint32_t)get_boolean(source_item, boolean_fields[index])
-        );
+        )) {
+            return 0;
+        }
     }
+    return 1;
 }
 
 static DWORD run_jass_selected_unit(NativeCommand *cmd, uint32_t index) {
@@ -2548,14 +2553,20 @@ static void run_command(void) {
                 JassGetUnitAbilityLevelFn get_ability_level;
                 JassUnitAddAbilityFn add_ability;
                 JassSetUnitAbilityLevelFn set_ability_level;
+                JassGetUnitTypeIdFn get_unit_type_id;
+                JassUnitVoidFn remove_unit;
                 uint64_t player = 0;
                 uint64_t target = 0;
                 float coordinates[2] = {0.0f, 0.0f};
                 float facing = 0.0f;
                 uint32_t copied_items = 0;
                 uint32_t copied_abilities = 0;
+                DWORD clone_error = ERROR_SUCCESS;
 
-                if (!cmd.unit_handle || !op->rawcode || i + 13 >= cmd.op_count) {
+                if (
+                    i != 0 || cmd.op_count != 14 || !cmd.unit_handle ||
+                    !op->rawcode || i + 13 >= cmd.op_count
+                ) {
                     op->last_error = ERROR_INVALID_DATA;
                     last_error = op->last_error;
                     goto finish;
@@ -2573,6 +2584,19 @@ static void run_command(void) {
                 d11 = &cmd.ops[i + 11];
                 d12 = &cmd.ops[i + 12];
                 d13 = &cmd.ops[i + 13];
+                for (uint32_t descriptor = 1; descriptor <= 13; ++descriptor) {
+                    NativeOp *descriptor_op = &cmd.ops[descriptor];
+                    if (
+                        descriptor_op->kind != WAR3_NATIVE_OP_JASS_MULTI_ARG ||
+                        !war3_executable_pointer(descriptor_op->handler) ||
+                        !war3_executable_pointer(descriptor_op->arg0) ||
+                        !war3_executable_pointer(descriptor_op->arg1)
+                    ) {
+                        op->last_error = ERROR_INVALID_DATA;
+                        last_error = op->last_error;
+                        goto finish;
+                    }
+                }
 
                 get_local_player = (JassNoArgU64Fn)(uintptr_t)op->handler;
                 create_unit = (JassCreateUnitFn)(uintptr_t)op->arg0;
@@ -2613,6 +2637,8 @@ static void run_command(void) {
                 get_ability_level = (JassGetUnitAbilityLevelFn)(uintptr_t)d12->arg0;
                 add_ability = (JassUnitAddAbilityFn)(uintptr_t)d12->arg1;
                 set_ability_level = (JassSetUnitAbilityLevelFn)(uintptr_t)d13->handler;
+                get_unit_type_id = (JassGetUnitTypeIdFn)(uintptr_t)d13->arg0;
+                remove_unit = (JassUnitVoidFn)(uintptr_t)d13->arg1;
 
                 if (
                     !get_local_player || !create_unit || !get_unit_facing ||
@@ -2630,7 +2656,10 @@ static void run_command(void) {
                     !get_item_real_field || !set_item_real_field ||
                     !get_item_boolean_field || !set_item_boolean_field ||
                     !get_ability_by_index || !get_ability_id ||
-                    !get_ability_level || !add_ability || !set_ability_level
+                    !get_ability_level || !add_ability || !set_ability_level ||
+                    !get_unit_type_id || !remove_unit ||
+                    !war3_executable_pointer(op->handler) ||
+                    !war3_executable_pointer(op->arg0)
                 ) {
                     op->last_error = ERROR_INVALID_DATA;
                     last_error = op->last_error;
@@ -2640,12 +2669,15 @@ static void run_command(void) {
                 memcpy(coordinates, &op->arg1, sizeof(coordinates));
                 __try {
                     int32_t source_level;
+                    if (get_unit_type_id(cmd.unit_handle) != op->rawcode) {
+                        clone_error = ERROR_INVALID_DATA;
+                        __leave;
+                    }
                     player = get_local_player();
                     facing = war3_real_from_bits(get_unit_facing(cmd.unit_handle));
                     if (!player || !(facing == facing)) {
-                        op->last_error = ERROR_NOT_FOUND;
-                        last_error = op->last_error;
-                        goto finish;
+                        clone_error = ERROR_NOT_FOUND;
+                        __leave;
                     }
                     target = create_unit(
                         player,
@@ -2655,9 +2687,8 @@ static void run_command(void) {
                         &facing
                     );
                     if (!target) {
-                        op->last_error = ERROR_NOT_FOUND;
-                        last_error = op->last_error;
-                        goto finish;
+                        clone_error = ERROR_NOT_FOUND;
+                        __leave;
                     }
 
                     source_level = get_hero_level(cmd.unit_handle);
@@ -2675,7 +2706,13 @@ static void run_command(void) {
                         source_points = get_hero_skill_points(cmd.unit_handle);
                         target_points = get_hero_skill_points(target);
                         if (source_points != target_points) {
-                            modify_skill_points(target, source_points - target_points);
+                            if (!modify_skill_points(
+                                target,
+                                source_points - target_points
+                            )) {
+                                clone_error = ERROR_WRITE_FAULT;
+                                __leave;
+                            }
                         }
                     }
 
@@ -2692,9 +2729,10 @@ static void run_command(void) {
                         }
                         target_item = unit_add_item_by_id(target, item_id);
                         if (!target_item) {
-                            continue;
+                            clone_error = ERROR_NOT_FOUND;
+                            __leave;
                         }
-                        war3_copy_item_instance_fields(
+                        if (!war3_copy_item_instance_fields(
                             source_item,
                             target_item,
                             get_item_integer_field,
@@ -2703,8 +2741,18 @@ static void run_command(void) {
                             set_item_real_field,
                             get_item_boolean_field,
                             set_item_boolean_field
-                        );
-                        set_item_charges(target_item, get_item_charges(source_item));
+                        )) {
+                            clone_error = ERROR_WRITE_FAULT;
+                            __leave;
+                        }
+                        {
+                            int32_t charges = get_item_charges(source_item);
+                            set_item_charges(target_item, charges);
+                            if (get_item_charges(target_item) != charges) {
+                                clone_error = ERROR_WRITE_FAULT;
+                                __leave;
+                            }
+                        }
                         ++copied_items;
                     }
 
@@ -2728,10 +2776,18 @@ static void run_command(void) {
                         }
                         target_ability_level = get_ability_level(target, ability_id);
                         if (target_ability_level <= 0 && !add_ability(target, ability_id)) {
-                            continue;
+                            clone_error = ERROR_WRITE_FAULT;
+                            __leave;
                         }
                         if (get_ability_level(target, ability_id) != source_ability_level) {
                             set_ability_level(target, ability_id, source_ability_level);
+                            if (
+                                get_ability_level(target, ability_id) !=
+                                source_ability_level
+                            ) {
+                                clone_error = ERROR_WRITE_FAULT;
+                                __leave;
+                            }
                         }
                         ++copied_abilities;
                     }
@@ -2760,8 +2816,18 @@ static void run_command(void) {
                     d8->result = copied_items;
                     d12->result = copied_abilities;
                 } __except (EXCEPTION_EXECUTE_HANDLER) {
-                    op->last_error = GetExceptionCode();
-                    last_error = op->last_error;
+                    clone_error = GetExceptionCode();
+                }
+                if (clone_error != ERROR_SUCCESS) {
+                    __try {
+                        if (target) {
+                            remove_unit(target);
+                        }
+                    } __except (EXCEPTION_EXECUTE_HANDLER) {
+                    }
+                    op->result = 0;
+                    op->last_error = clone_error;
+                    last_error = clone_error;
                     goto finish;
                 }
                 i += 13;
@@ -3132,13 +3198,34 @@ static void run_command(void) {
                 uint64_t player = 0;
                 uint64_t group = 0;
                 uint32_t healed = 0;
-                if (i + 2 >= cmd.op_count) {
+                uint32_t processed = 0;
+                uint64_t previous_unit = 0;
+                if (
+                    i != 0 || cmd.op_count != 3 || i + 2 >= cmd.op_count
+                ) {
                     op->last_error = ERROR_INVALID_DATA;
                     last_error = op->last_error;
                     goto finish;
                 }
                 iter_op = &cmd.ops[i + 1];
                 heal_op = &cmd.ops[i + 2];
+                if (
+                    iter_op->kind != WAR3_NATIVE_OP_JASS_MULTI_ARG ||
+                    heal_op->kind != WAR3_NATIVE_OP_JASS_MULTI_ARG ||
+                    !war3_executable_pointer(op->handler) ||
+                    !war3_executable_pointer(op->arg0) ||
+                    !war3_executable_pointer(op->arg1) ||
+                    !war3_executable_pointer(iter_op->handler) ||
+                    !war3_executable_pointer(iter_op->arg0) ||
+                    !war3_executable_pointer(iter_op->arg1) ||
+                    !war3_executable_pointer(heal_op->handler) ||
+                    !war3_executable_pointer(heal_op->arg0) ||
+                    !war3_executable_pointer(heal_op->arg1)
+                ) {
+                    op->last_error = ERROR_INVALID_DATA;
+                    last_error = op->last_error;
+                    goto finish;
+                }
                 JassFirstOfGroupFn first_of_group =
                     (JassFirstOfGroupFn)(uintptr_t)iter_op->handler;
                 JassGroupRemoveUnitFn group_remove_unit =
@@ -3172,13 +3259,20 @@ static void run_command(void) {
                         last_error = op->last_error;
                     } else {
                         enum_units(group, player, 0);
-                        while (healed < 100000u) {
+                        while (processed < 100000u) {
                             uint64_t unit = first_of_group(group);
                             float life;
                             int32_t max_hp;
                             if (!unit) {
                                 break;
                             }
+                            ++processed;
+                            if (unit == previous_unit) {
+                                op->last_error = ERROR_INVALID_DATA;
+                                last_error = op->last_error;
+                                break;
+                            }
+                            previous_unit = unit;
                             group_remove_unit(group, unit);
                             life = war3_real_from_bits(get_widget_life(unit));
                             if (!(life > 0.405f)) {

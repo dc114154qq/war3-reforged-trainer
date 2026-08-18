@@ -34,7 +34,7 @@ from war3_item_fields import ITEM_FIELD_BY_KEY, ITEM_FIELD_CATALOG, ItemFieldSpe
 from war3_ui_i18n import detect_ui_language, translate_ui_text
 
 
-APP_VERSION = "1.0.13"
+APP_VERSION = "1.0.14"
 PRODUCT_READ_MODE = "backup"
 PRODUCT_EDITION_LABEL = "备用读取版"
 WIN10_COMPAT_REVISION = "backup-r7-live-regions-external-native"
@@ -512,6 +512,7 @@ ELEPHANT_HOTKEY_SPECS = (
     GlobalHotkeySpec("toggle_game_pause", "Alt+G  暂停/恢复游戏", MOD_ALT, ord("G")),
     GlobalHotkeySpec("end_game", "Alt+H  结束游戏", MOD_ALT, ord("H")),
     GlobalHotkeySpec("remove_all_abilities", "Alt+J  技能全删", MOD_ALT, ord("J")),
+    GlobalHotkeySpec("ally_health_lock", "Alt+K  我方锁血", MOD_ALT, ord("K")),
 )
 
 class MEMORY_BASIC_INFORMATION64(ctypes.Structure):
@@ -2286,15 +2287,28 @@ class War3Trainer:
         "UnitRemoveItem",
         "RemoveItem",
         "GetItemTypeId",
+        "GetItemCharges",
         "SetItemCharges",
         "UnitAddAbility",
         "UnitRemoveAbility",
         "SetUnitAbilityLevel",
         "GetUnitAbilityLevel",
+        "GetUnitFacing",
+        "GetUnitState",
+        "SetWidgetLife",
+        "BlzGetUnitMaxHP",
+        "BlzSetUnitMaxHP",
+        "BlzGetUnitMaxMana",
         "BlzSetUnitMaxMana",
+        "GetHeroXP",
+        "SetHeroXP",
+        "GetHeroStr",
         "SetHeroStr",
+        "GetHeroAgi",
         "SetHeroAgi",
+        "GetHeroInt",
         "SetHeroInt",
+        "GetHeroSkillPoints",
         "UnitModifySkillPoints",
         "BlzGetUnitAbilityByIndex",
         "BlzGetUnitAbility",
@@ -2396,7 +2410,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 17
+    NATIVE_HELPER_VERSION = 18
     NATIVE_HELPER_STATUS_PENDING = 1
     NATIVE_HELPER_STATUS_OK = 2
     NATIVE_HELPER_MAX_OPS = 16
@@ -2462,6 +2476,8 @@ class War3Trainer:
     NATIVE_HELPER_OP_JASS_ABILITY_SCALAR_LEVEL_FIELD_SET = 114
     NATIVE_HELPER_OP_JASS_ITEM_FIELD_GET = 115
     NATIVE_HELPER_OP_JASS_ITEM_FIELD_SET = 116
+    NATIVE_HELPER_OP_JASS_HEAL_LOCAL_UNITS = 117
+    NATIVE_HELPER_OP_JASS_CLONE_SELECTED_UNIT = 118
 
     def __init__(self, pid: int | None = None):
         self.hwnd, self.pid = find_war3(pid)
@@ -3813,6 +3829,8 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_JASS_ABILITY_SCALAR_LEVEL_FIELD_SET,
             self.NATIVE_HELPER_OP_JASS_ITEM_FIELD_GET,
             self.NATIVE_HELPER_OP_JASS_ITEM_FIELD_SET,
+            self.NATIVE_HELPER_OP_JASS_HEAL_LOCAL_UNITS,
+            self.NATIVE_HELPER_OP_JASS_CLONE_SELECTED_UNIT,
         }
         if any(kind not in allowed_kinds for kind, _rawcode, _handler, _arg0, _arg1 in op_list):
             raise RuntimeError("native helper 仅允许结构化验证后的白名单操作")
@@ -3860,6 +3878,7 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_JASS_ABILITY_SCALAR_LEVEL_FIELD_SET,
             self.NATIVE_HELPER_OP_JASS_ITEM_FIELD_GET,
             self.NATIVE_HELPER_OP_JASS_ITEM_FIELD_SET,
+            self.NATIVE_HELPER_OP_JASS_CLONE_SELECTED_UNIT,
         }
         if any(kind in unit_kinds for kind, _rawcode, _handler, _arg0, _arg1 in op_list) and not unit_address:
             raise RuntimeError("当前单位缺少运行时 unit 指针，不能调用 native helper")
@@ -5357,12 +5376,163 @@ class War3Trainer:
                     raise ValueError("复制单位缺少已读取的单位 ID")
                 candidate = self._elephant_selected_candidate(pm)
                 unit_rawcode = candidate.unit_type_id
+                unit_handle = candidate.handle
             else:
                 unit_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
             if not unit_rawcode:
                 raise ValueError("没有可用于创建单位的有效 ID")
-            handlers = self._elephant_handlers(pm, ("GetLocalPlayer", "CreateUnit"))
+            handler_names = ["GetLocalPlayer", "CreateUnit"]
+            if rawcode is None:
+                handler_names.extend((
+                    "GetUnitFacing",
+                    "GetHeroLevel",
+                    "SetHeroLevel",
+                    "GetHeroXP",
+                    "SetHeroXP",
+                    "GetHeroStr",
+                    "SetHeroStr",
+                    "GetHeroAgi",
+                    "SetHeroAgi",
+                    "GetHeroInt",
+                    "SetHeroInt",
+                    "GetHeroSkillPoints",
+                    "UnitModifySkillPoints",
+                    "BlzGetUnitMaxHP",
+                    "BlzSetUnitMaxHP",
+                    "GetWidgetLife",
+                    "SetWidgetLife",
+                    "BlzGetUnitMaxMana",
+                    "BlzSetUnitMaxMana",
+                    "GetUnitState",
+                    "SetUnitState",
+                    "UnitItemInSlot",
+                    "GetItemTypeId",
+                    "UnitAddItemById",
+                    "GetItemCharges",
+                    "SetItemCharges",
+                    "BlzGetItemIntegerField",
+                    "BlzSetItemIntegerField",
+                    "BlzGetItemRealField",
+                    "BlzSetItemRealField",
+                    "BlzGetItemBooleanField",
+                    "BlzSetItemBooleanField",
+                    "BlzGetUnitAbilityByIndex",
+                    "BlzGetAbilityId",
+                    "GetUnitAbilityLevel",
+                    "UnitAddAbility",
+                    "SetUnitAbilityLevel",
+                ))
+            handlers = self._elephant_handlers(pm, tuple(handler_names))
         coordinates = struct.unpack("<Q", struct.pack("<ff", float(x), float(y)))[0]
+        if rawcode is None:
+            clone_ops = (
+                (
+                    self.NATIVE_HELPER_OP_JASS_CLONE_SELECTED_UNIT,
+                    unit_rawcode,
+                    handlers["GetLocalPlayer"].handler_address,
+                    handlers["CreateUnit"].handler_address,
+                    coordinates,
+                ),
+                (
+                    self.NATIVE_HELPER_OP_JASS_MULTI_ARG,
+                    0,
+                    handlers["GetUnitFacing"].handler_address,
+                    handlers["GetHeroLevel"].handler_address,
+                    handlers["SetHeroLevel"].handler_address,
+                ),
+                (
+                    self.NATIVE_HELPER_OP_JASS_MULTI_ARG,
+                    0,
+                    handlers["GetHeroXP"].handler_address,
+                    handlers["SetHeroXP"].handler_address,
+                    handlers["GetHeroStr"].handler_address,
+                ),
+                (
+                    self.NATIVE_HELPER_OP_JASS_MULTI_ARG,
+                    0,
+                    handlers["SetHeroStr"].handler_address,
+                    handlers["GetHeroAgi"].handler_address,
+                    handlers["SetHeroAgi"].handler_address,
+                ),
+                (
+                    self.NATIVE_HELPER_OP_JASS_MULTI_ARG,
+                    0,
+                    handlers["GetHeroInt"].handler_address,
+                    handlers["SetHeroInt"].handler_address,
+                    handlers["GetHeroSkillPoints"].handler_address,
+                ),
+                (
+                    self.NATIVE_HELPER_OP_JASS_MULTI_ARG,
+                    0,
+                    handlers["UnitModifySkillPoints"].handler_address,
+                    handlers["BlzGetUnitMaxHP"].handler_address,
+                    handlers["BlzSetUnitMaxHP"].handler_address,
+                ),
+                (
+                    self.NATIVE_HELPER_OP_JASS_MULTI_ARG,
+                    0,
+                    handlers["GetWidgetLife"].handler_address,
+                    handlers["SetWidgetLife"].handler_address,
+                    handlers["BlzGetUnitMaxMana"].handler_address,
+                ),
+                (
+                    self.NATIVE_HELPER_OP_JASS_MULTI_ARG,
+                    0,
+                    handlers["BlzSetUnitMaxMana"].handler_address,
+                    handlers["GetUnitState"].handler_address,
+                    handlers["SetUnitState"].handler_address,
+                ),
+                (
+                    self.NATIVE_HELPER_OP_JASS_MULTI_ARG,
+                    0,
+                    handlers["UnitItemInSlot"].handler_address,
+                    handlers["GetItemTypeId"].handler_address,
+                    handlers["UnitAddItemById"].handler_address,
+                ),
+                (
+                    self.NATIVE_HELPER_OP_JASS_MULTI_ARG,
+                    0,
+                    handlers["GetItemCharges"].handler_address,
+                    handlers["SetItemCharges"].handler_address,
+                    handlers["BlzGetItemIntegerField"].handler_address,
+                ),
+                (
+                    self.NATIVE_HELPER_OP_JASS_MULTI_ARG,
+                    0,
+                    handlers["BlzSetItemIntegerField"].handler_address,
+                    handlers["BlzGetItemRealField"].handler_address,
+                    handlers["BlzSetItemRealField"].handler_address,
+                ),
+                (
+                    self.NATIVE_HELPER_OP_JASS_MULTI_ARG,
+                    0,
+                    handlers["BlzGetItemBooleanField"].handler_address,
+                    handlers["BlzSetItemBooleanField"].handler_address,
+                    handlers["BlzGetUnitAbilityByIndex"].handler_address,
+                ),
+                (
+                    self.NATIVE_HELPER_OP_JASS_MULTI_ARG,
+                    0,
+                    handlers["BlzGetAbilityId"].handler_address,
+                    handlers["GetUnitAbilityLevel"].handler_address,
+                    handlers["UnitAddAbility"].handler_address,
+                ),
+                (
+                    self.NATIVE_HELPER_OP_JASS_MULTI_ARG,
+                    0,
+                    handlers["SetUnitAbilityLevel"].handler_address,
+                    0,
+                    0,
+                ),
+            )
+            result = self._run_native_helper_ops(
+                unit_handle,
+                clone_ops,
+                timeout_ms=10000,
+            )[0].result
+            if not result:
+                raise RuntimeError(f"游戏未能复制单位 {format_rawcode(unit_rawcode)}")
+            return unit_rawcode, result
         result = self._run_native_helper_ops(
             0,
             ((
@@ -5376,6 +5546,50 @@ class War3Trainer:
         if not result:
             raise RuntimeError(f"游戏未能创建单位 {format_rawcode(unit_rawcode)}")
         return unit_rawcode, result
+
+    def heal_local_player_units(self) -> int:
+        with self._process_memory() as pm:
+            handlers = self._elephant_handlers(
+                pm,
+                (
+                    "GetLocalPlayer",
+                    "CreateGroup",
+                    "GroupEnumUnitsOfPlayer",
+                    "FirstOfGroup",
+                    "GroupRemoveUnit",
+                    "GetWidgetLife",
+                    "BlzGetUnitMaxHP",
+                    "SetWidgetLife",
+                    "DestroyGroup",
+                ),
+            )
+        return int(self._run_native_helper_ops(
+            0,
+            (
+                (
+                    self.NATIVE_HELPER_OP_JASS_HEAL_LOCAL_UNITS,
+                    0,
+                    handlers["GetLocalPlayer"].handler_address,
+                    handlers["CreateGroup"].handler_address,
+                    handlers["GroupEnumUnitsOfPlayer"].handler_address,
+                ),
+                (
+                    self.NATIVE_HELPER_OP_JASS_MULTI_ARG,
+                    0,
+                    handlers["FirstOfGroup"].handler_address,
+                    handlers["GroupRemoveUnit"].handler_address,
+                    handlers["GetWidgetLife"].handler_address,
+                ),
+                (
+                    self.NATIVE_HELPER_OP_JASS_MULTI_ARG,
+                    0,
+                    handlers["BlzGetUnitMaxHP"].handler_address,
+                    handlers["SetWidgetLife"].handler_address,
+                    handlers["DestroyGroup"].handler_address,
+                ),
+            ),
+            timeout_ms=3000,
+        )[0].result)
 
     def create_local_units(
         self,
@@ -13844,6 +14058,9 @@ def run_gui() -> None:
         "manual_unit_identity": None,
         "locks": {},
         "lock_busy": False,
+        "ally_health_lock": False,
+        "ally_health_lock_busy": False,
+        "ally_health_lock_trainer": None,
         "active_operations": set(),
         "elephant_game_paused": False,
         "ability_field_snapshot": None,
@@ -13883,7 +14100,11 @@ def run_gui() -> None:
         set_status("正在等待后台操作安全结束...")
 
         def finish_close() -> None:
-            if active_operation_threads() or state.get("lock_busy"):
+            if (
+                active_operation_threads()
+                or state.get("lock_busy")
+                or state.get("ally_health_lock_busy")
+            ):
                 root.after(100, finish_close)
                 return
             root.destroy()
@@ -14605,6 +14826,34 @@ def run_gui() -> None:
             start_operation_thread(worker, "war3-lock-tick")
         if not state.get("closing"):
             root.after(1500, lock_tick)
+
+    def ally_health_lock_tick() -> None:
+        if state.get("closing"):
+            return
+        if state.get("ally_health_lock") and not state.get("ally_health_lock_busy"):
+            lock_trainer = state.get("ally_health_lock_trainer")
+            if isinstance(lock_trainer, War3Trainer):
+                state["ally_health_lock_busy"] = True
+
+                def worker() -> None:
+                    acquired = operation_lock.acquire(blocking=False)
+                    if not acquired:
+                        state["ally_health_lock_busy"] = False
+                        return
+                    try:
+                        lock_trainer.heal_local_player_units()
+                    except Exception as exc:
+                        state["ally_health_lock"] = False
+                        state["ally_health_lock_trainer"] = None
+                        if not state.get("closing"):
+                            root.after(0, set_status, f"我方锁血已停止：{exc}")
+                    finally:
+                        operation_lock.release()
+                        state["ally_health_lock_busy"] = False
+
+                start_operation_thread(worker, "war3-ally-health-lock")
+        if not state.get("closing"):
+            root.after(100, ally_health_lock_tick)
 
     def set_unit() -> str:
         t = trainer()
@@ -15382,6 +15631,17 @@ def run_gui() -> None:
         t.set_selected_unit_paused(paused)
         return "选中单位已暂停" if paused else "选中单位已恢复"
 
+    def elephant_toggle_ally_health_lock() -> str:
+        if state.get("ally_health_lock"):
+            state["ally_health_lock"] = False
+            state["ally_health_lock_trainer"] = None
+            return "我方锁血已关闭"
+        lock_trainer = elephant_trainer()
+        healed = lock_trainer.heal_local_player_units()
+        state["ally_health_lock_trainer"] = lock_trainer
+        state["ally_health_lock"] = True
+        return f"我方锁血已开启；首轮恢复 {healed} 个单位，AI 仍可正常攻击"
+
     def elephant_kill_owner_units() -> str:
         killed = elephant_trainer().kill_selected_owner_units()
         return f"已击杀该单位所属玩家的 {killed} 个单位"
@@ -15464,6 +15724,7 @@ def run_gui() -> None:
         "toggle_game_pause": elephant_toggle_game_pause,
         "end_game": lambda: elephant_action(lambda: elephant_trainer().end_current_game(True), "已结束当前游戏"),
         "remove_all_abilities": elephant_remove_all_abilities,
+        "ally_health_lock": elephant_toggle_ally_health_lock,
     }
     hotkey_specs_by_name = {spec.name: spec for spec in ELEPHANT_HOTKEY_SPECS}
     hotkey_dangerous = {
@@ -16589,6 +16850,7 @@ def run_gui() -> None:
 
     root.after(100, init)
     root.after(1500, lock_tick)
+    root.after(100, ally_health_lock_tick)
     root.mainloop()
 
 

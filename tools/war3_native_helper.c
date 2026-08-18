@@ -3,7 +3,7 @@
 #include <stdio.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 17u
+#define WAR3_NATIVE_VERSION 18u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -69,6 +69,8 @@
 #define WAR3_NATIVE_OP_JASS_ABILITY_SCALAR_LEVEL_FIELD_SET 114u
 #define WAR3_NATIVE_OP_JASS_ITEM_FIELD_GET 115u
 #define WAR3_NATIVE_OP_JASS_ITEM_FIELD_SET 116u
+#define WAR3_NATIVE_OP_JASS_HEAL_LOCAL_UNITS 117u
+#define WAR3_NATIVE_OP_JASS_CLONE_SELECTED_UNIT 118u
 #define WAR3_ITEM_FLAGS_OFFSET 0x38u
 #define WAR3_ITEM_CHARGES_OFFSET 0x8d0u
 #define WAR3_ITEM_CHARGES_EMPTY_FLAG 0x1000u
@@ -135,9 +137,11 @@ typedef uint64_t (__fastcall *JassUnitItemInSlotFn)(uint64_t unit, int32_t slot)
 typedef void (__fastcall *JassRemoveItemFn)(uint64_t item);
 typedef void (__fastcall *JassSetItemChargesFn)(uint64_t item, int32_t charges);
 typedef uint32_t (__fastcall *JassGetItemTypeIdFn)(uint64_t item);
+typedef int32_t (__fastcall *JassGetItemChargesFn)(uint64_t item);
 typedef void (__fastcall *JassUnitRemoveItemFn)(uint64_t unit, uint64_t item);
 typedef uint64_t (__fastcall *JassGetUnitAbilityByIndexFn)(uint64_t unit, int32_t index);
 typedef uint32_t (__fastcall *JassGetAbilityIdFn)(uint64_t ability);
+typedef int32_t (__fastcall *JassGetUnitAbilityLevelFn)(uint64_t unit, uint32_t rawcode);
 typedef void (__fastcall *JassSetPlayerTechFn)(uint64_t player, uint32_t rawcode, int32_t level);
 typedef void (__fastcall *JassSetPlayerRealFn)(uint64_t player, float *value);
 typedef uint64_t (__fastcall *JassGetOwningPlayerFn)(uint64_t unit);
@@ -146,6 +150,27 @@ typedef void (__fastcall *JassGroupRemoveUnitFn)(uint64_t group, uint64_t unit);
 typedef uint64_t (__fastcall *JassPlayerFn)(int32_t player_id);
 typedef uint32_t (__fastcall *JassGetUnitTypeIdFn)(uint64_t unit);
 typedef uint32_t (__fastcall *JassUnitRealQueryFn)(uint64_t unit);
+typedef void (__fastcall *JassSetWidgetLifeFn)(uint64_t widget, float *life);
+typedef int32_t (__fastcall *JassUnitIntFn)(uint64_t unit);
+typedef void (__fastcall *JassUnitSetIntFn)(uint64_t unit, int32_t value);
+typedef uint32_t (__fastcall *JassUnitStateQueryFn)(uint64_t unit, int32_t state);
+typedef int32_t (__fastcall *JassGetHeroStatFn)(uint64_t unit, uint32_t include_bonuses);
+typedef void (__fastcall *JassSetHeroStatFn)(
+    uint64_t unit,
+    int32_t value,
+    uint32_t permanent
+);
+typedef void (__fastcall *JassSetHeroLevelFn)(
+    uint64_t unit,
+    int32_t level,
+    uint32_t show_eye_candy
+);
+typedef void (__fastcall *JassSetHeroXPFn)(
+    uint64_t unit,
+    int32_t xp,
+    uint32_t show_eye_candy
+);
+typedef uint32_t (__fastcall *JassUnitModifySkillPointsFn)(uint64_t unit, int32_t delta);
 typedef uint32_t (__fastcall *JassUnitAddAbilityFn)(uint64_t unit, uint32_t rawcode);
 typedef uint32_t (__fastcall *JassSetUnitAbilityLevelFn)(
     uint64_t unit,
@@ -870,6 +895,77 @@ static int war3_is_essential_ability(uint32_t rawcode) {
         }
     }
     return 0;
+}
+
+static void war3_copy_item_instance_fields(
+    uint64_t source_item,
+    uint64_t target_item,
+    JassItemFieldGetFn get_integer,
+    JassItemScalarFieldSetFn set_integer,
+    JassItemFieldGetFn get_real,
+    JassItemRealFieldSetFn set_real,
+    JassItemFieldGetFn get_boolean,
+    JassItemScalarFieldSetFn set_boolean
+) {
+    static const uint32_t integer_fields[] = {
+        0x696c6576u, /* ilev */
+        0x69757365u, /* iuse */
+        0x69636964u, /* icid */
+        0x69687470u, /* ihtp */
+        0x69687063u, /* ihpc */
+        0x69707269u, /* ipri */
+        0x6961726du, /* iarm */
+        0x69636c72u, /* iclr */
+        0x69636c67u, /* iclg */
+        0x69636c62u, /* iclb */
+        0x6963616cu, /* ical */
+    };
+    static const uint32_t real_fields[] = {
+        0x69736361u, /* isca */
+    };
+    static const uint32_t boolean_fields[] = {
+        0x69647270u, /* idrp */
+        0x6964726fu, /* idro */
+        0x69706572u, /* iper */
+        0x6970726eu, /* iprn */
+        0x69706f77u, /* ipow */
+        0x69706177u, /* ipaw */
+        0x69757361u, /* iusa */
+    };
+
+    for (
+        size_t index = 0;
+        index < sizeof(integer_fields) / sizeof(integer_fields[0]);
+        ++index
+    ) {
+        set_integer(
+            target_item,
+            integer_fields[index],
+            (uint32_t)get_integer(source_item, integer_fields[index])
+        );
+    }
+    for (
+        size_t index = 0;
+        index < sizeof(real_fields) / sizeof(real_fields[0]);
+        ++index
+    ) {
+        uint32_t bits = (uint32_t)get_real(source_item, real_fields[index]);
+        float value = war3_real_from_bits(bits);
+        if (value == value) {
+            set_real(target_item, real_fields[index], &value);
+        }
+    }
+    for (
+        size_t index = 0;
+        index < sizeof(boolean_fields) / sizeof(boolean_fields[0]);
+        ++index
+    ) {
+        set_boolean(
+            target_item,
+            boolean_fields[index],
+            (uint32_t)get_boolean(source_item, boolean_fields[index])
+        );
+    }
 }
 
 static DWORD run_jass_selected_unit(NativeCommand *cmd, uint32_t index) {
@@ -2399,6 +2495,278 @@ static void run_command(void) {
                 }
                 break;
             }
+            case WAR3_NATIVE_OP_JASS_CLONE_SELECTED_UNIT: {
+                NativeOp *d1;
+                NativeOp *d2;
+                NativeOp *d3;
+                NativeOp *d4;
+                NativeOp *d5;
+                NativeOp *d6;
+                NativeOp *d7;
+                NativeOp *d8;
+                NativeOp *d9;
+                NativeOp *d10;
+                NativeOp *d11;
+                NativeOp *d12;
+                NativeOp *d13;
+                JassNoArgU64Fn get_local_player;
+                JassCreateUnitFn create_unit;
+                JassUnitRealQueryFn get_unit_facing;
+                JassUnitIntFn get_hero_level;
+                JassSetHeroLevelFn set_hero_level;
+                JassUnitIntFn get_hero_xp;
+                JassSetHeroXPFn set_hero_xp;
+                JassGetHeroStatFn get_hero_str;
+                JassSetHeroStatFn set_hero_str;
+                JassGetHeroStatFn get_hero_agi;
+                JassSetHeroStatFn set_hero_agi;
+                JassGetHeroStatFn get_hero_int;
+                JassSetHeroStatFn set_hero_int;
+                JassUnitIntFn get_hero_skill_points;
+                JassUnitModifySkillPointsFn modify_skill_points;
+                JassUnitIntFn get_unit_max_hp;
+                JassUnitSetIntFn set_unit_max_hp;
+                JassUnitRealQueryFn get_widget_life;
+                JassSetWidgetLifeFn set_widget_life;
+                JassUnitIntFn get_unit_max_mana;
+                JassUnitSetIntFn set_unit_max_mana;
+                JassUnitStateQueryFn get_unit_state;
+                JassSetUnitStateFn set_unit_state;
+                JassUnitItemInSlotFn unit_item_in_slot;
+                JassGetItemTypeIdFn get_item_type_id;
+                JassUnitRawcodeFn unit_add_item_by_id;
+                JassGetItemChargesFn get_item_charges;
+                JassSetItemChargesFn set_item_charges;
+                JassItemFieldGetFn get_item_integer_field;
+                JassItemScalarFieldSetFn set_item_integer_field;
+                JassItemFieldGetFn get_item_real_field;
+                JassItemRealFieldSetFn set_item_real_field;
+                JassItemFieldGetFn get_item_boolean_field;
+                JassItemScalarFieldSetFn set_item_boolean_field;
+                JassGetUnitAbilityByIndexFn get_ability_by_index;
+                JassGetAbilityIdFn get_ability_id;
+                JassGetUnitAbilityLevelFn get_ability_level;
+                JassUnitAddAbilityFn add_ability;
+                JassSetUnitAbilityLevelFn set_ability_level;
+                uint64_t player = 0;
+                uint64_t target = 0;
+                float coordinates[2] = {0.0f, 0.0f};
+                float facing = 0.0f;
+                uint32_t copied_items = 0;
+                uint32_t copied_abilities = 0;
+
+                if (!cmd.unit_handle || !op->rawcode || i + 13 >= cmd.op_count) {
+                    op->last_error = ERROR_INVALID_DATA;
+                    last_error = op->last_error;
+                    goto finish;
+                }
+                d1 = &cmd.ops[i + 1];
+                d2 = &cmd.ops[i + 2];
+                d3 = &cmd.ops[i + 3];
+                d4 = &cmd.ops[i + 4];
+                d5 = &cmd.ops[i + 5];
+                d6 = &cmd.ops[i + 6];
+                d7 = &cmd.ops[i + 7];
+                d8 = &cmd.ops[i + 8];
+                d9 = &cmd.ops[i + 9];
+                d10 = &cmd.ops[i + 10];
+                d11 = &cmd.ops[i + 11];
+                d12 = &cmd.ops[i + 12];
+                d13 = &cmd.ops[i + 13];
+
+                get_local_player = (JassNoArgU64Fn)(uintptr_t)op->handler;
+                create_unit = (JassCreateUnitFn)(uintptr_t)op->arg0;
+                get_unit_facing = (JassUnitRealQueryFn)(uintptr_t)d1->handler;
+                get_hero_level = (JassUnitIntFn)(uintptr_t)d1->arg0;
+                set_hero_level = (JassSetHeroLevelFn)(uintptr_t)d1->arg1;
+                get_hero_xp = (JassUnitIntFn)(uintptr_t)d2->handler;
+                set_hero_xp = (JassSetHeroXPFn)(uintptr_t)d2->arg0;
+                get_hero_str = (JassGetHeroStatFn)(uintptr_t)d2->arg1;
+                set_hero_str = (JassSetHeroStatFn)(uintptr_t)d3->handler;
+                get_hero_agi = (JassGetHeroStatFn)(uintptr_t)d3->arg0;
+                set_hero_agi = (JassSetHeroStatFn)(uintptr_t)d3->arg1;
+                get_hero_int = (JassGetHeroStatFn)(uintptr_t)d4->handler;
+                set_hero_int = (JassSetHeroStatFn)(uintptr_t)d4->arg0;
+                get_hero_skill_points = (JassUnitIntFn)(uintptr_t)d4->arg1;
+                modify_skill_points = (JassUnitModifySkillPointsFn)(uintptr_t)d5->handler;
+                get_unit_max_hp = (JassUnitIntFn)(uintptr_t)d5->arg0;
+                set_unit_max_hp = (JassUnitSetIntFn)(uintptr_t)d5->arg1;
+                get_widget_life = (JassUnitRealQueryFn)(uintptr_t)d6->handler;
+                set_widget_life = (JassSetWidgetLifeFn)(uintptr_t)d6->arg0;
+                get_unit_max_mana = (JassUnitIntFn)(uintptr_t)d6->arg1;
+                set_unit_max_mana = (JassUnitSetIntFn)(uintptr_t)d7->handler;
+                get_unit_state = (JassUnitStateQueryFn)(uintptr_t)d7->arg0;
+                set_unit_state = (JassSetUnitStateFn)(uintptr_t)d7->arg1;
+                unit_item_in_slot = (JassUnitItemInSlotFn)(uintptr_t)d8->handler;
+                get_item_type_id = (JassGetItemTypeIdFn)(uintptr_t)d8->arg0;
+                unit_add_item_by_id = (JassUnitRawcodeFn)(uintptr_t)d8->arg1;
+                get_item_charges = (JassGetItemChargesFn)(uintptr_t)d9->handler;
+                set_item_charges = (JassSetItemChargesFn)(uintptr_t)d9->arg0;
+                get_item_integer_field = (JassItemFieldGetFn)(uintptr_t)d9->arg1;
+                set_item_integer_field = (JassItemScalarFieldSetFn)(uintptr_t)d10->handler;
+                get_item_real_field = (JassItemFieldGetFn)(uintptr_t)d10->arg0;
+                set_item_real_field = (JassItemRealFieldSetFn)(uintptr_t)d10->arg1;
+                get_item_boolean_field = (JassItemFieldGetFn)(uintptr_t)d11->handler;
+                set_item_boolean_field = (JassItemScalarFieldSetFn)(uintptr_t)d11->arg0;
+                get_ability_by_index = (JassGetUnitAbilityByIndexFn)(uintptr_t)d11->arg1;
+                get_ability_id = (JassGetAbilityIdFn)(uintptr_t)d12->handler;
+                get_ability_level = (JassGetUnitAbilityLevelFn)(uintptr_t)d12->arg0;
+                add_ability = (JassUnitAddAbilityFn)(uintptr_t)d12->arg1;
+                set_ability_level = (JassSetUnitAbilityLevelFn)(uintptr_t)d13->handler;
+
+                if (
+                    !get_local_player || !create_unit || !get_unit_facing ||
+                    !get_hero_level || !set_hero_level || !get_hero_xp ||
+                    !set_hero_xp || !get_hero_str || !set_hero_str ||
+                    !get_hero_agi || !set_hero_agi || !get_hero_int ||
+                    !set_hero_int || !get_hero_skill_points ||
+                    !modify_skill_points || !get_unit_max_hp ||
+                    !set_unit_max_hp || !get_widget_life || !set_widget_life ||
+                    !get_unit_max_mana || !set_unit_max_mana ||
+                    !get_unit_state || !set_unit_state || !unit_item_in_slot ||
+                    !get_item_type_id || !unit_add_item_by_id ||
+                    !get_item_charges || !set_item_charges ||
+                    !get_item_integer_field || !set_item_integer_field ||
+                    !get_item_real_field || !set_item_real_field ||
+                    !get_item_boolean_field || !set_item_boolean_field ||
+                    !get_ability_by_index || !get_ability_id ||
+                    !get_ability_level || !add_ability || !set_ability_level
+                ) {
+                    op->last_error = ERROR_INVALID_DATA;
+                    last_error = op->last_error;
+                    goto finish;
+                }
+
+                memcpy(coordinates, &op->arg1, sizeof(coordinates));
+                __try {
+                    int32_t source_level;
+                    player = get_local_player();
+                    facing = war3_real_from_bits(get_unit_facing(cmd.unit_handle));
+                    if (!player || !(facing == facing)) {
+                        op->last_error = ERROR_NOT_FOUND;
+                        last_error = op->last_error;
+                        goto finish;
+                    }
+                    target = create_unit(
+                        player,
+                        op->rawcode,
+                        &coordinates[0],
+                        &coordinates[1],
+                        &facing
+                    );
+                    if (!target) {
+                        op->last_error = ERROR_NOT_FOUND;
+                        last_error = op->last_error;
+                        goto finish;
+                    }
+
+                    source_level = get_hero_level(cmd.unit_handle);
+                    if (source_level > 0) {
+                        int32_t source_xp = get_hero_xp(cmd.unit_handle);
+                        int32_t source_points;
+                        int32_t target_points;
+                        set_hero_xp(target, source_xp, 0);
+                        if (get_hero_level(target) != source_level) {
+                            set_hero_level(target, source_level, 0);
+                        }
+                        set_hero_str(target, get_hero_str(cmd.unit_handle, 0), 1);
+                        set_hero_agi(target, get_hero_agi(cmd.unit_handle, 0), 1);
+                        set_hero_int(target, get_hero_int(cmd.unit_handle, 0), 1);
+                        source_points = get_hero_skill_points(cmd.unit_handle);
+                        target_points = get_hero_skill_points(target);
+                        if (source_points != target_points) {
+                            modify_skill_points(target, source_points - target_points);
+                        }
+                    }
+
+                    for (int32_t slot = 0; slot < 6; ++slot) {
+                        uint64_t source_item = unit_item_in_slot(cmd.unit_handle, slot);
+                        uint32_t item_id;
+                        uint64_t target_item;
+                        if (!source_item) {
+                            continue;
+                        }
+                        item_id = get_item_type_id(source_item);
+                        if (!item_id) {
+                            continue;
+                        }
+                        target_item = unit_add_item_by_id(target, item_id);
+                        if (!target_item) {
+                            continue;
+                        }
+                        war3_copy_item_instance_fields(
+                            source_item,
+                            target_item,
+                            get_item_integer_field,
+                            set_item_integer_field,
+                            get_item_real_field,
+                            set_item_real_field,
+                            get_item_boolean_field,
+                            set_item_boolean_field
+                        );
+                        set_item_charges(target_item, get_item_charges(source_item));
+                        ++copied_items;
+                    }
+
+                    for (int32_t index = 0; index < 1024; ++index) {
+                        uint64_t source_ability =
+                            get_ability_by_index(cmd.unit_handle, index);
+                        uint32_t ability_id;
+                        int32_t source_ability_level;
+                        int32_t target_ability_level;
+                        if (!source_ability) {
+                            break;
+                        }
+                        ability_id = get_ability_id(source_ability);
+                        if (!ability_id || war3_is_essential_ability(ability_id)) {
+                            continue;
+                        }
+                        source_ability_level =
+                            get_ability_level(cmd.unit_handle, ability_id);
+                        if (source_ability_level <= 0) {
+                            continue;
+                        }
+                        target_ability_level = get_ability_level(target, ability_id);
+                        if (target_ability_level <= 0 && !add_ability(target, ability_id)) {
+                            continue;
+                        }
+                        if (get_ability_level(target, ability_id) != source_ability_level) {
+                            set_ability_level(target, ability_id, source_ability_level);
+                        }
+                        ++copied_abilities;
+                    }
+
+                    {
+                        int32_t max_hp = get_unit_max_hp(cmd.unit_handle);
+                        float life = war3_real_from_bits(get_widget_life(cmd.unit_handle));
+                        int32_t max_mana = get_unit_max_mana(cmd.unit_handle);
+                        float mana = war3_real_from_bits(
+                            get_unit_state(cmd.unit_handle, 2)
+                        );
+                        if (max_hp > 0) {
+                            set_unit_max_hp(target, max_hp);
+                        }
+                        if (max_mana >= 0) {
+                            set_unit_max_mana(target, max_mana);
+                        }
+                        if (life == life) {
+                            set_widget_life(target, &life);
+                        }
+                        if (mana == mana) {
+                            set_unit_state(target, 2, &mana);
+                        }
+                    }
+                    op->result = target;
+                    d8->result = copied_items;
+                    d12->result = copied_abilities;
+                } __except (EXCEPTION_EXECUTE_HANDLER) {
+                    op->last_error = GetExceptionCode();
+                    last_error = op->last_error;
+                    goto finish;
+                }
+                i += 13;
+                break;
+            }
             case WAR3_NATIVE_OP_JASS_CLEAR_INVENTORY: {
                 JassUnitItemInSlotFn unit_item_in_slot =
                     (JassUnitItemInSlotFn)(uintptr_t)op->handler;
@@ -2746,6 +3114,101 @@ static void run_command(void) {
                 op->result = killed;
                 iter_op->result = player;
                 cleanup_op->result = group;
+                if (last_error) {
+                    goto finish;
+                }
+                i += 2;
+                break;
+            }
+            case WAR3_NATIVE_OP_JASS_HEAL_LOCAL_UNITS: {
+                NativeOp *iter_op = NULL;
+                NativeOp *heal_op = NULL;
+                JassNoArgU64Fn get_local_player =
+                    (JassNoArgU64Fn)(uintptr_t)op->handler;
+                JassNoArgU64Fn create_group =
+                    (JassNoArgU64Fn)(uintptr_t)op->arg0;
+                JassGroupEnumUnitsOfPlayerFn enum_units =
+                    (JassGroupEnumUnitsOfPlayerFn)(uintptr_t)op->arg1;
+                uint64_t player = 0;
+                uint64_t group = 0;
+                uint32_t healed = 0;
+                if (i + 2 >= cmd.op_count) {
+                    op->last_error = ERROR_INVALID_DATA;
+                    last_error = op->last_error;
+                    goto finish;
+                }
+                iter_op = &cmd.ops[i + 1];
+                heal_op = &cmd.ops[i + 2];
+                JassFirstOfGroupFn first_of_group =
+                    (JassFirstOfGroupFn)(uintptr_t)iter_op->handler;
+                JassGroupRemoveUnitFn group_remove_unit =
+                    (JassGroupRemoveUnitFn)(uintptr_t)iter_op->arg0;
+                JassUnitRealQueryFn get_widget_life =
+                    (JassUnitRealQueryFn)(uintptr_t)iter_op->arg1;
+                JassUnitIntFn get_unit_max_hp =
+                    (JassUnitIntFn)(uintptr_t)heal_op->handler;
+                JassSetWidgetLifeFn set_widget_life =
+                    (JassSetWidgetLifeFn)(uintptr_t)heal_op->arg0;
+                JassDestroyGroupFn destroy_group =
+                    (JassDestroyGroupFn)(uintptr_t)heal_op->arg1;
+                iter_op->result = 0;
+                iter_op->last_error = 0;
+                heal_op->result = 0;
+                heal_op->last_error = 0;
+                if (
+                    !get_local_player || !create_group || !enum_units ||
+                    !first_of_group || !group_remove_unit || !get_widget_life ||
+                    !get_unit_max_hp || !set_widget_life || !destroy_group
+                ) {
+                    op->last_error = ERROR_INVALID_DATA;
+                    last_error = op->last_error;
+                    goto finish;
+                }
+                __try {
+                    player = get_local_player();
+                    group = create_group();
+                    if (!player || !group) {
+                        op->last_error = ERROR_NOT_FOUND;
+                        last_error = op->last_error;
+                    } else {
+                        enum_units(group, player, 0);
+                        while (healed < 100000u) {
+                            uint64_t unit = first_of_group(group);
+                            float life;
+                            int32_t max_hp;
+                            if (!unit) {
+                                break;
+                            }
+                            group_remove_unit(group, unit);
+                            life = war3_real_from_bits(get_widget_life(unit));
+                            if (!(life > 0.405f)) {
+                                continue;
+                            }
+                            max_hp = get_unit_max_hp(unit);
+                            if (max_hp > 0 && life < (float)max_hp) {
+                                float target_life = (float)max_hp;
+                                set_widget_life(unit, &target_life);
+                                ++healed;
+                            }
+                        }
+                    }
+                } __except (EXCEPTION_EXECUTE_HANDLER) {
+                    op->last_error = GetExceptionCode();
+                    last_error = op->last_error;
+                }
+                __try {
+                    if (group) {
+                        destroy_group(group);
+                    }
+                } __except (EXCEPTION_EXECUTE_HANDLER) {
+                    if (!last_error) {
+                        op->last_error = GetExceptionCode();
+                        last_error = op->last_error;
+                    }
+                }
+                op->result = healed;
+                iter_op->result = player;
+                heal_op->result = group;
                 if (last_error) {
                     goto finish;
                 }

@@ -3,7 +3,7 @@
 #include <stdio.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 18u
+#define WAR3_NATIVE_VERSION 19u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -2700,6 +2700,9 @@ static void run_command(void) {
                         if (get_hero_level(target) != source_level) {
                             set_hero_level(target, source_level, 0);
                         }
+                        if (get_hero_xp(target) != source_xp) {
+                            set_hero_xp(target, source_xp, 0);
+                        }
                         set_hero_str(target, get_hero_str(cmd.unit_handle, 0), 1);
                         set_hero_agi(target, get_hero_agi(cmd.unit_handle, 0), 1);
                         set_hero_int(target, get_hero_int(cmd.unit_handle, 0), 1);
@@ -2713,6 +2716,20 @@ static void run_command(void) {
                                 clone_error = ERROR_WRITE_FAULT;
                                 __leave;
                             }
+                        }
+                        if (
+                            get_hero_level(target) != source_level ||
+                            get_hero_xp(target) != source_xp ||
+                            get_hero_str(target, 0) !=
+                                get_hero_str(cmd.unit_handle, 0) ||
+                            get_hero_agi(target, 0) !=
+                                get_hero_agi(cmd.unit_handle, 0) ||
+                            get_hero_int(target, 0) !=
+                                get_hero_int(cmd.unit_handle, 0) ||
+                            get_hero_skill_points(target) != source_points
+                        ) {
+                            clone_error = ERROR_WRITE_FAULT;
+                            __leave;
                         }
                     }
 
@@ -2811,6 +2828,31 @@ static void run_command(void) {
                         if (mana == mana) {
                             set_unit_state(target, 2, &mana);
                         }
+                        {
+                            float actual_life =
+                                war3_real_from_bits(get_widget_life(target));
+                            float actual_mana =
+                                war3_real_from_bits(get_unit_state(target, 2));
+                            float life_delta = actual_life - life;
+                            float mana_delta = actual_mana - mana;
+                            if (life_delta < 0.0f) {
+                                life_delta = -life_delta;
+                            }
+                            if (mana_delta < 0.0f) {
+                                mana_delta = -mana_delta;
+                            }
+                            if (
+                                get_unit_max_hp(target) != max_hp ||
+                                get_unit_max_mana(target) != max_mana ||
+                                !(actual_life == actual_life) ||
+                                !(actual_mana == actual_mana) ||
+                                life_delta > 0.51f ||
+                                mana_delta > 0.51f
+                            ) {
+                                clone_error = ERROR_WRITE_FAULT;
+                                __leave;
+                            }
+                        }
                     }
                     op->result = target;
                     d8->result = copied_items;
@@ -2819,15 +2861,22 @@ static void run_command(void) {
                     clone_error = GetExceptionCode();
                 }
                 if (clone_error != ERROR_SUCCESS) {
+                    DWORD rollback_error = ERROR_SUCCESS;
                     __try {
                         if (target) {
                             remove_unit(target);
                         }
                     } __except (EXCEPTION_EXECUTE_HANDLER) {
+                        rollback_error = GetExceptionCode();
                     }
                     op->result = 0;
                     op->last_error = clone_error;
-                    last_error = clone_error;
+                    d13->last_error = rollback_error;
+                    last_error = (
+                        rollback_error != ERROR_SUCCESS
+                        ? rollback_error
+                        : clone_error
+                    );
                     goto finish;
                 }
                 i += 13;

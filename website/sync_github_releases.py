@@ -148,7 +148,9 @@ def normalize_github_release(
         normalized_assets.append(
             {
                 "name": filename,
-                "url": f"/downloads/{filename}",
+                # The filename stays stable across same-version hotfixes; the
+                # digest query forces browsers/CDNs to fetch the new bytes.
+                "url": f"/downloads/{filename}?sha256={actual_digest}",
                 "size": local_file.stat().st_size,
                 "sha256": actual_digest,
             }

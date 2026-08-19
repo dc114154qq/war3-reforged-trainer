@@ -779,6 +779,7 @@ _EN_TRANSLATIONS.update(
     "；清理失败：": ";Cleaning failed:",
     "复制单位缺少已读取的单位 ID": "Replication unit missing read unit ID",
     "游戏未能复制单位": "The game could not clone unit",
+    "缺少 native 函数：": "Missing native function: ",
     "是": "Yes",
     "否": "No",
     "当前选中单位已变化，请重新读取字段": "The currently selected unit has changed, please re-read the field",

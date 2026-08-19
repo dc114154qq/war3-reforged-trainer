@@ -166,6 +166,10 @@ class ElephantSourceRoutingTests(unittest.TestCase):
 
         self.assertEqual(handlers, {"CreateUnit": handler})
         backup_discovery.assert_called_once()
+        self.assertIn(
+            "CreateUnit",
+            backup_discovery.call_args.args[2],
+        )
 
     def test_inherited_elephant_method_uses_virtual_memory_factory(self):
         backup = object.__new__(trainer_module.BackupReadWar3Trainer)

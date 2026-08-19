@@ -3951,8 +3951,13 @@ class War3Trainer:
         pm: ProcessMemory,
         names: Iterable[str],
     ) -> dict[str, NativeHandler]:
-        self._discover_native_handlers_near_table(pm, self.ELEPHANT_NATIVE_NAMES)
-        return {name: self._native_handlers[name] for name in names}
+        requested = tuple(dict.fromkeys(names))
+        discovery_names = tuple(dict.fromkeys((*self.ELEPHANT_NATIVE_NAMES, *requested)))
+        self._discover_native_handlers_near_table(pm, discovery_names)
+        missing = tuple(name for name in requested if name not in self._native_handlers)
+        if missing:
+            raise RuntimeError("缺少 native 函数：" + ", ".join(missing))
+        return {name: self._native_handlers[name] for name in requested}
 
     def _elephant_selected_candidate(self, pm: ProcessMemory) -> UnitCandidate:
         candidate = self.locate_selected_unit_by_handle(pm, allow_deep_scan=True)

@@ -118,6 +118,39 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
         self.assertIn("get_unit_type_id(cmd.unit_handle) != op->rawcode", helper_source)
         self.assertIn("remove_unit(target)", helper_source)
 
+    def test_elephant_handlers_discovers_every_requested_native(self):
+        trainer = object.__new__(trainer_module.War3Trainer)
+        trainer._native_handlers = {}
+        requested = ("CreateUnit", "BlzGetItemIntegerField")
+
+        def discover(_pm, names):
+            self.assertTrue(set(requested).issubset(names))
+            trainer._native_handlers.update(
+                {
+                    name: trainer_module.NativeHandler(name, 0x1000, 0x2000 + index)
+                    for index, name in enumerate(requested)
+                }
+            )
+            return trainer._native_handlers
+
+        trainer._discover_native_handlers_near_table = Mock(side_effect=discover)
+
+        handlers = trainer._elephant_handlers(object(), requested)
+
+        self.assertEqual(set(handlers), set(requested))
+        trainer._discover_native_handlers_near_table.assert_called_once()
+
+    def test_elephant_handlers_reports_missing_native_without_key_error(self):
+        trainer = object.__new__(trainer_module.War3Trainer)
+        trainer._native_handlers = {}
+        trainer._discover_native_handlers_near_table = Mock(return_value={})
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "缺少 native 函数：BlzGetItemIntegerField",
+        ):
+            trainer._elephant_handlers(object(), ("BlzGetItemIntegerField",))
+
 
 if __name__ == "__main__":
     unittest.main()

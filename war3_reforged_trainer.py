@@ -14654,6 +14654,9 @@ def run_gui() -> None:
         return rawcode
 
     def elephant_trainer() -> War3Trainer:
+        batch_trainer = state.get("elephant_batch_trainer")
+        if isinstance(batch_trainer, War3Trainer):
+            return batch_trainer
         return trainer()
 
     def remembered_unit_identities() -> list[tuple[int, int, int]]:
@@ -15274,9 +15277,14 @@ def run_gui() -> None:
         return f"大象功能已初始化：{count} 个 native 函数可用"
 
     def elephant_batch(action: Callable[[], object], label: str) -> tuple[object, ...]:
-        succeeded, failed, results, errors = elephant_trainer().run_for_selected_units(
-            action
-        )
+        batch_trainer = elephant_trainer()
+        state["elephant_batch_trainer"] = batch_trainer
+        try:
+            succeeded, failed, results, errors = (
+                batch_trainer.run_for_selected_units(action)
+            )
+        finally:
+            state.pop("elephant_batch_trainer", None)
         if not succeeded:
             detail = errors[0] if errors else "没有可操作的选中单位"
             raise RuntimeError(f"{label}未成功：{detail}")

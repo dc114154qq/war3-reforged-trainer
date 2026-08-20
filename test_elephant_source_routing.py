@@ -171,6 +171,14 @@ class ElephantSourceRoutingTests(unittest.TestCase):
             backup_discovery.call_args.args[2],
         )
 
+    def test_batch_gui_reuses_one_edition_session(self):
+        source = SOURCE_PATH.read_text(encoding="utf-8")
+        self.assertIn('state["elephant_batch_trainer"] = batch_trainer', source)
+        self.assertIn(
+            'if isinstance(batch_trainer, War3Trainer):',
+            source,
+        )
+
     def test_inherited_elephant_method_uses_virtual_memory_factory(self):
         backup = object.__new__(trainer_module.BackupReadWar3Trainer)
         memory = _BackupMemory(123)

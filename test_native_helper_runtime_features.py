@@ -117,6 +117,7 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
         self.assertIn("WAR3_NATIVE_OP_JASS_SELECTED_UNITS 119u", helper_source)
         self.assertIn("uint64_t selected_units[12]", helper_source)
         self.assertIn("while (selected_count < 12u)", helper_source)
+        self.assertIn("selected_units[selected_count++] = current;", helper_source)
         self.assertIn("while (processed < 100000u)", helper_source)
         self.assertIn("get_unit_type_id(cmd.unit_handle) != op->rawcode", helper_source)
         self.assertIn("remove_unit(target)", helper_source)

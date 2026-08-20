@@ -2620,14 +2620,49 @@ class War3Trainer:
             if ptr == record + 0x18 and inline_capacity >= size:
                 end = offset + 0x18 + int(size)
                 if end > len(blob):
-                    return None
-                data = blob[offset + 0x18 : end]
+                    data = pm.read(record + 0x18, int(size))
+                else:
+                    data = blob[offset + 0x18 : end]
             else:
                 if not War3Trainer._sane_heap_ptr(ptr):
                     return None
                 if not size <= capacity < 0x1000:
                     return None
                 data = pm.read(ptr, int(size))
+        except OSError:
+            return None
+        if any(byte < 32 or byte > 126 for byte in data):
+            return None
+        try:
+            return data.decode("ascii")
+        except UnicodeDecodeError:
+            return None
+
+    @staticmethod
+    def _decode_native_name_from_record(
+        pm: ProcessMemory,
+        record: int,
+        *,
+        external_names: dict[int, str] | None = None,
+    ) -> str | None:
+        try:
+            ptr = pm.read_u64(record)
+            size = pm.read_u64(record + 8)
+            capacity = pm.read_u64(record + 16)
+        except OSError:
+            return None
+        if not 0 < size < 80:
+            return None
+        try:
+            if ptr == record + 0x18 and (capacity & 0xFF) >= size:
+                data = pm.read(record + 0x18, int(size))
+            elif external_names is not None and ptr in external_names:
+                name = external_names[ptr]
+                return name if len(name) == size else None
+            elif War3Trainer._sane_heap_ptr(ptr) and size <= capacity < 0x1000:
+                data = pm.read(ptr, int(size))
+            else:
+                return None
         except OSError:
             return None
         if any(byte < 32 or byte > 126 for byte in data):
@@ -3468,7 +3503,8 @@ class War3Trainer:
             for region in sorted(regions, key=lambda item: item.base):
                 if region.typ != MEM_PRIVATE:
                     continue
-                region_start = max(region.base, scan_start - 8)
+                record_scan_start = max(0, scan_start - 0x40)
+                region_start = max(region.base, record_scan_start - 8)
                 region_end = min(region.base + region.size, scan_end)
                 if region_end - region_start < 32:
                     continue
@@ -3476,7 +3512,7 @@ class War3Trainer:
                     blob = pm.read(region_start, region_end - region_start)
                 except OSError:
                     continue
-                first_record = max(scan_start, (region_start + 7) & ~7)
+                first_record = max(record_scan_start, (region_start + 7) & ~7)
                 if first_record - region_start < 8:
                     first_record += 8
                 for record in range(first_record, region_end - 24, 8):
@@ -3488,6 +3524,8 @@ class War3Trainer:
                     if size not in wanted_lengths:
                         continue
                     name = self._decode_native_string_from_blob(pm, blob, region_start, offset)
+                    if name not in missing:
+                        name = self._decode_native_name_from_record(pm, record)
                     if name not in missing:
                         continue
                     found[name] = NativeHandler(name, record, handler)
@@ -4182,7 +4220,20 @@ class War3Trainer:
         action: Callable[[], object],
     ) -> tuple[int, int, tuple[object, ...], tuple[str, ...]]:
         with self._process_memory() as pm:
-            snapshot = self._selected_candidates_snapshot(pm)
+            try:
+                handles = self._elephant_selected_handles(pm)
+            except AttributeError:
+                handles = ()
+            if not handles:
+                snapshot = self._selected_candidates_snapshot(pm)
+            elif len(handles) == 1:
+                try:
+                    candidate = self._elephant_selected_candidate(pm)
+                    snapshot = [(candidate, handles[0])]
+                except Exception:
+                    snapshot = self._selected_candidates_snapshot(pm)
+            else:
+                snapshot = self._selected_candidates_snapshot(pm)
         results: list[object] = []
         errors: list[str] = []
         for candidate, unit_handle in snapshot:

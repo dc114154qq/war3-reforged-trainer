@@ -1120,12 +1120,8 @@ static DWORD run_jass_selected_units(
                 break;
             }
             group_remove_unit(group, current);
-            uint64_t current_handle = get_handle_id(current);
-            if (!current_handle) {
-                continue;
-            }
             for (uint32_t existing = 0; existing < selected_count; ++existing) {
-                if (selected_units[existing] == current_handle) {
+                if (selected_units[existing] == current) {
                     duplicate = 1;
                     break;
                 }
@@ -1133,10 +1129,10 @@ static DWORD run_jass_selected_units(
             if (duplicate) {
                 continue;
             }
-            selected_units[selected_count++] = current_handle;
+            selected_units[selected_count++] = current;
             if (!unit) {
                 unit = current;
-                handle_id = (uint32_t)current_handle;
+                handle_id = get_handle_id(current);
             }
         }
         if (selected_count) {

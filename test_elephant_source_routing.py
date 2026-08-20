@@ -294,6 +294,57 @@ class ElephantSourceRoutingTests(unittest.TestCase):
         self.assertIn("rawcode = None", source)
         self.assertIn("use_selected_lookup=True", source)
 
+    def test_read_buttons_publish_live_selected_summaries_to_candidate_list(self):
+        tree = ast.parse(SOURCE_PATH.read_text(encoding="utf-8"))
+        run_gui = next(
+            node
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == "run_gui"
+        )
+        for function_name in ("read_unit", "read_unit_win10"):
+            function = next(
+                node
+                for node in run_gui.body
+                if isinstance(node, ast.FunctionDef) and node.name == function_name
+            )
+            attribute_calls = {
+                node.func.attr
+                for node in ast.walk(function)
+                if isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+            }
+            names = {
+                node.id
+                for node in ast.walk(function)
+                if isinstance(node, ast.Name)
+            }
+            self.assertIn("selected_unit_summaries", attribute_calls)
+            self.assertIn("populate_selection_candidates", names)
+
+    def test_single_selection_protocol_remains_separate_from_batch_protocol(self):
+        source = SOURCE_PATH.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        trainer_class = next(
+            node
+            for node in tree.body
+            if isinstance(node, ast.ClassDef) and node.name == "War3Trainer"
+        )
+        single = next(
+            node
+            for node in trainer_class.body
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "_elephant_selected_handle"
+        )
+        batch = next(
+            node
+            for node in trainer_class.body
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "_elephant_selected_handles"
+        )
+        self.assertNotIn("GroupRemoveUnit", ast.unparse(single))
+        self.assertIn("GroupRemoveUnit", ast.unparse(batch))
+        self.assertIn("NATIVE_HELPER_OP_JASS_SELECTED_UNITS", ast.unparse(batch))
+
     def test_hotkeys_do_not_bind_main_trainer(self):
         tree = ast.parse(SOURCE_PATH.read_text(encoding="utf-8"))
         run_gui = next(

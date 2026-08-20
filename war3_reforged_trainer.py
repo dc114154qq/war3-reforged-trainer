@@ -2161,6 +2161,7 @@ class War3Trainer:
     CPLAYER_SELECTION_MANAGER_OFFSET = 0x168
     SELECTION_MANAGER_ALT_LIST_OFFSET = 0x3D0
     SELECTION_MANAGER_MAX_UNITS = 64
+    SELECTED_BATCH_MAX_UNITS = 12
     WIN10_STRONG_SELECTION_SCORE = 155
     UNIT_OWNER_POINTER_SEARCH_RADIUS = 0x2000000
     HERO_SKILL_SLOT_COUNT = 5
@@ -2410,7 +2411,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 19
+    NATIVE_HELPER_VERSION = 20
     NATIVE_HELPER_STATUS_PENDING = 1
     NATIVE_HELPER_STATUS_OK = 2
     NATIVE_HELPER_MAX_OPS = 16
@@ -2478,6 +2479,7 @@ class War3Trainer:
     NATIVE_HELPER_OP_JASS_ITEM_FIELD_SET = 116
     NATIVE_HELPER_OP_JASS_HEAL_LOCAL_UNITS = 117
     NATIVE_HELPER_OP_JASS_CLONE_SELECTED_UNIT = 118
+    NATIVE_HELPER_OP_JASS_SELECTED_UNITS = 119
 
     def __init__(self, pid: int | None = None):
         self.hwnd, self.pid = find_war3(pid)
@@ -2516,6 +2518,8 @@ class War3Trainer:
         self._last_win10_jass_handle_id = 0
         self._last_win10_native_recovered = 0
         self._last_win10_native_missing: tuple[str, ...] = ()
+        self._last_selected_summaries: tuple[UnitSelectionSummary, ...] = ()
+        self._elephant_selection_override: tuple[UnitCandidate, int] | None = None
 
     def _process_memory(self, write: bool = False) -> ProcessMemory:
         return ProcessMemory(self.pid, write=write)
@@ -2562,6 +2566,8 @@ class War3Trainer:
             self._last_win10_jass_handle_id = 0
             self._last_win10_native_recovered = 0
             self._last_win10_native_missing = ()
+            self._last_selected_summaries = ()
+            self._elephant_selection_override = None
 
     def focus(self) -> None:
         focus_window(self.hwnd)
@@ -3831,6 +3837,7 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_JASS_ITEM_FIELD_SET,
             self.NATIVE_HELPER_OP_JASS_HEAL_LOCAL_UNITS,
             self.NATIVE_HELPER_OP_JASS_CLONE_SELECTED_UNIT,
+            self.NATIVE_HELPER_OP_JASS_SELECTED_UNITS,
         }
         if any(kind not in allowed_kinds for kind, _rawcode, _handler, _arg0, _arg1 in op_list):
             raise RuntimeError("native helper 仅允许结构化验证后的白名单操作")
@@ -3960,11 +3967,15 @@ class War3Trainer:
         return {name: self._native_handlers[name] for name in requested}
 
     def _elephant_selected_candidate(self, pm: ProcessMemory) -> UnitCandidate:
+        if self._elephant_selection_override is not None:
+            return self._elephant_selection_override[0]
         candidate = self.locate_selected_unit_by_handle(pm, allow_deep_scan=True)
         candidate = self._candidate_with_selected_unit_type_id(pm, candidate)
         return candidate
 
     def _elephant_selected_handle(self, pm: ProcessMemory) -> int:
+        if self._elephant_selection_override is not None:
+            return self._elephant_selection_override[1]
         handlers = self._elephant_handlers(
             pm,
             (
@@ -4007,7 +4018,172 @@ class War3Trainer:
             raise RuntimeError("游戏当前没有可操作的选中单位")
         return unit_handle
 
+    def _elephant_selected_handles(self, pm: ProcessMemory) -> tuple[int, ...]:
+        handlers = self._elephant_handlers(
+            pm,
+            (
+                "CreateGroup",
+                "GetLocalPlayer",
+                "GroupEnumUnitsSelected",
+                "FirstOfGroup",
+                "GetHandleId",
+                "GroupRemoveUnit",
+                "DestroyGroup",
+            ),
+        )
+        results = self._run_native_helper_ops(
+            0,
+            (
+                (
+                    self.NATIVE_HELPER_OP_JASS_SELECTED_UNITS,
+                    0,
+                    handlers["CreateGroup"].handler_address,
+                    0,
+                    handlers["GetLocalPlayer"].handler_address,
+                ),
+                (
+                    self.NATIVE_HELPER_OP_JASS_SELECTED_UNIT_ARG,
+                    0,
+                    handlers["GroupEnumUnitsSelected"].handler_address,
+                    handlers["FirstOfGroup"].handler_address,
+                    handlers["GetHandleId"].handler_address,
+                ),
+                (
+                    self.NATIVE_HELPER_OP_JASS_SELECTED_UNIT_ARG,
+                    0,
+                    handlers["DestroyGroup"].handler_address,
+                    0,
+                    handlers["GroupRemoveUnit"].handler_address,
+                ),
+            ),
+        )
+        first = int(results[0].result)
+        handles = tuple(
+            dict.fromkeys(
+                int(handle)
+                for handle in (results[0].extra_results or ((first,) if first else ()))
+                if int(handle)
+            )
+        )
+        if not handles:
+            raise RuntimeError("游戏当前没有可操作的选中单位")
+        if len(handles) > self.SELECTED_BATCH_MAX_UNITS:
+            raise RuntimeError("游戏返回的选中单位数量超过安全上限")
+        return handles
+
+    @contextmanager
+    def _bound_elephant_selection(
+        self,
+        candidate: UnitCandidate,
+        unit_handle: int,
+    ) -> Iterator[None]:
+        previous = self._elephant_selection_override
+        self._elephant_selection_override = (candidate, int(unit_handle))
+        try:
+            yield
+        finally:
+            self._elephant_selection_override = previous
+
+    def _selected_candidates_snapshot(
+        self,
+        pm: ProcessMemory,
+    ) -> list[tuple[UnitCandidate, int]]:
+        selected: list[tuple[UnitCandidate, int]] = []
+        seen_units: set[int] = set()
+        handles = self._elephant_selected_handles(pm)
+        for unit_handle in handles:
+            if isinstance(pm, Win10ProcessMemory):
+                candidate = self._candidate_from_jass_selection_result_win10(
+                    pm,
+                    unit_handle,
+                    0,
+                    self._last_win10_jass_player_handle,
+                )
+                if candidate is None:
+                    resolved_unit = self._resolve_jass_unit_handle_win10(
+                        pm,
+                        unit_handle,
+                        allow_missing=True,
+                    )
+                    candidate = self._candidate_from_jass_selection_result_win10(
+                        pm,
+                        resolved_unit,
+                        0,
+                        self._last_win10_jass_player_handle,
+                    )
+            else:
+                candidate = self._candidate_from_jass_selection_result(
+                    pm,
+                    unit_handle,
+                    0,
+                    0,
+                )
+                if candidate is None:
+                    resolved_unit = self._resolve_jass_unit_handle(
+                        unit_handle,
+                        allow_missing=True,
+                    )
+                    candidate = self._candidate_from_jass_selection_result(
+                        pm,
+                        resolved_unit,
+                        0,
+                        0,
+                    )
+            if candidate is None or not candidate.unit_address:
+                continue
+            if candidate.unit_address in seen_units:
+                continue
+            seen_units.add(candidate.unit_address)
+            selected.append(
+                (self._candidate_with_selected_unit_type_id(pm, candidate), unit_handle)
+            )
+        if not selected:
+            raise RuntimeError("当前选择列表没有可映射的单位")
+        return selected
+
+    def _selected_summaries_from_snapshot(
+        self,
+        pm: ProcessMemory,
+        snapshot: Iterable[tuple[UnitCandidate, int]],
+    ) -> tuple[UnitSelectionSummary, ...]:
+        return tuple(
+            self._selection_summary_from_candidate(
+                pm,
+                candidate,
+                refs=1,
+                known_hits=2,
+                region_base=0,
+                include_inventory=True,
+                include_abilities=False,
+            )
+            for candidate, _unit_handle in snapshot
+        )
+
+    def selected_unit_summaries(self) -> tuple[UnitSelectionSummary, ...]:
+        return self._last_selected_summaries
+
+    def run_for_selected_units(
+        self,
+        action: Callable[[], object],
+    ) -> tuple[int, int, tuple[object, ...], tuple[str, ...]]:
+        with self._process_memory() as pm:
+            snapshot = self._selected_candidates_snapshot(pm)
+        results: list[object] = []
+        errors: list[str] = []
+        for candidate, unit_handle in snapshot:
+            try:
+                with self._bound_elephant_selection(candidate, unit_handle):
+                    results.append(action())
+            except Exception as exc:
+                errors.append(
+                    f"{format_rawcode(candidate.unit_type_id) if candidate.unit_type_id else '未知单位'}"
+                    f"(0x{candidate.unit_address:x}): {exc}"
+                )
+        return len(results), len(errors), tuple(results), tuple(errors)
+
     def _direct_selected_context(self) -> tuple[UnitCandidate, int]:
+        if self._elephant_selection_override is not None:
+            return self._elephant_selection_override
         for _attempt in range(3):
             with self._process_memory() as pm:
                 candidate = self._elephant_selected_candidate(pm)
@@ -12091,7 +12267,28 @@ class War3Trainer:
         with self._process_memory() as pm:
             candidate = self.locate_selected_unit_by_handle(pm, allow_deep_scan=True)
             candidate = self._candidate_with_selected_unit_type_id(pm, candidate)
+            try:
+                snapshot = self._selected_candidates_snapshot(pm)
+            except Exception:
+                snapshot = [(candidate, candidate.handle)]
+            matching = next(
+                (
+                    entry
+                    for entry in snapshot
+                    if entry[0].unit_address == candidate.unit_address
+                ),
+                None,
+            )
+            if matching is None:
+                snapshot.insert(0, (candidate, candidate.handle))
+            else:
+                snapshot.remove(matching)
+                snapshot.insert(0, matching)
             panel = self._panel_from_candidate(pm, candidate)
+            self._last_selected_summaries = self._selected_summaries_from_snapshot(
+                pm,
+                snapshot,
+            )
             return panel, candidate, self._unit_fields_from_candidate(pm, candidate)
 
     def _recover_win10_native_handlers(
@@ -12390,6 +12587,35 @@ class War3Trainer:
                         unit=f"0x{candidate.unit_address:x}",
                         note=candidate.note,
                     )
+                try:
+                    with diagnostics.stage("enumerate_selected_units"):
+                        selected_snapshot = isolated._selected_candidates_snapshot(pm)
+                except Exception as exc:
+                    diagnostics.log(
+                        "enumerate_selected_units_fallback",
+                        exception=repr(exc),
+                    )
+                    selected_snapshot = [(candidate, candidate.handle)]
+                matching = next(
+                    (
+                        entry
+                        for entry in selected_snapshot
+                        if entry[0].unit_address == candidate.unit_address
+                    ),
+                    None,
+                )
+                if matching is None:
+                    selected_snapshot.insert(0, (candidate, candidate.handle))
+                else:
+                    selected_snapshot.remove(matching)
+                    selected_snapshot.insert(0, matching)
+                isolated._last_selected_summaries = (
+                    isolated._selected_summaries_from_snapshot(
+                        pm,
+                        selected_snapshot,
+                    )
+                )
+                self._last_selected_summaries = isolated._last_selected_summaries
                 diagnostics.log(
                     "candidate_identity",
                     handle=f"0x{candidate.handle:x}",
@@ -13800,6 +14026,8 @@ class BackupReadWar3Trainer(War3Trainer):
         )
 
     def _elephant_selected_candidate(self, pm: ProcessMemory) -> UnitCandidate:
+        if self._elephant_selection_override is not None:
+            return self._elephant_selection_override[0]
         safe_pm = self._require_win10_memory(pm)
         if self._backup_selected_identity is None:
             raise RuntimeError("请先点击备用读取后再使用大象功能")
@@ -13811,6 +14039,8 @@ class BackupReadWar3Trainer(War3Trainer):
         return self._candidate_with_selected_unit_type_id(safe_pm, candidate)
 
     def _elephant_selected_handle(self, pm: ProcessMemory) -> int:
+        if self._elephant_selection_override is not None:
+            return self._elephant_selection_override[1]
         safe_pm = self._require_win10_memory(pm)
         candidate = self._elephant_selected_candidate(safe_pm)
         return self._current_jass_unit_handle_win10(
@@ -13820,6 +14050,8 @@ class BackupReadWar3Trainer(War3Trainer):
         )
 
     def _direct_selected_context(self) -> tuple[UnitCandidate, int]:
+        if self._elephant_selection_override is not None:
+            return self._elephant_selection_override
         with self._process_memory() as pm:
             safe_pm = self._require_win10_memory(pm)
             candidate = self._elephant_selected_candidate(safe_pm)
@@ -14923,9 +15155,13 @@ def run_gui() -> None:
             root.after(0, clear_selected_unit_readout)
             raise RuntimeError(f"备用读取失败：{exc}") from exc
         root.after(0, populate_auto_selected_unit_readout, panel, cand, fields, True, True)
+        selected_summaries = t.selected_unit_summaries()
+        if selected_summaries:
+            root.after(0, populate_selection_candidates, list(selected_summaries))
         elapsed_ms = (time.perf_counter() - started) * 1000
         return (
-            f"选中单位：HP {panel.hp_text}，MP {panel.mp_text}；"
+            f"已读取当前选中的 {max(1, len(selected_summaries))} 个单位；"
+            f"主单位 HP {panel.hp_text}，MP {panel.mp_text}；"
             f"source={cand.selection_source or 'unknown'} base=0x{cand.base:x} unit=0x{cand.unit_address:x}；"
             f"耗时 {elapsed_ms:.0f} ms"
         )
@@ -14939,6 +15175,9 @@ def run_gui() -> None:
             root.after(0, clear_selected_unit_readout)
             raise RuntimeError(f"备用读取失败：{exc}") from exc
         root.after(0, populate_auto_selected_unit_readout, panel, cand, fields, True, True)
+        selected_summaries = t.selected_unit_summaries()
+        if selected_summaries:
+            root.after(0, populate_selection_candidates, list(selected_summaries))
         elapsed_ms = (time.perf_counter() - started) * 1000
         log_path = getattr(t, "_last_win10_log_path", "")
         native_recovered = int(getattr(t, "_last_win10_native_recovered", 0))
@@ -14947,7 +15186,9 @@ def run_gui() -> None:
         if native_missing:
             native_status += f"，仍缺 {len(native_missing)}"
         return (
-            f"备用读取 [{WIN10_COMPAT_REVISION}]：HP {panel.hp_text}，MP {panel.mp_text}；"
+            f"备用读取 [{WIN10_COMPAT_REVISION}] 当前选中的 "
+            f"{max(1, len(selected_summaries))} 个单位；"
+            f"主单位 HP {panel.hp_text}，MP {panel.mp_text}；"
             f"source={cand.selection_source or 'backup'} unit=0x{cand.unit_address:x}；"
             f"{native_status}；耗时 {elapsed_ms:.0f} ms；日志：{log_path}"
         )
@@ -14989,21 +15230,54 @@ def run_gui() -> None:
         count = elephant_trainer().prewarm_elephant_functions()
         return f"大象功能已初始化：{count} 个 native 函数可用"
 
+    def elephant_batch(action: Callable[[], object], label: str) -> tuple[object, ...]:
+        succeeded, failed, results, errors = elephant_trainer().run_for_selected_units(
+            action
+        )
+        if not succeeded:
+            detail = errors[0] if errors else "没有可操作的选中单位"
+            raise RuntimeError(f"{label}未成功：{detail}")
+        state["last_elephant_batch_failed"] = failed
+        return results
+
+    def elephant_batch_suffix() -> str:
+        failed = int(state.pop("last_elephant_batch_failed", 0))
+        return f"，跳过/失败 {failed} 个" if failed else ""
+
     def elephant_read_hero_level() -> str:
-        level = elephant_trainer().get_selected_hero_level()
+        levels = elephant_batch(
+            elephant_trainer().get_selected_hero_level,
+            "读取英雄等级",
+        )
+        level = int(levels[0])
         root.after(0, elephant_hero_level.set, str(level))
-        return f"当前英雄等级：{level}"
+        return (
+            f"已读取 {len(levels)} 个英雄；首个英雄等级：{level}"
+            f"{elephant_batch_suffix()}"
+        )
 
     def elephant_set_hero_level() -> str:
         target = parse_int(elephant_hero_level.get(), "英雄等级")
-        actual = elephant_trainer().set_selected_hero_level(target)
-        root.after(0, elephant_hero_level.set, str(actual))
-        return f"英雄等级已设置为 {actual}"
+        results = elephant_batch(
+            lambda: elephant_trainer().set_selected_hero_level(target),
+            "设置英雄等级",
+        )
+        root.after(0, elephant_hero_level.set, str(target))
+        return (
+            f"已将 {len(results)} 个英雄的等级设置为 {target}"
+            f"{elephant_batch_suffix()}"
+        )
 
     def elephant_set_scale() -> str:
         scale = parse_float(elephant_unit_scale.get(), "单位大小")
-        actual = elephant_trainer().set_selected_unit_scale(scale)
-        return f"单位大小已设置为 {actual:g}"
+        results = elephant_batch(
+            lambda: elephant_trainer().set_selected_unit_scale(scale),
+            "设置单位大小",
+        )
+        return (
+            f"已将 {len(results)} 个单位的大小设置为 {scale:g}"
+            f"{elephant_batch_suffix()}"
+        )
 
     def elephant_create_unit(copy_selected: bool) -> str:
         rawcode: int | str | None
@@ -15013,6 +15287,15 @@ def run_gui() -> None:
             rawcode = elephant_unit_rawcode.get().strip()
         if not copy_selected and not rawcode:
             raise ValueError("请填写单位 ID")
+        if copy_selected:
+            results = elephant_batch(
+                lambda: elephant_trainer().create_local_unit(
+                    None,
+                    use_selected_lookup=True,
+                ),
+                "复制选中单位",
+            )
+            return f"已复制 {len(results)} 个选中单位{elephant_batch_suffix()}"
         unit_rawcode, handle = elephant_trainer().create_local_unit(
             rawcode,
             use_selected_lookup=True,
@@ -15023,32 +15306,62 @@ def run_gui() -> None:
         rawcode = elephant_item_rawcode.get().strip()
         if not rawcode:
             raise ValueError("请填写物品 ID")
-        handle = elephant_trainer().add_item_to_selected_unit(rawcode)
-        return f"物品 {rawcode} 已添加；handle=0x{handle:x}"
+        results = elephant_batch(
+            lambda: elephant_trainer().add_item_to_selected_unit(rawcode),
+            f"添加物品 {rawcode}",
+        )
+        return (
+            f"已向 {len(results)} 个单位添加物品 {rawcode}"
+            f"{elephant_batch_suffix()}"
+        )
 
     def elephant_clear_inventory() -> str:
-        removed = elephant_trainer().clear_selected_unit_inventory()
-        return f"背包已清空，共删除 {removed} 件物品"
+        results = elephant_batch(
+            elephant_trainer().clear_selected_unit_inventory,
+            "清空背包",
+        )
+        return (
+            f"已清空 {len(results)} 个单位的背包，共删除 {sum(map(int, results))} 件物品"
+            f"{elephant_batch_suffix()}"
+        )
 
     def elephant_add_ability() -> str:
         rawcode = elephant_ability_rawcode.get().strip()
         if not rawcode:
             raise ValueError("请填写技能 ID")
-        elephant_trainer().add_ability_to_selected_unit(rawcode)
-        return f"技能 {rawcode} 已添加"
+        results = elephant_batch(
+            lambda: elephant_trainer().add_ability_to_selected_unit(rawcode),
+            f"添加技能 {rawcode}",
+        )
+        return (
+            f"已向 {len(results)} 个单位添加技能 {rawcode}"
+            f"{elephant_batch_suffix()}"
+        )
 
     def elephant_remove_ability() -> str:
         rawcode = elephant_ability_rawcode.get().strip()
         if not rawcode:
             raise ValueError("请填写技能 ID")
-        elephant_trainer().remove_ability_from_selected_unit(rawcode)
-        return f"技能 {rawcode} 已删除"
+        results = elephant_batch(
+            lambda: elephant_trainer().remove_ability_from_selected_unit(rawcode),
+            f"删除技能 {rawcode}",
+        )
+        return (
+            f"已从 {len(results)} 个单位删除技能 {rawcode}"
+            f"{elephant_batch_suffix()}"
+        )
 
     def elephant_set_ability_level() -> str:
         rawcode = elephant_ability_rawcode.get().strip()
         level = parse_int(elephant_ability_level.get(), "技能等级")
-        actual = elephant_trainer().set_selected_unit_ability_level(rawcode, level)
-        return f"技能 {rawcode} 等级已设置；native 返回 {actual}"
+        results = elephant_batch(
+            lambda: elephant_trainer().set_selected_unit_ability_level(rawcode, level),
+            f"设置技能 {rawcode} 等级",
+        )
+        return (
+            f"已为 {len(results)} 个单位设置技能 {rawcode} 等级"
+            f"{elephant_batch_suffix()}"
+        )
 
     def refresh_ability_field_tree() -> None:
         snapshot = state.get("ability_field_snapshot")
@@ -15487,16 +15800,34 @@ def run_gui() -> None:
 
     def elephant_set_inventory_charges() -> str:
         charges = parse_int(elephant_item_charges.get(), "物品数量")
-        changed = elephant_trainer().set_selected_inventory_charges(charges)
-        return f"已将 {changed} 件背包物品的数量设为 {charges}"
+        results = elephant_batch(
+            lambda: elephant_trainer().set_selected_inventory_charges(charges),
+            "设置物品数量",
+        )
+        return (
+            f"已将 {sum(map(int, results))} 件背包物品的数量设为 {charges}"
+            f"{elephant_batch_suffix()}"
+        )
 
     def elephant_duplicate_inventory() -> str:
-        duplicated = elephant_trainer().duplicate_selected_inventory_items()
-        return f"已复制 {duplicated} 件背包物品"
+        results = elephant_batch(
+            elephant_trainer().duplicate_selected_inventory_items,
+            "复制背包物品",
+        )
+        return (
+            f"已为 {len(results)} 个单位复制 {sum(map(int, results))} 件背包物品"
+            f"{elephant_batch_suffix()}"
+        )
 
     def elephant_drop_inventory() -> str:
-        dropped = elephant_trainer().drop_selected_inventory_items()
-        return f"已丢弃 {dropped} 件背包物品"
+        results = elephant_batch(
+            elephant_trainer().drop_selected_inventory_items,
+            "丢弃背包物品",
+        )
+        return (
+            f"已从 {len(results)} 个单位丢弃 {sum(map(int, results))} 件背包物品"
+            f"{elephant_batch_suffix()}"
+        )
 
     def elephant_add_resources() -> str:
         amount = parse_int(elephant_resource_amount.get(), "金币木材增量")
@@ -15505,37 +15836,75 @@ def run_gui() -> None:
 
     def elephant_mass_clone() -> str:
         count = parse_int(elephant_mass_clone_count.get(), "批量复制数量")
-        rawcode, created = elephant_trainer().create_local_units(
-            count,
-            None,
-            use_selected_lookup=True,
+        results = elephant_batch(
+            lambda: elephant_trainer().create_local_units(
+                count,
+                None,
+                use_selected_lookup=True,
+            ),
+            "大量复制选中单位",
         )
-        return f"已复制 {created} 个 {format_rawcode(rawcode)}"
+        created = sum(int(result[1]) for result in results)
+        return (
+            f"已按 {len(results)} 个选中单位创建 {created} 个复制单位"
+            f"{elephant_batch_suffix()}"
+        )
 
     def elephant_set_hero_attributes() -> str:
         value = parse_int(elephant_hero_attributes.get(), "英雄属性")
-        actual = elephant_trainer().set_selected_hero_attributes(value)
-        return f"力量、敏捷、智力已设置为 {actual}"
+        results = elephant_batch(
+            lambda: elephant_trainer().set_selected_hero_attributes(value),
+            "设置英雄属性",
+        )
+        return (
+            f"已将 {len(results)} 个英雄的力量、敏捷、智力设置为 {value}"
+            f"{elephant_batch_suffix()}"
+        )
 
     def elephant_add_skill_points() -> str:
         amount = parse_int(elephant_skill_points.get(), "增加技能点数")
-        actual = elephant_trainer().add_selected_hero_skill_points(amount)
-        return f"英雄技能点已增加 {actual}"
+        results = elephant_batch(
+            lambda: elephant_trainer().add_selected_hero_skill_points(amount),
+            "增加英雄技能点",
+        )
+        return (
+            f"已为 {len(results)} 个英雄增加 {amount} 点技能点"
+            f"{elephant_batch_suffix()}"
+        )
 
     def elephant_reset_ability() -> str:
         rawcode = elephant_reset_ability_rawcode.get().strip()
         if not rawcode:
             raise ValueError("请填写重置技能 ID")
-        elephant_trainer().reset_selected_unit_ability(rawcode)
-        return f"技能 {rawcode} 已重置"
+        results = elephant_batch(
+            lambda: elephant_trainer().reset_selected_unit_ability(rawcode),
+            f"重置技能 {rawcode}",
+        )
+        return (
+            f"已为 {len(results)} 个单位重置技能 {rawcode}"
+            f"{elephant_batch_suffix()}"
+        )
 
     def elephant_remove_all_abilities() -> str:
-        removed = elephant_trainer().remove_all_selected_unit_abilities()
-        return f"已删除选中单位的 {removed} 个非基础技能"
+        results = elephant_batch(
+            elephant_trainer().remove_all_selected_unit_abilities,
+            "删除全部技能",
+        )
+        return (
+            f"已从 {len(results)} 个单位删除 {sum(map(int, results))} 个非基础技能"
+            f"{elephant_batch_suffix()}"
+        )
 
     def elephant_move_to_mouse() -> str:
-        x, y = elephant_trainer().move_selected_unit_to_mouse()
-        return f"选中单位已移动到鼠标位置 ({x:g}, {y:g})"
+        results = elephant_batch(
+            elephant_trainer().move_selected_unit_to_mouse,
+            "移动选中单位",
+        )
+        x, y = results[0]
+        return (
+            f"已将 {len(results)} 个单位移动到鼠标位置 ({x:g}, {y:g})"
+            f"{elephant_batch_suffix()}"
+        )
 
     def elephant_add_standard_auras() -> str:
         entries = (
@@ -15549,8 +15918,14 @@ def run_gui() -> None:
             ("Aabr", None),
             ("ACac", None),
         )
-        added, total = elephant_trainer().add_ability_bundle_to_selected_unit(entries)
-        return f"全光环已处理 {total} 项，新增 {added} 项"
+        results = elephant_batch(
+            lambda: elephant_trainer().add_ability_bundle_to_selected_unit(entries),
+            "添加全光环",
+        )
+        return (
+            f"已为 {len(results)} 个单位添加全光环"
+            f"{elephant_batch_suffix()}"
+        )
 
     def elephant_add_standard_passives() -> str:
         entries = (
@@ -15563,36 +15938,60 @@ def run_gui() -> None:
             ("ACrn", None),
             ("ACpv", None),
         )
-        added, total = elephant_trainer().add_ability_bundle_to_selected_unit(entries)
-        return f"全被动已处理 {total} 项，新增 {added} 项"
+        results = elephant_batch(
+            lambda: elephant_trainer().add_ability_bundle_to_selected_unit(entries),
+            "添加全被动",
+        )
+        return (
+            f"已为 {len(results)} 个单位添加全被动"
+            f"{elephant_batch_suffix()}"
+        )
 
     def elephant_add_six_artifacts() -> str:
-        elephant_trainer().add_abilities_to_selected_unit(("AInv",))
-        count = elephant_trainer().replace_selected_inventory_items((
-            (5, "nspi"),
-            (4, "frhg"),
-            (3, "crdt"),
-            (2, "shdt"),
-            (1, "srtl"),
-            (0, "klmm"),
-        ))
-        return f"六神器已写入 {count} 个背包槽位"
+        def add_artifacts() -> int:
+            elephant_trainer().add_abilities_to_selected_unit(("AInv",))
+            return elephant_trainer().replace_selected_inventory_items((
+                (5, "nspi"),
+                (4, "frhg"),
+                (3, "crdt"),
+                (2, "shdt"),
+                (1, "srtl"),
+                (0, "klmm"),
+            ))
+
+        results = elephant_batch(add_artifacts, "添加六神器")
+        return (
+            f"已为 {len(results)} 个单位写入 {sum(map(int, results))} 个神器槽位"
+            f"{elephant_batch_suffix()}"
+        )
 
     def elephant_create_all_items() -> str:
         total, created, _last_item = elephant_trainer().create_all_loaded_items()
         return f"已遍历 {total} 个运行时物品对象，成功创建 {created} 个"
 
     def elephant_apply_all_debuffs() -> str:
-        attempted, succeeded = elephant_trainer().apply_standard_debuffs_to_selected_unit()
-        if not succeeded:
-            raise RuntimeError("游戏没有接受任何减益技能命令")
-        return f"减益技能已执行 {succeeded}/{attempted} 次"
+        results = elephant_batch(
+            elephant_trainer().apply_standard_debuffs_to_selected_unit,
+            "施加减益",
+        )
+        attempted = sum(int(result[0]) for result in results)
+        succeeded = sum(int(result[1]) for result in results)
+        return (
+            f"已对 {len(results)} 个单位执行减益 {succeeded}/{attempted} 次"
+            f"{elephant_batch_suffix()}"
+        )
 
     def elephant_apply_all_buffs() -> str:
-        attempted, succeeded = elephant_trainer().apply_standard_buffs_to_selected_unit()
-        if not succeeded:
-            raise RuntimeError("游戏没有接受任何增益技能命令")
-        return f"增益技能已执行 {succeeded}/{attempted} 次"
+        results = elephant_batch(
+            elephant_trainer().apply_standard_buffs_to_selected_unit,
+            "施加增益",
+        )
+        attempted = sum(int(result[0]) for result in results)
+        succeeded = sum(int(result[1]) for result in results)
+        return (
+            f"已对 {len(results)} 个单位执行增益 {succeeded}/{attempted} 次"
+            f"{elephant_batch_suffix()}"
+        )
 
     def elephant_fullscreen_cast(action: Callable[[], tuple[int, int]], label: str) -> str:
         attempted, succeeded = action()
@@ -15620,8 +16019,14 @@ def run_gui() -> None:
         rawcode = elephant_preset_item_rawcode.get().strip()
         if not rawcode:
             raise ValueError("请填写快捷物品 ID")
-        handle = elephant_trainer().add_item_to_selected_unit(rawcode)
-        return f"物品 {rawcode} 已添加；handle=0x{handle:x}"
+        results = elephant_batch(
+            lambda: elephant_trainer().add_item_to_selected_unit(rawcode),
+            f"添加物品 {rawcode}",
+        )
+        return (
+            f"已向 {len(results)} 个单位添加物品 {rawcode}"
+            f"{elephant_batch_suffix()}"
+        )
 
     def elephant_set_preset_tech() -> str:
         rawcode = elephant_preset_tech_rawcode.get().strip()
@@ -15640,9 +16045,16 @@ def run_gui() -> None:
 
     def elephant_toggle_unit_pause() -> str:
         t = elephant_trainer()
-        paused = not t.is_selected_unit_paused()
-        t.set_selected_unit_paused(paused)
-        return "选中单位已暂停" if paused else "选中单位已恢复"
+        first_states = elephant_batch(t.is_selected_unit_paused, "读取暂停状态")
+        paused = not bool(first_states[0])
+        results = elephant_batch(
+            lambda: t.set_selected_unit_paused(paused),
+            "暂停选中单位" if paused else "恢复选中单位",
+        )
+        return (
+            f"已{'暂停' if paused else '恢复'} {len(results)} 个单位"
+            f"{elephant_batch_suffix()}"
+        )
 
     def elephant_toggle_ally_health_lock() -> str:
         if state.get("ally_health_lock"):
@@ -15663,24 +16075,31 @@ def run_gui() -> None:
         action()
         return message
 
+    def elephant_batch_action(action: Callable[[], object], label: str) -> str:
+        results = elephant_batch(action, label)
+        return f"{label}：成功 {len(results)} 个{elephant_batch_suffix()}"
+
     hotkey_callbacks: dict[str, Callable[[], str]] = {
         "backup_read_unit": read_unit_win10_with_sound,
         "hero_level": elephant_set_hero_level,
         "instant_move": elephant_move_to_mouse,
-        "explode_unit": lambda: elephant_action(elephant_trainer().explode_selected_unit, "选中单位已爆炸"),
+        "explode_unit": lambda: elephant_batch_action(
+            elephant_trainer().explode_selected_unit,
+            "爆炸选中单位",
+        ),
         "reveal_map": lambda: elephant_action(lambda: elephant_trainer().set_map_revealed(True), "全地图视野已开启"),
         "hide_map": lambda: elephant_action(lambda: elephant_trainer().set_map_revealed(False), "战争迷雾已恢复"),
-        "invulnerable": lambda: elephant_action(
+        "invulnerable": lambda: elephant_batch_action(
             lambda: elephant_trainer().set_selected_unit_invulnerable(True),
-            "选中单位已设为无敌",
+            "设置选中单位无敌",
         ),
-        "vulnerable": lambda: elephant_action(
+        "vulnerable": lambda: elephant_batch_action(
             lambda: elephant_trainer().set_selected_unit_invulnerable(False),
-            "选中单位已取消无敌",
+            "取消选中单位无敌",
         ),
-        "reset_cooldown": lambda: elephant_action(
+        "reset_cooldown": lambda: elephant_batch_action(
             elephant_trainer().reset_selected_unit_cooldown,
-            "选中单位技能冷却已重置",
+            "重置选中单位冷却",
         ),
         "clone_to_self": lambda: elephant_create_unit(True),
         "duplicate_inventory": elephant_duplicate_inventory,
@@ -15689,7 +16108,10 @@ def run_gui() -> None:
         "drop_inventory": elephant_drop_inventory,
         "add_ability": elephant_add_ability,
         "clone_unit": lambda: elephant_create_unit(True),
-        "take_control": lambda: elephant_action(elephant_trainer().take_selected_unit_control, "已取得选中单位控制权"),
+        "take_control": lambda: elephant_batch_action(
+            elephant_trainer().take_selected_unit_control,
+            "取得选中单位控制权",
+        ),
         "add_resources": elephant_add_resources,
         "mass_clone": elephant_mass_clone,
         "ability_level": elephant_set_ability_level,
@@ -15701,9 +16123,9 @@ def run_gui() -> None:
         "preset_item": elephant_add_preset_item,
         "preset_tech": elephant_set_preset_tech,
         "create_all_items": elephant_create_all_items,
-        "ignore_collision": lambda: elephant_action(
+        "ignore_collision": lambda: elephant_batch_action(
             lambda: elephant_trainer().set_selected_unit_pathing(False),
-            "选中单位碰撞已关闭",
+            "关闭选中单位碰撞",
         ),
         "hero_attributes": elephant_set_hero_attributes,
         "skill_points": elephant_add_skill_points,
@@ -16615,49 +17037,70 @@ def run_gui() -> None:
         hero_frame,
         text="无敌",
         command=lambda: call_async(
-            lambda: elephant_action(lambda: elephant_trainer().set_selected_unit_invulnerable(True), "选中单位已设为无敌")
+            lambda: elephant_batch_action(
+                lambda: elephant_trainer().set_selected_unit_invulnerable(True),
+                "设置选中单位无敌",
+            )
         ),
     ).grid(row=1, column=0, sticky="ew", pady=3)
     ttk.Button(
         hero_frame,
         text="取消无敌",
         command=lambda: call_async(
-            lambda: elephant_action(lambda: elephant_trainer().set_selected_unit_invulnerable(False), "选中单位已取消无敌")
+            lambda: elephant_batch_action(
+                lambda: elephant_trainer().set_selected_unit_invulnerable(False),
+                "取消选中单位无敌",
+            )
         ),
     ).grid(row=1, column=1, columnspan=2, sticky="ew", padx=(6, 0), pady=3)
     ttk.Button(
         hero_frame,
         text="重置冷却",
         command=lambda: call_async(
-            lambda: elephant_action(elephant_trainer().reset_selected_unit_cooldown, "选中单位技能冷却已重置")
+            lambda: elephant_batch_action(
+                elephant_trainer().reset_selected_unit_cooldown,
+                "重置选中单位冷却",
+            )
         ),
     ).grid(row=2, column=0, columnspan=3, sticky="ew", pady=3)
     ttk.Button(
         hero_frame,
         text="关闭碰撞",
         command=lambda: call_async(
-            lambda: elephant_action(lambda: elephant_trainer().set_selected_unit_pathing(False), "选中单位碰撞已关闭")
+            lambda: elephant_batch_action(
+                lambda: elephant_trainer().set_selected_unit_pathing(False),
+                "关闭选中单位碰撞",
+            )
         ),
     ).grid(row=3, column=0, sticky="ew", pady=3)
     ttk.Button(
         hero_frame,
         text="开启碰撞",
         command=lambda: call_async(
-            lambda: elephant_action(lambda: elephant_trainer().set_selected_unit_pathing(True), "选中单位碰撞已开启")
+            lambda: elephant_batch_action(
+                lambda: elephant_trainer().set_selected_unit_pathing(True),
+                "开启选中单位碰撞",
+            )
         ),
     ).grid(row=3, column=1, columnspan=2, sticky="ew", padx=(6, 0), pady=3)
     ttk.Button(
         hero_frame,
         text="暂停单位",
         command=lambda: call_async(
-            lambda: elephant_action(lambda: elephant_trainer().set_selected_unit_paused(True), "选中单位已暂停")
+            lambda: elephant_batch_action(
+                lambda: elephant_trainer().set_selected_unit_paused(True),
+                "暂停选中单位",
+            )
         ),
     ).grid(row=4, column=0, sticky="ew", pady=3)
     ttk.Button(
         hero_frame,
         text="恢复单位",
         command=lambda: call_async(
-            lambda: elephant_action(lambda: elephant_trainer().set_selected_unit_paused(False), "选中单位已恢复")
+            lambda: elephant_batch_action(
+                lambda: elephant_trainer().set_selected_unit_paused(False),
+                "恢复选中单位",
+            )
         ),
     ).grid(row=4, column=1, columnspan=2, sticky="ew", padx=(6, 0), pady=3)
     ttk.Label(hero_frame, text="单位大小").grid(row=5, column=0, sticky="w", pady=(8, 3))
@@ -16670,7 +17113,10 @@ def run_gui() -> None:
         target_frame,
         text="获取控制权",
         command=lambda: call_async(
-            lambda: f"已取得选中单位控制权；本地玩家 handle=0x{elephant_trainer().take_selected_unit_control():x}"
+            lambda: elephant_batch_action(
+                elephant_trainer().take_selected_unit_control,
+                "取得选中单位控制权",
+            )
         ),
     ).grid(row=0, column=0, columnspan=2, sticky="ew", pady=3)
     ttk.Button(
@@ -16679,7 +17125,10 @@ def run_gui() -> None:
         command=lambda: confirm_elephant_action(
             "击杀单位",
             "确定击杀当前选中单位？",
-            lambda: elephant_action(elephant_trainer().kill_selected_unit, "选中单位已被击杀"),
+            lambda: elephant_batch_action(
+                elephant_trainer().kill_selected_unit,
+                "击杀选中单位",
+            ),
         ),
     ).grid(row=1, column=0, sticky="ew", padx=(0, 6), pady=3)
     ttk.Button(
@@ -16688,7 +17137,10 @@ def run_gui() -> None:
         command=lambda: confirm_elephant_action(
             "爆炸单位",
             "确定让当前选中单位爆炸死亡？",
-            lambda: elephant_action(elephant_trainer().explode_selected_unit, "选中单位已爆炸"),
+            lambda: elephant_batch_action(
+                elephant_trainer().explode_selected_unit,
+                "爆炸选中单位",
+            ),
         ),
     ).grid(row=1, column=1, sticky="ew", pady=3)
     ttk.Button(
@@ -16697,7 +17149,10 @@ def run_gui() -> None:
         command=lambda: confirm_elephant_action(
             "删除单位",
             "单位会从地图中直接删除，确定继续？",
-            lambda: elephant_action(elephant_trainer().remove_selected_unit, "选中单位已删除"),
+            lambda: elephant_batch_action(
+                elephant_trainer().remove_selected_unit,
+                "删除选中单位",
+            ),
         ),
     ).grid(row=2, column=0, columnspan=2, sticky="ew", pady=3)
     ttk.Button(

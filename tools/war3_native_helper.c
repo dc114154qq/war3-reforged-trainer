@@ -3,7 +3,7 @@
 #include <stdio.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 19u
+#define WAR3_NATIVE_VERSION 20u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -71,6 +71,7 @@
 #define WAR3_NATIVE_OP_JASS_ITEM_FIELD_SET 116u
 #define WAR3_NATIVE_OP_JASS_HEAL_LOCAL_UNITS 117u
 #define WAR3_NATIVE_OP_JASS_CLONE_SELECTED_UNIT 118u
+#define WAR3_NATIVE_OP_JASS_SELECTED_UNITS 119u
 #define WAR3_ITEM_FLAGS_OFFSET 0x38u
 #define WAR3_ITEM_CHARGES_OFFSET 0x8d0u
 #define WAR3_ITEM_CHARGES_EMPTY_FLAG 0x1000u
@@ -1026,6 +1027,143 @@ static DWORD run_jass_selected_unit(NativeCommand *cmd, uint32_t index) {
         if (unit) {
             main_op->result = 6;
             handle_id = get_handle_id(unit);
+        }
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        error = GetExceptionCode();
+    }
+
+    __try {
+        if (destroy_group && group) {
+            destroy_group(group);
+        }
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        if (!error) {
+            error = GetExceptionCode();
+        }
+    }
+
+    main_op->result = unit;
+    main_op->last_error = error;
+    call_op->result = handle_id;
+    call_op->last_error = error;
+    cleanup_op->result = player;
+    cleanup_op->last_error = error;
+    return error;
+}
+
+static DWORD run_jass_selected_units(
+    NativeCommand *cmd,
+    uint32_t index,
+    uint64_t **extra_results,
+    uint32_t *extra_result_count
+) {
+    if (index + 2 >= cmd->op_count) {
+        return ERROR_INVALID_DATA;
+    }
+
+    NativeOp *main_op = &cmd->ops[index];
+    NativeOp *call_op = &cmd->ops[index + 1];
+    NativeOp *cleanup_op = &cmd->ops[index + 2];
+    JassNoArgU64Fn create_group = (JassNoArgU64Fn)(uintptr_t)main_op->handler;
+    JassNoArgVoidFn sync_selections = (JassNoArgVoidFn)(uintptr_t)main_op->arg0;
+    JassNoArgU64Fn get_local_player = (JassNoArgU64Fn)(uintptr_t)main_op->arg1;
+    JassGroupEnumUnitsSelectedFn group_enum_selected =
+        (JassGroupEnumUnitsSelectedFn)(uintptr_t)call_op->handler;
+    JassFirstOfGroupFn first_of_group = (JassFirstOfGroupFn)(uintptr_t)call_op->arg0;
+    JassGetHandleIdFn get_handle_id = (JassGetHandleIdFn)(uintptr_t)call_op->arg1;
+    JassDestroyGroupFn destroy_group = (JassDestroyGroupFn)(uintptr_t)cleanup_op->handler;
+    JassGroupRemoveUnitFn group_remove_unit =
+        (JassGroupRemoveUnitFn)(uintptr_t)cleanup_op->arg1;
+    uint64_t player_override = cleanup_op->arg0;
+    uint64_t group = 0;
+    uint64_t player = 0;
+    uint64_t unit = 0;
+    uint64_t selected_units[12];
+    uint32_t selected_count = 0;
+    uint32_t handle_id = 0;
+    DWORD error = 0;
+
+    if (
+        !create_group || !get_local_player || !group_enum_selected ||
+        !first_of_group || !get_handle_id || !group_remove_unit ||
+        !extra_results || !extra_result_count
+    ) {
+        return ERROR_INVALID_DATA;
+    }
+
+    __try {
+        main_op->result = 1;
+        group = create_group();
+        call_op->result = group;
+        if (!group) {
+            error = ERROR_NOT_FOUND;
+            __leave;
+        }
+        main_op->result = 2;
+        if (sync_selections) {
+            sync_selections();
+        }
+        main_op->result = 3;
+        player = player_override ? player_override : get_local_player();
+        cleanup_op->result = player;
+        if (!player) {
+            error = ERROR_NOT_FOUND;
+            __leave;
+        }
+        main_op->result = 4;
+        group_enum_selected(group, player, 0);
+        main_op->result = 5;
+        while (selected_count < 12u) {
+            uint64_t current = first_of_group(group);
+            uint8_t duplicate = 0;
+            if (!current) {
+                break;
+            }
+            group_remove_unit(group, current);
+            uint64_t current_handle = get_handle_id(current);
+            if (!current_handle) {
+                continue;
+            }
+            for (uint32_t existing = 0; existing < selected_count; ++existing) {
+                if (selected_units[existing] == current_handle) {
+                    duplicate = 1;
+                    break;
+                }
+            }
+            if (duplicate) {
+                continue;
+            }
+            selected_units[selected_count++] = current_handle;
+            if (!unit) {
+                unit = current;
+                handle_id = (uint32_t)current_handle;
+            }
+        }
+        if (selected_count) {
+            uint64_t *resized = *extra_results
+                ? (uint64_t *)HeapReAlloc(
+                    GetProcessHeap(),
+                    HEAP_ZERO_MEMORY,
+                    *extra_results,
+                    (*extra_result_count + selected_count) * sizeof(uint64_t)
+                )
+                : (uint64_t *)HeapAlloc(
+                    GetProcessHeap(),
+                    HEAP_ZERO_MEMORY,
+                    selected_count * sizeof(uint64_t)
+                );
+            if (!resized) {
+                error = ERROR_OUTOFMEMORY;
+                __leave;
+            }
+            memcpy(
+                resized + *extra_result_count,
+                selected_units,
+                selected_count * sizeof(uint64_t)
+            );
+            *extra_results = resized;
+            *extra_result_count += selected_count;
+            main_op->result = 6;
         }
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         error = GetExceptionCode();
@@ -2206,6 +2344,19 @@ static void run_command(void) {
             }
             case WAR3_NATIVE_OP_JASS_SELECTED_UNIT: {
                 last_error = run_jass_selected_unit(&cmd, i);
+                if (last_error) {
+                    goto finish;
+                }
+                i += 2;
+                break;
+            }
+            case WAR3_NATIVE_OP_JASS_SELECTED_UNITS: {
+                last_error = run_jass_selected_units(
+                    &cmd,
+                    i,
+                    &extra_results,
+                    &extra_result_count
+                );
                 if (last_error) {
                     goto finish;
                 }

@@ -2789,11 +2789,7 @@ static void run_command(void) {
 
                 if (
                     !get_local_player || !create_unit || !get_unit_facing ||
-                    !get_hero_level || !set_hero_level || !get_hero_xp ||
-                    !set_hero_xp || !get_hero_str || !set_hero_str ||
-                    !get_hero_agi || !set_hero_agi || !get_hero_int ||
-                    !set_hero_int || !get_hero_skill_points ||
-                    !modify_skill_points || !get_unit_max_hp ||
+                    !get_unit_max_hp ||
                     !set_unit_max_hp || !get_widget_life || !set_widget_life ||
                     !get_unit_max_mana || !set_unit_max_mana ||
                     !get_unit_state || !set_unit_state || !unit_item_in_slot ||
@@ -2807,6 +2803,20 @@ static void run_command(void) {
                     !get_unit_type_id || !remove_unit ||
                     !war3_executable_pointer(op->handler) ||
                     !war3_executable_pointer(op->arg0)
+                ) {
+                    op->last_error = ERROR_INVALID_DATA;
+                    last_error = op->last_error;
+                    goto finish;
+                }
+                if (
+                    d1->rawcode &&
+                    (
+                        !get_hero_level || !set_hero_level || !get_hero_xp ||
+                        !set_hero_xp || !get_hero_str || !set_hero_str ||
+                        !get_hero_agi || !set_hero_agi || !get_hero_int ||
+                        !set_hero_int || !get_hero_skill_points ||
+                        !modify_skill_points
+                    )
                 ) {
                     op->last_error = ERROR_INVALID_DATA;
                     last_error = op->last_error;
@@ -2838,8 +2848,10 @@ static void run_command(void) {
                         __leave;
                     }
 
-                    source_level = get_hero_level(cmd.unit_handle);
-                    if (source_level > 0) {
+                    source_level = d1->rawcode
+                        ? get_hero_level(cmd.unit_handle)
+                        : 0;
+                    if (d1->rawcode && source_level > 0) {
                         int32_t source_xp = get_hero_xp(cmd.unit_handle);
                         int32_t source_points;
                         int32_t target_points;
@@ -2921,11 +2933,13 @@ static void run_command(void) {
                     }
 
                     for (int32_t index = 0; index < 1024; ++index) {
+                        __try {
                         uint64_t source_ability =
                             get_ability_by_index(cmd.unit_handle, index);
                         uint32_t ability_id;
                         int32_t source_ability_level;
                         int32_t target_ability_level;
+                        int target_has_ability = 0;
                         if (!source_ability) {
                             break;
                         }
@@ -2938,10 +2952,26 @@ static void run_command(void) {
                         if (source_ability_level <= 0) {
                             continue;
                         }
+                        for (int32_t target_index = 0; target_index < 1024; ++target_index) {
+                            uint64_t target_ability =
+                                get_ability_by_index(target, target_index);
+                            if (!target_ability) {
+                                break;
+                            }
+                            if (get_ability_id(target_ability) == ability_id) {
+                                target_has_ability = 1;
+                                break;
+                            }
+                        }
                         target_ability_level = get_ability_level(target, ability_id);
+                        if (target_ability_level <= 0 && target_has_ability) {
+                            continue;
+                        }
                         if (target_ability_level <= 0 && !add_ability(target, ability_id)) {
-                            clone_error = ERROR_WRITE_FAULT;
-                            __leave;
+                            /* Some map-provided abilities cannot be attached
+                             * to a newly created instance; leave that one out
+                             * without calling another unsafe native. */
+                            continue;
                         }
                         if (get_ability_level(target, ability_id) != source_ability_level) {
                             set_ability_level(target, ability_id, source_ability_level);
@@ -2954,6 +2984,9 @@ static void run_command(void) {
                             }
                         }
                         ++copied_abilities;
+                        } __except (EXCEPTION_EXECUTE_HANDLER) {
+                            continue;
+                        }
                     }
 
                     {

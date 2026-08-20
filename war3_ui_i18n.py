@@ -840,6 +840,7 @@ _EN_TRANSLATIONS.update(
     "当前单位没有可写的 X 坐标属性": "There is no writable X coordinate property for the current unit",
     "当前单位没有可写的 Y 坐标属性": "There is no writable Y coordinate property for the current unit",
     "等待 Warcraft native helper 事务锁超时": "Waiting for Warcraft native helper transaction lock timeout",
+    "等待 Warcraft native helper 批事务锁超时": "Waiting for Warcraft native helper batch transaction lock timeout",
     "游戏拒绝降低英雄等级": "Game refuses to lower hero levels",
     "找不到 ": "Not found",
     "技能直接效果回调不在游戏可执行代码段": "The direct effect callback of the skill is not in the game executable code section",

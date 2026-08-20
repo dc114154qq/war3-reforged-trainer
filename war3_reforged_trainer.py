@@ -1413,11 +1413,18 @@ class ProcessMemory:
                 offset += size
         return hits
 
-    def scan_bytes_private(self, pattern: bytes, max_region_size: int = 64 * 1024 * 1024) -> list[int]:
+    def scan_bytes_private(
+        self,
+        pattern: bytes,
+        max_region_size: int | None = 64 * 1024 * 1024,
+    ) -> list[int]:
         hits: list[int] = []
         tail_len = max(0, len(pattern) - 1)
         for region in self.regions():
-            if region.typ != MEM_PRIVATE or region.size > max_region_size:
+            if (
+                region.typ != MEM_PRIVATE
+                or (max_region_size is not None and region.size > max_region_size)
+            ):
                 continue
             offset = 0
             tail = b""
@@ -1445,7 +1452,7 @@ class ProcessMemory:
     def scan_bytes_private_many(
         self,
         patterns: Iterable[bytes],
-        max_region_size: int = 64 * 1024 * 1024,
+        max_region_size: int | None = 64 * 1024 * 1024,
     ) -> dict[bytes, list[int]]:
         unique_patterns = tuple(dict.fromkeys(patterns))
         hits = {pattern: [] for pattern in unique_patterns}
@@ -1453,7 +1460,10 @@ class ProcessMemory:
             return hits
         tail_len = max(len(pattern) for pattern in unique_patterns) - 1
         for region in self.regions():
-            if region.typ != MEM_PRIVATE or region.size > max_region_size:
+            if (
+                region.typ != MEM_PRIVATE
+                or (max_region_size is not None and region.size > max_region_size)
+            ):
                 continue
             offset = 0
             tail = b""
@@ -2498,6 +2508,8 @@ class War3Trainer:
         self._hidden_toggle_abilities: set[tuple[int, int]] = set()
         self._pending_direct_effects_lock = threading.Lock()
         self._native_helper_lock = threading.RLock()
+        self._native_helper_batch_hook = None
+        self._native_helper_batch_thread_id = None
         self._ability_runtime_templates: dict[tuple[int, int, int], dict[str, object]] = {}
         self._ability_instance_by_data: dict[tuple[int, int, int], AbilityInstance] = {}
         self._selection_player_candidates: list[int] = []
@@ -3209,6 +3221,54 @@ class War3Trainer:
                 return NativeHandler(name, record, handler)
         return None
 
+    def _find_native_handlers_by_exact_name_scan(
+        self,
+        pm: ProcessMemory,
+        regions: list[Region],
+        names: Iterable[str],
+    ) -> dict[str, NativeHandler]:
+        wanted = tuple(dict.fromkeys(names))
+        if not wanted:
+            return {}
+        patterns = tuple(name.encode("ascii") + b"\0" for name in wanted)
+        if isinstance(pm, Win10ProcessMemory):
+            hits = self._scan_bytes_private_many_win10(
+                pm,
+                patterns,
+                max_region_size=None,
+            )
+        else:
+            hits = pm.scan_bytes_private_many(patterns, max_region_size=None)
+        by_pattern = {
+            name.encode("ascii") + b"\0": name
+            for name in wanted
+        }
+        external_names = {
+            address: by_pattern[pattern]
+            for pattern, addresses in hits.items()
+            for address in addresses
+        }
+        found: dict[str, NativeHandler] = {}
+        for pattern, addresses in hits.items():
+            name = by_pattern[pattern]
+            for hit in addresses:
+                record = hit - 0x18
+                try:
+                    handler = pm.read_u64(record - 8)
+                except OSError:
+                    continue
+                if not self._is_executable_image_address(regions, handler):
+                    continue
+                if self._decode_native_name_from_record(
+                    pm,
+                    record,
+                    external_names=external_names,
+                ) != name:
+                    continue
+                found[name] = NativeHandler(name, record, handler)
+                break
+        return found
+
     def _recover_native_external_names_win10(
         self,
         pm: ProcessMemory,
@@ -3456,6 +3516,15 @@ class War3Trainer:
             scan_ranges_for(anchors, external_names)
 
         self._native_handlers.update(found)
+        if missing:
+            broad_found = self._find_native_handlers_by_exact_name_scan(
+                pm,
+                regions,
+                missing,
+            )
+            found.update(broad_found)
+            missing.difference_update(broad_found)
+            self._native_handlers.update(broad_found)
         if missing:
             raise RuntimeError(
                 "在 native 表邻域未找到函数：" + ", ".join(sorted(missing))
@@ -3778,6 +3847,12 @@ class War3Trainer:
 
     @contextmanager
     def _native_helper_transaction(self, *, wait_ms: int = 300000) -> Iterator[None]:
+        if (
+            self._native_helper_batch_hook is not None
+            and self._native_helper_batch_thread_id == threading.get_ident()
+        ):
+            yield
+            return
         with self._native_helper_lock:
             mutex = kernel32.CreateMutexW(
                 None,
@@ -3804,6 +3879,101 @@ class War3Trainer:
                 kernel32.CloseHandle(mutex)
                 if release_error:
                     raise ctypes.WinError(release_error)
+
+    @contextmanager
+    def _native_helper_batch_transaction(self, *, wait_ms: int = 300000) -> Iterator[None]:
+        with self._native_helper_lock:
+            mutex = kernel32.CreateMutexW(
+                None,
+                False,
+                f"Local\\War3ReforgedTrainer.NativeHelper.{self.pid}",
+            )
+            if not mutex:
+                raise ctypes.WinError(ctypes.get_last_error())
+            wait_result = int(kernel32.WaitForSingleObject(
+                mutex,
+                max(5000, min(300000, int(wait_ms))),
+            ))
+            if wait_result not in (WAIT_OBJECT_0, WAIT_ABANDONED):
+                kernel32.CloseHandle(mutex)
+                if wait_result == WAIT_TIMEOUT:
+                    raise TimeoutError("等待 Warcraft native helper 批事务锁超时")
+                raise ctypes.WinError(ctypes.get_last_error())
+
+            module = kernel32.LoadLibraryW(str(self._native_helper_dll_path()))
+            if not module:
+                kernel32.ReleaseMutex(mutex)
+                kernel32.CloseHandle(mutex)
+                raise ctypes.WinError(ctypes.get_last_error())
+            hook = None
+            try:
+                proc = kernel32.GetProcAddress(module, b"War3HookProc")
+                if not proc:
+                    raise ctypes.WinError(ctypes.get_last_error())
+                pid = ctypes.c_ulong()
+                tid = user32.GetWindowThreadProcessId(
+                    ctypes.c_void_p(self.hwnd),
+                    ctypes.byref(pid),
+                )
+                if not tid or int(pid.value) != self.pid:
+                    raise RuntimeError("Warcraft III 窗口线程已失效")
+                hook = user32.SetWindowsHookExW(
+                    WH_CALLWNDPROC,
+                    ctypes.c_void_p(proc),
+                    ctypes.c_void_p(module),
+                    int(tid),
+                )
+                if not hook:
+                    raise ctypes.WinError(ctypes.get_last_error())
+                self._native_helper_batch_hook = hook
+                self._native_helper_batch_thread_id = threading.get_ident()
+                try:
+                    yield
+                finally:
+                    self._native_helper_batch_hook = None
+                    self._native_helper_batch_thread_id = None
+                    user32.UnhookWindowsHookEx(hook)
+            finally:
+                kernel32.FreeLibrary(module)
+                release_error = 0
+                if not kernel32.ReleaseMutex(mutex):
+                    release_error = ctypes.get_last_error()
+                kernel32.CloseHandle(mutex)
+                if release_error:
+                    raise ctypes.WinError(release_error)
+
+    def _wait_native_helper_result(
+        self,
+        command_path: Path,
+        hook: int,
+        op_count: int,
+        timeout_ms: int,
+    ) -> list[NativeHelperOpResult]:
+        deadline = time.monotonic() + (timeout_ms / 1000.0)
+        last_status = self.NATIVE_HELPER_STATUS_PENDING
+        while time.monotonic() < deadline:
+            message_result = ctypes.c_void_p()
+            sent = user32.SendMessageTimeoutW(
+                ctypes.c_void_p(self.hwnd),
+                WM_NULL,
+                None,
+                None,
+                SMTO_ABORTIFHUNG,
+                150,
+                ctypes.byref(message_result),
+            )
+            data = self._read_native_helper_command(command_path)
+            if data is None:
+                time.sleep(0.01)
+                continue
+            last_status = struct.unpack_from("<I", data, 8)[0]
+            if last_status != self.NATIVE_HELPER_STATUS_PENDING:
+                return self._parse_native_helper_results(data, op_count)
+            if not sent:
+                time.sleep(0.02)
+                continue
+            time.sleep(0.02)
+        raise TimeoutError(f"native helper 执行超时：status={last_status}")
 
     def _run_native_helper_ops_locked(
         self,
@@ -3932,6 +4102,16 @@ class War3Trainer:
             command_path,
             self._pack_native_helper_command(unit_address, op_list),
         )
+        if (
+            self._native_helper_batch_hook is not None
+            and self._native_helper_batch_thread_id == threading.get_ident()
+        ):
+            return self._wait_native_helper_result(
+                command_path,
+                self._native_helper_batch_hook,
+                len(op_list),
+                timeout_ms,
+            )
         dll_path = self._native_helper_dll_path()
         module = kernel32.LoadLibraryW(str(dll_path))
         if not module:
@@ -3953,31 +4133,12 @@ class War3Trainer:
             )
             if not hook:
                 raise ctypes.WinError(ctypes.get_last_error())
-            deadline = time.monotonic() + (timeout_ms / 1000.0)
-            last_status = self.NATIVE_HELPER_STATUS_PENDING
-            while time.monotonic() < deadline:
-                message_result = ctypes.c_void_p()
-                sent = user32.SendMessageTimeoutW(
-                    ctypes.c_void_p(self.hwnd),
-                    WM_NULL,
-                    None,
-                    None,
-                    SMTO_ABORTIFHUNG,
-                    150,
-                    ctypes.byref(message_result),
-                )
-                data = self._read_native_helper_command(command_path)
-                if data is None:
-                    time.sleep(0.01)
-                    continue
-                last_status = struct.unpack_from("<I", data, 8)[0]
-                if last_status != self.NATIVE_HELPER_STATUS_PENDING:
-                    return self._parse_native_helper_results(data, len(op_list))
-                if not sent:
-                    time.sleep(0.02)
-                    continue
-                time.sleep(0.02)
-            raise TimeoutError(f"native helper 执行超时：status={last_status}")
+            return self._wait_native_helper_result(
+                command_path,
+                hook,
+                len(op_list),
+                timeout_ms,
+            )
         finally:
             if hook:
                 user32.UnhookWindowsHookEx(hook)
@@ -4125,10 +4286,11 @@ class War3Trainer:
     def _selected_candidates_snapshot(
         self,
         pm: ProcessMemory,
+        handles: Iterable[int] | None = None,
     ) -> list[tuple[UnitCandidate, int]]:
         selected: list[tuple[UnitCandidate, int]] = []
         seen_units: set[int] = set()
-        handles = self._elephant_selected_handles(pm)
+        handles = tuple(handles) if handles is not None else self._elephant_selected_handles(pm)
         # Build the expensive unit-object map once for the whole selection.
         # The old per-handle path rebuilt this global scan for every unit.
         unit_index = self._build_unit_object_index(pm, force_refresh=True)
@@ -4233,18 +4395,26 @@ class War3Trainer:
                 except Exception:
                     snapshot = self._selected_candidates_snapshot(pm)
             else:
-                snapshot = self._selected_candidates_snapshot(pm)
+                snapshot = self._selected_candidates_snapshot(pm, handles=handles)
         results: list[object] = []
         errors: list[str] = []
-        for candidate, unit_handle in snapshot:
-            try:
-                with self._bound_elephant_selection(candidate, unit_handle):
-                    results.append(action())
-            except Exception as exc:
-                errors.append(
-                    f"{format_rawcode(candidate.unit_type_id) if candidate.unit_type_id else '未知单位'}"
-                    f"(0x{candidate.unit_address:x}): {exc}"
-                )
+
+        def process_snapshot() -> None:
+            for candidate, unit_handle in snapshot:
+                try:
+                    with self._bound_elephant_selection(candidate, unit_handle):
+                        results.append(action())
+                except Exception as exc:
+                    errors.append(
+                        f"{format_rawcode(candidate.unit_type_id) if candidate.unit_type_id else '未知单位'}"
+                        f"(0x{candidate.unit_address:x}): {exc}"
+                    )
+
+        if len(snapshot) > 1 and hasattr(self, "_native_helper_lock"):
+            with self._native_helper_batch_transaction():
+                process_snapshot()
+        else:
+            process_snapshot()
         return len(results), len(errors), tuple(results), tuple(errors)
 
     def _direct_selected_context(self) -> tuple[UnitCandidate, int]:

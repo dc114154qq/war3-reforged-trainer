@@ -466,7 +466,7 @@ class GlobalHotkeyManager:
 
 
 ELEPHANT_HOTKEY_SPECS = (
-    GlobalHotkeySpec("read_unit", "Ctrl+F11  读取当前选中单位", MOD_CONTROL, VK_F11),
+    GlobalHotkeySpec("read_unit", "Ctrl+F11  读取所有选中单位", MOD_CONTROL, VK_F11),
     GlobalHotkeySpec("hero_level", "Ctrl+Q  英雄等级", MOD_CONTROL, ord("Q")),
     GlobalHotkeySpec("instant_move", "Ctrl+X  瞬间移动", MOD_CONTROL, ord("X")),
     GlobalHotkeySpec("explode_unit", "Ctrl+W  瞬间爆炸目标单位", MOD_CONTROL, ord("W")),
@@ -4091,6 +4091,9 @@ class War3Trainer:
         selected: list[tuple[UnitCandidate, int]] = []
         seen_units: set[int] = set()
         handles = self._elephant_selected_handles(pm)
+        # Build the expensive unit-object map once for the whole selection.
+        # The old per-handle path rebuilt this global scan for every unit.
+        unit_index = self._build_unit_object_index(pm, force_refresh=True)
         for unit_handle in handles:
             if isinstance(pm, Win10ProcessMemory):
                 candidate = self._candidate_from_jass_selection_result_win10(
@@ -4117,6 +4120,7 @@ class War3Trainer:
                     unit_handle,
                     0,
                     0,
+                    unit_index=unit_index,
                 )
                 if candidate is None:
                     resolved_unit = self._resolve_jass_unit_handle(
@@ -4128,6 +4132,7 @@ class War3Trainer:
                         resolved_unit,
                         0,
                         0,
+                        unit_index=unit_index,
                     )
             if candidate is None or not candidate.unit_address:
                 continue
@@ -4146,6 +4151,15 @@ class War3Trainer:
         pm: ProcessMemory,
         snapshot: Iterable[tuple[UnitCandidate, int]],
     ) -> tuple[UnitSelectionSummary, ...]:
+        snapshot = tuple(snapshot)
+        owners = {
+            candidate.owner_address
+            for candidate, _unit_handle in snapshot
+            if candidate.owner_address
+        }
+        # Component discovery is also a process-wide scan. Reuse its result
+        # across all selected units, especially for mixed hero/non-hero groups.
+        components_by_owner = self._component_map_for_owners(pm, owners)
         return tuple(
             self._selection_summary_from_candidate(
                 pm,
@@ -4153,6 +4167,7 @@ class War3Trainer:
                 refs=1,
                 known_hits=2,
                 region_base=0,
+                components=components_by_owner.get(candidate.owner_address),
                 include_inventory=True,
                 include_abilities=False,
             )
@@ -4184,15 +4199,14 @@ class War3Trainer:
     def _direct_selected_context(self) -> tuple[UnitCandidate, int]:
         if self._elephant_selection_override is not None:
             return self._elephant_selection_override
-        for _attempt in range(3):
-            with self._process_memory() as pm:
-                candidate = self._elephant_selected_candidate(pm)
-                unit_handle = self._elephant_selected_handle(pm)
-            resolved_unit = self._resolve_jass_unit_handle(unit_handle)
-            if resolved_unit == candidate.unit_address:
-                return candidate, unit_handle
-            time.sleep(0.02)
-        raise RuntimeError("选中单位在操作期间发生变化，请重新执行")
+        with self._process_memory() as pm:
+            snapshot = self._selected_candidates_snapshot(pm)
+        if not snapshot:
+            raise RuntimeError("游戏当前没有可操作的选中单位")
+        # Use the candidate and JASS handle from one snapshot. Resolving them
+        # through two independent scans can pair a current unit with a stale
+        # handle when the game refreshes its selection state.
+        return snapshot[0]
 
     def _resolve_jass_unit_handle(self, unit_handle: int, *, allow_missing: bool = False) -> int:
         if not unit_handle:
@@ -5563,7 +5577,17 @@ class War3Trainer:
             raise ValueError("没有可用于创建单位的有效 ID")
         with self._process_memory() as pm:
             handler_names = ["GetLocalPlayer", "CreateUnit"]
+            source_is_hero = False
             if rawcode is None:
+                try:
+                    source_is_hero = "hero" in self._selected_components(
+                        pm,
+                        candidate.owner_address,
+                    )
+                except (AttributeError, OSError, RuntimeError):
+                    # A partial/test memory backend may not expose component
+                    # metadata. In that case skip hero-only calls safely.
+                    source_is_hero = False
                 handler_names.extend((
                     "GetUnitTypeId",
                     "RemoveUnit",
@@ -5618,7 +5642,7 @@ class War3Trainer:
                 ),
                 (
                     self.NATIVE_HELPER_OP_JASS_MULTI_ARG,
-                    0,
+                    int(source_is_hero),
                     handlers["GetUnitFacing"].handler_address,
                     handlers["GetHeroLevel"].handler_address,
                     handlers["SetHeroLevel"].handler_address,
@@ -10144,9 +10168,11 @@ class War3Trainer:
         unit_value: int,
         handle_id: int,
         player_handle: int,
+        unit_index: dict[int, tuple[int, int]] | None = None,
     ) -> UnitCandidate | None:
         note = f"jass_selected unit=0x{unit_value:x} handle_id=0x{handle_id:x} player=0x{player_handle:x}"
-        unit_index = self._build_unit_object_index(pm, force_refresh=True)
+        if unit_index is None:
+            unit_index = self._build_unit_object_index(pm, force_refresh=True)
         entry = unit_index.get(unit_value)
         if entry is not None:
             handle, owner = entry
@@ -16534,7 +16560,7 @@ def run_gui() -> None:
     top = ttk.Frame(outer)
     top.pack(fill="x")
     ttk.Button(top, text="连接/刷新进程", command=lambda: call_async(connect)).pack(side="left")
-    read_unit_button = ttk.Button(top, text="读取当前选中单位 (Ctrl+F11)")
+    read_unit_button = ttk.Button(top, text="读取所有选中单位 (Ctrl+F11)")
     read_unit_button.configure(
         command=lambda: call_async(read_unit_with_sound, "read_unit", read_unit_button)
     )

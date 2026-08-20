@@ -22,7 +22,7 @@ Before running the trainer, start Warcraft III: Reforged, enter a map, and selec
 
 ## Use Backup Read When Normal Reading Fails
 
-If clicking `Read Selected Unit` causes `WinError 299`, displays only part of the fields, fails to read, returns the wrong unit, or remains locked to the first unit read, follow these steps:
+If clicking `Read All Selected Units` causes `WinError 299`, displays only part of the fields, fails to read, returns the wrong unit, or remains locked to the first unit read, follow these steps:
 
 1. Left-click the target unit in the game and make sure it is the only selected unit.
 2. Click `Backup Read` next to the normal read button.
@@ -40,7 +40,7 @@ If clicking `Read Selected Unit` causes `WinError 299`, displays only part of th
 - Hero abilities: read and replace learned ability rawcodes. A write synchronizes the hero ability configuration with the runtime ability instance and refreshes the command card. The target ability does not require a living unit template in the current match. If the Reforged engine can create an ability with that rawcode from the current map/object data, the trainer can produce a safe runtime template.
 - Ability fields: enter an ability rawcode and field level on the dedicated page to read exposed integer, real, Boolean, and string fields from the current ability instance. Selected fields can be modified temporarily for the current match and verified by reading them back.
 - Item fields: read 20 official Reforged item-instance fields from inventory slots 1 through 6. Nineteen integer, real, and Boolean fields support temporary runtime writes, read-back verification, and rollback; the model string field is listed but not writable yet.
-- Elephant Features and hotkeys: provides map, unit, hero, item, ability, technology, buff/debuff, and full-screen effect functions, together with 47 independently configurable global hotkeys. `Ctrl+F11` reads the selected unit and `Ctrl+F12` uses Backup Read; a Windows notification sound plays after a successful read. Hotkeys first use Windows global registration. If a key combination is already occupied, the trainer automatically switches it to compatibility listening and lists the affected keys in the interface.
+- Elephant Features and hotkeys: provides map, unit, hero, item, ability, technology, buff/debuff, and full-screen effect functions, together with 47 independently configurable global hotkeys. `Ctrl+F11` reads all selected units; a Windows notification sound plays after a successful read. Hotkeys first use Windows global registration. If a key combination is already occupied, the trainer automatically switches it to compatibility listening and lists the affected keys in the interface.
 - ID catalogs: after the Elephant Features page, three lookup pages provide Item IDs, Ability IDs, and Unit IDs. They contain 283 items, 833 abilities, and 834 unit rawcodes. Search by ID or either language, copy a selected four-character rawcode, and never write to the game process.
 
 ### ID Catalog Sources
@@ -60,10 +60,10 @@ If clicking `Read Selected Unit` causes `WinError 299`, displays only part of th
 
 ## Interface Notes
 
-- `Read Selected Unit` and `Refresh Field Table` both read the unit currently selected in the game again and refresh the HP, MP, and coordinate inputs above. This prevents stale values from remaining visible after switching units.
-- `Backup Read` is next to `Read Selected Unit` and is intended for `WinError 299`, missing fields, incorrect units, and normal-read failures. Backup Read revalidates the live in-game selection and never falls back to the previously read unit.
+- `Read All Selected Units` and `Refresh Field Table` both read the units currently selected in the game again and refresh the HP, MP, and coordinate inputs above. This prevents stale values from remaining visible after switching units.
+- The backup edition uses the same `Read All Selected Units` entry and is intended for `WinError 299`, missing fields, incorrect units, and normal-read failures. It revalidates the live in-game selection and never falls back to the previously read unit.
 - `List Unit Candidates` shows every interpretable candidate in the current selection-state area. Higher `refs/known` values indicate stronger evidence. Heroes usually have `hero,inventory` components and an inventory-slot list, while regular units may have only components such as `attack,move`. After choosing a row, click `Read Selected Candidate`. Subsequent `Write Selected Unit` and `Write Field` operations remain fixed to that candidate's `handle/owner/unit` until another automatic read or manual candidate selection occurs.
-- If the selected-handle slot is invalid, `Read Selected Unit` reports an error and automatically fills the candidate table. The slow global scan usually takes tens of seconds. Use HP/MP, coordinates, components, and inventory slots to identify the target.
+- If the selected-handle slot is invalid, `Read All Selected Units` reports an error and automatically fills the candidate table. The slow global scan usually takes tens of seconds. Use HP/MP, coordinates, components, and inventory slots to identify the target.
 - By default, a field-table write targets the unit represented by the current field table instead of guessing the current selection again for every write. After changing equipment, the trainer can therefore read back the same unit even if Reforged's selected-handle slot temporarily becomes invalid.
 - `Write Selected Unit` writes current HP, maximum HP, current MP, maximum MP, regeneration, and coordinates through their respective interface fields. It automatically raises a maximum only when the current value exceeds that maximum.
 - Equipment/item modification follows the classic trainer's field-table workflow. On the `Selected Unit` page, select `Inventory Slot N` or `Inventory Slot N Count`, enter `Target Field Value`, and click `Write Field`. An empty slot has no item object that can be rewritten directly and therefore produces an error. Count writes use Warcraft III's native item-count field.

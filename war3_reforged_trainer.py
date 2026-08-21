@@ -2480,6 +2480,7 @@ class War3Trainer:
     NATIVE_HELPER_OP_DIRECT_ABILITY_ENUM = 106
     NATIVE_HELPER_OP_JASS_ABILITY_REAL_LEVEL_FIELD_SET = 107
     NATIVE_HELPER_OP_JASS_UNIT_RESOLVE = 109
+    NATIVE_HELPER_OP_JASS_UNIT_RESOLVE_ARG = 120
     NATIVE_HELPER_OP_JASS_ABILITY_FIELD_GET = 110
     NATIVE_HELPER_OP_JASS_ABILITY_LEVEL_FIELD_GET = 111
     NATIVE_HELPER_OP_JASS_ABILITY_SCALAR_FIELD_SET = 112
@@ -2494,6 +2495,7 @@ class War3Trainer:
     def __init__(self, pid: int | None = None):
         self.hwnd, self.pid = find_war3(pid)
         self._unit_owner_index: dict[int, int] = {}
+        self._owner_properties_cache: dict[int, dict[int, int]] = {}
         self._selected_handle_addresses = list(self.KNOWN_SELECTED_HANDLE_ADDRESSES)
         self._item_object_cache: dict[int, int] = {}
         self._native_handlers: dict[str, NativeHandler] = {}
@@ -2546,6 +2548,7 @@ class War3Trainer:
             if isinstance(previous_win10_session, BackupReadWar3Trainer):
                 previous_win10_session.close_session_diagnostics()
             self._unit_owner_index = {}
+            self._owner_properties_cache = {}
             self._selected_handle_addresses = list(self.KNOWN_SELECTED_HANDLE_ADDRESSES)
             self._item_object_cache = {}
             self._native_handlers = {}
@@ -4040,6 +4043,7 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_DIRECT_ABILITY_ENUM,
             self.NATIVE_HELPER_OP_JASS_ABILITY_REAL_LEVEL_FIELD_SET,
             self.NATIVE_HELPER_OP_JASS_UNIT_RESOLVE,
+            self.NATIVE_HELPER_OP_JASS_UNIT_RESOLVE_ARG,
             self.NATIVE_HELPER_OP_JASS_ABILITY_FIELD_GET,
             self.NATIVE_HELPER_OP_JASS_ABILITY_LEVEL_FIELD_GET,
             self.NATIVE_HELPER_OP_JASS_ABILITY_SCALAR_FIELD_SET,
@@ -4291,20 +4295,32 @@ class War3Trainer:
         self,
         pm: ProcessMemory,
         handles: Iterable[int] | None = None,
+        allow_owner_refresh: bool = True,
     ) -> list[tuple[UnitCandidate, int]]:
         selected: list[tuple[UnitCandidate, int]] = []
         seen_units: set[int] = set()
         handles = tuple(handles) if handles is not None else self._elephant_selected_handles(pm)
         # Build the expensive unit-object map once for the whole selection.
         # The old per-handle path rebuilt this global scan for every unit.
-        unit_index = self._build_unit_object_index(pm, force_refresh=True)
+        unit_index = self._build_unit_object_index(pm, force_refresh=False)
+        resolved_units: dict[int, int] = {}
+        try:
+            resolved_units = self._resolve_jass_unit_handles_batch(
+                pm,
+                handles,
+                allow_missing=True,
+            )
+        except Exception:
+            resolved_units = {}
         for unit_handle in handles:
+            selected_value = resolved_units.get(unit_handle, unit_handle)
             if isinstance(pm, Win10ProcessMemory):
                 candidate = self._candidate_from_jass_selection_result_win10(
                     pm,
-                    unit_handle,
+                    selected_value,
                     0,
                     self._last_win10_jass_player_handle,
+                    unit_index=unit_index,
                 )
                 if candidate is None:
                     resolved_unit = self._resolve_jass_unit_handle_win10(
@@ -4317,11 +4333,12 @@ class War3Trainer:
                         resolved_unit,
                         0,
                         self._last_win10_jass_player_handle,
+                        unit_index=unit_index,
                     )
             else:
                 candidate = self._candidate_from_jass_selection_result(
                     pm,
-                    unit_handle,
+                    selected_value,
                     0,
                     0,
                     unit_index=unit_index,
@@ -4345,6 +4362,13 @@ class War3Trainer:
             seen_units.add(candidate.unit_address)
             selected.append(
                 (self._candidate_with_selected_unit_type_id(pm, candidate), unit_handle)
+            )
+        if len(selected) < len(handles) and allow_owner_refresh:
+            self._build_unit_object_index(pm, force_refresh=True)
+            return self._selected_candidates_snapshot(
+                pm,
+                handles=handles,
+                allow_owner_refresh=False,
             )
         if not selected:
             raise RuntimeError("当前选择列表没有可映射的单位")
@@ -4457,6 +4481,41 @@ class War3Trainer:
             ):
                 return 0
             raise
+
+    def _resolve_jass_unit_handles_batch(
+        self,
+        pm: ProcessMemory,
+        unit_handles: Iterable[int],
+        *,
+        allow_missing: bool = False,
+    ) -> dict[int, int]:
+        handles = tuple(dict.fromkeys(int(handle) for handle in unit_handles if int(handle)))
+        if not handles:
+            return {}
+        resolver = self._discover_jass_unit_resolver(pm)
+        try:
+            results = self._run_native_helper_ops(
+                0,
+                tuple(
+                    (
+                        self.NATIVE_HELPER_OP_JASS_UNIT_RESOLVE_ARG,
+                        0,
+                        resolver,
+                        handle,
+                        0,
+                    )
+                    for handle in handles
+                ),
+            )
+        except RuntimeError:
+            if allow_missing:
+                return {}
+            raise
+        return {
+            handle: int(result.result)
+            for handle, result in zip(handles, results)
+            if int(result.result)
+        }
 
     def _remove_captured_engine_ability_instance(
         self,
@@ -8994,38 +9053,37 @@ class War3Trainer:
                     yield prop
 
     def _property_from_owner(self, pm: ProcessMemory, owner: int, kind: int) -> int | None:
-        seen: set[int] = set()
-        for prop in self._iter_owner_property_list(pm, owner):
-            if prop in seen:
-                continue
-            seen.add(prop)
-            try:
-                if pm.read_u64(prop + 0x18) != self.PROP_TAG:
-                    continue
-                if pm.read_u64(prop + 0x50) != owner:
-                    continue
-                prop_kind = (pm.read_u64(prop + 0x78) >> 32) & 0xFFFFFFFF
-            except OSError:
-                continue
-            if prop_kind == kind:
-                return prop
-        return None
+        return self._owner_properties(pm, owner).get(int(kind))
 
     def _position_property_from_owner(self, pm: ProcessMemory, owner: int) -> int | None:
+        return self._owner_properties(pm, owner).get(-1)
+
+    def _owner_properties(self, pm: ProcessMemory, owner: int) -> dict[int, int]:
+        owner = int(owner)
+        cached = getattr(self, "_owner_properties_cache", {}).get(owner)
+        if cached is not None:
+            return cached
+        properties: dict[int, int] = {}
         seen: set[int] = set()
         for prop in self._iter_owner_property_list(pm, owner):
             if prop in seen:
                 continue
             seen.add(prop)
             try:
-                if pm.read_u64(prop + 0x18) != self.POSITION_PROP_TAG:
-                    continue
+                tag = pm.read_u64(prop + 0x18)
                 if pm.read_u64(prop + 0x50) != owner:
                     continue
+                if tag == self.PROP_TAG:
+                    prop_kind = (pm.read_u64(prop + 0x78) >> 32) & 0xFFFFFFFF
+                    properties.setdefault(int(prop_kind), prop)
+                elif tag == self.POSITION_PROP_TAG:
+                    properties.setdefault(-1, prop)
             except OSError:
                 continue
-            return prop
-        return None
+        cache = getattr(self, "_owner_properties_cache", None)
+        if cache is not None:
+            cache[owner] = properties
+        return properties
 
     def _unit_object_from_owner(self, pm: ProcessMemory, owner: int, handle: int) -> int:
         try:
@@ -10462,6 +10520,7 @@ class War3Trainer:
         unit_value: int,
         handle_id: int,
         player_handle: int,
+        unit_index: dict[int, tuple[int, int]] | None = None,
     ) -> UnitCandidate | None:
         note = (
             f"win10_jass_selected unit=0x{unit_value:x} "
@@ -10483,6 +10542,13 @@ class War3Trainer:
             if expected_unit and candidate.unit_address != expected_unit:
                 return None
             return candidate
+
+        if unit_index is not None:
+            entry = unit_index.get(unit_value)
+            if entry is not None:
+                candidate = candidate_for(entry[0], entry[1], unit_value)
+                if candidate is not None:
+                    return candidate
 
         owner = self._unit_owner_index.get(unit_value)
         if owner is not None:
@@ -12669,6 +12735,13 @@ class War3Trainer:
         owner_index = dict(self._unit_owner_index)
         owner_index.update(isolated._unit_owner_index)
         isolated._unit_owner_index = owner_index
+        owner_properties = {
+            owner: dict(properties)
+            for owner, properties in self._owner_properties_cache.items()
+        }
+        for owner, properties in isolated._owner_properties_cache.items():
+            owner_properties.setdefault(owner, dict(properties))
+        isolated._owner_properties_cache = owner_properties
         isolated._selection_player_candidates = list(
             dict.fromkeys(
                 [

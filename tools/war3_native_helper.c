@@ -62,6 +62,7 @@
 #define WAR3_NATIVE_OP_DIRECT_ABILITY_ENUM 106u
 #define WAR3_NATIVE_OP_JASS_ABILITY_REAL_LEVEL_FIELD_SET 107u
 #define WAR3_NATIVE_OP_JASS_UNIT_RESOLVE 109u
+#define WAR3_NATIVE_OP_JASS_UNIT_RESOLVE_ARG 120u
 #define WAR3_NATIVE_OP_JASS_ABILITY_FIELD_GET 110u
 #define WAR3_NATIVE_OP_JASS_ABILITY_LEVEL_FIELD_GET 111u
 #define WAR3_NATIVE_OP_JASS_ABILITY_SCALAR_FIELD_SET 112u
@@ -3937,6 +3938,28 @@ static void run_command(void) {
                     if (!op->result) {
                         op->last_error = ERROR_NOT_FOUND;
                         last_error = op->last_error;
+                        goto finish;
+                    }
+                } __except (EXCEPTION_EXECUTE_HANDLER) {
+                    op->last_error = GetExceptionCode();
+                    last_error = op->last_error;
+                    goto finish;
+                }
+                break;
+            }
+            case WAR3_NATIVE_OP_JASS_UNIT_RESOLVE_ARG: {
+                JassUnitHandleResolveFn fn =
+                    (JassUnitHandleResolveFn)(uintptr_t)op->handler;
+                if (!op->arg0) {
+                    op->last_error = ERROR_INVALID_PARAMETER;
+                    last_error = ERROR_INVALID_PARAMETER;
+                    goto finish;
+                }
+                __try {
+                    op->result = fn(op->arg0);
+                    if (!op->result) {
+                        op->last_error = ERROR_NOT_FOUND;
+                        last_error = ERROR_NOT_FOUND;
                         goto finish;
                     }
                 } __except (EXCEPTION_EXECUTE_HANDLER) {

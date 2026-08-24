@@ -2434,7 +2434,10 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 20
+    NATIVE_HELPER_VERSION = 21
+    NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
+    NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
+    NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
     NATIVE_HELPER_STATUS_PENDING = 1
     NATIVE_HELPER_STATUS_OK = 2
     NATIVE_HELPER_MAX_OPS = 16
@@ -5912,6 +5915,7 @@ class War3Trainer:
         position: tuple[float, float] | None = None,
         *,
         use_selected_lookup: bool = True,
+        preserve_owner: bool = False,
     ) -> tuple[int, int]:
         x, y = self.query_mouse_world_position() if position is None else position
         unit_handle = 0
@@ -5927,16 +5931,22 @@ class War3Trainer:
         with self._process_memory() as pm:
             handler_names = ["GetLocalPlayer", "CreateUnit"]
             source_is_hero = False
+            source_has_inventory = False
             if rawcode is None:
                 try:
-                    source_is_hero = "hero" in self._selected_components(
+                    components = self._selected_components(
                         pm,
                         candidate.owner_address,
                     )
+                    source_is_hero = "hero" in components
+                    source_has_inventory = "inventory" in components
                 except (AttributeError, OSError, RuntimeError):
                     # A partial/test memory backend may not expose component
                     # metadata. In that case skip hero-only calls safely.
                     source_is_hero = False
+                    source_has_inventory = False
+                if preserve_owner:
+                    handler_names[0] = "GetOwningPlayer"
                 handler_names.extend((
                     "GetUnitTypeId",
                     "RemoveUnit",
@@ -5961,37 +5971,61 @@ class War3Trainer:
                     "BlzSetUnitMaxMana",
                     "GetUnitState",
                     "SetUnitState",
-                    "UnitItemInSlot",
-                    "GetItemTypeId",
-                    "UnitAddItemById",
-                    "GetItemCharges",
-                    "SetItemCharges",
-                    "BlzGetItemIntegerField",
-                    "BlzSetItemIntegerField",
-                    "BlzGetItemRealField",
-                    "BlzSetItemRealField",
-                    "BlzGetItemBooleanField",
-                    "BlzSetItemBooleanField",
                     "BlzGetUnitAbilityByIndex",
                     "BlzGetAbilityId",
                     "GetUnitAbilityLevel",
                     "UnitAddAbility",
                     "SetUnitAbilityLevel",
                 ))
+                if source_has_inventory:
+                    handler_names.extend((
+                        "UnitItemInSlot",
+                        "GetItemTypeId",
+                        "UnitAddItemById",
+                        "GetItemCharges",
+                        "SetItemCharges",
+                        "BlzGetItemIntegerField",
+                        "BlzSetItemIntegerField",
+                        "BlzGetItemRealField",
+                        "BlzSetItemRealField",
+                        "BlzGetItemBooleanField",
+                        "BlzSetItemBooleanField",
+                    ))
             handlers = self._elephant_handlers(pm, tuple(handler_names))
         coordinates = struct.unpack("<Q", struct.pack("<ff", float(x), float(y)))[0]
         if rawcode is None:
+            clone_flags = (
+                (self.NATIVE_HELPER_CLONE_FLAG_HERO if source_is_hero else 0)
+                | (
+                    self.NATIVE_HELPER_CLONE_FLAG_INVENTORY
+                    if source_has_inventory
+                    else 0
+                )
+                | (
+                    self.NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER
+                    if preserve_owner
+                    else 0
+                )
+            )
+
+            def handler_address(name: str) -> int:
+                handler = handlers.get(name)
+                return handler.handler_address if handler is not None else 0
+
+            owner_handler_name = (
+                "GetOwningPlayer" if preserve_owner else "GetLocalPlayer"
+            )
             clone_ops = (
                 (
                     self.NATIVE_HELPER_OP_JASS_CLONE_SELECTED_UNIT,
                     unit_rawcode,
-                    handlers["GetLocalPlayer"].handler_address,
+                    handlers[owner_handler_name].handler_address,
                     handlers["CreateUnit"].handler_address,
                     coordinates,
                 ),
                 (
                     self.NATIVE_HELPER_OP_JASS_MULTI_ARG,
-                    int(source_is_hero),
+                    clone_flags,
                     handlers["GetUnitFacing"].handler_address,
                     handlers["GetHeroLevel"].handler_address,
                     handlers["SetHeroLevel"].handler_address,
@@ -6041,29 +6075,29 @@ class War3Trainer:
                 (
                     self.NATIVE_HELPER_OP_JASS_MULTI_ARG,
                     0,
-                    handlers["UnitItemInSlot"].handler_address,
-                    handlers["GetItemTypeId"].handler_address,
-                    handlers["UnitAddItemById"].handler_address,
+                    handler_address("UnitItemInSlot"),
+                    handler_address("GetItemTypeId"),
+                    handler_address("UnitAddItemById"),
                 ),
                 (
                     self.NATIVE_HELPER_OP_JASS_MULTI_ARG,
                     0,
-                    handlers["GetItemCharges"].handler_address,
-                    handlers["SetItemCharges"].handler_address,
-                    handlers["BlzGetItemIntegerField"].handler_address,
+                    handler_address("GetItemCharges"),
+                    handler_address("SetItemCharges"),
+                    handler_address("BlzGetItemIntegerField"),
                 ),
                 (
                     self.NATIVE_HELPER_OP_JASS_MULTI_ARG,
                     0,
-                    handlers["BlzSetItemIntegerField"].handler_address,
-                    handlers["BlzGetItemRealField"].handler_address,
-                    handlers["BlzSetItemRealField"].handler_address,
+                    handler_address("BlzSetItemIntegerField"),
+                    handler_address("BlzGetItemRealField"),
+                    handler_address("BlzSetItemRealField"),
                 ),
                 (
                     self.NATIVE_HELPER_OP_JASS_MULTI_ARG,
                     0,
-                    handlers["BlzGetItemBooleanField"].handler_address,
-                    handlers["BlzSetItemBooleanField"].handler_address,
+                    handler_address("BlzGetItemBooleanField"),
+                    handler_address("BlzSetItemBooleanField"),
                     handlers["BlzGetUnitAbilityByIndex"].handler_address,
                 ),
                 (
@@ -15718,7 +15752,10 @@ def run_gui() -> None:
             f"{elephant_batch_suffix()}"
         )
 
-    def elephant_create_unit(copy_selected: bool) -> str:
+    def elephant_create_unit(
+        copy_selected: bool,
+        preserve_owner: bool = False,
+    ) -> str:
         rawcode: int | str | None
         if copy_selected:
             rawcode = None
@@ -15731,10 +15768,15 @@ def run_gui() -> None:
                 lambda: elephant_trainer().create_local_unit(
                     None,
                     use_selected_lookup=True,
+                    preserve_owner=preserve_owner,
                 ),
                 "复制选中单位",
             )
-            return f"已复制 {len(results)} 个选中单位{elephant_batch_suffix()}"
+            owner_text = "并保留原阵营" if preserve_owner else "给自己"
+            return (
+                f"已复制 {len(results)} 个选中单位{owner_text}"
+                f"{elephant_batch_suffix()}"
+            )
         unit_rawcode, handle = elephant_trainer().create_local_unit(
             rawcode,
             use_selected_lookup=True,
@@ -16546,7 +16588,7 @@ def run_gui() -> None:
         "item_charges": elephant_set_inventory_charges,
         "drop_inventory": elephant_drop_inventory,
         "add_ability": elephant_add_ability,
-        "clone_unit": lambda: elephant_create_unit(True),
+        "clone_unit": lambda: elephant_create_unit(True, preserve_owner=True),
         "take_control": lambda: elephant_batch_action(
             elephant_trainer().take_selected_unit_control,
             "取得选中单位控制权",

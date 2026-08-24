@@ -519,6 +519,8 @@ _EN_TRANSLATIONS = {
     "已重置": "reset",
     "已创建": "created",
     "已复制": "copied",
+    "给自己": " to self",
+    "并保留原阵营": " while preserving the original owner",
     "已丢弃": "dropped",
     "已执行": "executed",
     "已处理": "processed",

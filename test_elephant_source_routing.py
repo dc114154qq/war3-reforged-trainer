@@ -395,6 +395,17 @@ class ElephantSourceRoutingTests(unittest.TestCase):
         ]
         self.assertEqual(direct_calls, [])
 
+    def test_clone_hotkeys_keep_distinct_owner_semantics(self):
+        source = SOURCE_PATH.read_text(encoding="utf-8")
+        self.assertIn(
+            '"clone_to_self": lambda: elephant_create_unit(True),',
+            source,
+        )
+        self.assertIn(
+            '"clone_unit": lambda: elephant_create_unit(True, preserve_owner=True),',
+            source,
+        )
+
     def test_inline_gui_callbacks_do_not_bind_main_trainer(self):
         tree = ast.parse(SOURCE_PATH.read_text(encoding="utf-8"))
         run_gui = next(

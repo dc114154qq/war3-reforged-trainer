@@ -3,7 +3,7 @@
 #include <stdio.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 20u
+#define WAR3_NATIVE_VERSION 21u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -73,6 +73,9 @@
 #define WAR3_NATIVE_OP_JASS_HEAL_LOCAL_UNITS 117u
 #define WAR3_NATIVE_OP_JASS_CLONE_SELECTED_UNIT 118u
 #define WAR3_NATIVE_OP_JASS_SELECTED_UNITS 119u
+#define WAR3_CLONE_FLAG_HERO 0x01u
+#define WAR3_CLONE_FLAG_INVENTORY 0x02u
+#define WAR3_CLONE_FLAG_PRESERVE_OWNER 0x04u
 #define WAR3_ITEM_FLAGS_OFFSET 0x38u
 #define WAR3_ITEM_CHARGES_OFFSET 0x8d0u
 #define WAR3_ITEM_CHARGES_EMPTY_FLAG 0x1000u
@@ -2701,6 +2704,7 @@ static void run_command(void) {
                 NativeOp *d12;
                 NativeOp *d13;
                 JassNoArgU64Fn get_local_player;
+                JassGetOwningPlayerFn get_owning_player;
                 JassCreateUnitFn create_unit;
                 JassUnitRealQueryFn get_unit_facing;
                 JassUnitIntFn get_hero_level;
@@ -2747,6 +2751,7 @@ static void run_command(void) {
                 float facing = 0.0f;
                 uint32_t copied_items = 0;
                 uint32_t copied_abilities = 0;
+                uint32_t clone_flags;
                 DWORD clone_error = ERROR_SUCCESS;
 
                 if (
@@ -2770,14 +2775,21 @@ static void run_command(void) {
                 d11 = &cmd.ops[i + 11];
                 d12 = &cmd.ops[i + 12];
                 d13 = &cmd.ops[i + 13];
+                clone_flags = d1->rawcode;
+                if (
+                    clone_flags & ~(
+                        WAR3_CLONE_FLAG_HERO |
+                        WAR3_CLONE_FLAG_INVENTORY |
+                        WAR3_CLONE_FLAG_PRESERVE_OWNER
+                    )
+                ) {
+                    op->last_error = ERROR_INVALID_DATA;
+                    last_error = op->last_error;
+                    goto finish;
+                }
                 for (uint32_t descriptor = 1; descriptor <= 13; ++descriptor) {
                     NativeOp *descriptor_op = &cmd.ops[descriptor];
-                    if (
-                        descriptor_op->kind != WAR3_NATIVE_OP_JASS_MULTI_ARG ||
-                        !war3_executable_pointer(descriptor_op->handler) ||
-                        !war3_executable_pointer(descriptor_op->arg0) ||
-                        !war3_executable_pointer(descriptor_op->arg1)
-                    ) {
+                    if (descriptor_op->kind != WAR3_NATIVE_OP_JASS_MULTI_ARG) {
                         op->last_error = ERROR_INVALID_DATA;
                         last_error = op->last_error;
                         goto finish;
@@ -2785,6 +2797,7 @@ static void run_command(void) {
                 }
 
                 get_local_player = (JassNoArgU64Fn)(uintptr_t)op->handler;
+                get_owning_player = (JassGetOwningPlayerFn)(uintptr_t)op->handler;
                 create_unit = (JassCreateUnitFn)(uintptr_t)op->arg0;
                 get_unit_facing = (JassUnitRealQueryFn)(uintptr_t)d1->handler;
                 get_hero_level = (JassUnitIntFn)(uintptr_t)d1->arg0;
@@ -2827,34 +2840,64 @@ static void run_command(void) {
                 remove_unit = (JassUnitVoidFn)(uintptr_t)d13->arg1;
 
                 if (
-                    !get_local_player || !create_unit || !get_unit_facing ||
-                    !get_unit_max_hp ||
-                    !set_unit_max_hp || !get_widget_life || !set_widget_life ||
-                    !get_unit_max_mana || !set_unit_max_mana ||
-                    !get_unit_state || !set_unit_state || !unit_item_in_slot ||
-                    !get_item_type_id || !unit_add_item_by_id ||
-                    !get_item_charges || !set_item_charges ||
-                    !get_item_integer_field || !set_item_integer_field ||
-                    !get_item_real_field || !set_item_real_field ||
-                    !get_item_boolean_field || !set_item_boolean_field ||
-                    !get_ability_by_index || !get_ability_id ||
-                    !get_ability_level || !add_ability || !set_ability_level ||
-                    !get_unit_type_id || !remove_unit ||
                     !war3_executable_pointer(op->handler) ||
-                    !war3_executable_pointer(op->arg0)
+                    !war3_executable_pointer(op->arg0) ||
+                    !war3_executable_pointer(d1->handler) ||
+                    !war3_executable_pointer(d5->arg0) ||
+                    !war3_executable_pointer(d5->arg1) ||
+                    !war3_executable_pointer(d6->handler) ||
+                    !war3_executable_pointer(d6->arg0) ||
+                    !war3_executable_pointer(d6->arg1) ||
+                    !war3_executable_pointer(d7->handler) ||
+                    !war3_executable_pointer(d7->arg0) ||
+                    !war3_executable_pointer(d7->arg1) ||
+                    !war3_executable_pointer(d11->arg1) ||
+                    !war3_executable_pointer(d12->handler) ||
+                    !war3_executable_pointer(d12->arg0) ||
+                    !war3_executable_pointer(d12->arg1) ||
+                    !war3_executable_pointer(d13->handler) ||
+                    !war3_executable_pointer(d13->arg0) ||
+                    !war3_executable_pointer(d13->arg1)
                 ) {
                     op->last_error = ERROR_INVALID_DATA;
                     last_error = op->last_error;
                     goto finish;
                 }
                 if (
-                    d1->rawcode &&
+                    (clone_flags & WAR3_CLONE_FLAG_HERO) &&
                     (
-                        !get_hero_level || !set_hero_level || !get_hero_xp ||
-                        !set_hero_xp || !get_hero_str || !set_hero_str ||
-                        !get_hero_agi || !set_hero_agi || !get_hero_int ||
-                        !set_hero_int || !get_hero_skill_points ||
-                        !modify_skill_points
+                        !war3_executable_pointer(d1->arg0) ||
+                        !war3_executable_pointer(d1->arg1) ||
+                        !war3_executable_pointer(d2->handler) ||
+                        !war3_executable_pointer(d2->arg0) ||
+                        !war3_executable_pointer(d2->arg1) ||
+                        !war3_executable_pointer(d3->handler) ||
+                        !war3_executable_pointer(d3->arg0) ||
+                        !war3_executable_pointer(d3->arg1) ||
+                        !war3_executable_pointer(d4->handler) ||
+                        !war3_executable_pointer(d4->arg0) ||
+                        !war3_executable_pointer(d4->arg1) ||
+                        !war3_executable_pointer(d5->handler)
+                    )
+                ) {
+                    op->last_error = ERROR_INVALID_DATA;
+                    last_error = op->last_error;
+                    goto finish;
+                }
+                if (
+                    (clone_flags & WAR3_CLONE_FLAG_INVENTORY) &&
+                    (
+                        !war3_executable_pointer(d8->handler) ||
+                        !war3_executable_pointer(d8->arg0) ||
+                        !war3_executable_pointer(d8->arg1) ||
+                        !war3_executable_pointer(d9->handler) ||
+                        !war3_executable_pointer(d9->arg0) ||
+                        !war3_executable_pointer(d9->arg1) ||
+                        !war3_executable_pointer(d10->handler) ||
+                        !war3_executable_pointer(d10->arg0) ||
+                        !war3_executable_pointer(d10->arg1) ||
+                        !war3_executable_pointer(d11->handler) ||
+                        !war3_executable_pointer(d11->arg0)
                     )
                 ) {
                     op->last_error = ERROR_INVALID_DATA;
@@ -2869,7 +2912,11 @@ static void run_command(void) {
                         clone_error = ERROR_INVALID_DATA;
                         __leave;
                     }
-                    player = get_local_player();
+                    player = (
+                        clone_flags & WAR3_CLONE_FLAG_PRESERVE_OWNER
+                        ? get_owning_player(cmd.unit_handle)
+                        : get_local_player()
+                    );
                     facing = war3_real_from_bits(get_unit_facing(cmd.unit_handle));
                     if (!player || !(facing == facing)) {
                         clone_error = ERROR_NOT_FOUND;
@@ -2887,10 +2934,13 @@ static void run_command(void) {
                         __leave;
                     }
 
-                    source_level = d1->rawcode
+                    source_level = (clone_flags & WAR3_CLONE_FLAG_HERO)
                         ? get_hero_level(cmd.unit_handle)
                         : 0;
-                    if (d1->rawcode && source_level > 0) {
+                    if (
+                        (clone_flags & WAR3_CLONE_FLAG_HERO) &&
+                        source_level > 0
+                    ) {
                         int32_t source_xp = get_hero_xp(cmd.unit_handle);
                         int32_t source_points;
                         int32_t target_points;
@@ -2931,6 +2981,7 @@ static void run_command(void) {
                         }
                     }
 
+                    if (clone_flags & WAR3_CLONE_FLAG_INVENTORY) {
                     for (int32_t slot = 0; slot < 6; ++slot) {
                         uint64_t source_item = unit_item_in_slot(cmd.unit_handle, slot);
                         uint32_t item_id;
@@ -2969,6 +3020,7 @@ static void run_command(void) {
                             }
                         }
                         ++copied_items;
+                    }
                     }
 
                     for (int32_t index = 0; index < 1024; ++index) {

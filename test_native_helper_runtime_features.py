@@ -58,6 +58,103 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
             )
         )
 
+    def test_selected_clone_without_inventory_skips_item_natives(self):
+        trainer = self.make_trainer()
+        candidate = Mock(
+            handle=0x4455,
+            owner_address=0x5566,
+            unit_type_id=0x48666F6F,
+        )
+        trainer._direct_selected_context = Mock(
+            return_value=(candidate, candidate.handle)
+        )
+        trainer._selected_components = Mock(return_value={"move": (1, 2)})
+        trainer._run_native_helper_ops = Mock(
+            return_value=[
+                trainer_module.NativeHelperOpResult(
+                    kind=trainer.NATIVE_HELPER_OP_JASS_CLONE_SELECTED_UNIT,
+                    result=0x7788,
+                )
+            ]
+        )
+
+        trainer.create_local_unit(None)
+
+        requested = set(trainer._elephant_handlers.call_args.args[1])
+        self.assertFalse(
+            requested.intersection(trainer.ITEM_FIELD_NATIVE_NAMES)
+        )
+        _unit_handle, ops = trainer._run_native_helper_ops.call_args.args[:2]
+        self.assertFalse(
+            ops[1][1] & trainer.NATIVE_HELPER_CLONE_FLAG_INVENTORY
+        )
+        for descriptor in ops[8:11]:
+            self.assertEqual(descriptor[2:5], (0, 0, 0))
+        self.assertEqual(ops[11][2:4], (0, 0))
+
+    def test_selected_clone_with_inventory_requests_item_natives(self):
+        trainer = self.make_trainer()
+        candidate = Mock(
+            handle=0x4455,
+            owner_address=0x5566,
+            unit_type_id=0x48666F6F,
+        )
+        trainer._direct_selected_context = Mock(
+            return_value=(candidate, candidate.handle)
+        )
+        trainer._selected_components = Mock(
+            return_value={"inventory": (1, 2)}
+        )
+        trainer._run_native_helper_ops = Mock(
+            return_value=[
+                trainer_module.NativeHelperOpResult(
+                    kind=trainer.NATIVE_HELPER_OP_JASS_CLONE_SELECTED_UNIT,
+                    result=0x7788,
+                )
+            ]
+        )
+
+        trainer.create_local_unit(None)
+
+        requested = set(trainer._elephant_handlers.call_args.args[1])
+        self.assertTrue(
+            set(trainer.ITEM_FIELD_NATIVE_NAMES).issubset(requested)
+        )
+        _unit_handle, ops = trainer._run_native_helper_ops.call_args.args[:2]
+        self.assertTrue(
+            ops[1][1] & trainer.NATIVE_HELPER_CLONE_FLAG_INVENTORY
+        )
+
+    def test_selected_clone_can_preserve_source_owner(self):
+        trainer = self.make_trainer()
+        candidate = Mock(
+            handle=0x4455,
+            owner_address=0x5566,
+            unit_type_id=0x48666F6F,
+        )
+        trainer._direct_selected_context = Mock(
+            return_value=(candidate, candidate.handle)
+        )
+        trainer._selected_components = Mock(return_value={})
+        trainer._run_native_helper_ops = Mock(
+            return_value=[
+                trainer_module.NativeHelperOpResult(
+                    kind=trainer.NATIVE_HELPER_OP_JASS_CLONE_SELECTED_UNIT,
+                    result=0x7788,
+                )
+            ]
+        )
+
+        trainer.create_local_unit(None, preserve_owner=True)
+
+        requested = set(trainer._elephant_handlers.call_args.args[1])
+        self.assertIn("GetOwningPlayer", requested)
+        self.assertNotIn("GetLocalPlayer", requested)
+        _unit_handle, ops = trainer._run_native_helper_ops.call_args.args[:2]
+        self.assertTrue(
+            ops[1][1] & trainer.NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER
+        )
+
     def test_explicit_create_keeps_plain_create_path(self):
         trainer = self.make_trainer()
         trainer._coerce_memory_value = Mock(return_value=0x68666F6F)
@@ -122,6 +219,14 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
         self.assertIn("get_unit_type_id(cmd.unit_handle) != op->rawcode", helper_source)
         self.assertIn("remove_unit(target)", helper_source)
         self.assertIn("if (target_value != source_value)", helper_source)
+        self.assertIn(
+            "if (clone_flags & WAR3_CLONE_FLAG_INVENTORY)",
+            helper_source,
+        )
+        self.assertIn(
+            "clone_flags & WAR3_CLONE_FLAG_PRESERVE_OWNER",
+            helper_source,
+        )
         self.assertIn(
             "get_integer(target_item, integer_fields[index])",
             helper_source,

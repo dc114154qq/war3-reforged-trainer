@@ -940,12 +940,20 @@ static int war3_copy_item_instance_fields(
         index < sizeof(integer_fields) / sizeof(integer_fields[0]);
         ++index
     ) {
-        if (!set_integer(
-            target_item,
-            integer_fields[index],
-            (uint32_t)get_integer(source_item, integer_fields[index])
-        )) {
-            return 0;
+        uint32_t source_value =
+            (uint32_t)get_integer(source_item, integer_fields[index]);
+        uint32_t target_value =
+            (uint32_t)get_integer(target_item, integer_fields[index]);
+        if (target_value != source_value) {
+            if (!set_integer(target_item, integer_fields[index], source_value)) {
+                return 0;
+            }
+            if (
+                (uint32_t)get_integer(target_item, integer_fields[index]) !=
+                source_value
+            ) {
+                return 0;
+            }
         }
     }
     for (
@@ -953,10 +961,32 @@ static int war3_copy_item_instance_fields(
         index < sizeof(real_fields) / sizeof(real_fields[0]);
         ++index
     ) {
-        uint32_t bits = (uint32_t)get_real(source_item, real_fields[index]);
-        float value = war3_real_from_bits(bits);
-        if (!(value == value) || !set_real(target_item, real_fields[index], &value)) {
+        uint32_t source_bits =
+            (uint32_t)get_real(source_item, real_fields[index]);
+        uint32_t target_bits =
+            (uint32_t)get_real(target_item, real_fields[index]);
+        float source_value = war3_real_from_bits(source_bits);
+        float target_value = war3_real_from_bits(target_bits);
+        float delta = target_value - source_value;
+        if (delta < 0.0f) {
+            delta = -delta;
+        }
+        if (!(source_value == source_value) || !(target_value == target_value)) {
             return 0;
+        }
+        if (delta > 0.0001f) {
+            if (!set_real(target_item, real_fields[index], &source_value)) {
+                return 0;
+            }
+            target_bits = (uint32_t)get_real(target_item, real_fields[index]);
+            target_value = war3_real_from_bits(target_bits);
+            delta = target_value - source_value;
+            if (delta < 0.0f) {
+                delta = -delta;
+            }
+            if (!(target_value == target_value) || delta > 0.0001f) {
+                return 0;
+            }
         }
     }
     for (
@@ -964,12 +994,20 @@ static int war3_copy_item_instance_fields(
         index < sizeof(boolean_fields) / sizeof(boolean_fields[0]);
         ++index
     ) {
-        if (!set_boolean(
-            target_item,
-            boolean_fields[index],
-            (uint32_t)get_boolean(source_item, boolean_fields[index])
-        )) {
-            return 0;
+        uint32_t source_value =
+            (uint32_t)get_boolean(source_item, boolean_fields[index]) & 1u;
+        uint32_t target_value =
+            (uint32_t)get_boolean(target_item, boolean_fields[index]) & 1u;
+        if (target_value != source_value) {
+            if (!set_boolean(target_item, boolean_fields[index], source_value)) {
+                return 0;
+            }
+            if (
+                ((uint32_t)get_boolean(target_item, boolean_fields[index]) & 1u) !=
+                source_value
+            ) {
+                return 0;
+            }
         }
     }
     return 1;

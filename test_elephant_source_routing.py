@@ -179,6 +179,25 @@ class ElephantSourceRoutingTests(unittest.TestCase):
             source,
         )
 
+    def test_backup_candidate_read_uses_selected_row_identity(self):
+        tree = ast.parse(SOURCE_PATH.read_text(encoding="utf-8"))
+        run_gui = next(
+            node
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == "run_gui"
+        )
+        reader = next(
+            node
+            for node in run_gui.body
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "read_selection_candidate_fields"
+        )
+        source = ast.unparse(reader)
+
+        self.assertIn("selected_selection_candidate()", source)
+        self.assertIn("read_unit_fields_by_identity_win10(*identity)", source)
+        self.assertNotIn("read_selected_unit_fields_win10()", source)
+
     def test_inherited_elephant_method_uses_virtual_memory_factory(self):
         backup = object.__new__(trainer_module.BackupReadWar3Trainer)
         memory = _BackupMemory(123)

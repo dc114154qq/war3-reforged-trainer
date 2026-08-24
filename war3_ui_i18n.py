@@ -164,6 +164,7 @@ _EN_TRANSLATIONS = {
     "连接/刷新进程": "Connect / Refresh Process",
     "读取当前选中单位": "Read Selected Unit",
     "已通过备用路径读取当前单位": "Read the current unit through the backup path",
+    "已通过备用路径读取所选候选": "Read the selected candidate through the backup path",
     "读取当前选中单位 (Ctrl+F11)": "Read Selected Unit (Ctrl+F11)",
     "读取所有选中单位": "Read All Selected Units",
     "读取所有选中单位 (Ctrl+F11)": "Read All Selected Units (Ctrl+F11)",

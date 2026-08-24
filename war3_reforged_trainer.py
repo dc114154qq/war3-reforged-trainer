@@ -34,7 +34,7 @@ from war3_item_fields import ITEM_FIELD_BY_KEY, ITEM_FIELD_CATALOG, ItemFieldSpe
 from war3_ui_i18n import detect_ui_language, translate_ui_text
 
 
-APP_VERSION = "1.0.15"
+APP_VERSION = "1.0.16"
 PRODUCT_READ_MODE = "backup"
 PRODUCT_EDITION_LABEL = "备用读取版"
 WIN10_COMPAT_REVISION = "backup-r7-live-regions-external-native"
@@ -15180,11 +15180,21 @@ def run_gui() -> None:
         populate_selected_unit_readout(panel, cand, fields, force_targets, win10_compat)
 
     def read_selection_candidate_fields() -> str:
+        summary = selected_selection_candidate()
+        identity = unit_identity(summary.candidate)
         t = trainer()
-        panel, cand, fields = t.read_selected_unit_fields_win10()
-        root.after(0, populate_auto_selected_unit_readout, panel, cand, fields, True, True)
+        panel, cand, fields = t.read_unit_fields_by_identity_win10(*identity)
+        root.after(
+            0,
+            populate_manual_candidate_readout,
+            panel,
+            cand,
+            fields,
+            True,
+            True,
+        )
         return (
-            f"已通过备用路径读取当前单位：HP {panel.hp_text}，MP {panel.mp_text}；"
+            f"已通过备用路径读取所选候选：HP {panel.hp_text}，MP {panel.mp_text}；"
             f"owner=0x{cand.owner_address:x} handle=0x{cand.handle:x} unit=0x{cand.unit_address:x}"
         )
 

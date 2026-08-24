@@ -121,6 +121,11 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
         self.assertIn("while (processed < 100000u)", helper_source)
         self.assertIn("get_unit_type_id(cmd.unit_handle) != op->rawcode", helper_source)
         self.assertIn("remove_unit(target)", helper_source)
+        self.assertIn("if (target_value != source_value)", helper_source)
+        self.assertIn(
+            "get_integer(target_item, integer_fields[index])",
+            helper_source,
+        )
 
     def test_elephant_handlers_discovers_every_requested_native(self):
         trainer = object.__new__(trainer_module.War3Trainer)

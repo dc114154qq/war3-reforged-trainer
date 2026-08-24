@@ -1454,6 +1454,19 @@ class ProcessMemory:
         patterns: Iterable[bytes],
         max_region_size: int | None = 64 * 1024 * 1024,
     ) -> dict[bytes, list[int]]:
+        return self.scan_bytes_many(
+            patterns,
+            region_types=(MEM_PRIVATE,),
+            max_region_size=max_region_size,
+        )
+
+    def scan_bytes_many(
+        self,
+        patterns: Iterable[bytes],
+        *,
+        region_types: tuple[int, ...],
+        max_region_size: int | None = 64 * 1024 * 1024,
+    ) -> dict[bytes, list[int]]:
         unique_patterns = tuple(dict.fromkeys(patterns))
         hits = {pattern: [] for pattern in unique_patterns}
         if not unique_patterns:
@@ -1461,7 +1474,7 @@ class ProcessMemory:
         tail_len = max(len(pattern) for pattern in unique_patterns) - 1
         for region in self.regions():
             if (
-                region.typ != MEM_PRIVATE
+                region.typ not in region_types
                 or (max_region_size is not None and region.size > max_region_size)
             ):
                 continue
@@ -3234,14 +3247,21 @@ class War3Trainer:
         if not wanted:
             return {}
         patterns = tuple(name.encode("ascii") + b"\0" for name in wanted)
+        string_region_types = (MEM_PRIVATE, MEM_MAPPED, MEM_IMAGE)
+        record_region_types = (MEM_PRIVATE, MEM_MAPPED)
         if isinstance(pm, Win10ProcessMemory):
-            hits = self._scan_bytes_private_many_win10(
+            hits = self._scan_bytes_regions_many_win10(
                 pm,
                 patterns,
+                region_types=string_region_types,
                 max_region_size=None,
             )
         else:
-            hits = pm.scan_bytes_private_many(patterns, max_region_size=None)
+            hits = pm.scan_bytes_many(
+                patterns,
+                region_types=string_region_types,
+                max_region_size=None,
+            )
         by_pattern = {
             name.encode("ascii") + b"\0": name
             for name in wanted
@@ -3252,24 +3272,68 @@ class War3Trainer:
             for address in addresses
         }
         found: dict[str, NativeHandler] = {}
+
+        def validated_handler(name: str, record: int) -> NativeHandler | None:
+            if record & 7:
+                return None
+            region = self._region_for_address(regions, record)
+            if region is None or region.typ not in record_region_types:
+                return None
+            try:
+                handler = pm.read_u64(record - 8)
+            except OSError:
+                return None
+            if not self._is_executable_image_address(regions, handler):
+                return None
+            if self._decode_native_name_from_record(
+                pm,
+                record,
+                external_names=external_names,
+            ) != name:
+                return None
+            return NativeHandler(name, record, handler)
+
         for pattern, addresses in hits.items():
             name = by_pattern[pattern]
             for hit in addresses:
-                record = hit - 0x18
-                try:
-                    handler = pm.read_u64(record - 8)
-                except OSError:
-                    continue
-                if not self._is_executable_image_address(regions, handler):
-                    continue
-                if self._decode_native_name_from_record(
+                handler = validated_handler(name, hit - 0x18)
+                if handler is not None:
+                    found[name] = handler
+                    break
+
+        unresolved_addresses = {
+            address: name
+            for address, name in external_names.items()
+            if name not in found
+        }
+        if unresolved_addresses:
+            pointer_patterns = {
+                struct.pack("<Q", address): address
+                for address in unresolved_addresses
+            }
+            if isinstance(pm, Win10ProcessMemory):
+                pointer_hits = self._scan_bytes_regions_many_win10(
                     pm,
-                    record,
-                    external_names=external_names,
-                ) != name:
+                    pointer_patterns,
+                    region_types=record_region_types,
+                    max_region_size=None,
+                )
+            else:
+                pointer_hits = pm.scan_bytes_many(
+                    pointer_patterns,
+                    region_types=record_region_types,
+                    max_region_size=None,
+                )
+            for pointer_pattern, records in pointer_hits.items():
+                string_address = pointer_patterns[pointer_pattern]
+                name = unresolved_addresses[string_address]
+                if name in found:
                     continue
-                found[name] = NativeHandler(name, record, handler)
-                break
+                for record in records:
+                    handler = validated_handler(name, record)
+                    if handler is not None:
+                        found[name] = handler
+                        break
         return found
 
     def _recover_native_external_names_win10(

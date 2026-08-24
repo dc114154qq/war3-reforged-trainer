@@ -356,3 +356,84 @@ def test_backup_external_native_name_reads_only_requested_bytes():
 
     assert recovered == {pointer: name}
     assert pm.reads == [(pointer, len(name))]
+
+
+def test_exact_native_fallback_resolves_external_name_references():
+    instance = _bare_trainer()
+    names = (
+        "BlzGetItemBooleanField",
+        "BlzGetItemIntegerField",
+        "BlzGetItemRealField",
+        "BlzSetItemBooleanField",
+        "BlzSetItemIntegerField",
+        "BlzSetItemRealField",
+    )
+    string_region = trainer.Region(
+        0x600000,
+        0x20000,
+        trainer.PAGE_READWRITE,
+        trainer.MEM_PRIVATE,
+    )
+    table_region = trainer.Region(
+        0x900000,
+        0x20000,
+        trainer.PAGE_READWRITE,
+        trainer.MEM_MAPPED,
+    )
+    executable = trainer.Region(
+        0x140000000,
+        0x100000,
+        trainer.PAGE_EXECUTE_READ,
+        trainer.MEM_IMAGE,
+    )
+    regions = [string_region, table_region, executable]
+    string_addresses = {
+        name: string_region.base + 0x100 + index * 0x100
+        for index, name in enumerate(names)
+    }
+    records = {
+        name: table_region.base + 0x100 + index * 0x88
+        for index, name in enumerate(names)
+    }
+
+    class Memory:
+        @staticmethod
+        def scan_bytes_many(patterns, **_kwargs):
+            result = {pattern: [] for pattern in patterns}
+            for pattern in result:
+                if len(pattern) == 8:
+                    pointer = trainer.struct.unpack("<Q", pattern)[0]
+                    for name, address in string_addresses.items():
+                        if pointer == address:
+                            result[pattern] = [records[name]]
+                else:
+                    for name, address in string_addresses.items():
+                        if pattern == name.encode("ascii") + b"\0":
+                            result[pattern] = [address]
+            return result
+
+        @staticmethod
+        def read_u64(address):
+            for index, name in enumerate(names):
+                record = records[name]
+                values = {
+                    record - 8: executable.base + 0x1000 + index * 0x20,
+                    record: string_addresses[name],
+                    record + 8: len(name),
+                    record + 16: len(name),
+                }
+                if address in values:
+                    return values[address]
+            raise OSError(address)
+
+    found = instance._find_native_handlers_by_exact_name_scan(
+        Memory(),
+        regions,
+        names,
+    )
+
+    assert set(found) == set(names)
+    assert {
+        name: handler.record_address
+        for name, handler in found.items()
+    } == records

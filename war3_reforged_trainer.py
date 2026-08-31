@@ -34,7 +34,7 @@ from war3_item_fields import ITEM_FIELD_BY_KEY, ITEM_FIELD_CATALOG, ItemFieldSpe
 from war3_ui_i18n import detect_ui_language, translate_ui_text
 
 
-APP_VERSION = "1.0.16"
+APP_VERSION = "1.0.17"
 PRODUCT_READ_MODE = "backup"
 PRODUCT_EDITION_LABEL = "备用读取版"
 WIN10_COMPAT_REVISION = "backup-r7-live-regions-external-native"

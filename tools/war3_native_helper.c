@@ -3,7 +3,7 @@
 #include <stdio.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 21u
+#define WAR3_NATIVE_VERSION 22u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -73,6 +73,7 @@
 #define WAR3_NATIVE_OP_JASS_HEAL_LOCAL_UNITS 117u
 #define WAR3_NATIVE_OP_JASS_CLONE_SELECTED_UNIT 118u
 #define WAR3_NATIVE_OP_JASS_SELECTED_UNITS 119u
+#define WAR3_NATIVE_OP_JASS_RESET_LOCAL_COOLDOWNS 121u
 #define WAR3_CLONE_FLAG_HERO 0x01u
 #define WAR3_CLONE_FLAG_INVENTORY 0x02u
 #define WAR3_CLONE_FLAG_PRESERVE_OWNER 0x04u
@@ -3623,6 +3624,104 @@ static void run_command(void) {
                 op->result = healed;
                 iter_op->result = player;
                 heal_op->result = group;
+                if (last_error) {
+                    goto finish;
+                }
+                i += 2;
+                break;
+            }
+            case WAR3_NATIVE_OP_JASS_RESET_LOCAL_COOLDOWNS: {
+                NativeOp *iter_op = NULL;
+                NativeOp *cleanup_op = NULL;
+                JassNoArgU64Fn get_local_player =
+                    (JassNoArgU64Fn)(uintptr_t)op->handler;
+                JassNoArgU64Fn create_group =
+                    (JassNoArgU64Fn)(uintptr_t)op->arg0;
+                JassGroupEnumUnitsOfPlayerFn enum_units =
+                    (JassGroupEnumUnitsOfPlayerFn)(uintptr_t)op->arg1;
+                uint64_t player = 0;
+                uint64_t group = 0;
+                uint32_t reset_count = 0;
+                uint32_t processed = 0;
+                uint64_t previous_unit = 0;
+                if (
+                    i != 0 || cmd.op_count != 3 || i + 2 >= cmd.op_count
+                ) {
+                    op->last_error = ERROR_INVALID_DATA;
+                    last_error = op->last_error;
+                    goto finish;
+                }
+                iter_op = &cmd.ops[i + 1];
+                cleanup_op = &cmd.ops[i + 2];
+                if (
+                    iter_op->kind != WAR3_NATIVE_OP_JASS_MULTI_ARG ||
+                    cleanup_op->kind != WAR3_NATIVE_OP_JASS_MULTI_ARG ||
+                    !war3_executable_pointer(op->handler) ||
+                    !war3_executable_pointer(op->arg0) ||
+                    !war3_executable_pointer(op->arg1) ||
+                    !war3_executable_pointer(iter_op->handler) ||
+                    !war3_executable_pointer(iter_op->arg0) ||
+                    !war3_executable_pointer(iter_op->arg1) ||
+                    !war3_executable_pointer(cleanup_op->handler)
+                ) {
+                    op->last_error = ERROR_INVALID_DATA;
+                    last_error = op->last_error;
+                    goto finish;
+                }
+                JassFirstOfGroupFn first_of_group =
+                    (JassFirstOfGroupFn)(uintptr_t)iter_op->handler;
+                JassGroupRemoveUnitFn group_remove_unit =
+                    (JassGroupRemoveUnitFn)(uintptr_t)iter_op->arg0;
+                JassUnitVoidFn reset_cooldown =
+                    (JassUnitVoidFn)(uintptr_t)iter_op->arg1;
+                JassDestroyGroupFn destroy_group =
+                    (JassDestroyGroupFn)(uintptr_t)cleanup_op->handler;
+                iter_op->result = 0;
+                iter_op->last_error = 0;
+                cleanup_op->result = 0;
+                cleanup_op->last_error = 0;
+                __try {
+                    player = get_local_player();
+                    group = create_group();
+                    if (!player || !group) {
+                        op->last_error = ERROR_NOT_FOUND;
+                        last_error = op->last_error;
+                    } else {
+                        enum_units(group, player, 0);
+                        while (processed < 100000u) {
+                            uint64_t unit = first_of_group(group);
+                            if (!unit) {
+                                break;
+                            }
+                            ++processed;
+                            if (unit == previous_unit) {
+                                op->last_error = ERROR_INVALID_DATA;
+                                last_error = op->last_error;
+                                break;
+                            }
+                            previous_unit = unit;
+                            group_remove_unit(group, unit);
+                            reset_cooldown(unit);
+                            ++reset_count;
+                        }
+                    }
+                } __except (EXCEPTION_EXECUTE_HANDLER) {
+                    op->last_error = GetExceptionCode();
+                    last_error = op->last_error;
+                }
+                __try {
+                    if (group) {
+                        destroy_group(group);
+                    }
+                } __except (EXCEPTION_EXECUTE_HANDLER) {
+                    if (!last_error) {
+                        op->last_error = GetExceptionCode();
+                        last_error = op->last_error;
+                    }
+                }
+                op->result = reset_count;
+                iter_op->result = player;
+                cleanup_op->result = group;
                 if (last_error) {
                     goto finish;
                 }

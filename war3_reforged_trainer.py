@@ -513,6 +513,7 @@ ELEPHANT_HOTKEY_SPECS = (
     GlobalHotkeySpec("end_game", "Alt+H  结束游戏", MOD_ALT, ord("H")),
     GlobalHotkeySpec("remove_all_abilities", "Alt+J  技能全删", MOD_ALT, ord("J")),
     GlobalHotkeySpec("ally_health_lock", "Alt+K  我方锁血", MOD_ALT, ord("K")),
+    GlobalHotkeySpec("allied_cooldowns", "Alt+C  我方全部技能无 CD", MOD_ALT, ord("C")),
 )
 
 class MEMORY_BASIC_INFORMATION64(ctypes.Structure):
@@ -2434,7 +2435,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 21
+    NATIVE_HELPER_VERSION = 22
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -2507,6 +2508,7 @@ class War3Trainer:
     NATIVE_HELPER_OP_JASS_HEAL_LOCAL_UNITS = 117
     NATIVE_HELPER_OP_JASS_CLONE_SELECTED_UNIT = 118
     NATIVE_HELPER_OP_JASS_SELECTED_UNITS = 119
+    NATIVE_HELPER_OP_JASS_RESET_LOCAL_COOLDOWNS = 121
 
     def __init__(self, pid: int | None = None):
         self.hwnd, self.pid = find_war3(pid)
@@ -4121,6 +4123,7 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_JASS_HEAL_LOCAL_UNITS,
             self.NATIVE_HELPER_OP_JASS_CLONE_SELECTED_UNIT,
             self.NATIVE_HELPER_OP_JASS_SELECTED_UNITS,
+            self.NATIVE_HELPER_OP_JASS_RESET_LOCAL_COOLDOWNS,
         }
         if any(kind not in allowed_kinds for kind, _rawcode, _handler, _arg0, _arg1 in op_list):
             raise RuntimeError("native helper 仅允许结构化验证后的白名单操作")
@@ -6176,6 +6179,48 @@ class War3Trainer:
                     handlers["BlzGetUnitMaxHP"].handler_address,
                     handlers["SetWidgetLife"].handler_address,
                     handlers["DestroyGroup"].handler_address,
+                ),
+            ),
+            timeout_ms=3000,
+        )[0].result)
+
+    def reset_local_player_unit_cooldowns(self) -> int:
+        with self._process_memory() as pm:
+            handlers = self._elephant_handlers(
+                pm,
+                (
+                    "GetLocalPlayer",
+                    "CreateGroup",
+                    "GroupEnumUnitsOfPlayer",
+                    "FirstOfGroup",
+                    "GroupRemoveUnit",
+                    "UnitResetCooldown",
+                    "DestroyGroup",
+                ),
+            )
+        return int(self._run_native_helper_ops(
+            0,
+            (
+                (
+                    self.NATIVE_HELPER_OP_JASS_RESET_LOCAL_COOLDOWNS,
+                    0,
+                    handlers["GetLocalPlayer"].handler_address,
+                    handlers["CreateGroup"].handler_address,
+                    handlers["GroupEnumUnitsOfPlayer"].handler_address,
+                ),
+                (
+                    self.NATIVE_HELPER_OP_JASS_MULTI_ARG,
+                    0,
+                    handlers["FirstOfGroup"].handler_address,
+                    handlers["GroupRemoveUnit"].handler_address,
+                    handlers["UnitResetCooldown"].handler_address,
+                ),
+                (
+                    self.NATIVE_HELPER_OP_JASS_MULTI_ARG,
+                    0,
+                    handlers["DestroyGroup"].handler_address,
+                    0,
+                    0,
                 ),
             ),
             timeout_ms=3000,
@@ -16641,6 +16686,10 @@ def run_gui() -> None:
         "end_game": lambda: elephant_action(lambda: elephant_trainer().end_current_game(True), "已结束当前游戏"),
         "remove_all_abilities": elephant_remove_all_abilities,
         "ally_health_lock": elephant_toggle_ally_health_lock,
+        "allied_cooldowns": lambda: (
+            f"已重置我方 {elephant_trainer().reset_local_player_unit_cooldowns()} "
+            "个单位的技能冷却"
+        ),
     }
     hotkey_specs_by_name = {spec.name: spec for spec in ELEPHANT_HOTKEY_SPECS}
     hotkey_dangerous = {
@@ -16981,6 +17030,10 @@ def run_gui() -> None:
     ).pack(side="left", padx=(12, 0))
     ttk.Label(top, text="PID").pack(side="left", padx=(16, 4))
     ttk.Entry(top, textvariable=pid_var, width=10, state="readonly").pack(side="left")
+    ttk.Label(
+        top,
+        text="大象功能灵感来源于经典版大象修改器，本软件完全免费，谨防倒卖",
+    ).pack(side="left", padx=(12, 0))
     language_frame = ttk.Frame(top)
     language_frame.pack(side="right")
     ttk.Label(language_frame, text="语言").pack(side="left", padx=(8, 4))

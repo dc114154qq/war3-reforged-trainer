@@ -47,6 +47,25 @@ class GlobalHotkeyManagerTests(unittest.TestCase):
             (trainer.MOD_ALT, ord("K")),
         )
 
+    def test_allied_cooldown_hotkey_is_available(self):
+        specs = {
+            spec.name: spec
+            for spec in trainer.ELEPHANT_HOTKEY_SPECS
+        }
+        self.assertEqual(
+            (
+                specs["allied_cooldowns"].modifiers,
+                specs["allied_cooldowns"].virtual_key,
+            ),
+            (trainer.MOD_ALT, ord("C")),
+        )
+
+    def test_free_anti_resale_notice_is_next_to_pid(self):
+        source = Path(trainer.__file__).read_text(encoding="utf-8")
+        pid_entry = 'ttk.Entry(top, textvariable=pid_var, width=10, state="readonly").pack(side="left")'
+        notice = "大象功能灵感来源于经典版大象修改器，本软件完全免费，谨防倒卖"
+        self.assertLess(source.index(pid_entry), source.index(notice))
+
     def test_read_success_sound_only_plays_after_success(self):
         with patch.object(trainer, "play_read_success_sound") as sound:
             self.assertEqual(

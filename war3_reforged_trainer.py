@@ -513,7 +513,7 @@ ELEPHANT_HOTKEY_SPECS = (
     GlobalHotkeySpec("end_game", "Alt+H  结束游戏", MOD_ALT, ord("H")),
     GlobalHotkeySpec("remove_all_abilities", "Alt+J  技能全删", MOD_ALT, ord("J")),
     GlobalHotkeySpec("ally_health_lock", "Alt+K  我方锁血", MOD_ALT, ord("K")),
-    GlobalHotkeySpec("allied_cooldowns", "Alt+C  我方全部技能无 CD", MOD_ALT, ord("C")),
+    GlobalHotkeySpec("allied_cooldowns", "Alt+C  重置我方全部技能冷却", MOD_ALT, ord("C")),
 )
 
 class MEMORY_BASIC_INFORMATION64(ctypes.Structure):

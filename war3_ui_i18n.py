@@ -202,7 +202,7 @@ _EN_TRANSLATIONS = {
     "增加金币木材": "Add Gold and Lumber",
     "技能全删": "Remove All Abilities",
     "我方锁血": "Allied Health Lock",
-    "我方全部技能无 CD": "Reset All Allied Cooldowns",
+    "重置我方全部技能冷却": "Reset All Allied Ability Cooldowns",
     "大象功能灵感来源于经典版大象修改器，本软件完全免费，谨防倒卖": "Elephant features are inspired by the classic Elephant Trainer. This software is completely free; beware of resellers.",
     "已重置我方 ": "Reset ability cooldowns for ",
     " 个单位的技能冷却": " allied units",

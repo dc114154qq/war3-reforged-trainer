@@ -201,6 +201,30 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
         self.assertNotIn("SetUnitInvulnerable", requested_names)
         self.assertIn("SetWidgetLife", requested_names)
 
+    def test_reset_allied_cooldowns_uses_one_game_thread_enumeration(self):
+        trainer = self.make_trainer()
+        trainer._run_native_helper_ops = Mock(
+            return_value=[
+                trainer_module.NativeHelperOpResult(
+                    kind=trainer.NATIVE_HELPER_OP_JASS_RESET_LOCAL_COOLDOWNS,
+                    result=7,
+                )
+            ]
+        )
+
+        self.assertEqual(trainer.reset_local_player_unit_cooldowns(), 7)
+
+        unit_handle, ops = trainer._run_native_helper_ops.call_args.args[:2]
+        self.assertEqual(unit_handle, 0)
+        self.assertEqual(
+            ops[0][0],
+            trainer.NATIVE_HELPER_OP_JASS_RESET_LOCAL_COOLDOWNS,
+        )
+        requested_names = trainer._elephant_handlers.call_args.args[1]
+        self.assertIn("GroupEnumUnitsOfPlayer", requested_names)
+        self.assertIn("UnitResetCooldown", requested_names)
+        self.assertEqual(len(ops), 3)
+
     def test_python_and_c_helper_protocol_versions_match(self):
         helper_source = (
             Path(__file__).with_name("tools") / "war3_native_helper.c"
@@ -212,6 +236,10 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
         self.assertIn("WAR3_NATIVE_OP_JASS_HEAL_LOCAL_UNITS 117u", helper_source)
         self.assertIn("WAR3_NATIVE_OP_JASS_CLONE_SELECTED_UNIT 118u", helper_source)
         self.assertIn("WAR3_NATIVE_OP_JASS_SELECTED_UNITS 119u", helper_source)
+        self.assertIn(
+            "WAR3_NATIVE_OP_JASS_RESET_LOCAL_COOLDOWNS 121u",
+            helper_source,
+        )
         self.assertIn("uint64_t selected_units[12]", helper_source)
         self.assertIn("while (selected_count < 12u)", helper_source)
         self.assertIn("selected_units[selected_count++] = current;", helper_source)

@@ -82,6 +82,80 @@ def test_backup_native_table_keeps_existing_fast_path(monkeypatch):
     assert instance._find_native_table_regions_win10(object(), [expected]) == [expected]
 
 
+def test_backup_accepts_vtables_in_the_process_executable_ranges():
+    instance = trainer.BackupReadWar3Trainer.__new__(
+        trainer.BackupReadWar3Trainer
+    )
+    instance._readable_pointer_bases = ()
+    instance._readable_pointer_ends = ()
+    instance._executable_pointer_bases = ()
+    instance._executable_pointer_ends = ()
+    regions = [
+        trainer.Region(
+            0x240000,
+            0x2000,
+            trainer.PAGE_EXECUTE_READ,
+            trainer.MEM_IMAGE,
+        )
+    ]
+
+    instance.set_readable_pointer_regions(regions)
+
+    assert instance._looks_like_vtable(0x240100)
+    assert not instance._looks_like_vtable(0x250100)
+
+
+def test_backup_native_table_accepts_mapped_native_records(monkeypatch):
+    instance = trainer.BackupReadWar3Trainer.__new__(
+        trainer.BackupReadWar3Trainer
+    )
+    instance._native_table_regions = []
+    instance._native_table_region = None
+    instance._native_table_blob = None
+    instance._unit_owner_index = {}
+    instance._readable_pointer_bases = ()
+    instance._readable_pointer_ends = ()
+    instance._executable_pointer_bases = ()
+    instance._executable_pointer_ends = ()
+    mapped = trainer.Region(
+        0x500000,
+        0x20000,
+        trainer.PAGE_READWRITE,
+        trainer.MEM_MAPPED,
+    )
+    executable = trainer.Region(
+        0x140000000,
+        0x100000,
+        trainer.PAGE_EXECUTE_READ,
+        trainer.MEM_IMAGE,
+    )
+    hit = mapped.base + 0x100
+    record = hit - 0x18
+    handler = executable.base + 0x1000
+    instance.set_readable_pointer_regions([mapped, executable])
+
+    monkeypatch.setattr(
+        instance,
+        "_scan_bytes_regions_win10",
+        lambda *_args, **_kwargs: [hit],
+    )
+
+    class Memory:
+        @staticmethod
+        def read_u64(address):
+            return {
+                record - 8: handler,
+                record: hit,
+                record + 8: len("UnitAddAbility"),
+            }[address]
+
+    assert instance._scan_native_table_region_candidates_win10(
+        Memory(),
+        [mapped, executable],
+        None,
+    ) == [mapped]
+
+
 def test_backup_resource_scan_expands_in_stages(monkeypatch):
     instance = _bare_trainer()
     resource_tag = trainer.struct.pack("<Q", trainer.War3Trainer.RESOURCE_PROP_TAG)
@@ -131,6 +205,42 @@ def test_backup_resource_scan_expands_in_stages(monkeypatch):
     assert pm.refreshes == 1
     assert groups[0x30][3].value == 5000
     assert instance._unit_owner_index == {0x30: owner_address}
+
+
+def test_backup_resource_scan_falls_back_to_mapped_regions(monkeypatch):
+    instance = _bare_trainer()
+    resource_tag = trainer.struct.pack("<Q", trainer.War3Trainer.RESOURCE_PROP_TAG)
+    owner_tag = trainer.struct.pack("<Q", trainer.War3Trainer.UNIT_OWNER_TAG)
+    calls = []
+
+    def private_scan(_pm, _patterns, max_region_size):
+        calls.append(("private", max_region_size))
+        return {resource_tag: [], owner_tag: []}
+
+    def region_scan(_pm, patterns, **_kwargs):
+        calls.append(("regions", None))
+        return {pattern: [0x500000] for pattern in patterns}
+
+    monkeypatch.setattr(instance, "_scan_bytes_private_many_win10", private_scan)
+    monkeypatch.setattr(instance, "_scan_bytes_regions_many_win10", region_scan)
+    monkeypatch.setattr(
+        instance,
+        "_unit_owner_index_from_tag_addresses",
+        lambda _pm, addresses: {},
+    )
+    monkeypatch.setattr(
+        instance,
+        "_iter_resource_properties",
+        lambda _pm, addresses: (),
+    )
+
+    class Memory:
+        def regions(self, force_refresh=False):
+            return []
+
+    instance._resource_property_groups_win10(Memory(), warm_unit_owner_index=True)
+
+    assert calls[-1] == ("regions", None)
 
 
 def test_backup_component_scan_keeps_existing_fast_path(monkeypatch):
@@ -437,3 +547,49 @@ def test_exact_native_fallback_resolves_external_name_references():
         name: handler.record_address
         for name, handler in found.items()
     } == records
+
+
+def test_backup_native_discovery_uses_exact_names_when_table_anchor_is_missing(
+    monkeypatch,
+):
+    instance = _bare_trainer()
+    instance._native_handlers = {}
+    instance._native_table_regions = []
+    instance._native_table_region = None
+    instance._native_table_blob = None
+    regions = []
+    expected = {
+        "GetLocalPlayer": trainer.NativeHandler("GetLocalPlayer", 0x1000, 0x2000),
+    }
+
+    monkeypatch.setattr(
+        instance,
+        "_find_native_table_regions_win10",
+        lambda *_args: (_ for _ in ()).throw(
+            RuntimeError("未找到 Warcraft III native 函数表")
+        ),
+    )
+    monkeypatch.setattr(
+        instance,
+        "_find_native_handlers_by_exact_name_scan",
+        lambda _pm, _regions, names: {
+            name: expected[name]
+            for name in names
+            if name in expected
+        },
+    )
+    monkeypatch.setattr(
+        instance,
+        "_native_handlers",
+        {},
+    )
+
+    class Memory:
+        @staticmethod
+        def regions():
+            return regions
+
+    assert instance._discover_native_handlers_near_table_win10(
+        Memory(),
+        ("GetLocalPlayer",),
+    ) == expected

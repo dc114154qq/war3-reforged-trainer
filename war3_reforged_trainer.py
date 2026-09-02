@@ -2959,14 +2959,15 @@ class War3Trainer:
     ) -> list[Region]:
         pattern = b"UnitAddAbility\0"
         candidates: dict[tuple[int, int], Region] = {}
-        for hit in self._scan_bytes_private_win10(
+        for hit in self._scan_bytes_regions_win10(
             pm,
             pattern,
+            region_types=(MEM_PRIVATE, MEM_MAPPED),
             max_region_size=max_region_size,
         ):
             record = hit - 0x18
             region = self._region_for_address(regions, hit)
-            if region is None or region.typ != MEM_PRIVATE:
+            if region is None or region.typ not in (MEM_PRIVATE, MEM_MAPPED):
                 continue
             try:
                 handler = pm.read_u64(record - 8)
@@ -3426,7 +3427,26 @@ class War3Trainer:
             return {name: self._native_handlers[name] for name in wanted}
 
         regions = pm.regions()
-        anchors = self._find_native_table_regions_win10(pm, regions)
+        try:
+            anchors = self._find_native_table_regions_win10(pm, regions)
+        except RuntimeError:
+            # A few allocator layouts keep native records valid but make the
+            # UnitAddAbility anchor undiscoverable. Resolve the requested
+            # records by exact name before giving up, without using normal
+            # ProcessMemory or an unverified historical table.
+            found = self._find_native_handlers_by_exact_name_scan(
+                pm,
+                regions,
+                missing,
+            )
+            self._native_handlers.update(found)
+            missing = wanted.difference(self._native_handlers)
+            if not missing:
+                return {name: self._native_handlers[name] for name in wanted}
+            raise RuntimeError(
+                "未找到 native 函数表或完整 native 名称记录："
+                + ", ".join(sorted(missing))
+            )
         regions = pm.regions()
         found: dict[str, NativeHandler] = {}
         external_records: set[tuple[int, int]] = set()
@@ -8656,6 +8676,17 @@ class War3Trainer:
             tag_hits = self._scan_bytes_private_many_win10(
                 pm,
                 patterns,
+                max_region_size=None,
+            )
+        if not tag_hits[resource_tag] or (
+            warm_unit_owner_index and not tag_hits[unit_owner_tag]
+        ):
+            # Resource/property records can be backed by mapped memory on
+            # machines whose allocator layout differs from the usual build.
+            tag_hits = self._scan_bytes_regions_many_win10(
+                pm,
+                patterns,
+                region_types=(MEM_PRIVATE, MEM_MAPPED),
                 max_region_size=None,
             )
         if warm_unit_owner_index:
@@ -14408,6 +14439,8 @@ class BackupReadWar3Trainer(War3Trainer):
         super().__init__(pid)
         self._readable_pointer_bases: tuple[int, ...] = ()
         self._readable_pointer_ends: tuple[int, ...] = ()
+        self._executable_pointer_bases: tuple[int, ...] = ()
+        self._executable_pointer_ends: tuple[int, ...] = ()
         self._backup_selected_identity: tuple[int, int, int] | None = None
         self._backup_diagnostics: Win10ReadLogger | None = None
 
@@ -14577,6 +14610,7 @@ class BackupReadWar3Trainer(War3Trainer):
 
     def set_readable_pointer_regions(self, regions: Iterable[Region]) -> dict[str, object]:
         ranges: list[tuple[int, int]] = []
+        executable_ranges: list[tuple[int, int]] = []
         for region in sorted(regions, key=lambda item: item.base):
             start = max(int(region.base), 0x10000)
             end = min(int(region.base + region.size), self.LOW_ADDRESS_LIMIT)
@@ -14587,14 +14621,34 @@ class BackupReadWar3Trainer(War3Trainer):
                 ranges[-1] = (previous_start, max(previous_end, end))
             else:
                 ranges.append((start, end))
+            if (int(region.protect) & 0xFF) in EXECUTABLE_PROTECTS:
+                if executable_ranges and start <= executable_ranges[-1][1]:
+                    previous_start, previous_end = executable_ranges[-1]
+                    executable_ranges[-1] = (previous_start, max(previous_end, end))
+                else:
+                    executable_ranges.append((start, end))
         self._readable_pointer_bases = tuple(start for start, _end in ranges)
         self._readable_pointer_ends = tuple(end for _start, end in ranges)
+        self._executable_pointer_bases = tuple(start for start, _end in executable_ranges)
+        self._executable_pointer_ends = tuple(end for _start, end in executable_ranges)
         return {
             "low_region_count": len(ranges),
             "low_readable_bytes": sum(end - start for start, end in ranges),
             "low_min": f"0x{ranges[0][0]:x}" if ranges else "",
             "low_max": f"0x{ranges[-1][1]:x}" if ranges else "",
         }
+
+    def _looks_like_vtable(self, value: int) -> bool:
+        value = int(value)
+        if War3Trainer._looks_like_vtable(value):
+            return True
+        if value < 0x10000:
+            return False
+        index = bisect_right(self._executable_pointer_bases, value) - 1
+        return bool(
+            index >= 0
+            and value + 8 <= self._executable_pointer_ends[index]
+        )
 
     def _sane_heap_ptr(self, value: int) -> bool:
         value = int(value)

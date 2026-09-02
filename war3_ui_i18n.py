@@ -574,6 +574,7 @@ _EN_TRANSLATIONS.update(
     "快速建造/研究": "Rapid construction/research",
     "取消人口限制": "Cancel population restrictions",
     "刷新技能冷却": "Refresh skill cooldown",
+    "未找到 native 函数表或完整 native 名称记录：": "Native function table or complete native name records were not found: ",
     "所有升级": "All upgrades",
     "允许全部研究": "Allow all research",
     "取消科技树限制": "Cancel technology tree restrictions",

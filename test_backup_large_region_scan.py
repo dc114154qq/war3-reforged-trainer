@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from types import SimpleNamespace
 
 import war3_reforged_trainer as trainer
@@ -241,6 +242,236 @@ def test_backup_resource_scan_falls_back_to_mapped_regions(monkeypatch):
     instance._resource_property_groups_win10(Memory(), warm_unit_owner_index=True)
 
     assert calls[-1] == ("regions", None)
+
+
+def test_backup_resource_stages_expand_after_incomplete_small_hits(monkeypatch):
+    instance = trainer.BackupReadWar3Trainer.__new__(
+        trainer.BackupReadWar3Trainer
+    )
+    instance._unit_owner_index = {}
+    instance._readable_pointer_bases = ()
+    instance._readable_pointer_ends = ()
+    instance._executable_pointer_bases = ()
+    instance._executable_pointer_ends = ()
+    resource_tag = trainer.struct.pack("<Q", trainer.War3Trainer.RESOURCE_PROP_TAG)
+    owner_tag = trainer.struct.pack("<Q", trainer.War3Trainer.UNIT_OWNER_TAG)
+    partial_hit = 0x500018
+    complete_hit = 0x600018
+    calls = []
+
+    class Memory:
+        def regions(self, force_refresh=False):
+            return []
+
+    monkeypatch.setattr(instance, "_require_win10_memory", lambda pm: pm)
+    monkeypatch.setattr(instance, "set_readable_pointer_regions", lambda _regions: {})
+
+    def private_scan(_pm, patterns, max_region_size):
+        calls.append(("private", max_region_size))
+        result = {pattern: [] for pattern in patterns}
+        result[resource_tag] = [partial_hit]
+        if max_region_size == 64 * 1024 * 1024:
+            result[resource_tag].append(complete_hit)
+        return result
+
+    monkeypatch.setattr(instance, "_scan_bytes_private_many_win10", private_scan)
+    monkeypatch.setattr(
+        instance,
+        "_scan_bytes_regions_many_win10",
+        lambda _pm, patterns, **_kwargs: {pattern: [] for pattern in patterns},
+    )
+    monkeypatch.setattr(
+        instance,
+        "_unit_owner_index_from_tag_addresses",
+        lambda _pm, _addresses: {},
+    )
+
+    def properties(_pm, addresses):
+        yield trainer.ResourceProperty(3, partial_hit - 0x28, 5000, 0x700000)
+        if complete_hit not in addresses:
+            return
+        values = {
+            1: 1,
+            2: 0,
+            3: 5000,
+            4: 3000,
+            6: 100,
+            7: 20,
+            8: 1000,
+        }
+        for kind, value in values.items():
+            yield trainer.ResourceProperty(
+                kind,
+                complete_hit + kind * 0x80,
+                value,
+                0x710000,
+            )
+
+    monkeypatch.setattr(instance, "_iter_resource_properties", properties)
+
+    stages = instance._resource_property_group_stages_win10(
+        Memory(),
+        warm_unit_owner_index=True,
+    )
+    first_stage, first_groups = next(stages)
+    second_stage, second_groups = next(stages)
+
+    assert first_stage == "private-small"
+    assert instance._resource_caches_from_groups(first_groups) == []
+    assert second_stage == "private-medium"
+    assert len(instance._resource_caches_from_groups(second_groups)) == 1
+    assert calls[:2] == [
+        ("private", 1024 * 1024),
+        ("private", 64 * 1024 * 1024),
+    ]
+
+
+def test_backup_resource_stages_do_not_stop_on_private_false_positive(
+    monkeypatch,
+):
+    instance = trainer.BackupReadWar3Trainer.__new__(
+        trainer.BackupReadWar3Trainer
+    )
+    instance._unit_owner_index = {}
+    instance._readable_pointer_bases = ()
+    instance._readable_pointer_ends = ()
+    instance._executable_pointer_bases = ()
+    instance._executable_pointer_ends = ()
+    resource_tag = trainer.struct.pack("<Q", trainer.War3Trainer.RESOURCE_PROP_TAG)
+    owner_tag = trainer.struct.pack("<Q", trainer.War3Trainer.UNIT_OWNER_TAG)
+    calls = []
+
+    class Memory:
+        def regions(self, force_refresh=False):
+            return []
+
+    monkeypatch.setattr(instance, "_require_win10_memory", lambda pm: pm)
+    monkeypatch.setattr(instance, "set_readable_pointer_regions", lambda _regions: {})
+
+    def private_scan(_pm, patterns, max_region_size):
+        calls.append(("private", max_region_size))
+        return {
+            pattern: [0x500018] if pattern == resource_tag else [0x500118]
+            for pattern in patterns
+        }
+
+    def mapped_scan(_pm, patterns, **_kwargs):
+        calls.append(("mapped", None))
+        return {
+            pattern: [0x600018] if pattern == resource_tag else [0x600118]
+            for pattern in patterns
+        }
+
+    monkeypatch.setattr(instance, "_scan_bytes_private_many_win10", private_scan)
+    monkeypatch.setattr(instance, "_scan_bytes_regions_many_win10", mapped_scan)
+    monkeypatch.setattr(
+        instance,
+        "_unit_owner_index_from_tag_addresses",
+        lambda _pm, _addresses: {},
+    )
+    monkeypatch.setattr(
+        instance,
+        "_iter_resource_properties",
+        lambda _pm, addresses: (
+            trainer.ResourceProperty(3, address - 0x28, 5000, 0x710000)
+            for address in addresses
+            if address == 0x600018
+        ),
+    )
+
+    stages = instance._resource_property_group_stages_win10(
+        Memory(),
+        warm_unit_owner_index=True,
+    )
+    list(stages)
+
+    assert calls[-1] == ("mapped", None)
+
+
+def test_backup_resource_parser_accepts_all_supported_player_slots():
+    instance = trainer.BackupReadWar3Trainer.__new__(
+        trainer.BackupReadWar3Trainer
+    )
+    group = {
+        1: trainer.ResourceProperty(1, 0x1000, 1, 0x9000),
+        2: trainer.ResourceProperty(2, 0x1100, 27, 0x9000),
+        3: trainer.ResourceProperty(3, 0x1200, 5000, 0x9000),
+        4: trainer.ResourceProperty(4, 0x1300, 3000, 0x9000),
+    }
+
+    candidates = instance._resource_cache_candidates_from_group(group)
+
+    assert len(candidates) == 1
+    assert candidates[0][1].player_value == 27
+
+
+def test_backup_resource_list_does_not_filter_with_stale_ui_values(monkeypatch):
+    main = _bare_trainer()
+    main.pid = 1234
+    main._resource_candidates_by_start = {}
+    main._unit_owner_index = {}
+    cache = trainer.ResourceCache(
+        0x1200,
+        0x1300,
+        500,
+        300,
+        block_start_kind=1,
+        owner_key=0x9000,
+    )
+    groups = {
+        0x9000: {
+            1: trainer.ResourceProperty(1, 0x1000, 1, 0x9000),
+        }
+    }
+    cache_calls = []
+
+    class Diagnostics:
+        def log(self, *_args, **_kwargs):
+            pass
+
+    class Memory:
+        def regions(self, force_refresh=False):
+            return []
+
+    class Isolated:
+        _resource_candidates_by_start = {1: [cache]}
+        _unit_owner_index = {}
+
+        @staticmethod
+        def set_readable_pointer_regions(_regions):
+            return {}
+
+        @staticmethod
+        def _resource_property_group_stages_win10(_pm, warm_unit_owner_index=False):
+            yield "private-small", groups
+
+        @staticmethod
+        def _resource_caches_from_groups(_groups, *filters):
+            cache_calls.append(filters)
+            return [cache]
+
+        @staticmethod
+        def _locate_local_player_resource_cache_with_pm(_pm, _caches):
+            return cache
+
+    @contextmanager
+    def memory_operation(*_args, **_kwargs):
+        yield Diagnostics(), Memory()
+
+    monkeypatch.setattr(trainer, "BackupReadWar3Trainer", lambda _pid: Isolated())
+    monkeypatch.setattr(main, "_win10_memory_operation", memory_operation)
+    monkeypatch.setattr(main, "_seed_win10_isolated_state", lambda _isolated: {})
+    monkeypatch.setattr(
+        main,
+        "_recover_win10_native_handlers",
+        lambda *_args, **_kwargs: (0, ()),
+    )
+
+    caches, local = main.list_resource_caches_win10(999, 888, 77, 66)
+
+    assert caches == [cache]
+    assert local == cache
+    assert cache_calls == [()]
 
 
 def test_backup_component_scan_keeps_existing_fast_path(monkeypatch):

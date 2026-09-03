@@ -2099,6 +2099,7 @@ class War3Trainer:
     PROP_TAG = 0x6072656C5E70726F
     POSITION_PROP_TAG = 0x607063755E70726F
     RESOURCE_PROP_TAG = 0x60666C675E70726F
+    RESOURCE_PLAYER_VALUE_MAX = 16
     UNIT_OWNER_TAG = 0x2B7733752B61676C
     ITEM_OWNER_TAG = 0x6974656D2B61676C
     PLAYER_COMPONENT_TAG = 0x2B706C792B61676C
@@ -8519,7 +8520,10 @@ class War3Trainer:
             player_prop = group.get(start_kind + 1)
             if header_prop is None or player_prop is None:
                 continue
-            if not 0 <= header_prop.value <= 32 or not 0 <= player_prop.value <= 16:
+            if (
+                not 0 <= header_prop.value <= 32
+                or not 0 <= player_prop.value <= self.RESOURCE_PLAYER_VALUE_MAX
+            ):
                 continue
             gold_prop = group.get(start_kind + 2)
             lumber_prop = group.get(start_kind + 3)
@@ -8888,40 +8892,56 @@ class War3Trainer:
             pointer_layout = isolated.set_readable_pointer_regions(regions)
             diagnostics.log("backup_resource_pointer_layout", **pointer_layout)
             self._recover_win10_native_handlers(isolated, pm, diagnostics)
-            groups = isolated._resource_property_groups_win10(
+            saw_groups = False
+            saw_caches = False
+            for scan_stage, groups in isolated._resource_property_group_stages_win10(
                 pm,
                 warm_unit_owner_index=True,
-            )
-            caches = isolated._resource_caches_from_groups(
-                groups,
-                current_gold,
-                current_lumber,
-                current_food,
-                current_food_cap,
-            )
-            if not caches:
-                raise RuntimeError("备用扫描未找到可用于匹配本地玩家的资源组")
-            local_cache = isolated._locate_local_player_resource_cache_with_pm(
-                pm,
-                caches,
-            )
-            if local_cache is None:
-                raise RuntimeError(
-                    "备用扫描无法按玩家槽唯一匹配本地玩家资源组；"
-                    "已拒绝自动选择，避免修改其他阵营"
+            ):
+                saw_groups = saw_groups or bool(groups)
+                # Values already shown in the UI may belong to an earlier game or
+                # resource update. They are useful diagnostics, not scan filters.
+                caches = isolated._resource_caches_from_groups(groups)
+                saw_caches = saw_caches or bool(caches)
+                diagnostics.log(
+                    "backup_resource_scan_stage",
+                    stage=scan_stage,
+                    owner_group_count=len(groups),
+                    resource_group_count=len(caches),
+                    current_hints=(
+                        current_gold,
+                        current_lumber,
+                        current_food,
+                        current_food_cap,
+                    ),
                 )
-            self._resource_candidates_by_start = {
-                start: list(items)
-                for start, items in isolated._resource_candidates_by_start.items()
-            }
-            self._unit_owner_index.update(isolated._unit_owner_index)
-            diagnostics.log(
-                "backup_resource_success",
-                group_count=len(caches),
-                local_owner=f"0x{local_cache.owner_key:x}",
-                local_start_kind=f"0x{local_cache.block_start_kind:x}",
+                if not caches:
+                    continue
+                local_cache = isolated._locate_local_player_resource_cache_with_pm(
+                    pm,
+                    caches,
+                )
+                if local_cache is None:
+                    continue
+                self._resource_candidates_by_start = {
+                    start: list(items)
+                    for start, items in isolated._resource_candidates_by_start.items()
+                }
+                self._unit_owner_index.update(isolated._unit_owner_index)
+                diagnostics.log(
+                    "backup_resource_success",
+                    scan_stage=scan_stage,
+                    group_count=len(caches),
+                    local_owner=f"0x{local_cache.owner_key:x}",
+                    local_start_kind=f"0x{local_cache.block_start_kind:x}",
+                )
+                return caches, local_cache
+            if not saw_groups or not saw_caches:
+                raise RuntimeError("备用扫描未找到可用于匹配本地玩家的资源组")
+            raise RuntimeError(
+                "备用扫描无法按玩家槽唯一匹配本地玩家资源组；"
+                "已拒绝自动选择，避免修改其他阵营"
             )
-            return caches, local_cache
 
     def _resource_caches_from_groups(
         self,
@@ -14434,6 +14454,7 @@ class BackupReadWar3Trainer(War3Trainer):
     """War3 trainer view that accepts verified low virtual addresses."""
 
     LOW_ADDRESS_LIMIT = 0x100000000
+    RESOURCE_PLAYER_VALUE_MAX = 27
 
     def __init__(self, pid: int | None = None):
         super().__init__(pid)
@@ -14549,6 +14570,70 @@ class BackupReadWar3Trainer(War3Trainer):
             safe_pm,
             warm_unit_owner_index,
         )
+
+    def _resource_property_group_stages_win10(
+        self,
+        pm: ProcessMemory,
+        warm_unit_owner_index: bool = False,
+    ) -> Iterator[tuple[str, dict[int, dict[int, ResourceProperty]]]]:
+        safe_pm = self._require_win10_memory(pm)
+        resource_tag = struct.pack("<Q", self.RESOURCE_PROP_TAG)
+        unit_owner_tag = struct.pack("<Q", self.UNIT_OWNER_TAG)
+        patterns = (
+            (resource_tag, unit_owner_tag)
+            if warm_unit_owner_index
+            else (resource_tag,)
+        )
+        collected = {pattern: [] for pattern in patterns}
+        seen = {pattern: set() for pattern in patterns}
+        stages = (
+            ("private-small", "private", 1024 * 1024),
+            ("private-medium", "private", 64 * 1024 * 1024),
+            ("private-all", "private", None),
+            ("mapped-all", "mapped", None),
+        )
+        for stage_name, region_kind, max_region_size in stages:
+            if stage_name == "private-medium":
+                safe_pm.regions(force_refresh=True)
+                self.set_readable_pointer_regions(safe_pm.regions())
+            if region_kind == "private":
+                stage_hits = self._scan_bytes_private_many_win10(
+                    safe_pm,
+                    patterns,
+                    max_region_size=max_region_size,
+                )
+            else:
+                stage_hits = self._scan_bytes_regions_many_win10(
+                    safe_pm,
+                    patterns,
+                    region_types=(MEM_MAPPED,),
+                    max_region_size=max_region_size,
+                )
+            changed = False
+            for pattern in patterns:
+                for address in stage_hits[pattern]:
+                    if address in seen[pattern]:
+                        continue
+                    seen[pattern].add(address)
+                    collected[pattern].append(address)
+                    changed = True
+            if not changed and stage_name != "private-small":
+                continue
+            if warm_unit_owner_index:
+                self._unit_owner_index = self._unit_owner_index_from_tag_addresses(
+                    safe_pm,
+                    collected[unit_owner_tag],
+                )
+            groups: dict[int, dict[int, ResourceProperty]] = {}
+            for prop in self._iter_resource_properties(
+                safe_pm,
+                collected[resource_tag],
+            ):
+                owner_group = groups.setdefault(prop.owner_key, {})
+                current = owner_group.get(prop.kind)
+                if current is None or prop.address > current.address:
+                    owner_group[prop.kind] = prop
+            yield stage_name, groups
 
     def _scan_component_index(
         self,

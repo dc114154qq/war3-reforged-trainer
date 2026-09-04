@@ -60,6 +60,25 @@ class GlobalHotkeyManagerTests(unittest.TestCase):
             (trainer.MOD_ALT, ord("C")),
         )
 
+    def test_cheat_hotkeys_are_available(self):
+        specs = {
+            spec.name: spec
+            for spec in trainer.ELEPHANT_HOTKEY_SPECS
+        }
+        self.assertEqual(
+            (specs["rapid_build"].modifiers, specs["rapid_build"].virtual_key),
+            (trainer.MOD_ALT, ord("V")),
+        )
+        self.assertEqual(
+            (specs["instant_victory"].modifiers, specs["instant_victory"].virtual_key),
+            (trainer.MOD_ALT, ord("B")),
+        )
+        self.assertEqual(trainer.War3Trainer.CHEATS["快速建造/研究"], "warpten")
+        self.assertEqual(
+            trainer.War3Trainer.CHEATS["直接胜利"],
+            "allyourbasearebelongtous",
+        )
+
     def test_free_anti_resale_notice_is_next_to_pid(self):
         source = Path(trainer.__file__).read_text(encoding="utf-8")
         pid_entry = 'ttk.Entry(top, textvariable=pid_var, width=10, state="readonly").pack(side="left")'

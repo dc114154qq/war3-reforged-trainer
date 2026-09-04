@@ -34,7 +34,7 @@ from war3_item_fields import ITEM_FIELD_BY_KEY, ITEM_FIELD_CATALOG, ItemFieldSpe
 from war3_ui_i18n import detect_ui_language, translate_ui_text
 
 
-APP_VERSION = "1.0.17"
+APP_VERSION = "1.0.18"
 PRODUCT_READ_MODE = "backup"
 PRODUCT_EDITION_LABEL = "备用读取版"
 WIN10_COMPAT_REVISION = "backup-r7-live-regions-external-native"
@@ -514,6 +514,8 @@ ELEPHANT_HOTKEY_SPECS = (
     GlobalHotkeySpec("remove_all_abilities", "Alt+J  技能全删", MOD_ALT, ord("J")),
     GlobalHotkeySpec("ally_health_lock", "Alt+K  我方锁血", MOD_ALT, ord("K")),
     GlobalHotkeySpec("allied_cooldowns", "Alt+C  重置我方全部技能冷却", MOD_ALT, ord("C")),
+    GlobalHotkeySpec("rapid_build", "Alt+V  快速建造/研究", MOD_ALT, ord("V")),
+    GlobalHotkeySpec("instant_victory", "Alt+B  直接胜利", MOD_ALT, ord("B")),
 )
 
 class MEMORY_BASIC_INFORMATION64(ctypes.Structure):
@@ -2088,6 +2090,7 @@ class War3Trainer:
         "显示全地图": "iseedeadpeople",
         "无限魔法": "thereisnospoon",
         "快速建造/研究": "warpten",
+        "直接胜利": "allyourbasearebelongtous",
         "取消人口限制": "pointbreak",
         "刷新技能冷却": "thedudeabides",
         "所有升级": "sharpandshiny",
@@ -16744,6 +16747,14 @@ def run_gui() -> None:
         results = elephant_batch(action, label)
         return f"{label}：成功 {len(results)} 个{elephant_batch_suffix()}"
 
+    def send_cheat_command(command_name: str, message: str) -> str:
+        t = trainer()
+        command = t.CHEATS.get(command_name)
+        if not command:
+            raise RuntimeError(f"未找到秘籍：{command_name}")
+        t.send_cheat(command)
+        return message
+
     hotkey_callbacks: dict[str, Callable[[], str]] = {
         "backup_read_unit": read_unit_win10_with_sound,
         "hero_level": elephant_set_hero_level,
@@ -16829,6 +16840,14 @@ def run_gui() -> None:
             f"已重置我方 {elephant_trainer().reset_local_player_unit_cooldowns()} "
             "个单位的技能冷却"
         ),
+        "rapid_build": lambda: send_cheat_command(
+            "快速建造/研究",
+            "快速建造/研究指令已发送",
+        ),
+        "instant_victory": lambda: send_cheat_command(
+            "直接胜利",
+            "直接胜利指令已发送",
+        ),
     }
     hotkey_specs_by_name = {spec.name: spec for spec in ELEPHANT_HOTKEY_SPECS}
     hotkey_dangerous = {
@@ -16837,6 +16856,7 @@ def run_gui() -> None:
         "kill_owner_units",
         "end_game",
         "remove_all_abilities",
+        "instant_victory",
     }
     for name, variable in elephant_hotkey_checks.items():
         variable.set(name in hotkey_callbacks and name not in hotkey_dangerous)

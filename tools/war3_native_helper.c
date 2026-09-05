@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 22u
+#define WAR3_NATIVE_VERSION 23u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -394,12 +394,15 @@ static War3PersistentNative g_persistent_natives[
     sizeof(g_persistent_native_names) / sizeof(g_persistent_native_names[0])
 ] = {0};
 static uint64_t g_persistent_unit_resolver = 0;
+static uint64_t g_persistent_item_resolver = 0;
+static uint64_t g_persistent_agent_resolver = 0;
+typedef uint64_t (__fastcall *War3AgentResolveFn)(uint32_t slot, uint32_t serial);
 static uint64_t war3_persistent_native_handler(const char *name);
 
 #define WAR3_PERSISTENT_SNAPSHOT_MAX_ITEMS 6u
 #define WAR3_PERSISTENT_SNAPSHOT_MAX_ABILITIES 48u
 #define WAR3_PERSISTENT_SNAPSHOT_QWORDS \
-    (17u + (WAR3_PERSISTENT_SNAPSHOT_MAX_ITEMS * 2u) + 1u + \
+    (19u + (WAR3_PERSISTENT_SNAPSHOT_MAX_ITEMS * 4u) + 1u + \
      (WAR3_PERSISTENT_SNAPSHOT_MAX_ABILITIES * 2u))
 
 typedef struct War3PersistentSnapshot {
@@ -422,9 +425,13 @@ typedef struct War3PersistentSnapshot {
     uint64_t intelligence;
     uint64_t item_ids[WAR3_PERSISTENT_SNAPSHOT_MAX_ITEMS];
     uint64_t item_charges[WAR3_PERSISTENT_SNAPSHOT_MAX_ITEMS];
+    uint64_t item_handles[WAR3_PERSISTENT_SNAPSHOT_MAX_ITEMS];
+    uint64_t item_addresses[WAR3_PERSISTENT_SNAPSHOT_MAX_ITEMS];
     uint64_t ability_count;
     uint64_t ability_ids[WAR3_PERSISTENT_SNAPSHOT_MAX_ABILITIES];
     uint64_t ability_levels[WAR3_PERSISTENT_SNAPSHOT_MAX_ABILITIES];
+    uint64_t full_handle;
+    uint64_t owner_address;
 } War3PersistentSnapshot;
 
 typedef struct War3CodeRange {
@@ -567,6 +574,7 @@ static DWORD war3_persistent_selected_snapshot(
     GetUnitRealFn get_unit_y;
     GetUnitRealFn get_move_speed;
     JassUnitHandleResolveFn resolve_unit;
+    JassUnitHandleResolveFn resolve_item;
     JassGetHeroStatFn get_hero_str;
     JassGetHeroStatFn get_hero_agi;
     GetHeroIntFn get_hero_int;
@@ -600,6 +608,7 @@ static DWORD war3_persistent_selected_snapshot(
     get_unit_y = (GetUnitRealFn)(uintptr_t)war3_persistent_native_handler("GetUnitY");
     get_move_speed = (GetUnitRealFn)(uintptr_t)war3_persistent_native_handler("GetUnitMoveSpeed");
     resolve_unit = (JassUnitHandleResolveFn)(uintptr_t)g_persistent_unit_resolver;
+    resolve_item = (JassUnitHandleResolveFn)(uintptr_t)g_persistent_item_resolver;
     get_hero_str = (JassGetHeroStatFn)(uintptr_t)war3_persistent_native_handler("GetHeroStr");
     get_hero_agi = (JassGetHeroStatFn)(uintptr_t)war3_persistent_native_handler("GetHeroAgi");
     get_hero_int = (GetHeroIntFn)(uintptr_t)war3_persistent_native_handler("GetHeroInt");
@@ -653,6 +662,22 @@ static DWORD war3_persistent_selected_snapshot(
                 snapshot->move_speed_bits = get_move_speed(unit);
             }
             snapshot->unit_address = resolve_unit ? resolve_unit(unit) : 0;
+            if (snapshot->unit_address && g_persistent_agent_resolver) {
+                uint8_t *object = (uint8_t *)(uintptr_t)snapshot->unit_address;
+                uint64_t full = *(uint64_t *)(void *)(object + 0x18);
+                uint64_t owner = ((War3AgentResolveFn)(uintptr_t)g_persistent_agent_resolver)(
+                    (uint32_t)full, (uint32_t)(full >> 32)
+                );
+                if (!owner ||
+                    *(uint64_t *)(uintptr_t)(owner + 0x18) != 0x2b7733752b61676cULL ||
+                    *(uint64_t *)(uintptr_t)(owner + 0x20) != full ||
+                    *(uint64_t *)(uintptr_t)(owner + 0x90) != snapshot->unit_address) {
+                    error = ERROR_INVALID_DATA;
+                    __leave;
+                }
+                snapshot->full_handle = full;
+                snapshot->owner_address = owner;
+            }
             snapshot->hero_level = war3_persistent_native_handler("GetHeroLevel")
                 ? (uint64_t)(int64_t)((JassUnitIntQueryFn)(uintptr_t)war3_persistent_native_handler("GetHeroLevel"))(unit)
                 : 0;
@@ -677,6 +702,10 @@ static DWORD war3_persistent_selected_snapshot(
                 for (uint32_t slot = 0; slot < WAR3_PERSISTENT_SNAPSHOT_MAX_ITEMS; ++slot) {
                     uint64_t item = item_in_slot(unit, (int32_t)slot);
                     if (item) {
+                        snapshot->item_handles[slot] = item;
+                        if (resolve_item) {
+                            snapshot->item_addresses[slot] = resolve_item(item);
+                        }
                         snapshot->item_ids[slot] = get_item_type_id(item);
                         snapshot->item_charges[slot] = (uint64_t)(int64_t)get_item_charges(item);
                     }
@@ -2467,6 +2496,22 @@ static void run_command(void) {
                         goto finish;
                     }
                     g_persistent_unit_resolver = op->arg0;
+                }
+                if (op->rawcode == 0u && op->arg1) {
+                    if (!war3_executable_pointer(op->arg1)) {
+                        op->last_error = ERROR_INVALID_PARAMETER;
+                        last_error = op->last_error;
+                        goto finish;
+                    }
+                    g_persistent_item_resolver = op->arg1;
+                }
+                if (op->rawcode == 1u && op->arg0) {
+                    if (!war3_executable_pointer(op->arg0)) {
+                        op->last_error = ERROR_INVALID_PARAMETER;
+                        last_error = op->last_error;
+                        goto finish;
+                    }
+                    g_persistent_agent_resolver = op->arg0;
                 }
                 InterlockedExchange(&g_persistent_ready, 0);
                 op->result = op->handler;

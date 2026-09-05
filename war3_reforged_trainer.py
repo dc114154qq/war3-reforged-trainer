@@ -25,6 +25,7 @@ import traceback
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Callable, Iterable, Iterator
+from capstone import Cs, CS_ARCH_X86, CS_MODE_64
 
 from war3_ability_fields import (
     ABILITY_FIELD_BY_KEY,
@@ -775,8 +776,12 @@ class PersistentNativeUnitSnapshot:
     intelligence: int
     item_ids: tuple[int, ...]
     item_charges: tuple[int, ...]
+    item_handles: tuple[int, ...]
+    item_addresses: tuple[int, ...]
     ability_ids: tuple[int, ...]
     ability_levels: tuple[int, ...]
+    full_handle: int = 0
+    owner_address: int = 0
 
 
 @dataclass(frozen=True)
@@ -2511,7 +2516,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 22
+    NATIVE_HELPER_VERSION = 23
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -2587,7 +2592,7 @@ class War3Trainer:
     NATIVE_HELPER_OP_JASS_RESET_LOCAL_COOLDOWNS = 121
     NATIVE_HELPER_OP_PERSISTENT_REGISTER_NATIVE = 130
     NATIVE_HELPER_OP_PERSISTENT_SELECTED_SNAPSHOT = 131
-    PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 126
+    PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 140
     PERSISTENT_NATIVE_NAMES = (
         "UnitAddAbility",
         "CreateGroup",
@@ -4019,6 +4024,40 @@ class War3Trainer:
                 return candidate
         raise RuntimeError("缺少 native helper DLL：tools\\war3_native_helper.dll")
 
+    def _discover_agent_resolver(self, pm: ProcessMemory, state_handler: int) -> int:
+        calls = self._native_function_calls(pm, state_handler)
+        if len(calls) != 2:
+            raise RuntimeError("Unsupported GetUnitState call layout")
+        state_code = pm.read(calls[1], 0x90)
+        candidates: list[int] = []
+        for offset in range(len(state_code) - 11):
+            if state_code[offset:offset + 3] != b"\x48\x81\xc1" or state_code[offset + 7] != 0xE8:
+                continue
+            getter = self._read_rel32_call(pm, calls[1] + offset + 7)
+            instructions = list(Cs(CS_ARCH_X86, CS_MODE_64).disasm(pm.read(getter, 0x20), getter))
+            # Both mana getters unpack the same two-word engine handle before
+            # calling the generation-checked object table lookup.
+            expected = [("mov", "edx, dword ptr [rcx + 0x14]"), ("mov", "ecx, dword ptr [rcx + 0x10]")]
+            if [(ins.mnemonic, ins.op_str) for ins in instructions[3:5]] != expected:
+                continue
+            if len(instructions) > 5 and instructions[5].mnemonic == "call":
+                candidates.append(self._read_rel32_call(pm, instructions[5].address))
+        if len(candidates) != 2 or candidates[0] != candidates[1]:
+            raise RuntimeError("State getters do not agree on the engine handle resolver")
+        if not self._is_executable_image_address(pm.regions(), candidates[0]):
+            raise RuntimeError("Engine handle resolver is not executable")
+        return candidates[0]
+
+    @staticmethod
+    def _native_function_calls(pm: ProcessMemory, address: int) -> list[int]:
+        calls: list[int] = []
+        for instruction in Cs(CS_ARCH_X86, CS_MODE_64).disasm(pm.read(address, 0x180), address):
+            if instruction.mnemonic == "ret":
+                break
+            if instruction.mnemonic == "call" and instruction.op_str.startswith("0x"):
+                calls.append(int(instruction.op_str, 16))
+        return calls
+
     def persistent_native_init(self, *, timeout_ms: int = 30000) -> int:
         with self._persistent_bootstrap_lock:
             if getattr(self, "_persistent_native_initialized", False):
@@ -4028,7 +4067,7 @@ class War3Trainer:
                     pm,
                     self.PERSISTENT_NATIVE_NAMES,
                 )
-                calls = self._rel32_calls_in_function(
+                calls = self._native_function_calls(
                     pm,
                     handlers["UnitAddAbility"].handler_address,
                 )
@@ -4038,13 +4077,23 @@ class War3Trainer:
                 if not self._is_executable_image_address(pm.regions(), resolver):
                     raise RuntimeError("单位句柄解析函数不在游戏可执行代码段")
                 self._jass_unit_resolver_address = resolver
+                item_calls = self._native_function_calls(
+                    pm,
+                    handlers["GetItemTypeId"].handler_address,
+                )
+                if not item_calls:
+                    raise RuntimeError("GetItemTypeId 未暴露物品句柄解析函数")
+                item_resolver = item_calls[0]
+                if not self._is_executable_image_address(pm.regions(), item_resolver):
+                    raise RuntimeError("物品句柄解析函数不在游戏可执行代码段")
+                agent_resolver = self._discover_agent_resolver(pm, handlers["GetUnitState"].handler_address)
             registrations = tuple(
                 (
                     self.NATIVE_HELPER_OP_PERSISTENT_REGISTER_NATIVE,
                     index,
                     handlers[name].handler_address,
-                    resolver if index == 0 else 0,
-                    0,
+                    resolver if index == 0 else agent_resolver if index == 1 else 0,
+                    item_resolver if index == 0 else 0,
                 )
                 for index, name in enumerate(self.PERSISTENT_NATIVE_NAMES)
             )
@@ -4104,9 +4153,11 @@ class War3Trainer:
             ) = scalar
             item_ids = tuple(row[17:23])
             item_charges = tuple(row[23:29])
-            ability_count = min(int(row[29]), 48)
-            ability_ids = tuple(row[30:30 + ability_count])
-            ability_levels = tuple(row[78:78 + ability_count])
+            item_handles = tuple(row[29:35])
+            item_addresses = tuple(row[35:41])
+            ability_count = min(int(row[41]), 48)
+            ability_ids = tuple(row[42:42 + ability_count])
+            ability_levels = tuple(row[90:90 + ability_count])
             snapshots.append(
                 PersistentNativeUnitSnapshot(
                     handle=handle,
@@ -4128,8 +4179,12 @@ class War3Trainer:
                     intelligence=intelligence & 0xFFFFFFFFFFFFFFFF,
                     item_ids=item_ids,
                     item_charges=item_charges,
+                    item_handles=item_handles,
+                    item_addresses=item_addresses,
                     ability_ids=ability_ids,
                     ability_levels=ability_levels,
+                    full_handle=int(row[138]),
+                    owner_address=int(row[139]),
                 )
             )
         result_snapshots = tuple(snapshots)
@@ -4798,28 +4853,16 @@ class War3Trainer:
                 else None
             )
             persistent_selected: list[tuple[UnitCandidate, int]] = []
-            unit_index = self._build_unit_object_index(pm, force_refresh=False)
             for snapshot in persistent_snapshots:
                 if requested_handles is not None and snapshot.handle not in requested_handles:
                     continue
-                if isinstance(pm, Win10ProcessMemory):
-                    candidate = self._candidate_from_jass_selection_result_win10(
-                        pm,
-                        snapshot.unit_address,
-                        0,
-                        snapshot.owner,
-                        unit_index=unit_index,
-                    )
-                else:
-                    candidate = self._candidate_from_jass_selection_result(
-                        pm,
-                        snapshot.unit_address,
-                        0,
-                        snapshot.owner,
-                        unit_index=unit_index,
-                    )
+                candidate = self._candidate_from_identity(
+                    pm, snapshot.full_handle, snapshot.owner_address,
+                    snapshot.unit_address, "native_engine_handle_table", 1000,
+                )
                 if candidate is None:
-                    continue
+                    raise RuntimeError("Native selection changed while mapping its field objects; retry the read")
+                self._unit_owner_index[snapshot.full_handle] = snapshot.owner_address
                 candidate = replace(
                     candidate,
                     note=(
@@ -12182,6 +12225,13 @@ class War3Trainer:
             self._selected_components_cache.pop(cache_key, None)
 
         direct = self._components_from_unit_object(pm, owner)
+        if direct and self._persistent_native_initialized:
+            # The persistent native snapshot already validated this unit. The
+            # unit object pointers are independently checked by
+            # _components_from_unit_object, so wrapper enumeration would only
+            # add a process-wide fallback scan on this hot path.
+            self._selected_components_cache[cache_key] = dict(direct)
+            return direct
         wrapper_components: dict[str, tuple[int, int]] = {}
         for name, wrapper, data in self._iter_owner_component_wrappers(pm, owner):
             wrapper_components.setdefault(name, (wrapper, data))
@@ -12848,6 +12898,81 @@ class War3Trainer:
         record = self._inventory_record_address(pm, candidate, data)
         if not record:
             return []
+
+        persistent = next(
+            (
+                item
+                for item in self._last_persistent_native_snapshots
+                if item.unit_address == candidate.unit_address
+            ),
+            None,
+        )
+        if persistent is not None and len(persistent.item_handles) == 6:
+            fast_items: list[InventoryItem] = []
+            fast_path_valid = True
+            for index in range(6):
+                handle_address = record + 0xD4 + index * 0x0C
+                try:
+                    handle = pm.read_u64(handle_address)
+                except OSError:
+                    handle = 0
+                snapshot_handle = int(persistent.item_handles[index])
+                item_address = int(persistent.item_addresses[index])
+                if bool(handle) != bool(snapshot_handle):
+                    fast_path_valid = False
+                    break
+                rawcode = int(persistent.item_ids[index])
+                charges = int(persistent.item_charges[index])
+                rawcode_address = 0
+                mirror_rawcode = 0
+                mirror_rawcode_address = 0
+                ability_rawcode = 0
+                ability_rawcode_address = 0
+                charges_address = 0
+                if handle:
+                    if not item_address or not self._sane_heap_ptr(item_address):
+                        fast_path_valid = False
+                        break
+                    try:
+                        if not self._looks_like_vtable(pm.read_u64(item_address)):
+                            fast_path_valid = False
+                            break
+                        rawcode_address = item_address + 0x70
+                        if pm.read_u32(rawcode_address) != rawcode:
+                            fast_path_valid = False
+                            break
+                        mirror_rawcode_address = item_address + 0x178
+                        mirror_rawcode = pm.read_u32(mirror_rawcode_address)
+                        if not self._looks_like_rawcode(mirror_rawcode):
+                            mirror_rawcode = 0
+                            mirror_rawcode_address = 0
+                        ability_rawcode_address = item_address + 0x1B8
+                        ability_rawcode = pm.read_u32(ability_rawcode_address)
+                        if not self._looks_like_rawcode(ability_rawcode):
+                            ability_rawcode = 0
+                            ability_rawcode_address = 0
+                        charges_address = item_address + self.ITEM_CHARGES_OFFSET
+                    except OSError:
+                        fast_path_valid = False
+                        break
+                fast_items.append(
+                    InventoryItem(
+                        slot=index + 1,
+                        handle=handle,
+                        handle_address=handle_address,
+                        item_address=item_address if handle else 0,
+                        rawcode=rawcode,
+                        rawcode_address=rawcode_address,
+                        mirror_rawcode=mirror_rawcode,
+                        mirror_rawcode_address=mirror_rawcode_address,
+                        ability_rawcode=ability_rawcode,
+                        ability_rawcode_address=ability_rawcode_address,
+                        charges=charges,
+                        charges_address=charges_address,
+                    )
+                )
+            if fast_path_valid:
+                return fast_items
 
         items: list[InventoryItem] = []
         slot_handles: list[tuple[int, int, int]] = []

@@ -292,9 +292,11 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
         ]
         row[17:23] = [0x49303031, 0, 0, 0, 0, 0]
         row[23:29] = [3, 0, 0, 0, 0, 0]
-        row[29] = 2
-        row[30:32] = [0x41420031, 0x41420032]
-        row[78:80] = [1, 3]
+        row[29:35] = [0x505, 0, 0, 0, 0, 0]
+        row[35:41] = [0x606, 0, 0, 0, 0, 0]
+        row[41] = 2
+        row[42:44] = [0x41420031, 0x41420032]
+        row[90:92] = [1, 3]
         trainer._run_native_helper_ops = Mock(
             return_value=[
                 trainer_module.NativeHelperOpResult(
@@ -314,6 +316,8 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
         self.assertEqual((snapshot.mp, snapshot.mp_max), (3.0, 4.0))
         self.assertEqual(snapshot.item_ids, (0x49303031, 0, 0, 0, 0, 0))
         self.assertEqual(snapshot.item_charges[0], 3)
+        self.assertEqual(snapshot.item_handles[0], 0x505)
+        self.assertEqual(snapshot.item_addresses[0], 0x606)
         self.assertEqual(snapshot.ability_ids, (0x41420031, 0x41420032))
         self.assertEqual(snapshot.ability_levels, (1, 3))
 

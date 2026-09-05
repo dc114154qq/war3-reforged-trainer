@@ -664,6 +664,8 @@ _EN_TRANSLATIONS.update(
     "技能 ID 无效": "Invalid skill ID",
     "UnitAddAbility 未暴露可验证的单位句柄解析函数": "UnitAddAbility does not expose a verifiable unit handle resolution function",
     "单位句柄解析函数不在游戏可执行代码段": "The unit handle resolution function is not in the game executable code section",
+    "GetItemTypeId 未暴露物品句柄解析函数": "GetItemTypeId does not expose an item handle resolution function",
+    "物品句柄解析函数不在游戏可执行代码段": "The item handle resolution function is not in the game executable code section",
     "不支持的全图直接效果类型：": "Unsupported full-image direct effect types:",
     "成功目标上限必须在 0 到 65535 之间": "Success target upper limit must be between 0 and 65535",
     "技能目标坐标必须是有限数值": "Skill target coordinates must be finite values",

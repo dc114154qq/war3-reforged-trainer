@@ -4,9 +4,12 @@
 a = Analysis(
     ['war3_reforged_trainer.py'],
     pathex=[],
-    binaries=[('tools/war3_native_helper.dll', 'tools')],
+    binaries=[
+        ('tools/war3_native_helper.dll', 'tools'),
+        ('tools/capstone.dll', 'tools'),
+    ],
     datas=[('assets/app_icon.png', 'assets')],
-    hiddenimports=[],
+    hiddenimports=['capstone'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

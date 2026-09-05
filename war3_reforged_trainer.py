@@ -13,6 +13,7 @@ from bisect import bisect_right
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 import ctypes
+from capstone import Cs, CS_ARCH_X86, CS_MODE_64
 from decimal import Decimal, InvalidOperation
 import math
 import os
@@ -25,7 +26,6 @@ import traceback
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Callable, Iterable, Iterator
-from capstone import Cs, CS_ARCH_X86, CS_MODE_64
 
 from war3_ability_fields import (
     ABILITY_FIELD_BY_KEY,
@@ -4027,7 +4027,7 @@ class War3Trainer:
     def _discover_agent_resolver(self, pm: ProcessMemory, state_handler: int) -> int:
         calls = self._native_function_calls(pm, state_handler)
         if len(calls) != 2:
-            raise RuntimeError("Unsupported GetUnitState call layout")
+            return 0
         state_code = pm.read(calls[1], 0x90)
         candidates: list[int] = []
         for offset in range(len(state_code) - 11):
@@ -4035,18 +4035,17 @@ class War3Trainer:
                 continue
             getter = self._read_rel32_call(pm, calls[1] + offset + 7)
             instructions = list(Cs(CS_ARCH_X86, CS_MODE_64).disasm(pm.read(getter, 0x20), getter))
-            # Both mana getters unpack the same two-word engine handle before
-            # calling the generation-checked object table lookup.
             expected = [("mov", "edx, dword ptr [rcx + 0x14]"), ("mov", "ecx, dword ptr [rcx + 0x10]")]
             if [(ins.mnemonic, ins.op_str) for ins in instructions[3:5]] != expected:
                 continue
             if len(instructions) > 5 and instructions[5].mnemonic == "call":
                 candidates.append(self._read_rel32_call(pm, instructions[5].address))
         if len(candidates) != 2 or candidates[0] != candidates[1]:
-            raise RuntimeError("State getters do not agree on the engine handle resolver")
-        if not self._is_executable_image_address(pm.regions(), candidates[0]):
-            raise RuntimeError("Engine handle resolver is not executable")
-        return candidates[0]
+            return 0
+        resolver = candidates[0]
+        if not self._is_executable_image_address(pm.regions(), resolver):
+            return 0
+        return resolver
 
     @staticmethod
     def _native_function_calls(pm: ProcessMemory, address: int) -> list[int]:
@@ -4856,10 +4855,23 @@ class War3Trainer:
             for snapshot in persistent_snapshots:
                 if requested_handles is not None and snapshot.handle not in requested_handles:
                     continue
-                candidate = self._candidate_from_identity(
-                    pm, snapshot.full_handle, snapshot.owner_address,
-                    snapshot.unit_address, "native_engine_handle_table", 1000,
-                )
+                if snapshot.full_handle and snapshot.owner_address:
+                    candidate = self._candidate_from_identity(
+                        pm, snapshot.full_handle, snapshot.owner_address,
+                        snapshot.unit_address, "native_engine_handle_table", 1000,
+                    )
+                else:
+                    unit_index = self._build_unit_object_index(pm, force_refresh=False)
+                    if isinstance(pm, Win10ProcessMemory):
+                        candidate = self._candidate_from_jass_selection_result_win10(
+                            pm, snapshot.unit_address, 0, snapshot.owner,
+                            unit_index=unit_index,
+                        )
+                    else:
+                        candidate = self._candidate_from_jass_selection_result(
+                            pm, snapshot.unit_address, 0, snapshot.owner,
+                            unit_index=unit_index,
+                        )
                 if candidate is None:
                     raise RuntimeError("Native selection changed while mapping its field objects; retry the read")
                 self._unit_owner_index[snapshot.full_handle] = snapshot.owner_address

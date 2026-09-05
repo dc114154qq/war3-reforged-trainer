@@ -1,5 +1,6 @@
 from pathlib import Path
 import unittest
+import threading
 from unittest.mock import Mock
 
 import war3_reforged_trainer as trainer_module
@@ -268,6 +269,7 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
     def test_persistent_snapshot_parser_preserves_native_payload(self):
         trainer = object.__new__(trainer_module.War3Trainer)
         trainer._persistent_native_initialized = True
+        trainer._persistent_bootstrap_lock = threading.RLock()
         row = [0] * trainer.PERSISTENT_NATIVE_SNAPSHOT_QWORDS
         row[:17] = [
             0x101,

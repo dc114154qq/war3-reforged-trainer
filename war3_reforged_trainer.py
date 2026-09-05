@@ -10,10 +10,12 @@ from __future__ import annotations
 
 import argparse
 from bisect import bisect_right
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 import ctypes
 from decimal import Decimal, InvalidOperation
 import math
+import os
 import tempfile
 import struct
 import sys
@@ -1477,6 +1479,52 @@ class ProcessMemory:
                 offset += size
         return hits
 
+    def scan_bytes_private_parallel(
+        self,
+        pattern: bytes,
+        max_region_size: int | None = 64 * 1024 * 1024,
+        *,
+        max_workers: int | None = None,
+    ) -> list[int]:
+        """Scan independent private regions without serializing every RPM call."""
+        eligible = tuple(
+            region
+            for region in self.regions()
+            if region.typ == MEM_PRIVATE
+            and (max_region_size is None or region.size <= max_region_size)
+        )
+        if not eligible:
+            return []
+
+        def scan_region(region: Region) -> list[int]:
+            try:
+                data = self.read(region.base, region.size)
+            except OSError:
+                return []
+            hits: list[int] = []
+            start = 0
+            while True:
+                index = data.find(pattern, start)
+                if index < 0:
+                    return hits
+                hits.append(region.base + index)
+                start = index + 1
+
+        workers = max_workers or min(
+            16,
+            max(4, (os.cpu_count() or 4)),
+        )
+        with ThreadPoolExecutor(
+            max_workers=min(workers, len(eligible)),
+            thread_name_prefix="war3-private-scan",
+        ) as executor:
+            batches = executor.map(scan_region, eligible)
+            return [
+                address
+                for batch in batches
+                for address in batch
+            ]
+
     def scan_bytes_private_many(
         self,
         patterns: Iterable[bytes],
@@ -2572,6 +2620,8 @@ class War3Trainer:
     def __init__(self, pid: int | None = None):
         self.hwnd, self.pid = find_war3(pid)
         self._unit_owner_index: dict[int, int] = {}
+        self._unit_owner_index_lock = threading.RLock()
+        self._unit_object_index_cache: dict[int, tuple[int, int]] | None = None
         self._owner_properties_cache: dict[int, dict[int, int]] = {}
         self._selected_handle_addresses = list(self.KNOWN_SELECTED_HANDLE_ADDRESSES)
         self._item_object_cache: dict[int, int] = {}
@@ -2587,6 +2637,7 @@ class War3Trainer:
         self._hidden_toggle_abilities: set[tuple[int, int]] = set()
         self._pending_direct_effects_lock = threading.Lock()
         self._native_helper_lock = threading.RLock()
+        self._persistent_bootstrap_lock = threading.RLock()
         self._native_helper_batch_hook = None
         self._native_helper_batch_thread_id = None
         self._native_helper_persistent_module = None
@@ -2617,6 +2668,7 @@ class War3Trainer:
         self._last_win10_native_recovered = 0
         self._last_win10_native_missing: tuple[str, ...] = ()
         self._last_selected_summaries: tuple[UnitSelectionSummary, ...] = ()
+        self._last_persistent_native_snapshots: tuple[PersistentNativeUnitSnapshot, ...] = ()
         self._elephant_selection_override: tuple[UnitCandidate, int] | None = None
         self._start_persistent_bootstrap()
 
@@ -2660,6 +2712,7 @@ class War3Trainer:
             if isinstance(previous_win10_session, BackupReadWar3Trainer):
                 previous_win10_session.close_session_diagnostics()
             self._unit_owner_index = {}
+            self._unit_object_index_cache = None
             self._owner_properties_cache = {}
             self._selected_handle_addresses = list(self.KNOWN_SELECTED_HANDLE_ADDRESSES)
             self._item_object_cache = {}
@@ -2694,6 +2747,7 @@ class War3Trainer:
             self._last_win10_native_recovered = 0
             self._last_win10_native_missing = ()
             self._last_selected_summaries = ()
+            self._last_persistent_native_snapshots = ()
             self._elephant_selection_override = None
             self._start_persistent_bootstrap()
 
@@ -2730,10 +2784,17 @@ class War3Trainer:
     def _persistent_bootstrap_loop(self, pid: int, stop: threading.Event) -> None:
         native_ready = False
         while not stop.is_set() and int(getattr(self, "pid", 0)) == pid:
+            bootstrap_complete = False
             try:
                 if not native_ready:
-                    self.persistent_native_init(timeout_ms=15000)
+                    with self._persistent_bootstrap_lock:
+                        self.persistent_native_init(timeout_ms=15000)
                     native_ready = True
+            except Exception:
+                native_ready = False
+                stop.wait(1.0)
+                continue
+            try:
                 with self._process_memory() as pm:
                     native_selection = self.persistent_native_selected_snapshots(
                         timeout_ms=5000,
@@ -2742,13 +2803,21 @@ class War3Trainer:
                         stop.wait(0.5)
                         continue
                     selected = self._selected_candidates_snapshot(pm)
-                    self._selected_summaries_from_snapshot(pm, selected)
-                return
+                    self._last_selected_summaries = (
+                        self._selected_summaries_from_snapshot(pm, selected)
+                    )
             except Exception:
-                # The game may still be loading or have no selection. Retry in
-                # the background so the first user read does not pay setup cost.
-                native_ready = False
-                stop.wait(1.0)
+                # Native registration stays valid when the map is still
+                # loading or a selected unit cannot yet be mapped.
+                pass
+            else:
+                bootstrap_complete = True
+            if bootstrap_complete:
+                # A thread-specific Windows hook is removed when its owner
+                # thread exits. Keep this injector thread alive.
+                stop.wait()
+                return
+            stop.wait(1.0)
 
     def focus(self) -> None:
         focus_window(self.hwnd)
@@ -3256,7 +3325,10 @@ class War3Trainer:
 
         pattern = b"UnitAddAbility\0"
         candidates: dict[tuple[int, int], Region] = {}
-        for hit in pm.scan_bytes_private(pattern, max_region_size=2 * 1024 * 1024):
+        for hit in pm.scan_bytes_private_parallel(
+            pattern,
+            max_region_size=2 * 1024 * 1024,
+        ):
             record = hit - 0x18
             region = self._region_for_address(regions, hit)
             if region is None or region.typ != MEM_PRIVATE:
@@ -3948,32 +4020,42 @@ class War3Trainer:
         raise RuntimeError("缺少 native helper DLL：tools\\war3_native_helper.dll")
 
     def persistent_native_init(self, *, timeout_ms: int = 30000) -> int:
-        if getattr(self, "_persistent_native_initialized", False):
-            return len(self.PERSISTENT_NATIVE_NAMES)
-        with self._process_memory() as pm:
-            handlers = self._discover_native_handlers_near_table(
-                pm,
-                self.PERSISTENT_NATIVE_NAMES,
+        with self._persistent_bootstrap_lock:
+            if getattr(self, "_persistent_native_initialized", False):
+                return len(self.PERSISTENT_NATIVE_NAMES)
+            with self._process_memory() as pm:
+                handlers = self._discover_native_handlers_near_table(
+                    pm,
+                    self.PERSISTENT_NATIVE_NAMES,
+                )
+                calls = self._rel32_calls_in_function(
+                    pm,
+                    handlers["UnitAddAbility"].handler_address,
+                )
+                if len(calls) < 2:
+                    raise RuntimeError("UnitAddAbility 未暴露可验证的单位句柄解析函数")
+                resolver = calls[0]
+                if not self._is_executable_image_address(pm.regions(), resolver):
+                    raise RuntimeError("单位句柄解析函数不在游戏可执行代码段")
+                self._jass_unit_resolver_address = resolver
+            registrations = tuple(
+                (
+                    self.NATIVE_HELPER_OP_PERSISTENT_REGISTER_NATIVE,
+                    index,
+                    handlers[name].handler_address,
+                    resolver if index == 0 else 0,
+                    0,
+                )
+                for index, name in enumerate(self.PERSISTENT_NATIVE_NAMES)
             )
-            resolver = self._discover_jass_unit_resolver(pm)
-        registrations = tuple(
-            (
-                self.NATIVE_HELPER_OP_PERSISTENT_REGISTER_NATIVE,
-                index,
-                handlers[name].handler_address,
-                resolver if index == 0 else 0,
-                0,
-            )
-            for index, name in enumerate(self.PERSISTENT_NATIVE_NAMES)
-        )
-        for start in range(0, len(registrations), self.NATIVE_HELPER_MAX_OPS):
-            self._run_native_helper_ops(
-                0,
-                registrations[start:start + self.NATIVE_HELPER_MAX_OPS],
-                timeout_ms=timeout_ms,
-            )
-        self._persistent_native_initialized = True
-        return len(registrations)
+            for start in range(0, len(registrations), self.NATIVE_HELPER_MAX_OPS):
+                self._run_native_helper_ops(
+                    0,
+                    registrations[start:start + self.NATIVE_HELPER_MAX_OPS],
+                    timeout_ms=timeout_ms,
+                )
+            self._persistent_native_initialized = True
+            return len(registrations)
 
     def persistent_native_selected_snapshots(
         self,
@@ -4050,7 +4132,9 @@ class War3Trainer:
                     ability_levels=ability_levels,
                 )
             )
-        return tuple(snapshots)
+        result_snapshots = tuple(snapshots)
+        self._last_persistent_native_snapshots = result_snapshots
+        return result_snapshots
 
     def _native_helper_command_path(self) -> Path:
         return Path(tempfile.gettempdir()) / f"war3_reforged_native_{self.pid}.bin"
@@ -4840,14 +4924,64 @@ class War3Trainer:
         snapshot: Iterable[tuple[UnitCandidate, int]],
     ) -> tuple[UnitSelectionSummary, ...]:
         snapshot = tuple(snapshot)
+        persistent_by_unit = {
+            item.unit_address: item
+            for item in self._last_persistent_native_snapshots
+            if item.unit_address
+        }
+        if (
+            snapshot
+            and all(
+                candidate.selection_source == "persistent_native"
+                and candidate.unit_address in persistent_by_unit
+                for candidate, _unit_handle in snapshot
+            )
+        ):
+            summaries: list[UnitSelectionSummary] = []
+            for candidate, _unit_handle in snapshot:
+                item = persistent_by_unit[candidate.unit_address]
+                panel = self._panel_from_candidate(pm, candidate)
+                inventory = tuple(
+                    f"{slot}:{format_rawcode(rawcode)}"
+                    for slot, rawcode in enumerate(item.item_ids, start=1)
+                    if rawcode
+                )
+                components = {"attack"}
+                if item.move_speed > 0:
+                    components.add("move")
+                if item.hero_level > 0 or inventory:
+                    components.add("inventory")
+                if item.hero_level > 0:
+                    components.add("hero")
+                summaries.append(
+                    UnitSelectionSummary(
+                        candidate=candidate,
+                        refs=1,
+                        known_hits=2,
+                        region_base=0,
+                        hp_text=panel.hp_text,
+                        mp_text=panel.mp_text,
+                        position=(item.x, item.y),
+                        components=tuple(sorted(components)),
+                        inventory=inventory,
+                        ability_count=len(item.ability_ids),
+                        hero=item.hero_level > 0,
+                    )
+                )
+            return tuple(summaries)
+
         owners = {
             candidate.owner_address
             for candidate, _unit_handle in snapshot
             if candidate.owner_address
         }
-        # Component discovery is also a process-wide scan. Reuse its result
-        # across all selected units, especially for mixed hero/non-hero groups.
-        components_by_owner = self._component_map_for_owners(pm, owners)
+        # Prefer each unit's direct component pointers. This keeps a selected
+        # group read bounded by its size; the existing process-wide scan remains
+        # the fallback inside _selected_components when direct pointers fail.
+        components_by_owner = {
+            owner: self._selected_components(pm, owner)
+            for owner in owners
+        }
         return tuple(
             self._selection_summary_from_candidate(
                 pm,
@@ -9747,11 +9881,18 @@ class War3Trainer:
         return index
 
     def _build_unit_owner_index(self, pm: ProcessMemory) -> dict[int, int]:
-        tag = struct.pack("<Q", self.UNIT_OWNER_TAG)
-        tag_addresses = pm.scan_bytes_private(tag, max_region_size=1024 * 1024)
-        index = self._unit_owner_index_from_tag_addresses(pm, tag_addresses)
-        self._unit_owner_index = index
-        return index
+        with self._unit_owner_index_lock:
+            if self._unit_owner_index:
+                return self._unit_owner_index
+            tag = struct.pack("<Q", self.UNIT_OWNER_TAG)
+            tag_addresses = pm.scan_bytes_private_parallel(
+                tag,
+                max_region_size=1024 * 1024,
+            )
+            index = self._unit_owner_index_from_tag_addresses(pm, tag_addresses)
+            self._unit_owner_index = index
+            self._unit_object_index_cache = None
+            return index
 
     def _owner_for_handle(self, pm: ProcessMemory, handle: int) -> int | None:
         index = self._unit_owner_index
@@ -9870,15 +10011,23 @@ class War3Trainer:
         return owner
 
     def _build_unit_object_index(self, pm: ProcessMemory, force_refresh: bool = False) -> dict[int, tuple[int, int]]:
-        unit_index: dict[int, tuple[int, int]] = {}
-        owners = self._build_unit_owner_index(pm) if force_refresh or not self._unit_owner_index else self._unit_owner_index
-        for handle, owner in owners.items():
-            unit = self._unit_object_from_owner(pm, owner, handle)
-            if unit:
-                unit_index[unit] = (handle, owner)
-        if not unit_index and self._unit_owner_index and not force_refresh:
-            return self._build_unit_object_index(pm, force_refresh=True)
-        return unit_index
+        with self._unit_owner_index_lock:
+            if self._unit_object_index_cache is not None and not force_refresh:
+                return self._unit_object_index_cache
+            unit_index: dict[int, tuple[int, int]] = {}
+            owners = (
+                self._build_unit_owner_index(pm)
+                if force_refresh or not self._unit_owner_index
+                else self._unit_owner_index
+            )
+            for handle, owner in owners.items():
+                unit = self._unit_object_from_owner(pm, owner, handle)
+                if unit:
+                    unit_index[unit] = (handle, owner)
+            if not unit_index and self._unit_owner_index and not force_refresh:
+                return self._build_unit_object_index(pm, force_refresh=True)
+            self._unit_object_index_cache = unit_index
+            return unit_index
 
     def _score_selected_handle_address(self, pm: ProcessMemory, address: int, handle: int, owner: int) -> int:
         if owner <= address < owner + 0x200:

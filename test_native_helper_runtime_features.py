@@ -240,6 +240,11 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
             "WAR3_NATIVE_OP_JASS_RESET_LOCAL_COOLDOWNS 121u",
             helper_source,
         )
+        self.assertIn("WAR3_NATIVE_OP_PERSISTENT_REGISTER_NATIVE 130u", helper_source)
+        self.assertIn(
+            "WAR3_NATIVE_OP_PERSISTENT_SELECTED_SNAPSHOT 131u",
+            helper_source,
+        )
         self.assertIn("uint64_t selected_units[12]", helper_source)
         self.assertIn("while (selected_count < 12u)", helper_source)
         self.assertIn("selected_units[selected_count++] = current;", helper_source)
@@ -259,6 +264,56 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
             "get_integer(target_item, integer_fields[index])",
             helper_source,
         )
+
+    def test_persistent_snapshot_parser_preserves_native_payload(self):
+        trainer = object.__new__(trainer_module.War3Trainer)
+        trainer._persistent_native_initialized = True
+        row = [0] * trainer.PERSISTENT_NATIVE_SNAPSHOT_QWORDS
+        row[:17] = [
+            0x101,
+            0x202,
+            0x303,
+            2,
+            0x68666F6F,
+            0x3F800000,
+            0x40000000,
+            0x40400000,
+            0x40800000,
+            0x40A00000,
+            0x40C00000,
+            0x40E00000,
+            5,
+            1234,
+            11,
+            22,
+            33,
+        ]
+        row[17:23] = [0x49303031, 0, 0, 0, 0, 0]
+        row[23:29] = [3, 0, 0, 0, 0, 0]
+        row[29] = 2
+        row[30:32] = [0x41420031, 0x41420032]
+        row[78:80] = [1, 3]
+        trainer._run_native_helper_ops = Mock(
+            return_value=[
+                trainer_module.NativeHelperOpResult(
+                    kind=trainer.NATIVE_HELPER_OP_PERSISTENT_SELECTED_SNAPSHOT,
+                    result=1,
+                    extra_results=tuple(row),
+                )
+            ]
+        )
+
+        snapshots = trainer.persistent_native_selected_snapshots()
+
+        self.assertEqual(len(snapshots), 1)
+        snapshot = snapshots[0]
+        self.assertEqual((snapshot.handle, snapshot.unit_address), (0x101, 0x202))
+        self.assertEqual((snapshot.hp, snapshot.hp_max), (1.0, 2.0))
+        self.assertEqual((snapshot.mp, snapshot.mp_max), (3.0, 4.0))
+        self.assertEqual(snapshot.item_ids, (0x49303031, 0, 0, 0, 0, 0))
+        self.assertEqual(snapshot.item_charges[0], 3)
+        self.assertEqual(snapshot.ability_ids, (0x41420031, 0x41420032))
+        self.assertEqual(snapshot.ability_levels, (1, 3))
 
     def test_elephant_handlers_discovers_every_requested_native(self):
         trainer = object.__new__(trainer_module.War3Trainer)

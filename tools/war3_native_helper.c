@@ -1,6 +1,7 @@
 #include <windows.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
 #define WAR3_NATIVE_VERSION 22u
@@ -74,6 +75,8 @@
 #define WAR3_NATIVE_OP_JASS_CLONE_SELECTED_UNIT 118u
 #define WAR3_NATIVE_OP_JASS_SELECTED_UNITS 119u
 #define WAR3_NATIVE_OP_JASS_RESET_LOCAL_COOLDOWNS 121u
+#define WAR3_NATIVE_OP_PERSISTENT_REGISTER_NATIVE 130u
+#define WAR3_NATIVE_OP_PERSISTENT_SELECTED_SNAPSHOT 131u
 #define WAR3_CLONE_FLAG_HERO 0x01u
 #define WAR3_CLONE_FLAG_INVENTORY 0x02u
 #define WAR3_CLONE_FLAG_PRESERVE_OWNER 0x04u
@@ -350,6 +353,79 @@ static DWORD war3_direct_ability_enum(
 static volatile LONG g_processing = 0;
 static const char g_item_remove_reason[] = "War3TrainerReplaceItem";
 static War3CastPendingState g_cast_pending = {0};
+static volatile LONG g_persistent_ready = 0;
+
+#define WAR3_PERSISTENT_MAX_ABILITIES 48u
+typedef struct War3PersistentNative {
+    const char *name;
+    uint64_t handler;
+} War3PersistentNative;
+
+static const char *g_persistent_native_names[] = {
+    "UnitAddAbility",
+    "CreateGroup",
+    "GetLocalPlayer",
+    "GroupEnumUnitsSelected",
+    "FirstOfGroup",
+    "GroupRemoveUnit",
+    "DestroyGroup",
+    "GetHandleId",
+    "GetOwningPlayer",
+    "GetPlayerId",
+    "GetUnitTypeId",
+    "GetUnitState",
+    "GetUnitX",
+    "GetUnitY",
+    "GetUnitMoveSpeed",
+    "GetHeroLevel",
+    "GetHeroXP",
+    "GetHeroStr",
+    "GetHeroAgi",
+    "GetHeroInt",
+    "UnitItemInSlot",
+    "GetItemTypeId",
+    "GetItemCharges",
+    "BlzGetUnitAbilityByIndex",
+    "BlzGetAbilityId",
+    "GetUnitAbilityLevel",
+};
+
+static War3PersistentNative g_persistent_natives[
+    sizeof(g_persistent_native_names) / sizeof(g_persistent_native_names[0])
+] = {0};
+static uint64_t g_persistent_unit_resolver = 0;
+static uint64_t war3_persistent_native_handler(const char *name);
+
+#define WAR3_PERSISTENT_SNAPSHOT_MAX_ITEMS 6u
+#define WAR3_PERSISTENT_SNAPSHOT_MAX_ABILITIES 48u
+#define WAR3_PERSISTENT_SNAPSHOT_QWORDS \
+    (17u + (WAR3_PERSISTENT_SNAPSHOT_MAX_ITEMS * 2u) + 1u + \
+     (WAR3_PERSISTENT_SNAPSHOT_MAX_ABILITIES * 2u))
+
+typedef struct War3PersistentSnapshot {
+    uint64_t handle;
+    uint64_t unit_address;
+    uint64_t owner;
+    uint64_t owner_id;
+    uint64_t type_id;
+    uint64_t hp_bits;
+    uint64_t hp_max_bits;
+    uint64_t mp_bits;
+    uint64_t mp_max_bits;
+    uint64_t x_bits;
+    uint64_t y_bits;
+    uint64_t move_speed_bits;
+    uint64_t hero_level;
+    uint64_t hero_xp;
+    uint64_t strength;
+    uint64_t agility;
+    uint64_t intelligence;
+    uint64_t item_ids[WAR3_PERSISTENT_SNAPSHOT_MAX_ITEMS];
+    uint64_t item_charges[WAR3_PERSISTENT_SNAPSHOT_MAX_ITEMS];
+    uint64_t ability_count;
+    uint64_t ability_ids[WAR3_PERSISTENT_SNAPSHOT_MAX_ABILITIES];
+    uint64_t ability_levels[WAR3_PERSISTENT_SNAPSHOT_MAX_ABILITIES];
+} War3PersistentSnapshot;
 
 typedef struct War3CodeRange {
     uint8_t *begin;
@@ -406,6 +482,246 @@ static int war3_executable_pointer(uint64_t address) {
         protection == PAGE_EXECUTE_READ ||
         protection == PAGE_EXECUTE_READWRITE ||
         protection == PAGE_EXECUTE_WRITECOPY;
+}
+
+static DWORD war3_persistent_resolve_natives(uint32_t *resolved_count) {
+    uint32_t count = 0;
+    if (!resolved_count) {
+        return ERROR_INVALID_PARAMETER;
+    }
+    for (size_t index = 0; index < sizeof(g_persistent_natives) / sizeof(g_persistent_natives[0]); ++index) {
+        if (!g_persistent_natives[index].name) {
+            g_persistent_natives[index].name = g_persistent_native_names[index];
+        }
+    }
+    if (g_persistent_ready) {
+        for (size_t index = 0; index < sizeof(g_persistent_natives) / sizeof(g_persistent_natives[0]); ++index) {
+            if (g_persistent_natives[index].handler) {
+                ++count;
+            }
+        }
+        *resolved_count = count;
+        return ERROR_SUCCESS;
+    }
+    for (size_t index = 0; index < sizeof(g_persistent_natives) / sizeof(g_persistent_natives[0]); ++index) {
+        if (g_persistent_natives[index].handler) {
+            ++count;
+        }
+    }
+    if (count < 10u) {
+        *resolved_count = count;
+        return ERROR_NOT_FOUND;
+    }
+    InterlockedExchange(&g_persistent_ready, 1);
+    *resolved_count = count;
+    return ERROR_SUCCESS;
+}
+
+static uint64_t war3_persistent_native_handler(const char *name) {
+    for (size_t index = 0; index < sizeof(g_persistent_natives) / sizeof(g_persistent_natives[0]); ++index) {
+        if (strcmp(g_persistent_natives[index].name, name) == 0) {
+            return g_persistent_natives[index].handler;
+        }
+    }
+    return 0;
+}
+
+static DWORD war3_persistent_selected_snapshot(
+    NativeCommand *cmd,
+    NativeOp *op,
+    uint64_t **extra_results,
+    uint32_t *extra_result_count
+) {
+    typedef uint64_t (__fastcall *GetLocalPlayerFn)(void);
+    typedef void (__fastcall *GroupEnumSelectedFn)(uint64_t, uint64_t, uint64_t);
+    typedef uint64_t (__fastcall *FirstOfGroupFn)(uint64_t);
+    typedef void (__fastcall *GroupRemoveUnitFn)(uint64_t, uint64_t);
+    typedef uint64_t (__fastcall *GetOwningPlayerFn)(uint64_t);
+    typedef int32_t (__fastcall *GetPlayerIdFn)(uint64_t);
+    typedef uint32_t (__fastcall *GetUnitTypeIdFn)(uint64_t);
+    typedef uint32_t (__fastcall *GetUnitStateFn)(uint64_t, int32_t);
+    typedef uint32_t (__fastcall *GetUnitRealFn)(uint64_t);
+    typedef int32_t (__fastcall *GetHeroIntFn)(uint64_t, uint32_t);
+    typedef uint64_t (__fastcall *GetAbilityByIndexFn)(uint64_t, int32_t);
+    typedef uint32_t (__fastcall *GetAbilityIdFn)(uint64_t);
+    typedef int32_t (__fastcall *GetAbilityLevelFn)(uint64_t, uint32_t);
+    typedef uint64_t (__fastcall *UnitItemInSlotFn)(uint64_t, int32_t);
+    typedef uint32_t (__fastcall *GetItemTypeIdFn)(uint64_t);
+    typedef int32_t (__fastcall *GetItemChargesFn)(uint64_t);
+    uint32_t resolved = 0;
+    uint64_t group = 0;
+    uint64_t player = 0;
+    uint64_t *buffer = NULL;
+    uint32_t count = 0;
+    DWORD error = ERROR_SUCCESS;
+    GetLocalPlayerFn get_local_player;
+    GroupEnumSelectedFn enum_selected;
+    FirstOfGroupFn first_of_group;
+    GroupRemoveUnitFn remove_unit;
+    JassDestroyGroupFn destroy_group;
+    GetOwningPlayerFn get_owning_player;
+    GetPlayerIdFn get_player_id;
+    GetUnitTypeIdFn get_unit_type_id;
+    GetUnitStateFn get_unit_state;
+    GetUnitRealFn get_unit_x;
+    GetUnitRealFn get_unit_y;
+    GetUnitRealFn get_move_speed;
+    JassUnitHandleResolveFn resolve_unit;
+    JassGetHeroStatFn get_hero_str;
+    JassGetHeroStatFn get_hero_agi;
+    GetHeroIntFn get_hero_int;
+    GetAbilityByIndexFn get_ability_by_index;
+    GetAbilityIdFn get_ability_id;
+    GetAbilityLevelFn get_ability_level;
+    UnitItemInSlotFn item_in_slot;
+    GetItemTypeIdFn get_item_type_id;
+    GetItemChargesFn get_item_charges;
+
+    if (
+        !cmd || !op || !extra_results || !extra_result_count ||
+        cmd->op_count != 1u
+    ) {
+        return ERROR_INVALID_DATA;
+    }
+    error = war3_persistent_resolve_natives(&resolved);
+    if (error != ERROR_SUCCESS) {
+        return error;
+    }
+    get_local_player = (GetLocalPlayerFn)(uintptr_t)war3_persistent_native_handler("GetLocalPlayer");
+    enum_selected = (GroupEnumSelectedFn)(uintptr_t)war3_persistent_native_handler("GroupEnumUnitsSelected");
+    first_of_group = (FirstOfGroupFn)(uintptr_t)war3_persistent_native_handler("FirstOfGroup");
+    remove_unit = (GroupRemoveUnitFn)(uintptr_t)war3_persistent_native_handler("GroupRemoveUnit");
+    destroy_group = (JassDestroyGroupFn)(uintptr_t)war3_persistent_native_handler("DestroyGroup");
+    get_owning_player = (GetOwningPlayerFn)(uintptr_t)war3_persistent_native_handler("GetOwningPlayer");
+    get_player_id = (GetPlayerIdFn)(uintptr_t)war3_persistent_native_handler("GetPlayerId");
+    get_unit_type_id = (GetUnitTypeIdFn)(uintptr_t)war3_persistent_native_handler("GetUnitTypeId");
+    get_unit_state = (GetUnitStateFn)(uintptr_t)war3_persistent_native_handler("GetUnitState");
+    get_unit_x = (GetUnitRealFn)(uintptr_t)war3_persistent_native_handler("GetUnitX");
+    get_unit_y = (GetUnitRealFn)(uintptr_t)war3_persistent_native_handler("GetUnitY");
+    get_move_speed = (GetUnitRealFn)(uintptr_t)war3_persistent_native_handler("GetUnitMoveSpeed");
+    resolve_unit = (JassUnitHandleResolveFn)(uintptr_t)g_persistent_unit_resolver;
+    get_hero_str = (JassGetHeroStatFn)(uintptr_t)war3_persistent_native_handler("GetHeroStr");
+    get_hero_agi = (JassGetHeroStatFn)(uintptr_t)war3_persistent_native_handler("GetHeroAgi");
+    get_hero_int = (GetHeroIntFn)(uintptr_t)war3_persistent_native_handler("GetHeroInt");
+    get_ability_by_index = (GetAbilityByIndexFn)(uintptr_t)war3_persistent_native_handler("BlzGetUnitAbilityByIndex");
+    get_ability_id = (GetAbilityIdFn)(uintptr_t)war3_persistent_native_handler("BlzGetAbilityId");
+    get_ability_level = (GetAbilityLevelFn)(uintptr_t)war3_persistent_native_handler("GetUnitAbilityLevel");
+    item_in_slot = (UnitItemInSlotFn)(uintptr_t)war3_persistent_native_handler("UnitItemInSlot");
+    get_item_type_id = (GetItemTypeIdFn)(uintptr_t)war3_persistent_native_handler("GetItemTypeId");
+    get_item_charges = (GetItemChargesFn)(uintptr_t)war3_persistent_native_handler("GetItemCharges");
+    if (
+        !get_local_player || !enum_selected || !first_of_group || !remove_unit ||
+        !destroy_group || !get_owning_player || !get_player_id || !get_unit_type_id ||
+        !get_unit_state || !get_unit_x || !get_unit_y
+    ) {
+        return ERROR_PROC_NOT_FOUND;
+    }
+    buffer = (uint64_t *)HeapAlloc(
+        GetProcessHeap(),
+        HEAP_ZERO_MEMORY,
+        12u * sizeof(War3PersistentSnapshot)
+    );
+    if (!buffer) {
+        return ERROR_OUTOFMEMORY;
+    }
+    __try {
+        group = ((JassNoArgU64Fn)(uintptr_t)war3_persistent_native_handler("CreateGroup"))();
+        player = get_local_player();
+        if (!group || !player) {
+            error = ERROR_NOT_FOUND;
+            __leave;
+        }
+        enum_selected(group, player, 0);
+        while (count < 12u) {
+            uint64_t unit = first_of_group(group);
+            War3PersistentSnapshot *snapshot;
+            if (!unit) {
+                break;
+            }
+            remove_unit(group, unit);
+            snapshot = &((War3PersistentSnapshot *)buffer)[count];
+            snapshot->handle = unit;
+            snapshot->owner = get_owning_player(unit);
+            snapshot->type_id = get_unit_type_id(unit);
+            snapshot->hp_bits = get_unit_state(unit, 0);
+            snapshot->hp_max_bits = get_unit_state(unit, 1);
+            snapshot->mp_bits = get_unit_state(unit, 2);
+            snapshot->mp_max_bits = get_unit_state(unit, 3);
+            snapshot->x_bits = get_unit_x(unit);
+            snapshot->y_bits = get_unit_y(unit);
+            if (get_move_speed) {
+                snapshot->move_speed_bits = get_move_speed(unit);
+            }
+            snapshot->unit_address = resolve_unit ? resolve_unit(unit) : 0;
+            snapshot->hero_level = war3_persistent_native_handler("GetHeroLevel")
+                ? (uint64_t)(int64_t)((JassUnitIntQueryFn)(uintptr_t)war3_persistent_native_handler("GetHeroLevel"))(unit)
+                : 0;
+            if (snapshot->hero_level > 0) {
+                if (war3_persistent_native_handler("GetHeroXP")) {
+                    snapshot->hero_xp = (uint64_t)(int64_t)((JassUnitIntQueryFn)(uintptr_t)war3_persistent_native_handler("GetHeroXP"))(unit);
+                }
+                if (get_hero_str) {
+                    snapshot->strength = (uint64_t)(int64_t)get_hero_str(unit, 1);
+                }
+                if (get_hero_agi) {
+                    snapshot->agility = (uint64_t)(int64_t)get_hero_agi(unit, 1);
+                }
+                if (get_hero_int) {
+                    snapshot->intelligence = (uint64_t)(int64_t)get_hero_int(unit, 1);
+                }
+            }
+            if (snapshot->owner && get_player_id) {
+                snapshot->owner_id = (uint64_t)(int64_t)get_player_id(snapshot->owner);
+            }
+            if (item_in_slot && get_item_type_id && get_item_charges) {
+                for (uint32_t slot = 0; slot < WAR3_PERSISTENT_SNAPSHOT_MAX_ITEMS; ++slot) {
+                    uint64_t item = item_in_slot(unit, (int32_t)slot);
+                    if (item) {
+                        snapshot->item_ids[slot] = get_item_type_id(item);
+                        snapshot->item_charges[slot] = (uint64_t)(int64_t)get_item_charges(item);
+                    }
+                }
+            }
+            if (get_ability_by_index && get_ability_id && get_ability_level) {
+                for (int32_t index = 0; index < 256 && snapshot->ability_count < WAR3_PERSISTENT_SNAPSHOT_MAX_ABILITIES; ++index) {
+                    uint64_t ability = get_ability_by_index(unit, index);
+                    uint32_t rawcode;
+                    if (!ability) {
+                        continue;
+                    }
+                    rawcode = get_ability_id(ability);
+                    if (!rawcode) {
+                        continue;
+                    }
+                    snapshot->ability_ids[snapshot->ability_count] = rawcode;
+                    snapshot->ability_levels[snapshot->ability_count] = (uint64_t)(int64_t)get_ability_level(unit, rawcode);
+                    ++snapshot->ability_count;
+                }
+            }
+            ++count;
+        }
+        op->result = count;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        error = GetExceptionCode();
+    }
+    if (group && destroy_group) {
+        __try {
+            destroy_group(group);
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+            if (!error) {
+                error = GetExceptionCode();
+            }
+        }
+    }
+    if (!error && count) {
+        *extra_results = buffer;
+        *extra_result_count = (uint32_t)(
+            count * (sizeof(War3PersistentSnapshot) / sizeof(uint64_t))
+        );
+        buffer = NULL;
+    }
+    HeapFree(GetProcessHeap(), 0, buffer);
+    return error;
 }
 
 static int war3_section_range(HMODULE module, const char *name, War3CodeRange *range) {
@@ -2123,12 +2439,52 @@ static void run_command(void) {
         NativeOp *op = &cmd.ops[i];
         op->result = 0;
         op->last_error = 0;
-        if (op->handler == 0 && op->kind != WAR3_NATIVE_OP_QUERY_WORLD_POINT) {
+        if (
+            op->handler == 0 &&
+            op->kind != WAR3_NATIVE_OP_QUERY_WORLD_POINT &&
+            op->kind != WAR3_NATIVE_OP_PERSISTENT_SELECTED_SNAPSHOT
+        ) {
             op->last_error = ERROR_INVALID_DATA;
             last_error = ERROR_INVALID_DATA;
             goto finish;
         }
         switch (op->kind) {
+            case WAR3_NATIVE_OP_PERSISTENT_REGISTER_NATIVE: {
+                size_t native_count =
+                    sizeof(g_persistent_natives) / sizeof(g_persistent_natives[0]);
+                if (op->rawcode >= native_count || !war3_executable_pointer(op->handler)) {
+                    op->last_error = ERROR_INVALID_PARAMETER;
+                    last_error = op->last_error;
+                    goto finish;
+                }
+                g_persistent_natives[op->rawcode].name =
+                    g_persistent_native_names[op->rawcode];
+                g_persistent_natives[op->rawcode].handler = op->handler;
+                if (op->rawcode == 0u && op->arg0) {
+                    if (!war3_executable_pointer(op->arg0)) {
+                        op->last_error = ERROR_INVALID_PARAMETER;
+                        last_error = op->last_error;
+                        goto finish;
+                    }
+                    g_persistent_unit_resolver = op->arg0;
+                }
+                InterlockedExchange(&g_persistent_ready, 0);
+                op->result = op->handler;
+                break;
+            }
+            case WAR3_NATIVE_OP_PERSISTENT_SELECTED_SNAPSHOT: {
+                last_error = war3_persistent_selected_snapshot(
+                    &cmd,
+                    op,
+                    &extra_results,
+                    &extra_result_count
+                );
+                if (last_error) {
+                    op->last_error = last_error;
+                    goto finish;
+                }
+                break;
+            }
             case WAR3_NATIVE_OP_INTERNAL_ABILITY_BEGIN:
             case WAR3_NATIVE_OP_INTERNAL_ABILITY_END:
             case WAR3_NATIVE_OP_INTERNAL_ABILITY_REFRESH: {

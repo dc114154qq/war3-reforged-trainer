@@ -753,6 +753,31 @@ class NativeHelperOpResult:
 
 
 @dataclass(frozen=True)
+class PersistentNativeUnitSnapshot:
+    handle: int
+    unit_address: int
+    owner: int
+    owner_id: int
+    type_id: int
+    hp: float
+    hp_max: float
+    mp: float
+    mp_max: float
+    x: float
+    y: float
+    move_speed: float
+    hero_level: int
+    hero_xp: int
+    strength: int
+    agility: int
+    intelligence: int
+    item_ids: tuple[int, ...]
+    item_charges: tuple[int, ...]
+    ability_ids: tuple[int, ...]
+    ability_levels: tuple[int, ...]
+
+
+@dataclass(frozen=True)
 class SelectedAbilityFieldContext:
     candidate: UnitCandidate
     unit_handle: int
@@ -2512,6 +2537,37 @@ class War3Trainer:
     NATIVE_HELPER_OP_JASS_CLONE_SELECTED_UNIT = 118
     NATIVE_HELPER_OP_JASS_SELECTED_UNITS = 119
     NATIVE_HELPER_OP_JASS_RESET_LOCAL_COOLDOWNS = 121
+    NATIVE_HELPER_OP_PERSISTENT_REGISTER_NATIVE = 130
+    NATIVE_HELPER_OP_PERSISTENT_SELECTED_SNAPSHOT = 131
+    PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 126
+    PERSISTENT_NATIVE_NAMES = (
+        "UnitAddAbility",
+        "CreateGroup",
+        "GetLocalPlayer",
+        "GroupEnumUnitsSelected",
+        "FirstOfGroup",
+        "GroupRemoveUnit",
+        "DestroyGroup",
+        "GetHandleId",
+        "GetOwningPlayer",
+        "GetPlayerId",
+        "GetUnitTypeId",
+        "GetUnitState",
+        "GetUnitX",
+        "GetUnitY",
+        "GetUnitMoveSpeed",
+        "GetHeroLevel",
+        "GetHeroXP",
+        "GetHeroStr",
+        "GetHeroAgi",
+        "GetHeroInt",
+        "UnitItemInSlot",
+        "GetItemTypeId",
+        "GetItemCharges",
+        "BlzGetUnitAbilityByIndex",
+        "BlzGetAbilityId",
+        "GetUnitAbilityLevel",
+    )
 
     def __init__(self, pid: int | None = None):
         self.hwnd, self.pid = find_war3(pid)
@@ -2533,6 +2589,13 @@ class War3Trainer:
         self._native_helper_lock = threading.RLock()
         self._native_helper_batch_hook = None
         self._native_helper_batch_thread_id = None
+        self._native_helper_persistent_module = None
+        self._native_helper_persistent_hook = None
+        self._native_helper_persistent_pid = 0
+        self._native_helper_persistent_thread_id = 0
+        self._persistent_native_initialized = False
+        self._persistent_bootstrap_stop = threading.Event()
+        self._persistent_bootstrap_thread: threading.Thread | None = None
         self._ability_runtime_templates: dict[tuple[int, int, int], dict[str, object]] = {}
         self._ability_instance_by_data: dict[tuple[int, int, int], AbilityInstance] = {}
         self._selection_player_candidates: list[int] = []
@@ -2555,6 +2618,33 @@ class War3Trainer:
         self._last_win10_native_missing: tuple[str, ...] = ()
         self._last_selected_summaries: tuple[UnitSelectionSummary, ...] = ()
         self._elephant_selection_override: tuple[UnitCandidate, int] | None = None
+        self._start_persistent_bootstrap()
+
+    def close(self) -> None:
+        stop = getattr(self, "_persistent_bootstrap_stop", None)
+        if stop is not None:
+            stop.set()
+        with self._native_helper_lock:
+            module = self._native_helper_persistent_module
+            hook = self._native_helper_persistent_hook
+            self._native_helper_persistent_module = None
+            self._native_helper_persistent_hook = None
+            self._native_helper_persistent_pid = 0
+            self._native_helper_persistent_thread_id = 0
+            self._persistent_native_initialized = False
+            if hook:
+                user32.UnhookWindowsHookEx(ctypes.c_void_p(hook))
+            if module:
+                kernel32.FreeLibrary(ctypes.c_void_p(module))
+        session = self._win10_session_trainer
+        if isinstance(session, BackupReadWar3Trainer):
+            session.close_session_diagnostics()
+        self._win10_session_trainer = None
+        self._win10_session_identity = None
+        thread = getattr(self, "_persistent_bootstrap_thread", None)
+        if thread is not None and thread is not threading.current_thread():
+            thread.join(timeout=0.25)
+        self._persistent_bootstrap_thread = None
 
     def _process_memory(self, write: bool = False) -> ProcessMemory:
         return ProcessMemory(self.pid, write=write)
@@ -2565,6 +2655,7 @@ class War3Trainer:
         old_pid = self.pid
         self.hwnd, self.pid = find_war3(None if allow_pid_change else self.pid)
         if self.pid != old_pid:
+            self._close_native_helper_persistent()
             previous_win10_session = self._win10_session_trainer
             if isinstance(previous_win10_session, BackupReadWar3Trainer):
                 previous_win10_session.close_session_diagnostics()
@@ -2604,6 +2695,60 @@ class War3Trainer:
             self._last_win10_native_missing = ()
             self._last_selected_summaries = ()
             self._elephant_selection_override = None
+            self._start_persistent_bootstrap()
+
+    def _close_native_helper_persistent(self) -> None:
+        with self._native_helper_lock:
+            module = self._native_helper_persistent_module
+            hook = self._native_helper_persistent_hook
+            self._native_helper_persistent_module = None
+            self._native_helper_persistent_hook = None
+            self._native_helper_persistent_pid = 0
+            self._native_helper_persistent_thread_id = 0
+            self._persistent_native_initialized = False
+            if hook:
+                user32.UnhookWindowsHookEx(ctypes.c_void_p(hook))
+            if module:
+                kernel32.FreeLibrary(ctypes.c_void_p(module))
+
+    def _start_persistent_bootstrap(self) -> None:
+        previous = getattr(self, "_persistent_bootstrap_stop", None)
+        if previous is not None:
+            previous.set()
+        stop = threading.Event()
+        self._persistent_bootstrap_stop = stop
+        pid = int(self.pid)
+        thread = threading.Thread(
+            target=self._persistent_bootstrap_loop,
+            args=(pid, stop),
+            name=f"war3-persistent-bootstrap-{pid}",
+            daemon=True,
+        )
+        self._persistent_bootstrap_thread = thread
+        thread.start()
+
+    def _persistent_bootstrap_loop(self, pid: int, stop: threading.Event) -> None:
+        native_ready = False
+        while not stop.is_set() and int(getattr(self, "pid", 0)) == pid:
+            try:
+                if not native_ready:
+                    self.persistent_native_init(timeout_ms=15000)
+                    native_ready = True
+                with self._process_memory() as pm:
+                    native_selection = self.persistent_native_selected_snapshots(
+                        timeout_ms=5000,
+                    )
+                    if not native_selection:
+                        stop.wait(0.5)
+                        continue
+                    selected = self._selected_candidates_snapshot(pm)
+                    self._selected_summaries_from_snapshot(pm, selected)
+                return
+            except Exception:
+                # The game may still be loading or have no selection. Retry in
+                # the background so the first user read does not pay setup cost.
+                native_ready = False
+                stop.wait(1.0)
 
     def focus(self) -> None:
         focus_window(self.hwnd)
@@ -2623,7 +2768,7 @@ class War3Trainer:
 
     def read_selected_panel(self) -> VisibleUnitPanel:
         with self._process_memory() as pm:
-            candidate = self.locate_selected_unit_by_handle(pm, allow_deep_scan=True)
+            candidate = self._selected_candidates_snapshot(pm)[0][0]
             return self._panel_from_candidate(pm, candidate)
 
     @staticmethod
@@ -3802,6 +3947,111 @@ class War3Trainer:
                 return candidate
         raise RuntimeError("缺少 native helper DLL：tools\\war3_native_helper.dll")
 
+    def persistent_native_init(self, *, timeout_ms: int = 30000) -> int:
+        if getattr(self, "_persistent_native_initialized", False):
+            return len(self.PERSISTENT_NATIVE_NAMES)
+        with self._process_memory() as pm:
+            handlers = self._discover_native_handlers_near_table(
+                pm,
+                self.PERSISTENT_NATIVE_NAMES,
+            )
+            resolver = self._discover_jass_unit_resolver(pm)
+        registrations = tuple(
+            (
+                self.NATIVE_HELPER_OP_PERSISTENT_REGISTER_NATIVE,
+                index,
+                handlers[name].handler_address,
+                resolver if index == 0 else 0,
+                0,
+            )
+            for index, name in enumerate(self.PERSISTENT_NATIVE_NAMES)
+        )
+        for start in range(0, len(registrations), self.NATIVE_HELPER_MAX_OPS):
+            self._run_native_helper_ops(
+                0,
+                registrations[start:start + self.NATIVE_HELPER_MAX_OPS],
+                timeout_ms=timeout_ms,
+            )
+        self._persistent_native_initialized = True
+        return len(registrations)
+
+    def persistent_native_selected_snapshots(
+        self,
+        *,
+        timeout_ms: int = 30000,
+    ) -> tuple[PersistentNativeUnitSnapshot, ...]:
+        self.persistent_native_init(timeout_ms=timeout_ms)
+        result = self._run_native_helper_ops(
+            0,
+            ((self.NATIVE_HELPER_OP_PERSISTENT_SELECTED_SNAPSHOT, 0, 0, 0, 0),),
+            timeout_ms=timeout_ms,
+        )[0]
+        values = tuple(int(value) for value in result.extra_results)
+        count = int(result.result)
+        expected = count * self.PERSISTENT_NATIVE_SNAPSHOT_QWORDS
+        if len(values) != expected:
+            raise RuntimeError(
+                "persistent native snapshot 长度异常："
+                f"{len(values)}!={expected}"
+            )
+        snapshots: list[PersistentNativeUnitSnapshot] = []
+        for index in range(count):
+            row = values[
+                index * self.PERSISTENT_NATIVE_SNAPSHOT_QWORDS:
+                (index + 1) * self.PERSISTENT_NATIVE_SNAPSHOT_QWORDS
+            ]
+            scalar = row[:17]
+            (
+                handle,
+                unit_address,
+                owner,
+                owner_id,
+                type_id,
+                hp_bits,
+                hp_max_bits,
+                mp_bits,
+                mp_max_bits,
+                x_bits,
+                y_bits,
+                move_speed_bits,
+                hero_level,
+                hero_xp,
+                strength,
+                agility,
+                intelligence,
+            ) = scalar
+            item_ids = tuple(row[17:23])
+            item_charges = tuple(row[23:29])
+            ability_count = min(int(row[29]), 48)
+            ability_ids = tuple(row[30:30 + ability_count])
+            ability_levels = tuple(row[78:78 + ability_count])
+            snapshots.append(
+                PersistentNativeUnitSnapshot(
+                    handle=handle,
+                    unit_address=unit_address,
+                    owner=owner,
+                    owner_id=owner_id,
+                    type_id=type_id,
+                    hp=struct.unpack("<f", struct.pack("<I", hp_bits & 0xFFFFFFFF))[0],
+                    hp_max=struct.unpack("<f", struct.pack("<I", hp_max_bits & 0xFFFFFFFF))[0],
+                    mp=struct.unpack("<f", struct.pack("<I", mp_bits & 0xFFFFFFFF))[0],
+                    mp_max=struct.unpack("<f", struct.pack("<I", mp_max_bits & 0xFFFFFFFF))[0],
+                    x=struct.unpack("<f", struct.pack("<I", x_bits & 0xFFFFFFFF))[0],
+                    y=struct.unpack("<f", struct.pack("<I", y_bits & 0xFFFFFFFF))[0],
+                    move_speed=struct.unpack("<f", struct.pack("<I", move_speed_bits & 0xFFFFFFFF))[0],
+                    hero_level=hero_level & 0xFFFFFFFFFFFFFFFF,
+                    hero_xp=hero_xp & 0xFFFFFFFFFFFFFFFF,
+                    strength=strength & 0xFFFFFFFFFFFFFFFF,
+                    agility=agility & 0xFFFFFFFFFFFFFFFF,
+                    intelligence=intelligence & 0xFFFFFFFFFFFFFFFF,
+                    item_ids=item_ids,
+                    item_charges=item_charges,
+                    ability_ids=ability_ids,
+                    ability_levels=ability_levels,
+                )
+            )
+        return tuple(snapshots)
+
     def _native_helper_command_path(self) -> Path:
         return Path(tempfile.gettempdir()) / f"war3_reforged_native_{self.pid}.bin"
 
@@ -3913,7 +4163,8 @@ class War3Trainer:
         timeout_ms: int = 10000,
     ) -> list[NativeHelperOpResult]:
         wait_ms = max(5000, min(300000, int(timeout_ms) + 5000))
-        with self._native_helper_transaction(wait_ms=wait_ms):
+        with self._native_helper_lock:
+            self._ensure_native_helper_persistent_hook(wait_ms=wait_ms)
             return self._run_native_helper_ops_locked(
                 unit_address,
                 ops,
@@ -3958,6 +4209,19 @@ class War3Trainer:
     @contextmanager
     def _native_helper_batch_transaction(self, *, wait_ms: int = 300000) -> Iterator[None]:
         with self._native_helper_lock:
+            if (
+                self._native_helper_persistent_hook
+                and self._native_helper_persistent_module
+                and self._native_helper_persistent_pid == self.pid
+            ):
+                self._native_helper_batch_hook = self._native_helper_persistent_hook
+                self._native_helper_batch_thread_id = threading.get_ident()
+                try:
+                    yield
+                finally:
+                    self._native_helper_batch_hook = None
+                    self._native_helper_batch_thread_id = None
+                return
             mutex = kernel32.CreateMutexW(
                 None,
                 False,
@@ -4016,6 +4280,72 @@ class War3Trainer:
                 kernel32.CloseHandle(mutex)
                 if release_error:
                     raise ctypes.WinError(release_error)
+
+    def _ensure_native_helper_persistent_hook(self, *, wait_ms: int = 300000) -> None:
+        if (
+            self._native_helper_persistent_hook
+            and self._native_helper_persistent_module
+            and self._native_helper_persistent_pid == self.pid
+        ):
+            return
+        self._close_native_helper_persistent()
+        mutex = kernel32.CreateMutexW(
+            None,
+            False,
+            f"Local\\War3ReforgedTrainer.NativeHelper.{self.pid}",
+        )
+        if not mutex:
+            raise ctypes.WinError(ctypes.get_last_error())
+        wait_result = int(kernel32.WaitForSingleObject(
+            mutex,
+            max(5000, min(300000, int(wait_ms))),
+        ))
+        if wait_result not in (WAIT_OBJECT_0, WAIT_ABANDONED):
+            kernel32.CloseHandle(mutex)
+            if wait_result == WAIT_TIMEOUT:
+                raise TimeoutError("等待 Warcraft native helper 常驻事务锁超时")
+            raise ctypes.WinError(ctypes.get_last_error())
+        module = None
+        hook = None
+        try:
+            module = kernel32.LoadLibraryW(str(self._native_helper_dll_path()))
+            if not module:
+                raise ctypes.WinError(ctypes.get_last_error())
+            proc = kernel32.GetProcAddress(module, b"War3HookProc")
+            if not proc:
+                raise ctypes.WinError(ctypes.get_last_error())
+            pid = ctypes.c_ulong()
+            tid = user32.GetWindowThreadProcessId(
+                ctypes.c_void_p(self.hwnd),
+                ctypes.byref(pid),
+            )
+            if not tid or int(pid.value) != self.pid:
+                raise RuntimeError("Warcraft III 窗口线程已失效")
+            hook = user32.SetWindowsHookExW(
+                WH_CALLWNDPROC,
+                ctypes.c_void_p(proc),
+                ctypes.c_void_p(module),
+                int(tid),
+            )
+            if not hook:
+                raise ctypes.WinError(ctypes.get_last_error())
+            self._native_helper_persistent_module = module
+            self._native_helper_persistent_hook = hook
+            self._native_helper_persistent_pid = self.pid
+            self._native_helper_persistent_thread_id = int(tid)
+            module = None
+            hook = None
+        finally:
+            if hook:
+                user32.UnhookWindowsHookEx(ctypes.c_void_p(hook))
+            if module:
+                kernel32.FreeLibrary(ctypes.c_void_p(module))
+            release_error = 0
+            if not kernel32.ReleaseMutex(mutex):
+                release_error = ctypes.get_last_error()
+            kernel32.CloseHandle(mutex)
+            if release_error:
+                raise ctypes.WinError(release_error)
 
     def _wait_native_helper_result(
         self,
@@ -4123,6 +4453,8 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_JASS_CLONE_SELECTED_UNIT,
             self.NATIVE_HELPER_OP_JASS_SELECTED_UNITS,
             self.NATIVE_HELPER_OP_JASS_RESET_LOCAL_COOLDOWNS,
+            self.NATIVE_HELPER_OP_PERSISTENT_REGISTER_NATIVE,
+            self.NATIVE_HELPER_OP_PERSISTENT_SELECTED_SNAPSHOT,
         }
         if any(kind not in allowed_kinds for kind, _rawcode, _handler, _arg0, _arg1 in op_list):
             raise RuntimeError("native helper 仅允许结构化验证后的白名单操作")
@@ -4179,13 +4511,21 @@ class War3Trainer:
             command_path,
             self._pack_native_helper_command(unit_address, op_list),
         )
+        active_hook = None
         if (
             self._native_helper_batch_hook is not None
             and self._native_helper_batch_thread_id == threading.get_ident()
         ):
+            active_hook = self._native_helper_batch_hook
+        elif (
+            self._native_helper_persistent_hook is not None
+            and self._native_helper_persistent_pid == self.pid
+        ):
+            active_hook = self._native_helper_persistent_hook
+        if active_hook is not None:
             return self._wait_native_helper_result(
                 command_path,
-                self._native_helper_batch_hook,
+                active_hook,
                 len(op_list),
                 timeout_ms,
             )
@@ -4366,6 +4706,57 @@ class War3Trainer:
         handles: Iterable[int] | None = None,
         allow_owner_refresh: bool = True,
     ) -> list[tuple[UnitCandidate, int]]:
+        persistent_snapshots = self.persistent_native_selected_snapshots()
+        if persistent_snapshots:
+            requested_handles = (
+                set(int(handle) for handle in handles if int(handle))
+                if handles is not None
+                else None
+            )
+            persistent_selected: list[tuple[UnitCandidate, int]] = []
+            unit_index = self._build_unit_object_index(pm, force_refresh=False)
+            for snapshot in persistent_snapshots:
+                if requested_handles is not None and snapshot.handle not in requested_handles:
+                    continue
+                if isinstance(pm, Win10ProcessMemory):
+                    candidate = self._candidate_from_jass_selection_result_win10(
+                        pm,
+                        snapshot.unit_address,
+                        0,
+                        snapshot.owner,
+                        unit_index=unit_index,
+                    )
+                else:
+                    candidate = self._candidate_from_jass_selection_result(
+                        pm,
+                        snapshot.unit_address,
+                        0,
+                        snapshot.owner,
+                        unit_index=unit_index,
+                    )
+                if candidate is None:
+                    continue
+                candidate = replace(
+                    candidate,
+                    note=(
+                        "persistent_native "
+                        f"handle=0x{snapshot.handle:x} type=0x{snapshot.type_id:x}; "
+                        f"{candidate.note}"
+                    ),
+                    selection_source="persistent_native",
+                )
+                if snapshot.unit_address and candidate.unit_address != snapshot.unit_address:
+                    continue
+                persistent_selected.append(
+                    (
+                        replace(candidate, unit_type_id=int(snapshot.type_id)),
+                        snapshot.handle,
+                    )
+                )
+            if persistent_selected:
+                return persistent_selected
+            raise RuntimeError("persistent native 已读取选择列表，但无法映射到单位字段对象")
+
         selected: list[tuple[UnitCandidate, int]] = []
         seen_units: set[int] = set()
         handles = tuple(handles) if handles is not None else self._elephant_selected_handles(pm)
@@ -4603,12 +4994,19 @@ class War3Trainer:
             self._remove_engine_ability_instance(pm, candidate, data_address)
 
     def prewarm_elephant_functions(self) -> int:
+        persistent_count = self.persistent_native_init()
         with self._process_memory() as pm:
             handlers = self._discover_native_handlers_near_table(
                 pm,
                 self.ELEPHANT_NATIVE_NAMES,
             )
-        return len(handlers)
+            try:
+                selected = self._selected_candidates_snapshot(pm)
+                self._selected_summaries_from_snapshot(pm, selected)
+            except (RuntimeError, OSError):
+                # Initialization must remain usable before a unit is selected.
+                pass
+        return max(len(handlers), persistent_count)
 
     def get_selected_hero_level(self) -> int:
         with self._process_memory() as pm:
@@ -12724,25 +13122,8 @@ class War3Trainer:
 
     def read_selected_unit_fields(self) -> tuple[VisibleUnitPanel, UnitCandidate, list[UnitMemoryField]]:
         with self._process_memory() as pm:
-            candidate = self.locate_selected_unit_by_handle(pm, allow_deep_scan=True)
-            candidate = self._candidate_with_selected_unit_type_id(pm, candidate)
-            try:
-                snapshot = self._selected_candidates_snapshot(pm)
-            except Exception:
-                snapshot = [(candidate, candidate.handle)]
-            matching = next(
-                (
-                    entry
-                    for entry in snapshot
-                    if entry[0].unit_address == candidate.unit_address
-                ),
-                None,
-            )
-            if matching is None:
-                snapshot.insert(0, (candidate, candidate.handle))
-            else:
-                snapshot.remove(matching)
-                snapshot.insert(0, matching)
+            snapshot = self._selected_candidates_snapshot(pm)
+            candidate = snapshot[0][0]
             panel = self._panel_from_candidate(pm, candidate)
             self._last_selected_summaries = self._selected_summaries_from_snapshot(
                 pm,
@@ -14812,6 +15193,13 @@ def run_gui() -> None:
             ):
                 root.after(100, finish_close)
                 return
+            for key in ("trainer", "elephant_batch_trainer"):
+                value = state.get(key)
+                if isinstance(value, War3Trainer):
+                    value.close()
+            for value in tuple(state.get("selection_source_trainers", ())):
+                if isinstance(value, War3Trainer):
+                    value.close()
             root.destroy()
 
         finish_close()
@@ -17860,7 +18248,8 @@ def run_gui() -> None:
                 lambda: call_async(prewarm_selection_cache, busy_text="正在预热，请稍候..."),
             )
         except Exception as exc:
-            set_status(f"未连接：{exc}")
+            set_status(f"等待 Warcraft III 启动：{exc}")
+            root.after(1000, init)
 
     root.after(100, init)
     root.after(1500, lock_tick)

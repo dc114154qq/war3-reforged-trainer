@@ -12227,11 +12227,12 @@ class War3Trainer:
             self._selected_components_cache.pop(cache_key, None)
 
         direct = self._components_from_unit_object(pm, owner)
-        if direct and self._persistent_native_initialized:
+        if self._persistent_native_initialized:
             # The persistent native snapshot already validated this unit. The
             # unit object pointers are independently checked by
-            # _components_from_unit_object, so wrapper enumeration would only
-            # add a process-wide fallback scan on this hot path.
+            # _components_from_unit_object. Never turn a missing direct
+            # component into a process-wide index scan on this hot path: that
+            # can pair a newly selected unit with an older object.
             self._selected_components_cache[cache_key] = dict(direct)
             return direct
         wrapper_components: dict[str, tuple[int, int]] = {}

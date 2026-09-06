@@ -1,6 +1,7 @@
 from pathlib import Path
 import unittest
 import threading
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import war3_reforged_trainer as trainer_module
@@ -15,6 +16,27 @@ class _Memory:
 
 
 class NativeHelperRuntimeFeatureTests(unittest.TestCase):
+    def test_native_inventory_empty_sentinels_do_not_trigger_item_search(self):
+        trainer = object.__new__(trainer_module.War3Trainer)
+        candidate = SimpleNamespace(unit_address=0x2000, owner_address=0x3000)
+        trainer._last_persistent_native_snapshots = (SimpleNamespace(
+            unit_address=0x2000, item_handles=(0,) * 6,
+            item_addresses=(0,) * 6, item_ids=(0,) * 6, item_charges=(0,) * 6,
+        ),)
+        trainer._inventory_record_address = Mock(return_value=0x4000)
+        trainer._item_objects_from_handles = Mock(side_effect=AssertionError("Unexpected item scan"))
+        pm = Mock()
+        pm.read_u64.side_effect = [0, 0xFFFFFFFFFFFFFFFF, 0, 0xFFFFFFFFFFFFFFFF, 0, 0]
+        items = trainer._inventory_items_from_candidate(pm, candidate, {"inventory": (0, 0x5000)})
+        self.assertEqual(len(items), 6)
+        self.assertTrue(all(item.item_address == 0 and item.rawcode == 0 for item in items))
+        trainer._item_objects_from_handles.assert_not_called()
+
+    def test_decoder_does_not_treat_instruction_operands_as_calls_or_returns(self):
+        pm = Mock()
+        pm.read.return_value = bytes.fromhex("448bc3b8e8000000e803000000c3")
+        self.assertEqual(trainer_module.War3Trainer._native_function_calls(pm, 0x1000), [0x1010])
+
     def make_trainer(self):
         trainer = object.__new__(trainer_module.War3Trainer)
         trainer.query_mouse_world_position = Mock(return_value=(12.5, -8.0))
@@ -297,6 +319,7 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
         row[41] = 2
         row[42:44] = [0x41420031, 0x41420032]
         row[90:92] = [1, 3]
+        row[138:140] = [0x123400005678, 0x707]
         trainer._run_native_helper_ops = Mock(
             return_value=[
                 trainer_module.NativeHelperOpResult(
@@ -318,6 +341,8 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
         self.assertEqual(snapshot.item_charges[0], 3)
         self.assertEqual(snapshot.item_handles[0], 0x505)
         self.assertEqual(snapshot.item_addresses[0], 0x606)
+        self.assertEqual(snapshot.full_handle, 0x123400005678)
+        self.assertEqual(snapshot.owner_address, 0x707)
         self.assertEqual(snapshot.ability_ids, (0x41420031, 0x41420032))
         self.assertEqual(snapshot.ability_levels, (1, 3))
 

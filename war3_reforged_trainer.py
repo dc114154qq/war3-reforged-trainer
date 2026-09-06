@@ -37,7 +37,7 @@ from war3_item_fields import ITEM_FIELD_BY_KEY, ITEM_FIELD_CATALOG, ItemFieldSpe
 from war3_ui_i18n import detect_ui_language, translate_ui_text
 
 
-APP_VERSION = "1.0.18"
+APP_VERSION = "1.0.19"
 PRODUCT_READ_MODE = "normal"
 PRODUCT_EDITION_LABEL = "普通读取版"
 WIN10_COMPAT_REVISION = "backup-r7-live-regions-external-native"
@@ -4874,7 +4874,7 @@ class War3Trainer:
                         )
                 if candidate is None:
                     raise RuntimeError("Native selection changed while mapping its field objects; retry the read")
-                self._unit_owner_index[snapshot.full_handle] = snapshot.owner_address
+                self._unit_owner_index[candidate.handle] = candidate.owner_address
                 candidate = replace(
                     candidate,
                     note=(
@@ -12930,7 +12930,8 @@ class War3Trainer:
                     handle = 0
                 snapshot_handle = int(persistent.item_handles[index])
                 item_address = int(persistent.item_addresses[index])
-                if bool(handle) != bool(snapshot_handle):
+                occupied = handle not in (0, 0xFFFFFFFFFFFFFFFF)
+                if occupied != bool(snapshot_handle):
                     fast_path_valid = False
                     break
                 rawcode = int(persistent.item_ids[index])
@@ -12941,12 +12942,15 @@ class War3Trainer:
                 ability_rawcode = 0
                 ability_rawcode_address = 0
                 charges_address = 0
-                if handle:
+                if occupied:
                     if not item_address or not self._sane_heap_ptr(item_address):
                         fast_path_valid = False
                         break
                     try:
                         if not self._looks_like_vtable(pm.read_u64(item_address)):
+                            fast_path_valid = False
+                            break
+                        if pm.read_u64(item_address + 0x18) != handle:
                             fast_path_valid = False
                             break
                         rawcode_address = item_address + 0x70
@@ -12972,7 +12976,7 @@ class War3Trainer:
                         slot=index + 1,
                         handle=handle,
                         handle_address=handle_address,
-                        item_address=item_address if handle else 0,
+                        item_address=item_address if occupied else 0,
                         rawcode=rawcode,
                         rawcode_address=rawcode_address,
                         mirror_rawcode=mirror_rawcode,
@@ -18901,8 +18905,12 @@ def run_cli(args: argparse.Namespace) -> int:
 
 
 def main(argv: Iterable[str] | None = None) -> int:
+    arguments = list(argv) if argv is not None else sys.argv[1:]
+    if len(arguments) == 2 and arguments[0] == "--runtime-self-test":
+        from war3_runtime_check import run
+        return run(arguments[1])
     parser = build_arg_parser()
-    args = parser.parse_args(list(argv) if argv is not None else None)
+    args = parser.parse_args(arguments)
     has_cli_action = any(
         [
             args.status,

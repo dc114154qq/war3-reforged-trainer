@@ -6,10 +6,10 @@ a = Analysis(
     pathex=[],
     binaries=[
         ('tools/war3_native_helper.dll', 'tools'),
-        ('tools/capstone.dll', 'tools'),
+        ('tools/capstone.dll', 'capstone/lib'),
     ],
     datas=[('assets/app_icon.png', 'assets')],
-    hiddenimports=['capstone'],
+    hiddenimports=['capstone', 'war3_runtime_check'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

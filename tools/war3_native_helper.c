@@ -3429,7 +3429,7 @@ static void run_command(void) {
                     }
                     }
 
-                    for (int32_t index = 0; index < 1024; ++index) {
+                    for (int32_t index = 0; index < 256; ++index) {
                         __try {
                         uint64_t source_ability =
                             get_ability_by_index(cmd.unit_handle, index);
@@ -3449,7 +3449,7 @@ static void run_command(void) {
                         if (source_ability_level <= 0) {
                             continue;
                         }
-                        for (int32_t target_index = 0; target_index < 1024; ++target_index) {
+                        for (int32_t target_index = 0; target_index < 256; ++target_index) {
                             uint64_t target_ability =
                                 get_ability_by_index(target, target_index);
                             if (!target_ability) {

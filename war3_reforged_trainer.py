@@ -3849,7 +3849,27 @@ class War3Trainer:
         wanted = set(names)
         process_cached = self._PROCESS_NATIVE_HANDLER_CACHE.get(int(self.pid), {})
         if process_cached:
-            self._native_handlers.update(process_cached)
+            # PIDs can be reused after Warcraft exits. Validate cached
+            # addresses against this process before trusting them; otherwise
+            # a stale handler can survive a restart and call unrelated code.
+            regions = pm.regions()
+            validated_cached: dict[str, NativeHandler] = {}
+            for name, handler in process_cached.items():
+                if name not in wanted:
+                    continue
+                if not self._is_executable_image_address(regions, handler.handler_address):
+                    continue
+                try:
+                    record_name = self._decode_native_name_from_record(
+                        pm,
+                        handler.record_address,
+                    )
+                    record_size = pm.read_u64(handler.record_address + 8)
+                except OSError:
+                    continue
+                if record_name == name and record_size == len(name):
+                    validated_cached[name] = handler
+            self._native_handlers.update(validated_cached)
         missing = wanted.difference(self._native_handlers)
         if not missing:
             return {name: self._native_handlers[name] for name in wanted}

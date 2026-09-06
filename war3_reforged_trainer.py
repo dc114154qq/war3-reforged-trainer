@@ -5140,18 +5140,6 @@ class War3Trainer:
         return max(len(handlers), persistent_count)
 
     def get_selected_hero_level(self) -> int:
-        # ``run_for_selected_units`` binds each item to the persistent native
-        # snapshot that produced the selection.  Reusing that row keeps a
-        # read-only batch on the in-process snapshot path instead of making a
-        # separate JASS call for every selected unit.  Outside a bound batch
-        # we retain the live native query so a single read always reflects the
-        # current game state.
-        override = getattr(self, "_elephant_selection_override", None)
-        if override is not None:
-            candidate, _unit_handle = override
-            for item in self._last_persistent_native_snapshots:
-                if item.unit_address == candidate.unit_address:
-                    return int(item.hero_level)
         with self._process_memory() as pm:
             unit_handle = self._elephant_selected_handle(pm)
             handlers = self._elephant_handlers(pm, ("GetHeroLevel",))

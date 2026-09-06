@@ -738,6 +738,10 @@ static DWORD war3_persistent_selected_snapshot(
             }
             ++count;
         }
+        if (count == 12u && first_of_group(group) != 0) {
+            error = ERROR_MORE_DATA;
+            __leave;
+        }
         op->result = count;
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         error = GetExceptionCode();

@@ -12981,6 +12981,13 @@ class War3Trainer:
             if fast_path_valid:
                 return fast_items
 
+            if self._persistent_native_initialized:
+                # The helper supplied the item identities for this exact
+                # native snapshot. If the live slot record changed before it
+                # could be validated, report the snapshot as stale instead of
+                # searching the process for a similarly shaped old item.
+                return []
+
         items: list[InventoryItem] = []
         slot_handles: list[tuple[int, int, int]] = []
         for index in range(6):

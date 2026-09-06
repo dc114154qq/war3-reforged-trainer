@@ -3436,7 +3436,6 @@ static void run_command(void) {
                         uint32_t ability_id;
                         int32_t source_ability_level;
                         int32_t target_ability_level;
-                        int target_has_ability = 0;
                         if (!source_ability) {
                             break;
                         }
@@ -3449,21 +3448,7 @@ static void run_command(void) {
                         if (source_ability_level <= 0) {
                             continue;
                         }
-                        for (int32_t target_index = 0; target_index < 256; ++target_index) {
-                            uint64_t target_ability =
-                                get_ability_by_index(target, target_index);
-                            if (!target_ability) {
-                                break;
-                            }
-                            if (get_ability_id(target_ability) == ability_id) {
-                                target_has_ability = 1;
-                                break;
-                            }
-                        }
                         target_ability_level = get_ability_level(target, ability_id);
-                        if (target_ability_level <= 0 && target_has_ability) {
-                            continue;
-                        }
                         if (target_ability_level <= 0 && !add_ability(target, ability_id)) {
                             /* Some map-provided abilities cannot be attached
                              * to a newly created instance; leave that one out

@@ -4413,6 +4413,22 @@ class War3Trainer:
                 and self._native_helper_persistent_module
                 and self._native_helper_persistent_pid == self.pid
             ):
+                mutex = kernel32.CreateMutexW(
+                    None,
+                    False,
+                    f"Local\\War3ReforgedTrainer.NativeHelper.{self.pid}",
+                )
+                if not mutex:
+                    raise ctypes.WinError(ctypes.get_last_error())
+                wait_result = int(kernel32.WaitForSingleObject(
+                    mutex,
+                    max(5000, min(300000, int(wait_ms))),
+                ))
+                if wait_result not in (WAIT_OBJECT_0, WAIT_ABANDONED):
+                    kernel32.CloseHandle(mutex)
+                    if wait_result == WAIT_TIMEOUT:
+                        raise TimeoutError("等待 Warcraft native helper 批事务锁超时")
+                    raise ctypes.WinError(ctypes.get_last_error())
                 self._native_helper_batch_hook = self._native_helper_persistent_hook
                 self._native_helper_batch_thread_id = threading.get_ident()
                 try:
@@ -4420,6 +4436,12 @@ class War3Trainer:
                 finally:
                     self._native_helper_batch_hook = None
                     self._native_helper_batch_thread_id = None
+                    release_error = 0
+                    if not kernel32.ReleaseMutex(mutex):
+                        release_error = ctypes.get_last_error()
+                    kernel32.CloseHandle(mutex)
+                    if release_error:
+                        raise ctypes.WinError(release_error)
                 return
             mutex = kernel32.CreateMutexW(
                 None,

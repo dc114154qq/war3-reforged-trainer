@@ -14976,16 +14976,20 @@ class War3Trainer:
         set_unit_state = 0
         set_max_hp = 0
         set_max_mp = 0
+        set_position = 0
         if hasattr(self, "_native_handlers"):
             requested_handlers = ["SetUnitState"]
             if max_hp is not None:
                 requested_handlers.append("BlzSetUnitMaxHP")
             if max_mp is not None:
                 requested_handlers.append("BlzSetUnitMaxMana")
+            if target_x is not None or target_y is not None:
+                requested_handlers.append("SetUnitPosition")
             native_handlers = self._elephant_handlers(pm, requested_handlers)
             set_unit_state = native_handlers["SetUnitState"].handler_address
             set_max_hp = native_handlers.get("BlzSetUnitMaxHP", NativeHandler("", 0, 0)).handler_address
             set_max_mp = native_handlers.get("BlzSetUnitMaxMana", NativeHandler("", 0, 0)).handler_address
+            set_position = native_handlers.get("SetUnitPosition", NativeHandler("", 0, 0)).handler_address
         if max_hp is not None or target_hp is not None:
             try:
                 old_max_hp = pm.read_f32(candidate.hp_max_address)
@@ -15044,14 +15048,27 @@ class War3Trainer:
             if not candidate.mp_regen_address:
                 raise RuntimeError("当前单位没有可写的 MP 回复率属性")
             pm.write_f32(candidate.mp_regen_address, float(target_mp_regen))
-        if target_x is not None:
-            if not candidate.x_address:
-                raise RuntimeError("当前单位没有可写的 X 坐标属性")
-            pm.write_f32(candidate.x_address, float(target_x))
-        if target_y is not None:
-            if not candidate.y_address:
-                raise RuntimeError("当前单位没有可写的 Y 坐标属性")
-            pm.write_f32(candidate.y_address, float(target_y))
+        if target_x is not None or target_y is not None:
+            if not set_position:
+                if target_x is not None:
+                    if not candidate.x_address:
+                        raise RuntimeError("当前单位没有可写的 X 坐标属性")
+                    pm.write_f32(candidate.x_address, float(target_x))
+                if target_y is not None:
+                    if not candidate.y_address:
+                        raise RuntimeError("当前单位没有可写的 Y 坐标属性")
+                    pm.write_f32(candidate.y_address, float(target_y))
+            else:
+                current_x = pm.read_f32(candidate.x_address) if candidate.x_address else 0.0
+                current_y = pm.read_f32(candidate.y_address) if candidate.y_address else 0.0
+                self._run_native_helper_ops(
+                    candidate.handle,
+                    ((self.NATIVE_HELPER_OP_JASS_SET_UNIT_POSITION,
+                      self._float_bits(target_x if target_x is not None else current_x),
+                      set_position,
+                      self._float_bits(target_y if target_y is not None else current_y),
+                      0),),
+                )
 
     def set_selected_unit(
         self,

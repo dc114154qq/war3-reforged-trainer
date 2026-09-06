@@ -80,6 +80,7 @@
 #define WAR3_NATIVE_OP_MOVE_SELECTED_GROUP_TO_MOUSE 132u
 #define WAR3_NATIVE_OP_PERSISTENT_UNIT_SNAPSHOT 133u
 #define WAR3_NATIVE_OP_JASS_SET_UNIT_STATE 134u
+#define WAR3_NATIVE_OP_JASS_SET_UNIT_INT 135u
 #define WAR3_CLONE_FLAG_HERO 0x01u
 #define WAR3_CLONE_FLAG_INVENTORY 0x02u
 #define WAR3_CLONE_FLAG_PRESERVE_OWNER 0x04u
@@ -3986,6 +3987,24 @@ static void run_command(void) {
                 __try {
                     set_unit_state(cmd.unit_handle, (int32_t)op->rawcode, &value);
                     op->result = value_bits;
+                } __except (EXCEPTION_EXECUTE_HANDLER) {
+                    op->last_error = GetExceptionCode();
+                    last_error = op->last_error;
+                    goto finish;
+                }
+                break;
+            }
+            case WAR3_NATIVE_OP_JASS_SET_UNIT_INT: {
+                JassUnitSetIntFn set_unit_int =
+                    (JassUnitSetIntFn)(uintptr_t)op->handler;
+                if (!cmd.unit_handle || !set_unit_int || op->arg0 > 1000000000u) {
+                    op->last_error = ERROR_INVALID_PARAMETER;
+                    last_error = ERROR_INVALID_PARAMETER;
+                    goto finish;
+                }
+                __try {
+                    set_unit_int(cmd.unit_handle, (int32_t)op->arg0);
+                    op->result = op->arg0;
                 } __except (EXCEPTION_EXECUTE_HANDLER) {
                     op->last_error = GetExceptionCode();
                     last_error = op->last_error;

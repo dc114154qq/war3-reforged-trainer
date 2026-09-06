@@ -2604,6 +2604,7 @@ class War3Trainer:
     NATIVE_HELPER_OP_MOVE_SELECTED_GROUP_TO_MOUSE = 132
     NATIVE_HELPER_OP_PERSISTENT_UNIT_SNAPSHOT = 133
     NATIVE_HELPER_OP_JASS_SET_UNIT_STATE = 134
+    NATIVE_HELPER_OP_JASS_SET_UNIT_INT = 135
     PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 140
     PERSISTENT_NATIVE_NAMES = (
         "UnitAddAbility",
@@ -4740,6 +4741,7 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_MOVE_SELECTED_GROUP_TO_MOUSE,
             self.NATIVE_HELPER_OP_PERSISTENT_UNIT_SNAPSHOT,
             self.NATIVE_HELPER_OP_JASS_SET_UNIT_STATE,
+            self.NATIVE_HELPER_OP_JASS_SET_UNIT_INT,
         }
         if any(kind not in allowed_kinds for kind, _rawcode, _handler, _arg0, _arg1 in op_list):
             raise RuntimeError("native helper 仅允许结构化验证后的白名单操作")
@@ -4791,6 +4793,7 @@ class War3Trainer:
         }
         unit_kinds.add(self.NATIVE_HELPER_OP_PERSISTENT_UNIT_SNAPSHOT)
         unit_kinds.add(self.NATIVE_HELPER_OP_JASS_SET_UNIT_STATE)
+        unit_kinds.add(self.NATIVE_HELPER_OP_JASS_SET_UNIT_INT)
         if any(kind in unit_kinds for kind, _rawcode, _handler, _arg0, _arg1 in op_list) and not unit_address:
             raise RuntimeError("当前单位缺少运行时 unit 指针，不能调用 native helper")
         command_path = self._native_helper_command_path()
@@ -14890,9 +14893,18 @@ class War3Trainer:
             else None
         )
         set_unit_state = 0
+        set_max_hp = 0
+        set_max_mp = 0
         if hasattr(self, "_native_handlers"):
-            native_handlers = self._elephant_handlers(pm, ("SetUnitState",))
+            requested_handlers = ["SetUnitState"]
+            if max_hp is not None:
+                requested_handlers.append("BlzSetUnitMaxHP")
+            if max_mp is not None:
+                requested_handlers.append("BlzSetUnitMaxMana")
+            native_handlers = self._elephant_handlers(pm, requested_handlers)
             set_unit_state = native_handlers["SetUnitState"].handler_address
+            set_max_hp = native_handlers.get("BlzSetUnitMaxHP", NativeHandler("", 0, 0)).handler_address
+            set_max_mp = native_handlers.get("BlzSetUnitMaxMana", NativeHandler("", 0, 0)).handler_address
         if max_hp is not None or target_hp is not None:
             try:
                 old_max_hp = pm.read_f32(candidate.hp_max_address)
@@ -14901,7 +14913,13 @@ class War3Trainer:
             target_max_hp = float(max_hp) if max_hp is not None else old_max_hp
             if target_hp is not None and float(target_hp) > target_max_hp:
                 target_max_hp = float(target_hp)
-            if target_max_hp > 0:
+            if target_max_hp > 0 and set_max_hp:
+                self._run_native_helper_ops(
+                    candidate.handle,
+                    ((self.NATIVE_HELPER_OP_JASS_SET_UNIT_INT, 0, set_max_hp,
+                      int(round(target_max_hp)), 0),),
+                )
+            elif target_max_hp > 0:
                 pm.write_f32(candidate.hp_max_address, target_max_hp)
             if target_hp is not None and set_unit_state:
                 self._run_native_helper_ops(
@@ -14921,7 +14939,13 @@ class War3Trainer:
             target_max_mp = float(max_mp) if max_mp is not None else old_max_mp
             if target_mp is not None and float(target_mp) > target_max_mp:
                 target_max_mp = float(target_mp)
-            if target_max_mp >= 0:
+            if target_max_mp >= 0 and set_max_mp:
+                self._run_native_helper_ops(
+                    candidate.handle,
+                    ((self.NATIVE_HELPER_OP_JASS_SET_UNIT_INT, 0, set_max_mp,
+                      int(round(target_max_mp)), 0),),
+                )
+            elif target_max_mp >= 0:
                 pm.write_f32(candidate.mp_max_address, target_max_mp)
             if target_mp is not None and set_unit_state:
                 self._run_native_helper_ops(

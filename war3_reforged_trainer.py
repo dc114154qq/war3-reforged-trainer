@@ -4995,11 +4995,8 @@ class War3Trainer:
             if not handles:
                 snapshot = self._selected_candidates_snapshot(pm)
             elif len(handles) == 1:
-                try:
-                    candidate = self._elephant_selected_candidate(pm)
-                    snapshot = [(candidate, handles[0])]
-                except Exception:
-                    snapshot = self._selected_candidates_snapshot(pm)
+                candidate = self._elephant_selected_candidate(pm)
+                snapshot = [(candidate, handles[0])]
             else:
                 snapshot = self._selected_candidates_snapshot(pm, handles=handles)
         results: list[object] = []

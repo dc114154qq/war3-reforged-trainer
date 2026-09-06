@@ -5020,17 +5020,11 @@ class War3Trainer:
         action: Callable[[], object],
     ) -> tuple[int, int, tuple[object, ...], tuple[str, ...]]:
         with self._process_memory() as pm:
-            try:
-                handles = self._elephant_selected_handles(pm)
-            except AttributeError:
-                handles = ()
-            if not handles:
-                snapshot = self._selected_candidates_snapshot(pm)
-            elif len(handles) == 1:
-                candidate = self._elephant_selected_candidate(pm)
-                snapshot = [(candidate, handles[0])]
-            else:
-                snapshot = self._selected_candidates_snapshot(pm, handles=handles)
+            # One persistent native snapshot supplies both the verified object
+            # identity and its current JASS handle. Re-querying the single
+            # selected unit through the selection manager can reintroduce the
+            # old locator path and pair a new unit with stale state.
+            snapshot = self._selected_candidates_snapshot(pm)
         results: list[object] = []
         errors: list[str] = []
 

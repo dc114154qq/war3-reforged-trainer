@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 25u
+#define WAR3_NATIVE_VERSION 26u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -403,6 +403,7 @@ static uint64_t war3_persistent_native_handler(const char *name);
 
 #define WAR3_PERSISTENT_SNAPSHOT_MAX_ITEMS 6u
 #define WAR3_PERSISTENT_SNAPSHOT_MAX_ABILITIES 48u
+#define WAR3_PERSISTENT_SNAPSHOT_ENUM_LIMIT 4096u
 #define WAR3_PERSISTENT_SNAPSHOT_QWORDS \
     (19u + (WAR3_PERSISTENT_SNAPSHOT_MAX_ITEMS * 4u) + 1u + \
      (WAR3_PERSISTENT_SNAPSHOT_MAX_ABILITIES * 2u))
@@ -435,6 +436,40 @@ typedef struct War3PersistentSnapshot {
     uint64_t full_handle;
     uint64_t owner_address;
 } War3PersistentSnapshot;
+
+/* Protocol 26 keeps the fixed headers and appends pairs beyond the first
+   48 abilities, grouped in the same order as the selected-unit headers. */
+typedef struct War3SnapshotExtra {
+    uint64_t *values;
+    uint32_t count;
+    uint32_t capacity;
+} War3SnapshotExtra;
+
+static DWORD war3_snapshot_append_ability(War3SnapshotExtra *extra, uint64_t id, uint64_t level) {
+    const uint32_t limit = 12u * 2u *
+        (WAR3_PERSISTENT_SNAPSHOT_ENUM_LIMIT - WAR3_PERSISTENT_SNAPSHOT_MAX_ABILITIES);
+    if (extra->count > limit - 2u) {
+        return ERROR_MORE_DATA;
+    }
+    if (extra->count + 2u > extra->capacity) {
+        uint32_t capacity = extra->capacity ? extra->capacity * 2u : 64u;
+        uint64_t *resized;
+        if (capacity > limit) {
+            capacity = limit;
+        }
+        resized = extra->values
+            ? (uint64_t *)HeapReAlloc(GetProcessHeap(), 0, extra->values, capacity * sizeof(uint64_t))
+            : (uint64_t *)HeapAlloc(GetProcessHeap(), 0, capacity * sizeof(uint64_t));
+        if (!resized) {
+            return ERROR_OUTOFMEMORY;
+        }
+        extra->values = resized;
+        extra->capacity = capacity;
+    }
+    extra->values[extra->count++] = id;
+    extra->values[extra->count++] = level;
+    return ERROR_SUCCESS;
+}
 
 typedef struct War3CodeRange {
     uint8_t *begin;
@@ -561,6 +596,7 @@ static DWORD war3_persistent_selected_snapshot(
     uint64_t group = 0;
     uint64_t player = 0;
     uint64_t *buffer = NULL;
+    War3SnapshotExtra extra = {0};
     uint32_t count = 0;
     DWORD error = ERROR_SUCCESS;
     GetLocalPlayerFn get_local_player;
@@ -723,27 +759,39 @@ static DWORD war3_persistent_selected_snapshot(
                 }
             }
             if (get_ability_by_index && get_ability_id && get_ability_level) {
-                int ability_overflow = 0;
-                for (int32_t index = 0; index < 256; ++index) {
+                for (int32_t index = 0; index <= WAR3_PERSISTENT_SNAPSHOT_ENUM_LIMIT; ++index) {
                     uint64_t ability = get_ability_by_index(unit, index);
                     uint32_t rawcode;
+                    uint64_t level;
                     if (!ability) {
+                        /* Preserve the old sparse-index probe range. Beyond
+                           it, stop at the native's end-of-list sentinel. */
+                        if (index >= 256) {
+                            break;
+                        }
                         continue;
+                    }
+                    if (index == WAR3_PERSISTENT_SNAPSHOT_ENUM_LIMIT) {
+                        error = ERROR_MORE_DATA;
+                        break;
                     }
                     rawcode = get_ability_id(ability);
                     if (!rawcode) {
                         continue;
                     }
-                    if (snapshot->ability_count >= WAR3_PERSISTENT_SNAPSHOT_MAX_ABILITIES) {
-                        ability_overflow = 1;
-                        continue;
+                    level = (uint64_t)(int64_t)get_ability_level(unit, rawcode);
+                    if (snapshot->ability_count < WAR3_PERSISTENT_SNAPSHOT_MAX_ABILITIES) {
+                        snapshot->ability_ids[snapshot->ability_count] = rawcode;
+                        snapshot->ability_levels[snapshot->ability_count] = level;
+                    } else {
+                        error = war3_snapshot_append_ability(&extra, rawcode, level);
+                        if (error) {
+                            break;
+                        }
                     }
-                    snapshot->ability_ids[snapshot->ability_count] = rawcode;
-                    snapshot->ability_levels[snapshot->ability_count] = (uint64_t)(int64_t)get_ability_level(unit, rawcode);
                     ++snapshot->ability_count;
                 }
-                if (ability_overflow) {
-                    error = ERROR_MORE_DATA;
+                if (error) {
                     __leave;
                 }
             }
@@ -767,13 +815,29 @@ static DWORD war3_persistent_selected_snapshot(
         }
     }
     if (!error && count) {
-        *extra_results = buffer;
-        *extra_result_count = (uint32_t)(
-            count * (sizeof(War3PersistentSnapshot) / sizeof(uint64_t))
-        );
-        buffer = NULL;
+        uint32_t fixed_count = count * (sizeof(War3PersistentSnapshot) / sizeof(uint64_t));
+        if (extra.count) {
+            uint64_t *resized = (uint64_t *)HeapReAlloc(GetProcessHeap(), 0, buffer,
+                (fixed_count + extra.count) * sizeof(uint64_t));
+            if (!resized) {
+                error = ERROR_OUTOFMEMORY;
+            } else {
+                buffer = resized;
+                memcpy(buffer + fixed_count, extra.values, extra.count * sizeof(uint64_t));
+            }
+        }
+        if (!error) {
+            *extra_results = buffer;
+            *extra_result_count = fixed_count + extra.count;
+            buffer = NULL;
+        }
     }
-    HeapFree(GetProcessHeap(), 0, buffer);
+    if (extra.values) {
+        HeapFree(GetProcessHeap(), 0, extra.values);
+    }
+    if (buffer) {
+        HeapFree(GetProcessHeap(), 0, buffer);
+    }
     return error;
 }
 

@@ -35,6 +35,9 @@ def detect_ui_language(locale_name: str | None = None) -> str:
 
 
 _EN_TRANSLATIONS = {
+    "persistent native snapshot 技能数量超过安全上限": "The native snapshot ability count exceeds the safety limit",
+    "persistent native snapshot 技能扩展结果长度异常": "Invalid native snapshot extended ability payload length",
+    "persistent native snapshot 附加结果长度异常：": "Invalid native snapshot trailing payload length: ",
     "persistent native snapshot 技能数量超过固定协议容量，已拒绝使用不完整数据": "The persistent native snapshot exceeds the fixed ability capacity; incomplete data was rejected",
     "native helper 当前没有稳定的选中单位快照": "The native helper has no stable selected-unit snapshot",
     "当前 native 快照已经失效，请重新读取选中单位": "The current native snapshot has expired; read the selected unit again",

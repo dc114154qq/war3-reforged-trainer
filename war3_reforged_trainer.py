@@ -2521,7 +2521,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 25
+    NATIVE_HELPER_VERSION = 26
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -4183,13 +4183,16 @@ class War3Trainer:
             )[0]
         values = tuple(int(value) for value in result.extra_results)
         count = int(result.result)
+        if not 0 <= count <= self.SELECTED_BATCH_MAX_UNITS:
+            raise RuntimeError("游戏返回的选中单位数量超过安全上限")
         expected = count * self.PERSISTENT_NATIVE_SNAPSHOT_QWORDS
-        if len(values) != expected:
+        if len(values) < expected:
             raise RuntimeError(
                 "persistent native snapshot 长度异常："
-                f"{len(values)}!={expected}"
+                f"{len(values)}<{expected}"
             )
         snapshots: list[PersistentNativeUnitSnapshot] = []
+        extra_cursor = expected
         for index in range(count):
             row = values[
                 index * self.PERSISTENT_NATIVE_SNAPSHOT_QWORDS:
@@ -4220,12 +4223,19 @@ class War3Trainer:
             item_handles = tuple(row[29:35])
             item_addresses = tuple(row[35:41])
             ability_count = int(row[41])
+            if not 0 <= ability_count <= 4096:
+                raise RuntimeError("persistent native snapshot 技能数量超过安全上限")
+            base_count = min(48, ability_count)
+            ability_ids = tuple(row[42:42 + base_count])
+            ability_levels = tuple(row[90:90 + base_count])
             if ability_count > 48:
-                raise RuntimeError(
-                    "persistent native snapshot 技能数量超过固定协议容量，已拒绝使用不完整数据"
-                )
-            ability_ids = tuple(row[42:42 + ability_count])
-            ability_levels = tuple(row[90:90 + ability_count])
+                overflow = (ability_count - 48) * 2
+                if len(values) - extra_cursor < overflow:
+                    raise RuntimeError("persistent native snapshot 技能扩展结果长度异常")
+                extra_pairs = values[extra_cursor:extra_cursor + overflow]
+                extra_cursor += overflow
+                ability_ids += tuple(extra_pairs[0::2])
+                ability_levels += tuple(extra_pairs[1::2])
             snapshots.append(
                 PersistentNativeUnitSnapshot(
                     handle=handle,
@@ -4254,6 +4264,11 @@ class War3Trainer:
                     full_handle=int(row[138]),
                     owner_address=int(row[139]),
                 )
+            )
+        if extra_cursor != len(values):
+            raise RuntimeError(
+                "persistent native snapshot 附加结果长度异常："
+                f"{len(values) - extra_cursor}"
             )
         result_snapshots = tuple(snapshots)
         self._last_persistent_native_snapshots = result_snapshots

@@ -570,8 +570,30 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
                 extra_results=tuple(row),
             )
         ])
-        with self.assertRaisesRegex(RuntimeError, "超过固定协议容量"):
+        with self.assertRaisesRegex(RuntimeError, "技能扩展结果长度异常"):
             trainer.persistent_native_selected_snapshots()
+
+    def test_persistent_snapshot_parser_decodes_extended_ability_pairs(self):
+        trainer = object.__new__(trainer_module.War3Trainer)
+        trainer._persistent_bootstrap_lock = threading.RLock()
+        trainer._persistent_native_initialized = True
+        row = [0] * trainer.PERSISTENT_NATIVE_SNAPSHOT_QWORDS
+        row[41] = 50
+        row[42:90] = list(range(1, 49))
+        row[90:138] = list(range(101, 149))
+        row[138:140] = [0x123400005678, 0x707]
+        extended = row + [0x41420049, 49, 0x41420050, 50]
+        trainer._run_native_helper_ops = Mock(return_value=[
+            trainer_module.NativeHelperOpResult(
+                kind=trainer.NATIVE_HELPER_OP_PERSISTENT_SELECTED_SNAPSHOT,
+                result=1,
+                extra_results=tuple(extended),
+            )
+        ])
+        snapshot = trainer.persistent_native_selected_snapshots()[0]
+        self.assertEqual(len(snapshot.ability_ids), 50)
+        self.assertEqual(snapshot.ability_ids[-2:], (0x41420049, 0x41420050))
+        self.assertEqual(snapshot.ability_levels[-2:], (49, 50))
 
     def test_elephant_handlers_discovers_every_requested_native(self):
         trainer = object.__new__(trainer_module.War3Trainer)

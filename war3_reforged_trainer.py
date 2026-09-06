@@ -8218,6 +8218,10 @@ class War3Trainer:
         near_start = max(0, candidate.owner_address - 0x05000000)
         near_end = candidate.owner_address + 0x00800000
         near_refs = self._scan_bytes_private_between(pm, data_pattern, near_start, near_end)
+        if not near_refs and self._persistent_native_initialized:
+            # A persistent native unit must never widen an instance lookup
+            # after the bounded owner-local search fails.
+            return None
         all_refs = near_refs or pm.scan_bytes_private(data_pattern, max_region_size=8 * 1024 * 1024)
         for data_ref in all_refs:
             wrapper = data_ref - 0x90

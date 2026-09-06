@@ -1,6 +1,8 @@
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 import unittest
 import threading
+import uuid
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -16,6 +18,53 @@ class _Memory:
 
 
 class NativeHelperRuntimeFeatureTests(unittest.TestCase):
+    def test_reused_native_batch_excludes_other_threads_and_releases_on_error(self):
+        # Exercise the real Windows named mutex without attaching to Warcraft
+        # or installing a hook. Existing hooks below are only truthy sentinels.
+        trainer = object.__new__(trainer_module.War3Trainer)
+        trainer.pid = "batch-test-" + uuid.uuid4().hex
+        trainer._native_helper_lock = threading.RLock()
+        trainer._native_helper_persistent_hook = 1
+        trainer._native_helper_persistent_module = 1
+        trainer._native_helper_persistent_pid = trainer.pid
+        trainer._native_helper_batch_hook = None
+        trainer._native_helper_batch_thread_id = None
+        mutex_name = f"Local\\War3ReforgedTrainer.NativeHelper.{trainer.pid}"
+
+        def probe_from_other_thread():
+            kernel = trainer_module.kernel32
+            mutex = kernel.CreateMutexW(None, False, mutex_name)
+            self.assertTrue(mutex)
+            try:
+                status = int(kernel.WaitForSingleObject(mutex, 0))
+                if status in (trainer_module.WAIT_OBJECT_0, trainer_module.WAIT_ABANDONED):
+                    self.assertTrue(kernel.ReleaseMutex(mutex))
+                return status
+            finally:
+                kernel.CloseHandle(mutex)
+
+        with ThreadPoolExecutor(max_workers=1) as competitor:
+            def probe():
+                return competitor.submit(probe_from_other_thread).result(timeout=5)
+
+            for fail in (False, True):
+                with self.subTest(fail=fail):
+                    try:
+                        with trainer._native_helper_batch_transaction():
+                            self.assertEqual(probe(), trainer_module.WAIT_TIMEOUT)
+                            # The command path may skip acquiring the mutex
+                            # only while the enclosing batch actually owns it.
+                            with trainer._native_helper_transaction():
+                                self.assertEqual(probe(), trainer_module.WAIT_TIMEOUT)
+                            if fail:
+                                raise ValueError("simulated operation failure")
+                    except ValueError:
+                        if not fail:
+                            raise
+                    self.assertIsNone(trainer._native_helper_batch_hook)
+                    self.assertIsNone(trainer._native_helper_batch_thread_id)
+                    self.assertEqual(probe(), trainer_module.WAIT_OBJECT_0)
+
     def test_native_inventory_empty_sentinels_do_not_trigger_item_search(self):
         trainer = object.__new__(trainer_module.War3Trainer)
         candidate = SimpleNamespace(unit_address=0x2000, owner_address=0x3000)

@@ -2521,7 +2521,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 23
+    NATIVE_HELPER_VERSION = 24
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -2597,6 +2597,7 @@ class War3Trainer:
     NATIVE_HELPER_OP_JASS_RESET_LOCAL_COOLDOWNS = 121
     NATIVE_HELPER_OP_PERSISTENT_REGISTER_NATIVE = 130
     NATIVE_HELPER_OP_PERSISTENT_SELECTED_SNAPSHOT = 131
+    NATIVE_HELPER_OP_MOVE_SELECTED_GROUP_TO_MOUSE = 132
     PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 140
     PERSISTENT_NATIVE_NAMES = (
         "UnitAddAbility",
@@ -2625,6 +2626,7 @@ class War3Trainer:
         "BlzGetUnitAbilityByIndex",
         "BlzGetAbilityId",
         "GetUnitAbilityLevel",
+        "SetUnitPosition",
     )
 
     def __init__(self, pid: int | None = None):
@@ -3847,6 +3849,9 @@ class War3Trainer:
         names: Iterable[str],
     ) -> dict[str, NativeHandler]:
         wanted = set(names)
+        missing = wanted.difference(self._native_handlers)
+        if not missing:
+            return {name: self._native_handlers[name] for name in wanted}
         process_cached = self._PROCESS_NATIVE_HANDLER_CACHE.get(int(self.pid), {})
         if process_cached:
             # PIDs can be reused after Warcraft exits. Validate cached
@@ -3855,7 +3860,7 @@ class War3Trainer:
             regions = pm.regions()
             validated_cached: dict[str, NativeHandler] = {}
             for name, handler in process_cached.items():
-                if name not in wanted:
+                if name not in missing:
                     continue
                 if not self._is_executable_image_address(regions, handler.handler_address):
                     continue
@@ -4676,6 +4681,7 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_JASS_RESET_LOCAL_COOLDOWNS,
             self.NATIVE_HELPER_OP_PERSISTENT_REGISTER_NATIVE,
             self.NATIVE_HELPER_OP_PERSISTENT_SELECTED_SNAPSHOT,
+            self.NATIVE_HELPER_OP_MOVE_SELECTED_GROUP_TO_MOUSE,
         }
         if any(kind not in allowed_kinds for kind, _rawcode, _handler, _arg0, _arg1 in op_list):
             raise RuntimeError("native helper 仅允许结构化验证后的白名单操作")
@@ -5516,6 +5522,17 @@ class War3Trainer:
     def move_selected_unit_to_mouse(self) -> tuple[float, float]:
         x, y = self.query_mouse_world_position()
         return self.set_selected_unit_position(x, y)
+
+    def move_selected_group_to_mouse(self) -> tuple[int, float, float]:
+        self.persistent_native_init()
+        with self._process_memory() as pm:
+            handler = self._discover_native_handlers_near_table(pm, ("SetUnitPosition",))[
+                "SetUnitPosition"
+            ].handler_address
+        result = self._run_native_helper_ops(0, ((
+            self.NATIVE_HELPER_OP_MOVE_SELECTED_GROUP_TO_MOUSE, 0, handler, 0, 0,
+        ),))[0]
+        return int(result.result), self._float_from_bits(result.arg0), self._float_from_bits(result.arg0 >> 32)
 
     def _run_direct_selected_ability(
         self,
@@ -17145,14 +17162,9 @@ def run_gui() -> None:
         )
 
     def elephant_move_to_mouse() -> str:
-        results = elephant_batch(
-            elephant_trainer().move_selected_unit_to_mouse,
-            "移动选中单位",
-        )
-        x, y = results[0]
+        count, x, y = elephant_trainer().move_selected_group_to_mouse()
         return (
-            f"已将 {len(results)} 个单位移动到鼠标位置 ({x:g}, {y:g})"
-            f"{elephant_batch_suffix()}"
+            f"已将 {count} 个单位移动到鼠标位置 ({x:g}, {y:g})"
         )
 
     def elephant_add_standard_auras() -> str:

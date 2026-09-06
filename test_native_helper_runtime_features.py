@@ -18,6 +18,51 @@ class _Memory:
 
 
 class NativeHelperRuntimeFeatureTests(unittest.TestCase):
+    def test_warm_native_handlers_do_not_read_process_records_again(self):
+        trainer = object.__new__(trainer_module.War3Trainer)
+        handler = trainer_module.NativeHandler("SetUnitPosition", 0x1000, 0x2000)
+        trainer.pid = 123
+        trainer._native_handlers = {handler.name: handler}
+        trainer._PROCESS_NATIVE_HANDLER_CACHE = {trainer.pid: {handler.name: handler}}
+        pm = Mock()
+        self.assertEqual(
+            trainer._discover_native_handlers_near_table(pm, (handler.name,)),
+            {handler.name: handler},
+        )
+        self.assertEqual(pm.mock_calls, [])
+
+    def test_new_session_still_validates_shared_native_cache(self):
+        trainer = object.__new__(trainer_module.War3Trainer)
+        trainer.pid = 123
+        handler = trainer_module.NativeHandler("SetUnitPosition", 0x1000, 0x2000)
+        trainer._native_handlers = {}
+        trainer._PROCESS_NATIVE_HANDLER_CACHE = {trainer.pid: {handler.name: handler}}
+        trainer._is_executable_image_address = Mock(return_value=True)
+        trainer._decode_native_name_from_record = Mock(return_value=handler.name)
+        pm = Mock()
+        pm.read_u64.return_value = len(handler.name)
+        self.assertEqual(trainer._discover_native_handlers_near_table(pm, (handler.name,)), {handler.name: handler})
+        trainer._decode_native_name_from_record.assert_called_once_with(pm, handler.record_address)
+        pm.read_u64.assert_called_once_with(handler.record_address + 8)
+
+    def test_group_move_uses_one_helper_request_without_unit_readback(self):
+        trainer = object.__new__(trainer_module.War3Trainer)
+        trainer.persistent_native_init = Mock()
+        trainer._process_memory = Mock(return_value=_Memory())
+        trainer._native_handlers = {
+            "SetUnitPosition": trainer_module.NativeHandler("SetUnitPosition", 0x1000, 0x2000),
+        }
+        trainer._selected_candidates_snapshot = Mock(side_effect=AssertionError("Unexpected readback"))
+        trainer.query_mouse_world_position = Mock(side_effect=AssertionError("Unexpected extra round trip"))
+        point = trainer._float_bits(12.5) | (trainer._float_bits(-8) << 32)
+        trainer._run_native_helper_ops = Mock(return_value=[trainer_module.NativeHelperOpResult(
+            kind=trainer.NATIVE_HELPER_OP_MOVE_SELECTED_GROUP_TO_MOUSE, result=9, arg0=point,
+        )])
+        self.assertEqual(trainer.move_selected_group_to_mouse(), (9, 12.5, -8.0))
+        trainer._run_native_helper_ops.assert_called_once_with(0, ((
+            trainer.NATIVE_HELPER_OP_MOVE_SELECTED_GROUP_TO_MOUSE, 0, 0x2000, 0, 0,
+        ),))
+
     def test_reused_native_batch_excludes_other_threads_and_releases_on_error(self):
         # Exercise the real Windows named mutex without attaching to Warcraft
         # or installing a hook. Existing hooks below are only truthy sentinels.

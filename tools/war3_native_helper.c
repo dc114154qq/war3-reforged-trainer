@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 23u
+#define WAR3_NATIVE_VERSION 24u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -77,6 +77,7 @@
 #define WAR3_NATIVE_OP_JASS_RESET_LOCAL_COOLDOWNS 121u
 #define WAR3_NATIVE_OP_PERSISTENT_REGISTER_NATIVE 130u
 #define WAR3_NATIVE_OP_PERSISTENT_SELECTED_SNAPSHOT 131u
+#define WAR3_NATIVE_OP_MOVE_SELECTED_GROUP_TO_MOUSE 132u
 #define WAR3_CLONE_FLAG_HERO 0x01u
 #define WAR3_CLONE_FLAG_INVENTORY 0x02u
 #define WAR3_CLONE_FLAG_PRESERVE_OWNER 0x04u
@@ -388,6 +389,7 @@ static const char *g_persistent_native_names[] = {
     "BlzGetUnitAbilityByIndex",
     "BlzGetAbilityId",
     "GetUnitAbilityLevel",
+    "SetUnitPosition",
 };
 
 static War3PersistentNative g_persistent_natives[
@@ -763,6 +765,83 @@ static DWORD war3_persistent_selected_snapshot(
         buffer = NULL;
     }
     HeapFree(GetProcessHeap(), 0, buffer);
+    return error;
+}
+
+/* Runs entirely inside one hook callback. Collect the group before changing
+   any position so overflow or an empty selection cannot cause a partial move. */
+static DWORD war3_move_selected_group_at_point(NativeOp *op, uint64_t point) {
+    typedef void (__fastcall *GroupRemoveUnitFn)(uint64_t, uint64_t);
+    uint32_t resolved = 0;
+    DWORD error = war3_persistent_resolve_natives(&resolved);
+    uint64_t group = 0;
+    uint64_t units[12] = {0};
+    uint32_t count = 0;
+    float x = war3_real_from_bits((uint32_t)point);
+    float y = war3_real_from_bits((uint32_t)(point >> 32));
+    JassNoArgU64Fn create_group = (JassNoArgU64Fn)(uintptr_t)war3_persistent_native_handler("CreateGroup");
+    JassNoArgU64Fn local_player = (JassNoArgU64Fn)(uintptr_t)war3_persistent_native_handler("GetLocalPlayer");
+    JassGroupEnumUnitsSelectedFn enumerate = (JassGroupEnumUnitsSelectedFn)(uintptr_t)war3_persistent_native_handler("GroupEnumUnitsSelected");
+    JassFirstOfGroupFn first = (JassFirstOfGroupFn)(uintptr_t)war3_persistent_native_handler("FirstOfGroup");
+    GroupRemoveUnitFn remove = (GroupRemoveUnitFn)(uintptr_t)war3_persistent_native_handler("GroupRemoveUnit");
+    JassDestroyGroupFn destroy = (JassDestroyGroupFn)(uintptr_t)war3_persistent_native_handler("DestroyGroup");
+    JassSetUnitPositionFn move = (JassSetUnitPositionFn)(uintptr_t)op->handler;
+    if (error) {
+        return error;
+    }
+    if (!create_group || !local_player || !enumerate || !first || !remove || !destroy || !move) {
+        return ERROR_PROC_NOT_FOUND;
+    }
+    if (!(x == x) || !(y == y) || x < -1000000.0f || x > 1000000.0f ||
+        y < -1000000.0f || y > 1000000.0f) {
+        return ERROR_INVALID_PARAMETER;
+    }
+    op->result = 0;
+    op->arg0 = point;
+    __try {
+        uint64_t player = local_player();
+        if (!player) {
+            error = ERROR_NOT_READY;
+            __leave;
+        }
+        group = create_group();
+        if (!group) {
+            error = ERROR_OUTOFMEMORY;
+            __leave;
+        }
+        enumerate(group, player, 0);
+        while (count < 12u) {
+            uint64_t unit = first(group);
+            if (!unit) {
+                break;
+            }
+            units[count++] = unit;
+            remove(group, unit);
+        }
+        if (!count) {
+            error = ERROR_NOT_FOUND;
+            __leave;
+        }
+        if (count == 12u && first(group)) {
+            error = ERROR_MORE_DATA;
+            __leave;
+        }
+        for (uint32_t index = 0; index < count; ++index) {
+            move(units[index], &x, &y);
+            ++op->result;
+        }
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        error = GetExceptionCode();
+    }
+    if (group) {
+        __try {
+            destroy(group);
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+            if (!error) {
+                error = GetExceptionCode();
+            }
+        }
+    }
     return error;
 }
 
@@ -3745,6 +3824,22 @@ static void run_command(void) {
                     goto finish;
                 }
                 op->arg1 = extra_result_count ? extra_results[extra_result_count - 1] : 0;
+                break;
+            }
+            case WAR3_NATIVE_OP_MOVE_SELECTED_GROUP_TO_MOUSE: {
+                uint64_t point = 0;
+                if (cmd.op_count != 1u || !war3_executable_pointer(op->handler)) {
+                    last_error = ERROR_INVALID_PARAMETER;
+                } else {
+                    last_error = war3_query_world_point(&point);
+                    if (!last_error) {
+                        last_error = war3_move_selected_group_at_point(op, point);
+                    }
+                }
+                if (last_error) {
+                    op->last_error = last_error;
+                    goto finish;
+                }
                 break;
             }
             case WAR3_NATIVE_OP_JASS_SET_UNIT_POSITION: {

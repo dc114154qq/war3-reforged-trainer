@@ -13147,6 +13147,8 @@ class War3Trainer:
         hero = components.get("hero")
         if hero is not None:
             _wrapper, data = hero
+            if native is not None:
+                append_native_int("hero_level", "英雄等级", native.hero_level, data + 0xF8, "英雄")
             if native is None:
                 self._append_unit_field(pm, fields, "xp", "经验值", "i32", data + 0x100, "英雄")
             else:

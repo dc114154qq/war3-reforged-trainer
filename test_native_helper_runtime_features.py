@@ -389,7 +389,7 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
         handles = trainer._elephant_selected_handles(object())
 
         self.assertEqual(handles, (0x100, 0x200, 0x300))
-        trainer.persistent_native_selected_snapshots.assert_called_once()
+        trainer._selected_candidates_from_selection_manager.assert_called_once()
 
     def test_selected_handles_rejects_more_than_twelve(self):
         trainer = self.make_trainer()

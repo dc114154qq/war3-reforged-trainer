@@ -2801,6 +2801,13 @@ class War3Trainer:
                 continue
             try:
                 with self._process_memory() as pm:
+                    # Prime the live selection-manager route once while the
+                    # bootstrap thread is running.  Action threads must only
+                    # read the bounded manager list; they must never pay the
+                    # player-component discovery scan on a first operation.
+                    if not self._selection_player_candidates:
+                        self._discover_native_selection_layout(pm)
+                        self._selection_player_pointer_candidates(pm, discover=True)
                     native_selection = self.persistent_native_selected_snapshots(
                         timeout_ms=5000,
                     )

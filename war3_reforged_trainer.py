@@ -4869,142 +4869,60 @@ class War3Trainer:
     def _selected_candidates_snapshot(
         self,
         pm: ProcessMemory,
-        handles: Iterable[int] | None = None,
-        allow_owner_refresh: bool = True,
+        *,
         persistent_snapshots: Iterable[PersistentNativeUnitSnapshot] | None = None,
     ) -> list[tuple[UnitCandidate, int]]:
         if persistent_snapshots is None:
             persistent_snapshots = self.persistent_native_selected_snapshots()
         else:
             persistent_snapshots = tuple(persistent_snapshots)
-        if persistent_snapshots:
-            requested_handles = (
-                set(int(handle) for handle in handles if int(handle))
-                if handles is not None
-                else None
-            )
-            persistent_selected: list[tuple[UnitCandidate, int]] = []
-            for snapshot in persistent_snapshots:
-                if requested_handles is not None and snapshot.handle not in requested_handles:
-                    continue
-                if snapshot.full_handle and snapshot.owner_address:
-                    candidate = self._candidate_from_identity(
-                        pm, snapshot.full_handle, snapshot.owner_address,
-                        snapshot.unit_address, "native_engine_handle_table", 1000,
-                    )
-                else:
-                    # A partial native identity cannot be safely paired with
-                    # a legacy selection-manager result: a newly created unit
-                    # may otherwise inherit the previous unit's fields.
-                    raise RuntimeError(
-                        "native 快照缺少完整单位身份，已拒绝回退到旧选择器；请重试"
-                    )
-                if candidate is None:
-                    raise RuntimeError("Native selection changed while mapping its field objects; retry the read")
-                self._unit_owner_index[candidate.handle] = candidate.owner_address
-                candidate = replace(
-                    candidate,
-                    note=(
-                        "persistent_native "
-                        f"handle=0x{snapshot.handle:x} type=0x{snapshot.type_id:x}; "
-                        f"{candidate.note}"
-                    ),
-                    selection_source="persistent_native",
-                )
-                if snapshot.unit_address and candidate.unit_address != snapshot.unit_address:
-                    continue
-                persistent_selected.append(
-                    (
-                        replace(candidate, unit_type_id=int(snapshot.type_id)),
-                        snapshot.handle,
-                    )
-                )
-            if persistent_selected:
-                return persistent_selected
-            raise RuntimeError("persistent native 已读取选择列表，但无法映射到单位字段对象")
-
-        if self._persistent_native_initialized:
-            # An initialized helper returning an empty snapshot means that
-            # selection is currently empty or between engine updates. Do not
-            # reinterpret that state through legacy handle slots or a global
-            # unit-object index.
+        if not persistent_snapshots:
+            # Empty native selection is authoritative even if another thread
+            # has just reset the registration flag during a reconnect.
             raise RuntimeError("native helper 当前没有稳定的选中单位快照")
-
+        if len(persistent_snapshots) > self.SELECTED_BATCH_MAX_UNITS:
+            raise RuntimeError("游戏返回的选中单位数量超过安全上限")
         selected: list[tuple[UnitCandidate, int]] = []
         seen_units: set[int] = set()
-        handles = tuple(handles) if handles is not None else self._elephant_selected_handles(pm)
-        # Build the expensive unit-object map once for the whole selection.
-        # The old per-handle path rebuilt this global scan for every unit.
-        unit_index = self._build_unit_object_index(pm, force_refresh=False)
-        resolved_units: dict[int, int] = {}
-        try:
-            resolved_units = self._resolve_jass_unit_handles_batch(
-                pm,
-                handles,
-                allow_missing=True,
+        seen_handles: set[int] = set()
+        for snapshot in persistent_snapshots:
+            if not (
+                snapshot.handle and snapshot.full_handle
+                and snapshot.owner_address and snapshot.unit_address
+            ):
+                raise RuntimeError(
+                    "native 快照缺少完整单位身份，已拒绝回退到旧选择器；请重试"
+                )
+            candidate = self._candidate_from_identity(
+                pm, snapshot.full_handle, snapshot.owner_address,
+                snapshot.unit_address, "native_engine_handle_table", 1000,
             )
-        except Exception:
-            resolved_units = {}
-        for unit_handle in handles:
-            selected_value = resolved_units.get(unit_handle, unit_handle)
-            if isinstance(pm, Win10ProcessMemory):
-                candidate = self._candidate_from_jass_selection_result_win10(
-                    pm,
-                    selected_value,
-                    0,
-                    self._last_win10_jass_player_handle,
-                    unit_index=unit_index,
-                )
-                if candidate is None:
-                    resolved_unit = self._resolve_jass_unit_handle_win10(
-                        pm,
-                        unit_handle,
-                        allow_missing=True,
-                    )
-                    candidate = self._candidate_from_jass_selection_result_win10(
-                        pm,
-                        resolved_unit,
-                        0,
-                        self._last_win10_jass_player_handle,
-                        unit_index=unit_index,
-                    )
-            else:
-                candidate = self._candidate_from_jass_selection_result(
-                    pm,
-                    selected_value,
-                    0,
-                    0,
-                    unit_index=unit_index,
-                )
-                if candidate is None:
-                    resolved_unit = self._resolve_jass_unit_handle(
-                        unit_handle,
-                        allow_missing=True,
-                    )
-                    candidate = self._candidate_from_jass_selection_result(
-                        pm,
-                        resolved_unit,
-                        0,
-                        0,
-                        unit_index=unit_index,
-                    )
-            if candidate is None or not candidate.unit_address:
-                continue
-            if candidate.unit_address in seen_units:
-                continue
+            if (
+                candidate is None
+                or (candidate.handle, candidate.owner_address, candidate.unit_address)
+                != (snapshot.full_handle, snapshot.owner_address, snapshot.unit_address)
+                or snapshot.unit_address in seen_units
+                or snapshot.handle in seen_handles
+            ):
+                raise RuntimeError("Native selection changed while mapping its field objects; retry the read")
             seen_units.add(candidate.unit_address)
-            selected.append(
-                (self._candidate_with_selected_unit_type_id(pm, candidate), unit_handle)
+            seen_handles.add(snapshot.handle)
+            candidate = replace(
+                candidate,
+                note=(
+                    "persistent_native "
+                    f"handle=0x{snapshot.handle:x} type=0x{snapshot.type_id:x}; "
+                    f"{candidate.note}"
+                ),
+                selection_source="persistent_native",
+                unit_type_id=int(snapshot.type_id),
             )
-        if len(selected) < len(handles) and allow_owner_refresh:
-            self._build_unit_object_index(pm, force_refresh=True)
-            return self._selected_candidates_snapshot(
-                pm,
-                handles=handles,
-                allow_owner_refresh=False,
-            )
-        if not selected:
-            raise RuntimeError("当前选择列表没有可映射的单位")
+            selected.append((candidate, snapshot.handle))
+        # Publish only after the whole group has passed identity checks. A
+        # failed mapping must not leave a partially accepted selection behind.
+        self._unit_owner_index.update({
+            candidate.handle: candidate.owner_address for candidate, _handle in selected
+        })
         return selected
 
     def _selected_summaries_from_snapshot(
@@ -15940,14 +15858,6 @@ def run_gui() -> None:
         root.after(0, populate_selection_candidates, summaries)
         return f"已列出 {len(summaries)} 个候选单位；慢速扫描结果请选择 HP/MP、坐标、组件和物品槽匹配的行"
 
-    def populate_recovery_candidates(t: War3Trainer | None = None) -> None:
-        remembered = remembered_unit_identities()
-        try:
-            summaries = (t or trainer()).list_selection_candidates(extra_identities=remembered or None)
-        except Exception:
-            return
-        root.after(0, populate_selection_candidates, summaries)
-
     def populate_auto_selected_unit_readout(
         panel: VisibleUnitPanel,
         cand: UnitCandidate,
@@ -16064,10 +15974,10 @@ def run_gui() -> None:
         try:
             t = trainer()
             panel, cand, fields = t.read_selected_unit_fields()
-        except Exception as exc:
-            populate_recovery_candidates(t if "t" in locals() else None)
+        except Exception:
             root.after(0, clear_selected_unit_readout)
-            raise RuntimeError(f"{exc}；已尝试列出候选单位，请在候选表选择目标后点击“读取所选候选”") from exc
+            root.after(0, populate_selection_candidates, [])
+            raise
         root.after(0, populate_auto_selected_unit_readout, panel, cand, fields, True)
         return (
             f"选中单位字段：HP {panel.hp_text}，MP {panel.mp_text}；"
@@ -16406,10 +16316,10 @@ def run_gui() -> None:
         try:
             t = trainer()
             panel, cand, fields = t.read_selected_unit_fields()
-        except Exception as exc:
-            populate_recovery_candidates(t if "t" in locals() else None)
+        except Exception:
             root.after(0, clear_selected_unit_readout)
-            raise RuntimeError(f"{exc}；已尝试列出候选单位，请在候选表选择目标后点击“读取所选候选”") from exc
+            root.after(0, populate_selection_candidates, [])
+            raise
         root.after(0, populate_auto_selected_unit_readout, panel, cand, fields, True)
         selected_summaries = t.selected_unit_summaries()
         if selected_summaries:
@@ -16465,10 +16375,10 @@ def run_gui() -> None:
                 candidate = t._candidate_with_selected_unit_type_id(pm, probe.candidate)
                 panel = t._panel_from_candidate(pm, candidate)
                 fields = t._unit_fields_from_candidate(pm, candidate)
-        except Exception as exc:
-            populate_recovery_candidates(t if "t" in locals() else None)
+        except Exception:
             root.after(0, clear_selected_unit_readout)
-            raise RuntimeError(f"{exc}；已尝试列出候选单位，请在候选表选择目标后点击“读取所选候选”") from exc
+            root.after(0, populate_selection_candidates, [])
+            raise
         root.after(0, populate_auto_selected_unit_readout, panel, candidate, fields, True)
         return (
             f"Native定位：HP {panel.hp_text}，MP {panel.mp_text}；"

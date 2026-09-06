@@ -1,4 +1,5 @@
 from pathlib import Path
+from dataclasses import replace
 from concurrent.futures import ThreadPoolExecutor
 import unittest
 import threading
@@ -18,6 +19,107 @@ class _Memory:
 
 
 class NativeHelperRuntimeFeatureTests(unittest.TestCase):
+    def make_selection_trainer(self):
+        trainer = object.__new__(trainer_module.War3Trainer)
+        trainer._unit_owner_index = {99: 0x9900}
+        trainer._build_unit_object_index = Mock(side_effect=AssertionError("Unexpected global scan"))
+        trainer._elephant_selected_handles = Mock(side_effect=AssertionError("Unexpected selection re-query"))
+        trainer._selected_candidates_from_selection_manager = Mock(
+            side_effect=AssertionError("Unexpected legacy selection")
+        )
+        trainer._candidate_from_identity = Mock(side_effect=lambda _pm, handle, owner, unit, note, score:
+            trainer_module.UnitCandidate(
+                base=0, score=score, hp_current_address=0, hp_max_address=0,
+                mp_current_address=0, mp_max_address=0, note=note,
+                handle=handle, owner_address=owner, unit_address=unit,
+            ))
+        return trainer
+
+    @staticmethod
+    def selection_snapshot(handle=1, unit=0x1000):
+        return SimpleNamespace(
+            handle=handle, full_handle=handle + 0x100000000,
+            owner_address=unit + 0x100, unit_address=unit, type_id=0x68666F6F,
+        )
+
+    def test_empty_native_selection_never_requeries_or_scans_during_reconnect(self):
+        for initialized in (False, True):
+            for supplied in (False, True):
+                with self.subTest(initialized=initialized, supplied=supplied):
+                    trainer = self.make_selection_trainer()
+                    trainer._persistent_native_initialized = initialized
+                    trainer.persistent_native_selected_snapshots = Mock(return_value=())
+                    pm = Mock()
+                    kwargs = {"persistent_snapshots": ()} if supplied else {}
+                    with self.assertRaisesRegex(RuntimeError, "没有稳定"):
+                        trainer._selected_candidates_snapshot(pm, **kwargs)
+                    self.assertEqual(trainer._unit_owner_index, {99: 0x9900})
+                    self.assertEqual(pm.mock_calls, [])
+                    self.assertEqual(trainer.persistent_native_selected_snapshots.call_count, 0 if supplied else 1)
+                    trainer._build_unit_object_index.assert_not_called()
+                    trainer._elephant_selected_handles.assert_not_called()
+
+    def test_changed_native_selection_maps_new_identity_without_global_index(self):
+        trainer = self.make_selection_trainer()
+        snapshots = (self.selection_snapshot(), self.selection_snapshot(2, 0x2000))
+        trainer.persistent_native_selected_snapshots = Mock(side_effect=[(s,) for s in snapshots])
+        for snapshot in snapshots:
+            selected = trainer._selected_candidates_snapshot(Mock())
+            self.assertEqual(len(selected), 1)
+            candidate, handle = selected[0]
+            self.assertEqual(handle, snapshot.handle)
+            self.assertEqual(candidate.handle, snapshot.full_handle)
+            self.assertEqual(candidate.unit_address, snapshot.unit_address)
+            self.assertEqual(candidate.unit_type_id, snapshot.type_id)
+            self.assertEqual(candidate.selection_source, "persistent_native")
+        self.assertEqual(trainer.persistent_native_selected_snapshots.call_count, 2)
+        trainer._build_unit_object_index.assert_not_called()
+
+    def test_failed_native_group_does_not_publish_partial_identity_index(self):
+        for missing in ("handle", "full_handle", "owner_address", "unit_address"):
+            with self.subTest(missing=missing):
+                trainer = self.make_selection_trainer()
+                bad = self.selection_snapshot(2, 0x2000)
+                setattr(bad, missing, 0)
+                with self.assertRaisesRegex(RuntimeError, "拒绝回退"):
+                    trainer._selected_candidates_snapshot(
+                        Mock(), persistent_snapshots=(self.selection_snapshot(), bad),
+                    )
+                self.assertEqual(trainer._unit_owner_index, {99: 0x9900})
+                trainer._selected_candidates_from_selection_manager.assert_not_called()
+
+    def test_duplicate_native_identity_cannot_execute_action_twice(self):
+        for duplicate in (self.selection_snapshot(), self.selection_snapshot(2), self.selection_snapshot(1, 0x2000)):
+            with self.subTest(duplicate=duplicate):
+                trainer = self.make_selection_trainer()
+                with self.assertRaisesRegex(RuntimeError, "Native selection changed"):
+                    trainer._selected_candidates_snapshot(
+                        Mock(), persistent_snapshots=(self.selection_snapshot(), duplicate),
+                    )
+                self.assertEqual(trainer._unit_owner_index, {99: 0x9900})
+
+    def test_stale_native_mapping_cannot_return_partial_group(self):
+        for changed in ("handle", "owner_address", "unit_address"):
+            with self.subTest(changed=changed):
+                trainer = self.make_selection_trainer()
+                mapper = trainer._candidate_from_identity.side_effect
+                first = self.selection_snapshot()
+                second = self.selection_snapshot(2, 0x2000)
+                good = mapper(None, first.full_handle, first.owner_address, first.unit_address, "", 0)
+                bad = mapper(None, second.full_handle, second.owner_address, second.unit_address, "", 0)
+                trainer._candidate_from_identity.side_effect = [good, replace(bad, **{changed: 0xBAD})]
+                with self.assertRaisesRegex(RuntimeError, "Native selection changed"):
+                    trainer._selected_candidates_snapshot(Mock(), persistent_snapshots=(first, second))
+                self.assertEqual(trainer._unit_owner_index, {99: 0x9900})
+
+    def test_native_selection_overflow_fails_before_mapping(self):
+        trainer = self.make_selection_trainer()
+        with self.assertRaisesRegex(RuntimeError, "超过安全上限"):
+            trainer._selected_candidates_snapshot(
+                Mock(), persistent_snapshots=(self.selection_snapshot(),) * 13,
+            )
+        trainer._candidate_from_identity.assert_not_called()
+
     def test_partial_native_identity_never_uses_legacy_selection_manager(self):
         trainer = object.__new__(trainer_module.War3Trainer)
         trainer._candidate_from_identity = Mock(return_value=None)

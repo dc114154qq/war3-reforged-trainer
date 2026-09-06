@@ -1,0 +1,34 @@
+# 1.0.19 后续分支：native 链路源码审计
+
+审计日期：2026-09-06。起始提交：`946d24a`，分支：`codex/v1.0.19-followup`。
+本记录基于源码和离线测试；未打开修改器 EXE、未连接游戏、未注入 DLL。
+正式 1.0.19 和现有测试包未覆盖。此前用户确认当前操作很快，但这不能证明下面所有架构要求已经完成。
+
+## 本次修正
+
+- `_selected_candidates_snapshot` 删除空快照进入旧 JASS 映射、全局单位索引及强制刷新索引的路径。空结果不再依赖 `_persistent_native_initialized` 标志判断是否允许扫描；重连时标志变化也不会打开旧路径。
+- 整组选中单位校验 JASS 句柄、完整对象句柄、owner、unit，拒绝缺失、重复、映射不一致和超限结果。全部通过后才更新 owner 索引；失败不会返回部分组或写入部分映射。
+- `read_unit`、`read_unit_fields`、`read_unit_native_selection` 删除报错后的自动全局候选扫描。错误直接传播，同时安排清空旧字段和旧候选列表。显式的手动候选诊断入口仍存在，尚不能声称整个产品没有旧扫描功能。
+
+## 目标与当前证据
+
+| 要求 | 源码证据 | 当前判断 / 待完成工作 |
+| --- | --- | --- |
+| 进程内 DLL 在游戏线程读取当前选择 | C `war3_persistent_selected_snapshot` 使用 CreateGroup / GroupEnumUnitsSelected / FirstOfGroup，并调用单位和 agent resolver 校验对象关系；由 hook 命令分发执行 | 主选择路径已经具备；不同地图阶段和 Windows 环境的实际稳定性未由本次测试证明 |
+| 首次读取不依赖全进程扫描和特定堆布局 | Python `persistent_native_init` → `_discover_native_handlers_near_table` → `_find_native_table_regions`，后者搜索私有内存中的 UnitAddAbility 字符串，限制单区域 2 MiB；随后搜索表附近 ±0x80000 | **未完成**。表位置发现仍依赖堆搜索和邻域假设，发现失败后的后台初始化重试也会再次搜索。下一步应从游戏模块内的注册代码/表访问函数定位入口，再由 DLL 按真实表结构解析 native；不能仅预热或扩大扫描范围 |
+| 切换到新单位不扫描全局单位列表、不错误锁定旧单位 | `_selected_candidates_snapshot` 每次消费 native 选择及完整身份；本次删除旧映射回退和界面失败后的自动扫描 | 该调用链已收敛。其他详细字段路径仍有基于全局初始化标志的分支，不能把此局部证据推广到所有读写入口 |
+| 英雄、非英雄、物品、数量、技能字段完整 | C `War3PersistentSnapshot` 有基础值、英雄属性、六个物品槽及数量；技能数组固定 48 项，枚举最多 256 索引；Python 用 `min(count, 48)` 解析 | **未完成**。48 项会静默截断；应改为有长度校验的可变技能结果，并定义枚举结束/异常语义，验证边界和大量技能。不能仅扩大固定常量就宣称完整 |
+| 所有详细字段由进程内对象/函数可靠提供 | `_unit_fields_from_candidate` 仍主要按跨进程地址和组件偏移读值；`_ability_instances_from_candidate` 使用邻域对象查找；英雄智力查询失败仍可展示旧候选值；物品结果关联只匹配 unit 地址 | **未完成**。需把快照与完整对象身份绑定，补齐 DLL 字段及可写能力；避免对象地址复用或并发读取时将另一批快照用于当前候选。缺失字段不能用猜测值冒充有效结果 |
+| 单次操作高效执行整组单位 | `move_selected_group_to_mouse` → op 132 → `war3_move_selected_group_at_point` 在一次 hook 回调内先收集、后移动；`create_local_units` 仍循环调用单次 `create_local_unit`，每次克隆提交 14 个操作描述项 | 群移已实现一次回调；复制尚非整批一次回调。克隆后续重构必须保留英雄、技能、物品及所有者语义，并定义部分创建失败的结果，不能只改变循环位置而漏字段 |
+| 无普通/备用读取依赖 | 主选择路径使用持久快照；源码仍有 `BackupReadWar3Trainer`、手动候选列表、诊断 selection-manager 入口及详细字段回退 | 主路径与整个产品需分别核对。旧入口仍存在，不得声称全部清除；迁移时核查 UI、CLI、写入回读、锁定任务的所有调用者 |
+| 不同游戏状态、堆布局和 Windows 版本稳定 | 现有测试包括 C 假 native 群移、Python 协议与路由验证；本次只做离线验证 | **未证明**。离线测试不能替代真实游戏版本/载入/新建单位/单位删除和重建/重连/Windows 环境验证。游戏 EXE 测试由用户按其安排进行，不逐改动要求测试 |
+
+## 本次验证范围
+
+最终运行 `python -m pytest -q`：147 passed，27 subtests passed；`git diff --check` 通过。这里的失败场景是测试主动注入的异常，并非新发现的实机故障。不能以“会拒绝失效快照”代替正常选中新单位时应稳定成功的要求。
+
+`test_native_helper_runtime_features.py` 新增空快照（初始化前后、显式快照和实时查询）、换新单位、四类缺失身份、重复身份、映射不一致、超限组验证。失败必须不调用全局索引、不重新查询旧选择、不发布部分 owner 映射。
+
+`test_native_read_failure_routing.py` 编译并执行实际 GUI 嵌套回调，但用 mock 替代 trainer 和 Tk 调度器。覆盖连接失败、读取失败和成功读取，检查错误对象原样传播、清空旧候选、正常结果仍展示，以及不调用候选扫描。不会启动 GUI 或游戏。
+
+这些测试证明本次修正的路由与校验行为，不证明实机速度、对象偏移兼容性或完整 native 字段目标已完成。

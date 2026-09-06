@@ -4086,6 +4086,10 @@ class War3Trainer:
                 if not self._is_executable_image_address(pm.regions(), item_resolver):
                     raise RuntimeError("物品句柄解析函数不在游戏可执行代码段")
                 agent_resolver = self._discover_agent_resolver(pm, handlers["GetUnitState"].handler_address)
+                if not agent_resolver:
+                    raise RuntimeError(
+                        "无法验证游戏对象表句柄解析器；已拒绝回退到全进程对象扫描"
+                    )
             registrations = tuple(
                 (
                     self.NATIVE_HELPER_OP_PERSISTENT_REGISTER_NATIVE,
@@ -4723,102 +4727,37 @@ class War3Trainer:
     def _elephant_selected_candidate(self, pm: ProcessMemory) -> UnitCandidate:
         if self._elephant_selection_override is not None:
             return self._elephant_selection_override[0]
-        candidate = self.locate_selected_unit_by_handle(pm, allow_deep_scan=True)
-        candidate = self._candidate_with_selected_unit_type_id(pm, candidate)
-        return candidate
+        snapshots = self.persistent_native_selected_snapshots(timeout_ms=30000)
+        if not snapshots:
+            raise RuntimeError("游戏当前没有可操作的选中单位")
+        snapshot = snapshots[0]
+        if not snapshot.full_handle or not snapshot.owner_address or not snapshot.unit_address:
+            raise RuntimeError("native helper 未返回完整的当前单位对象身份，已拒绝扫描进程寻找旧单位")
+        candidate = self._candidate_from_identity(
+            pm,
+            snapshot.full_handle,
+            snapshot.owner_address,
+            snapshot.unit_address,
+            "persistent_native_elephant",
+            1000,
+        )
+        if candidate is None:
+            raise RuntimeError("native helper 当前单位对象身份已失效，请重新选中单位")
+        self._last_persistent_native_snapshots = snapshots
+        return self._candidate_with_selected_unit_type_id(pm, candidate)
 
     def _elephant_selected_handle(self, pm: ProcessMemory) -> int:
         if self._elephant_selection_override is not None:
             return self._elephant_selection_override[1]
-        handlers = self._elephant_handlers(
-            pm,
-            (
-                "CreateGroup",
-                "GetLocalPlayer",
-                "GroupEnumUnitsSelected",
-                "FirstOfGroup",
-                "GetHandleId",
-                "DestroyGroup",
-            ),
-        )
-        results = self._run_native_helper_ops(
-            0,
-            (
-                (
-                    self.NATIVE_HELPER_OP_JASS_SELECTED_UNIT,
-                    0,
-                    handlers["CreateGroup"].handler_address,
-                    0,
-                    handlers["GetLocalPlayer"].handler_address,
-                ),
-                (
-                    self.NATIVE_HELPER_OP_JASS_SELECTED_UNIT_ARG,
-                    0,
-                    handlers["GroupEnumUnitsSelected"].handler_address,
-                    handlers["FirstOfGroup"].handler_address,
-                    handlers["GetHandleId"].handler_address,
-                ),
-                (
-                    self.NATIVE_HELPER_OP_JASS_SELECTED_UNIT_ARG,
-                    0,
-                    handlers["DestroyGroup"].handler_address,
-                    0,
-                    0,
-                ),
-            ),
-        )
-        unit_handle = int(results[0].result)
+        snapshots = self.persistent_native_selected_snapshots(timeout_ms=30000)
+        unit_handle = int(snapshots[0].handle) if snapshots else 0
         if not unit_handle:
             raise RuntimeError("游戏当前没有可操作的选中单位")
         return unit_handle
 
     def _elephant_selected_handles(self, pm: ProcessMemory) -> tuple[int, ...]:
-        handlers = self._elephant_handlers(
-            pm,
-            (
-                "CreateGroup",
-                "GetLocalPlayer",
-                "GroupEnumUnitsSelected",
-                "FirstOfGroup",
-                "GetHandleId",
-                "GroupRemoveUnit",
-                "DestroyGroup",
-            ),
-        )
-        results = self._run_native_helper_ops(
-            0,
-            (
-                (
-                    self.NATIVE_HELPER_OP_JASS_SELECTED_UNITS,
-                    0,
-                    handlers["CreateGroup"].handler_address,
-                    0,
-                    handlers["GetLocalPlayer"].handler_address,
-                ),
-                (
-                    self.NATIVE_HELPER_OP_JASS_SELECTED_UNIT_ARG,
-                    0,
-                    handlers["GroupEnumUnitsSelected"].handler_address,
-                    handlers["FirstOfGroup"].handler_address,
-                    handlers["GetHandleId"].handler_address,
-                ),
-                (
-                    self.NATIVE_HELPER_OP_JASS_SELECTED_UNIT_ARG,
-                    0,
-                    handlers["DestroyGroup"].handler_address,
-                    0,
-                    handlers["GroupRemoveUnit"].handler_address,
-                ),
-            ),
-        )
-        first = int(results[0].result)
-        handles = tuple(
-            dict.fromkeys(
-                int(handle)
-                for handle in (results[0].extra_results or ((first,) if first else ()))
-                if int(handle)
-            )
-        )
+        snapshots = self.persistent_native_selected_snapshots(timeout_ms=30000)
+        handles = tuple(dict.fromkeys(int(snapshot.handle) for snapshot in snapshots if snapshot.handle))
         if not handles:
             raise RuntimeError("游戏当前没有可操作的选中单位")
         if len(handles) > self.SELECTED_BATCH_MAX_UNITS:
@@ -15166,25 +15105,33 @@ class BackupReadWar3Trainer(War3Trainer):
         if self._elephant_selection_override is not None:
             return self._elephant_selection_override[0]
         safe_pm = self._require_win10_memory(pm)
-        if self._backup_selected_identity is None:
-            raise RuntimeError("请先点击备用读取后再使用大象功能")
-        candidate = self._win10_candidate_from_identity(
-            self,
+        snapshots = self.persistent_native_selected_snapshots(timeout_ms=30000)
+        if not snapshots:
+            raise RuntimeError("当前没有选中单位")
+        snapshot = snapshots[0]
+        if not snapshot.full_handle or not snapshot.owner_address or not snapshot.unit_address:
+            raise RuntimeError("native helper 未返回完整的当前单位对象身份，已拒绝扫描进程寻找旧单位")
+        candidate = self._candidate_from_identity(
             safe_pm,
-            *self._backup_selected_identity,
+            snapshot.full_handle,
+            snapshot.owner_address,
+            snapshot.unit_address,
+            "persistent_native_elephant",
+            1000,
         )
+        if candidate is None:
+            raise RuntimeError("native helper 当前单位对象身份已失效，请重新选中单位")
+        self._last_persistent_native_snapshots = snapshots
         return self._candidate_with_selected_unit_type_id(safe_pm, candidate)
 
     def _elephant_selected_handle(self, pm: ProcessMemory) -> int:
         if self._elephant_selection_override is not None:
             return self._elephant_selection_override[1]
         safe_pm = self._require_win10_memory(pm)
-        candidate = self._elephant_selected_candidate(safe_pm)
-        return self._current_jass_unit_handle_win10(
-            safe_pm,
-            candidate,
-            safe_pm.diagnostics,
-        )
+        snapshots = self.persistent_native_selected_snapshots(timeout_ms=30000)
+        if not snapshots or not snapshots[0].handle:
+            raise RuntimeError("native helper 未返回当前选中单位句柄")
+        return int(snapshots[0].handle)
 
     def _direct_selected_context(self) -> tuple[UnitCandidate, int]:
         if self._elephant_selection_override is not None:
@@ -15192,12 +15139,10 @@ class BackupReadWar3Trainer(War3Trainer):
         with self._process_memory() as pm:
             safe_pm = self._require_win10_memory(pm)
             candidate = self._elephant_selected_candidate(safe_pm)
-            unit_handle = self._current_jass_unit_handle_win10(
-                safe_pm,
-                candidate,
-                safe_pm.diagnostics,
-            )
-            return candidate, unit_handle
+            snapshots = self._last_persistent_native_snapshots
+            if not snapshots or snapshots[0].unit_address != candidate.unit_address:
+                raise RuntimeError("native helper 当前单位身份已变化，请重试")
+            return candidate, int(snapshots[0].handle)
 
     def _resolve_jass_unit_handle(
         self,

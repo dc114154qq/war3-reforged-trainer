@@ -381,33 +381,22 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
 
     def test_selected_handles_uses_deduplicated_helper_extra_results(self):
         trainer = self.make_trainer()
-        trainer._run_native_helper_ops = Mock(
-            return_value=[
-                trainer_module.NativeHelperOpResult(
-                    kind=trainer.NATIVE_HELPER_OP_JASS_SELECTED_UNITS,
-                    result=0x100,
-                    extra_results=(0x100, 0x200, 0x100, 0x300),
-                )
-            ]
+        trainer.persistent_native_selected_snapshots = Mock(
+            return_value=tuple(
+                SimpleNamespace(handle=value)
+                for value in (0x100, 0x200, 0x100, 0x300)
+            )
         )
 
         handles = trainer._elephant_selected_handles(object())
 
         self.assertEqual(handles, (0x100, 0x200, 0x300))
-        _unit, ops = trainer._run_native_helper_ops.call_args.args[:2]
-        self.assertEqual(ops[0][0], trainer.NATIVE_HELPER_OP_JASS_SELECTED_UNITS)
-        self.assertEqual(len(ops), 3)
+        trainer.persistent_native_selected_snapshots.assert_called_once()
 
     def test_selected_handles_rejects_more_than_twelve(self):
         trainer = self.make_trainer()
-        trainer._run_native_helper_ops = Mock(
-            return_value=[
-                trainer_module.NativeHelperOpResult(
-                    kind=trainer.NATIVE_HELPER_OP_JASS_SELECTED_UNITS,
-                    result=1,
-                    extra_results=tuple(range(1, 14)),
-                )
-            ]
+        trainer.persistent_native_selected_snapshots = Mock(
+            return_value=tuple(SimpleNamespace(handle=value) for value in range(1, 14))
         )
 
         with self.assertRaisesRegex(RuntimeError, "超过安全上限"):

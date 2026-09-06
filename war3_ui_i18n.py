@@ -35,6 +35,12 @@ def detect_ui_language(locale_name: str | None = None) -> str:
 
 
 _EN_TRANSLATIONS = {
+    '无法验证游戏对象表句柄解析器；已拒绝回退到全进程对象扫描': 'Unable to verify the game object-table handle resolver; full-process object scanning was rejected',
+    '当前没有选中单位': 'No unit is currently selected',
+    'native helper 未返回完整的当前单位对象身份，已拒绝扫描进程寻找旧单位': 'native helper did not return a complete current-unit identity; scanning the process for an old unit was rejected',
+    'native helper 当前单位对象身份已失效，请重新选中单位': 'The native helper current-unit identity is stale; select the unit again',
+    'native helper 未返回当前选中单位句柄': 'The native helper did not return the current selected-unit handle',
+    'native helper 当前单位身份已变化，请重试': 'The native helper current-unit identity changed; retry',
     "魔兽争霸3重制版修改器": "Warcraft III: Reforged Trainer",
     "普通读取版": "Normal Read Edition",
     " by B站 两杯沈梦溪": " by Bilibili Two Cups of Shen Mengxi",

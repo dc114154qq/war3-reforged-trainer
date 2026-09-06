@@ -349,8 +349,9 @@ class ElephantSourceRoutingTests(unittest.TestCase):
             and node.name == "_elephant_selected_handles"
         )
         self.assertNotIn("GroupRemoveUnit", ast.unparse(single))
-        self.assertIn("GroupRemoveUnit", ast.unparse(batch))
-        self.assertIn("NATIVE_HELPER_OP_JASS_SELECTED_UNITS", ast.unparse(batch))
+        self.assertNotIn("GroupRemoveUnit", ast.unparse(batch))
+        self.assertIn("persistent_native_selected_snapshots", ast.unparse(batch))
+        self.assertIn("persistent_native_selected_snapshots", ast.unparse(batch))
 
     def test_hotkeys_do_not_bind_main_trainer(self):
         tree = ast.parse(SOURCE_PATH.read_text(encoding="utf-8"))

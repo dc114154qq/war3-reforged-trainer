@@ -625,6 +625,12 @@ static DWORD war3_persistent_selected_snapshot(
     ) {
         return ERROR_PROC_NOT_FOUND;
     }
+    if (!resolve_unit || !g_persistent_agent_resolver) {
+        /* The Python side must never map a native selection by scanning the
+           process.  Both resolvers are required for a direct object-table
+           identity (handle, unit object, and owner object). */
+        return ERROR_PROC_NOT_FOUND;
+    }
     buffer = (uint64_t *)HeapAlloc(
         GetProcessHeap(),
         HEAP_ZERO_MEMORY,

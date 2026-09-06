@@ -2816,7 +2816,10 @@ class War3Trainer:
                     if not native_selection:
                         stop.wait(0.5)
                         continue
-                    selected = self._selected_candidates_snapshot(pm)
+                    selected = self._selected_candidates_snapshot(
+                        pm,
+                        persistent_snapshots=native_selection,
+                    )
                     self._last_selected_summaries = (
                         self._selected_summaries_from_snapshot(pm, selected)
                     )
@@ -4791,8 +4794,12 @@ class War3Trainer:
         pm: ProcessMemory,
         handles: Iterable[int] | None = None,
         allow_owner_refresh: bool = True,
+        persistent_snapshots: Iterable[PersistentNativeUnitSnapshot] | None = None,
     ) -> list[tuple[UnitCandidate, int]]:
-        persistent_snapshots = self.persistent_native_selected_snapshots()
+        if persistent_snapshots is None:
+            persistent_snapshots = self.persistent_native_selected_snapshots()
+        else:
+            persistent_snapshots = tuple(persistent_snapshots)
         if persistent_snapshots:
             requested_handles = (
                 set(int(handle) for handle in handles if int(handle))

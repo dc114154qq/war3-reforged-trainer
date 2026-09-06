@@ -2157,6 +2157,11 @@ def post_cheat(hwnd: int, text: str, delay: float = 0.75) -> None:
 
 
 class War3Trainer:
+    # Native registrations and their code addresses belong to the game
+    # process, not to a GUI/session object.  Keep the verified bindings at
+    # process scope so isolated read sessions follow the classic DLL model:
+    # resolve the native table once, then call the cached entries.
+    _PROCESS_NATIVE_HANDLER_CACHE: dict[int, dict[str, NativeHandler]] = {}
     # Verified for the live 2.0.4.23745 process in this session. Fallback scanning is used
     # when these addresses are stale.
     KNOWN_RESOURCE_PAIRS = [
@@ -3846,6 +3851,9 @@ class War3Trainer:
         names: Iterable[str],
     ) -> dict[str, NativeHandler]:
         wanted = set(names)
+        process_cached = self._PROCESS_NATIVE_HANDLER_CACHE.get(int(self.pid), {})
+        if process_cached:
+            self._native_handlers.update(process_cached)
         missing = wanted.difference(self._native_handlers)
         if not missing:
             return {name: self._native_handlers[name] for name in wanted}
@@ -3917,6 +3925,11 @@ class War3Trainer:
                 break
 
         self._native_handlers.update(found)
+        if found:
+            self._PROCESS_NATIVE_HANDLER_CACHE.setdefault(
+                int(self.pid),
+                {},
+            ).update(found)
         if missing:
             raise RuntimeError(
                 "在 native 表邻域未找到函数：" + ", ".join(sorted(missing))

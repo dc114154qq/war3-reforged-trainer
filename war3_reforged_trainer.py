@@ -2806,15 +2806,11 @@ class War3Trainer:
                 continue
             try:
                 with self._process_memory() as pm:
-                    # Prime the live selection-manager route once while the
-                    # bootstrap thread is running.  Action threads must only
-                    # read the bounded manager list; they must never pay the
-                    # player-component discovery scan on a first operation.
-                    if not self._selection_player_candidates:
-                        self._discover_native_selection_layout(pm)
-                        self._selection_player_candidates = list(
-                            self._selection_player_pointer_candidates(pm, discover=True)
-                        )
+                    # The injected helper already returns the engine's live
+                    # selected handles and object-table identities.  Do not
+                    # prime the legacy selection-manager locator here: that
+                    # path can scan player components and would make the first
+                    # user action depend on a process-wide discovery pass.
                     native_selection = self.persistent_native_selected_snapshots(
                         timeout_ms=5000,
                     )

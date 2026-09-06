@@ -4748,23 +4748,22 @@ class War3Trainer:
     def _elephant_selected_candidate(self, pm: ProcessMemory) -> UnitCandidate:
         if self._elephant_selection_override is not None:
             return self._elephant_selection_override[0]
-        candidates = self._selected_candidates_from_selection_manager(pm)
-        candidate = candidates[0] if candidates else None
+        snapshots = self.persistent_native_selected_snapshots(timeout_ms=10000)
+        if not snapshots:
+            raise RuntimeError("游戏当前没有可操作的选中单位")
+        snapshot = snapshots[0]
+        if not (snapshot.full_handle and snapshot.owner_address and snapshot.unit_address):
+            raise RuntimeError("native helper 未返回完整当前单位身份，已拒绝同步扫描")
+        candidate = self._candidate_from_identity(
+            pm,
+            snapshot.full_handle,
+            snapshot.owner_address,
+            snapshot.unit_address,
+            "persistent_native_elephant",
+            1000,
+        )
         if candidate is None:
-            snapshots = self.persistent_native_selected_snapshots(timeout_ms=10000)
-            if snapshots:
-                snapshot = snapshots[0]
-                if snapshot.full_handle and snapshot.owner_address and snapshot.unit_address:
-                    candidate = self._candidate_from_identity(
-                        pm,
-                        snapshot.full_handle,
-                        snapshot.owner_address,
-                        snapshot.unit_address,
-                        "persistent_native_elephant",
-                        1000,
-                    )
-            if candidate is None:
-                raise RuntimeError("native helper 未返回完整当前单位身份，已拒绝同步扫描")
+            raise RuntimeError("当前 native 快照已经失效，请重新读取选中单位")
         return self._candidate_with_selected_unit_type_id(pm, candidate)
 
     def _elephant_selected_handle(self, pm: ProcessMemory) -> int:

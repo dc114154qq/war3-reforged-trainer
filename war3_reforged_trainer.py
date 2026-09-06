@@ -12693,6 +12693,11 @@ class War3Trainer:
     ) -> list[AbilityInstance]:
         if not candidate.owner_address or not candidate.unit_address:
             return []
+        if self._persistent_native_initialized:
+            # Persistent native selection already identifies the live unit.
+            # Never widen an ability lookup to a process-wide search for this
+            # unit, even when an older caller requested its legacy fallback.
+            allow_global_scan = False
         cache_key = (candidate.handle, candidate.owner_address, candidate.unit_address, bool(allow_global_scan))
         if required_rawcodes is None:
             cached = self._validated_cached_ability_instances(pm, candidate, cache_key)

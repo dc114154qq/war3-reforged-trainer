@@ -35,6 +35,7 @@ def detect_ui_language(locale_name: str | None = None) -> str:
 
 
 _EN_TRANSLATIONS = {
+    "selection manager 未返回当前选中单位，已拒绝回退到全进程扫描": "The selection manager did not return the current selected unit; falling back to a full-process scan was rejected",
     '无法验证游戏对象表句柄解析器；已拒绝回退到全进程对象扫描': 'Unable to verify the game object-table handle resolver; full-process object scanning was rejected',
     '当前没有选中单位': 'No unit is currently selected',
     'native helper 未返回完整的当前单位对象身份，已拒绝扫描进程寻找旧单位': 'native helper did not return a complete current-unit identity; scanning the process for an old unit was rejected',

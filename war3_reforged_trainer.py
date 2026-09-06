@@ -4727,37 +4727,28 @@ class War3Trainer:
     def _elephant_selected_candidate(self, pm: ProcessMemory) -> UnitCandidate:
         if self._elephant_selection_override is not None:
             return self._elephant_selection_override[0]
-        snapshots = self.persistent_native_selected_snapshots(timeout_ms=30000)
-        if not snapshots:
-            raise RuntimeError("游戏当前没有可操作的选中单位")
-        snapshot = snapshots[0]
-        if not snapshot.full_handle or not snapshot.owner_address or not snapshot.unit_address:
-            raise RuntimeError("native helper 未返回完整的当前单位对象身份，已拒绝扫描进程寻找旧单位")
-        candidate = self._candidate_from_identity(
-            pm,
-            snapshot.full_handle,
-            snapshot.owner_address,
-            snapshot.unit_address,
-            "persistent_native_elephant",
-            1000,
-        )
+        candidate = self._locate_selected_unit_by_selection_manager(pm)
         if candidate is None:
-            raise RuntimeError("native helper 当前单位对象身份已失效，请重新选中单位")
-        self._last_persistent_native_snapshots = snapshots
+            raise RuntimeError("selection manager 未返回当前选中单位，已拒绝回退到全进程扫描")
         return self._candidate_with_selected_unit_type_id(pm, candidate)
 
     def _elephant_selected_handle(self, pm: ProcessMemory) -> int:
         if self._elephant_selection_override is not None:
             return self._elephant_selection_override[1]
-        snapshots = self.persistent_native_selected_snapshots(timeout_ms=30000)
-        unit_handle = int(snapshots[0].handle) if snapshots else 0
+        candidate = self._locate_selected_unit_by_selection_manager(pm)
+        unit_handle = int(candidate.handle) if candidate is not None else 0
         if not unit_handle:
             raise RuntimeError("游戏当前没有可操作的选中单位")
         return unit_handle
 
     def _elephant_selected_handles(self, pm: ProcessMemory) -> tuple[int, ...]:
-        snapshots = self.persistent_native_selected_snapshots(timeout_ms=30000)
-        handles = tuple(dict.fromkeys(int(snapshot.handle) for snapshot in snapshots if snapshot.handle))
+        handles = tuple(
+            dict.fromkeys(
+                int(candidate.handle)
+                for candidate in self._selected_candidates_from_selection_manager(pm)
+                if candidate.handle
+            )
+        )
         if not handles:
             raise RuntimeError("游戏当前没有可操作的选中单位")
         if len(handles) > self.SELECTED_BATCH_MAX_UNITS:
@@ -10968,6 +10959,46 @@ class War3Trainer:
                 return candidate
         return None
 
+    def _selected_candidates_from_selection_manager(
+        self,
+        pm: ProcessMemory,
+    ) -> tuple[UnitCandidate, ...]:
+        """Read the live selection list without JASS group enumeration."""
+        candidates: list[UnitCandidate] = []
+        seen: set[int] = set()
+        players = self._selection_player_pointer_candidates(pm, discover=False)
+        if not players:
+            # Selection layout discovery is a one-time bootstrap operation.
+            # Once the player/manager pointer is known, target changes only
+            # read the bounded live list below.
+            probe = self.probe_native_selection_manager()
+            players = self._selection_player_pointer_candidates(pm, discover=False)
+            if not players and probe.candidate is not None:
+                return (probe.candidate,)
+        for player in players:
+            try:
+                selection_manager = pm.read_u64(player + self._selection_manager_offset)
+            except OSError:
+                continue
+            if not self._sane_heap_ptr(selection_manager):
+                continue
+            for list_offset in self._selection_list_offsets:
+                for unit, slot_address in self._selection_manager_unit_slots(
+                    pm, selection_manager + list_offset
+                ):
+                    candidate = self._candidate_from_selected_unit_pointer(
+                        pm,
+                        unit,
+                        f"selected_unit_slot=0x{unit:x} via=selection_manager",
+                        990 if list_offset == 0 else 980,
+                        slot_address,
+                    )
+                    if candidate is None or candidate.unit_address in seen:
+                        continue
+                    seen.add(candidate.unit_address)
+                    candidates.append(candidate)
+        return tuple(candidates)
+
     def probe_native_selection_manager(self) -> NativeSelectionProbeResult:
         with self._process_memory() as pm:
             manager_offset, primary_offset, alternate_offset, handlers = self._discover_native_selection_layout(pm)
@@ -15104,45 +15135,20 @@ class BackupReadWar3Trainer(War3Trainer):
     def _elephant_selected_candidate(self, pm: ProcessMemory) -> UnitCandidate:
         if self._elephant_selection_override is not None:
             return self._elephant_selection_override[0]
-        safe_pm = self._require_win10_memory(pm)
-        snapshots = self.persistent_native_selected_snapshots(timeout_ms=30000)
-        if not snapshots:
-            raise RuntimeError("当前没有选中单位")
-        snapshot = snapshots[0]
-        if not snapshot.full_handle or not snapshot.owner_address or not snapshot.unit_address:
-            raise RuntimeError("native helper 未返回完整的当前单位对象身份，已拒绝扫描进程寻找旧单位")
-        candidate = self._candidate_from_identity(
-            safe_pm,
-            snapshot.full_handle,
-            snapshot.owner_address,
-            snapshot.unit_address,
-            "persistent_native_elephant",
-            1000,
-        )
-        if candidate is None:
-            raise RuntimeError("native helper 当前单位对象身份已失效，请重新选中单位")
-        self._last_persistent_native_snapshots = snapshots
-        return self._candidate_with_selected_unit_type_id(safe_pm, candidate)
+        return War3Trainer._elephant_selected_candidate(self, pm)
 
     def _elephant_selected_handle(self, pm: ProcessMemory) -> int:
         if self._elephant_selection_override is not None:
             return self._elephant_selection_override[1]
-        safe_pm = self._require_win10_memory(pm)
-        snapshots = self.persistent_native_selected_snapshots(timeout_ms=30000)
-        if not snapshots or not snapshots[0].handle:
-            raise RuntimeError("native helper 未返回当前选中单位句柄")
-        return int(snapshots[0].handle)
+        return War3Trainer._elephant_selected_handle(self, pm)
 
     def _direct_selected_context(self) -> tuple[UnitCandidate, int]:
         if self._elephant_selection_override is not None:
             return self._elephant_selection_override
         with self._process_memory() as pm:
             safe_pm = self._require_win10_memory(pm)
-            candidate = self._elephant_selected_candidate(safe_pm)
-            snapshots = self._last_persistent_native_snapshots
-            if not snapshots or snapshots[0].unit_address != candidate.unit_address:
-                raise RuntimeError("native helper 当前单位身份已变化，请重试")
-            return candidate, int(snapshots[0].handle)
+            candidate = War3Trainer._elephant_selected_candidate(self, safe_pm)
+            return candidate, int(candidate.handle)
 
     def _resolve_jass_unit_handle(
         self,

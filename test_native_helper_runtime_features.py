@@ -39,6 +39,7 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
 
     def make_trainer(self):
         trainer = object.__new__(trainer_module.War3Trainer)
+        trainer._selection_player_candidates = []
         trainer.query_mouse_world_position = Mock(return_value=(12.5, -8.0))
         trainer._process_memory = Mock(return_value=_Memory())
         trainer._elephant_handlers = Mock(
@@ -381,11 +382,8 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
 
     def test_selected_handles_uses_deduplicated_helper_extra_results(self):
         trainer = self.make_trainer()
-        trainer.persistent_native_selected_snapshots = Mock(
-            return_value=tuple(
-                SimpleNamespace(handle=value)
-                for value in (0x100, 0x200, 0x100, 0x300)
-            )
+        trainer._selected_candidates_from_selection_manager = Mock(
+            return_value=tuple(SimpleNamespace(handle=value) for value in (0x100, 0x200, 0x100, 0x300))
         )
 
         handles = trainer._elephant_selected_handles(object())
@@ -395,7 +393,7 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
 
     def test_selected_handles_rejects_more_than_twelve(self):
         trainer = self.make_trainer()
-        trainer.persistent_native_selected_snapshots = Mock(
+        trainer._selected_candidates_from_selection_manager = Mock(
             return_value=tuple(SimpleNamespace(handle=value) for value in range(1, 14))
         )
 

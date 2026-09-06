@@ -66,3 +66,15 @@
 剩余限制：只有持有本次 native 快照，或最近选择快照仍有完整匹配身份的候选能走该定向路由。UI 只存完整对象身份、未长期持有 JASS 绑定的手动候选，若最近选择已变化，仍可能无法命中此路由；此时原有诊断路径尚存，不能声称所有手动/锁定操作都已迁移。首次初始化的堆搜索、详细字段完整 native 化及真实引擎枚举语义仍待解决。
 
 协议 27 最终离线验证：171 passed、50 subtests passed；`git diff --check` 通过。分支 DLL SHA256：`D69783B1A0D6F32E9F72D2D17FDFF55C52295388A64BE031412D08389A206B07`。这些验证没有启动游戏，也不证明真实游戏中所有字段已经稳定可写。
+
+## 公共当前单位定位入口统一
+
+审计发现 `write_selected_unit_fields`、`set_selected_unit`、`locate_current_selected_unit` 和旧 CLI 包装 `locate_selected_unit` 仍调用 `locate_selected_unit_by_handle`。该入口原先依次读 selection manager、已知 unit 指针、固定/历史句柄槽，并按 80/200/450/900/1600ms 间隔重试；开启 `allow_deep_scan` 时还会搜索选择句柄地址。它不因读取按钮已经使用 native 而自动迁移。
+
+现已删除该入口的旧定位逻辑，统一消费 `_selected_candidates_snapshot` 返回的当前 DLL 选择、完整身份和不可变快照绑定。为旧调用方保留 `allow_panel_fallback` / `allow_deep_scan` 参数，但两者均不能再启用旧槽或扫描。调用方提供的内存会话仍由调用方拥有；自行打开的会话由 context manager 在成功/失败时关闭。预热入口也删除了异常后重新探测旧选择布局并重试的分支。
+
+新增 `test_native_selected_write_routing.py` 直接运行公共方法，覆盖新单位切换但面板输入相同、两个兼容开关的全部组合、会话所有权、空选择不得写旧目标、整组身份校验失败不得部分写入、当前读回及预热失败。并从真实 GUI 源码提取 `apply_locks_once` 回调执行，确认未固定身份的单位锁每次调用都会走当前 native 选择。旧定位函数、全局索引和固定 sleep 在这些测试中均设置为一旦调用即失败。
+
+范围边界：修改的是公共当前单位定位入口及其预热回退；明确按身份固定的锁仍走身份写入，旧候选诊断和独立备用入口尚存。基础字段的实际值写入仍多为跨进程内存写入，本次没有将其宣称为全部游戏线程 native 修改。原生冷启动定位、完整字段迁移、UI 长期持有 native 身份的工作仍待完成。本轮未改 DLL、未启动或打包 EXE，应用版本 1.0.19、协议 27。
+
+公共定位迁移最终离线验证：`python -m pytest -q --tb=short` 返回 179 passed、54 subtests passed；`git diff --check` 通过。

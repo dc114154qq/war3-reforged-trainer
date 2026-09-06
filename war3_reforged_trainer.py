@@ -11097,19 +11097,7 @@ class War3Trainer:
 
     def prewarm_selected_unit_cache(self) -> UnitCandidate:
         with self._process_memory() as pm:
-            try:
-                candidate = self.locate_selected_unit_by_handle(pm, allow_deep_scan=True)
-            except Exception as first_error:
-                try:
-                    manager_offset, primary_offset, alternate_offset, _handlers = self._discover_native_selection_layout(pm)
-                    self._selection_manager_offset = manager_offset
-                    self._selection_list_offsets = tuple(dict.fromkeys((primary_offset, alternate_offset)))
-                    candidate = self.locate_selected_unit_by_handle(pm, allow_deep_scan=True)
-                except Exception:
-                    raise first_error
-            else:
-                self._unit_fields_from_candidate(pm, candidate)
-                return candidate
+            candidate = self.locate_selected_unit_by_handle(pm)
             self._unit_fields_from_candidate(pm, candidate)
             return candidate
 
@@ -11484,86 +11472,13 @@ class War3Trainer:
         allow_panel_fallback: bool = False,
         allow_deep_scan: bool = False,
     ) -> UnitCandidate:
-        close_pm = False
-        if pm is None:
-            pm = self._process_memory()
-            close_pm = True
-        try:
-            last_error: str | None = None
-            tried: set[int] = set()
-
-            def try_slot(address: int, min_score: int = 0) -> UnitCandidate | None:
-                nonlocal last_error
-                tried.add(address)
-                try:
-                    handle = pm.read_u64(address)
-                except OSError as exc:
-                    last_error = str(exc)
-                    return None
-                if not self._looks_like_unit_handle(handle):
-                    last_error = f"0x{address:x} 不是单位 handle"
-                    return None
-                owner = self._owner_for_handle(pm, handle)
-                if owner is None:
-                    last_error = f"0x{handle:x} 没有匹配单位对象"
-                    return None
-                score = self._score_selected_handle_address(pm, address, handle, owner)
-                if score < min_score:
-                    last_error = f"0x{address:x} 像历史选择槽，不是当前选择槽"
-                    return None
-                candidate = self._candidate_from_owner(
-                    pm,
-                    owner,
-                    900 + score,
-                    f"selected_handle=0x{handle:x} slot=0x{address:x}",
-                    handle,
-                    "memory",
-                    address,
-                )
-                if candidate is None:
-                    last_error = f"0x{handle:x} 没有生命属性"
-                    return None
-                if address in self._selected_handle_addresses:
-                    self._selected_handle_addresses.remove(address)
-                self._selected_handle_addresses.insert(0, address)
-                return candidate
-
-            retry_delays = (0.0, 0.08, 0.20, 0.45, 0.90, 1.60) if allow_deep_scan else (0.0,)
-            for delay in retry_delays:
-                if delay:
-                    time.sleep(delay)
-                tried.clear()
-                selection_manager_candidate = self._locate_selected_unit_by_selection_manager(pm)
-                if selection_manager_candidate is not None:
-                    return selection_manager_candidate
-                unit_pointer_candidate = self._locate_selected_unit_by_known_unit_pointer(pm)
-                if unit_pointer_candidate is not None:
-                    return unit_pointer_candidate
-                for address in self._known_selected_handle_address_candidates(pm):
-                    candidate = try_slot(address, min_score=120 if allow_deep_scan else 0)
-                    if candidate is not None:
-                        return candidate
-                for address in list(dict.fromkeys(self._selected_handle_addresses)):
-                    if address in tried:
-                        continue
-                    candidate = try_slot(address, min_score=120 if allow_deep_scan else 0)
-                    if candidate is not None:
-                        return candidate
-            if allow_deep_scan:
-                # Last resort only. Reforged can leave old selection handles in
-                # this state block after switching units, so fixed slots above are
-                # trusted before broad handle discovery.
-                for address in self._discover_selected_handle_addresses(pm):
-                    if address in tried:
-                        continue
-                    candidate = try_slot(address, min_score=120)
-                    if candidate is not None:
-                        return candidate
-            detail = f"；最后错误：{last_error}" if last_error else ""
-            raise RuntimeError(f"没有找到当前选中单位 handle，请在游戏里左键选中一个单位后重试{detail}")
-        finally:
-            if close_pm:
-                pm.close()
+        # Retain the old public signature for callers, but this locator now
+        # uses the engine selection and its complete identity on every call.
+        # Neither compatibility flag enables historical slots or heap scans.
+        if pm is not None:
+            return self._selected_candidates_snapshot(pm)[0][0]
+        with self._process_memory() as owned_pm:
+            return self._selected_candidates_snapshot(owned_pm)[0][0]
 
     def locate_selected_unit_win10(
         self,

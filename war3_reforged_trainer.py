@@ -4156,11 +4156,26 @@ class War3Trainer:
         timeout_ms: int = 30000,
     ) -> tuple[PersistentNativeUnitSnapshot, ...]:
         self.persistent_native_init(timeout_ms=timeout_ms)
-        result = self._run_native_helper_ops(
-            0,
-            ((self.NATIVE_HELPER_OP_PERSISTENT_SELECTED_SNAPSHOT, 0, 0, 0, 0),),
-            timeout_ms=timeout_ms,
-        )[0]
+        snapshot_op = ((self.NATIVE_HELPER_OP_PERSISTENT_SELECTED_SNAPSHOT, 0, 0, 0, 0),)
+        try:
+            result = self._run_native_helper_ops(
+                0,
+                snapshot_op,
+                timeout_ms=timeout_ms,
+            )[0]
+        except RuntimeError as exc:
+            # A stale in-process hook can survive a game-side reload. Rebuild
+            # the registration once for this process when the helper reports
+            # ERROR_PROC_NOT_FOUND; other errors must remain visible.
+            if "error=127" not in str(exc) and "last_error=127" not in str(exc):
+                raise
+            self._close_native_helper_persistent()
+            self.persistent_native_init(timeout_ms=timeout_ms)
+            result = self._run_native_helper_ops(
+                0,
+                snapshot_op,
+                timeout_ms=timeout_ms,
+            )[0]
         values = tuple(int(value) for value in result.extra_results)
         count = int(result.result)
         expected = count * self.PERSISTENT_NATIVE_SNAPSHOT_QWORDS

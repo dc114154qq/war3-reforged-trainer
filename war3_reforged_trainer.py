@@ -2161,6 +2161,7 @@ def post_cheat(hwnd: int, text: str, delay: float = 0.75) -> None:
 
 
 class War3Trainer:
+    _PROCESS_NATIVE_HANDLER_CACHE: dict[int, dict[str, NativeHandler]] = {}
     # Native registrations and their code addresses belong to the game
     # process, not to a GUI/session object.  Keep the verified bindings at
     # process scope so isolated read sessions follow the classic DLL model:
@@ -2645,7 +2646,9 @@ class War3Trainer:
         self._owner_properties_cache: dict[int, dict[int, int]] = {}
         self._selected_handle_addresses = list(self.KNOWN_SELECTED_HANDLE_ADDRESSES)
         self._item_object_cache: dict[int, int] = {}
-        self._native_handlers: dict[str, NativeHandler] = {}
+        self._native_handlers: dict[str, NativeHandler] = dict(
+            self._PROCESS_NATIVE_HANDLER_CACHE.get(self.pid, {})
+        )
         self._native_table_region: tuple[int, int] | None = None
         self._native_table_regions: list[tuple[int, int]] = []
         self._native_table_blob: tuple[int, int, bytes] | None = None
@@ -4120,6 +4123,7 @@ class War3Trainer:
                     pm,
                     self.PERSISTENT_NATIVE_NAMES,
                 )
+                self._PROCESS_NATIVE_HANDLER_CACHE[self.pid] = dict(self._native_handlers)
                 calls = self._native_function_calls(
                     pm,
                     handlers["UnitAddAbility"].handler_address,

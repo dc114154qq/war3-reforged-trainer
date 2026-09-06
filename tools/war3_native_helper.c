@@ -621,7 +621,12 @@ static DWORD war3_persistent_selected_snapshot(
     if (
         !get_local_player || !enum_selected || !first_of_group || !remove_unit ||
         !destroy_group || !get_owning_player || !get_player_id || !get_unit_type_id ||
-        !get_unit_state || !get_unit_x || !get_unit_y
+        !get_unit_state || !get_unit_x || !get_unit_y || !get_move_speed ||
+        !get_hero_str || !get_hero_agi || !get_hero_int ||
+        !get_ability_by_index || !get_ability_id || !get_ability_level ||
+        !item_in_slot || !get_item_type_id || !get_item_charges ||
+        !war3_persistent_native_handler("GetHeroLevel") ||
+        !war3_persistent_native_handler("GetHeroXP")
     ) {
         return ERROR_PROC_NOT_FOUND;
     }

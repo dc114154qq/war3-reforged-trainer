@@ -15080,6 +15080,8 @@ class War3Trainer:
                 target_hp_regen,
                 target_mp_regen,
             )
+            if hasattr(self, "_persistent_bootstrap_lock"):
+                candidate = self._refresh_native_candidate(candidate)
         return candidate
 
     def set_unit_by_identity(
@@ -15121,6 +15123,8 @@ class War3Trainer:
                 target_hp_regen,
                 target_mp_regen,
             )
+            if hasattr(self, "_persistent_bootstrap_lock"):
+                candidate = self._refresh_native_candidate(candidate)
             return candidate
 
     def set_unit_by_identity_win10(

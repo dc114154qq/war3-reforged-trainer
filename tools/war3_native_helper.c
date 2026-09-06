@@ -674,15 +674,13 @@ static DWORD war3_persistent_selected_snapshot(
                 uint64_t owner = ((War3AgentResolveFn)(uintptr_t)g_persistent_agent_resolver)(
                     (uint32_t)full, (uint32_t)(full >> 32)
                 );
-                if (!owner ||
-                    *(uint64_t *)(uintptr_t)(owner + 0x18) != 0x2b7733752b61676cULL ||
-                    *(uint64_t *)(uintptr_t)(owner + 0x20) != full ||
-                    *(uint64_t *)(uintptr_t)(owner + 0x90) != snapshot->unit_address) {
-                    error = ERROR_INVALID_DATA;
-                    __leave;
+                if (owner &&
+                    *(uint64_t *)(uintptr_t)(owner + 0x18) == 0x2b7733752b61676cULL &&
+                    *(uint64_t *)(uintptr_t)(owner + 0x20) == full &&
+                    *(uint64_t *)(uintptr_t)(owner + 0x90) == snapshot->unit_address) {
+                    snapshot->full_handle = full;
+                    snapshot->owner_address = owner;
                 }
-                snapshot->full_handle = full;
-                snapshot->owner_address = owner;
             }
             snapshot->hero_level = war3_persistent_native_handler("GetHeroLevel")
                 ? (uint64_t)(int64_t)((JassUnitIntQueryFn)(uintptr_t)war3_persistent_native_handler("GetHeroLevel"))(unit)

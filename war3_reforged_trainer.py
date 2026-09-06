@@ -4798,17 +4798,14 @@ class War3Trainer:
                         snapshot.unit_address, "native_engine_handle_table", 1000,
                     )
                 else:
-                    unit_index = self._build_unit_object_index(pm, force_refresh=False)
-                    if isinstance(pm, Win10ProcessMemory):
-                        candidate = self._candidate_from_jass_selection_result_win10(
-                            pm, snapshot.unit_address, 0, snapshot.owner,
-                            unit_index=unit_index,
-                        )
-                    else:
-                        candidate = self._candidate_from_jass_selection_result(
-                            pm, snapshot.unit_address, 0, snapshot.owner,
-                            unit_index=unit_index,
-                        )
+                    candidates = self._selected_candidates_from_selection_manager(pm)
+                    candidate = next(
+                        (
+                            item for item in candidates
+                            if item.unit_address == snapshot.unit_address
+                        ),
+                        None,
+                    )
                 if candidate is None:
                     raise RuntimeError("Native selection changed while mapping its field objects; retry the read")
                 self._unit_owner_index[candidate.handle] = candidate.owner_address

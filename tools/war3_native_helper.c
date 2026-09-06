@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 27u
+#define WAR3_NATIVE_VERSION 28u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -79,6 +79,7 @@
 #define WAR3_NATIVE_OP_PERSISTENT_SELECTED_SNAPSHOT 131u
 #define WAR3_NATIVE_OP_MOVE_SELECTED_GROUP_TO_MOUSE 132u
 #define WAR3_NATIVE_OP_PERSISTENT_UNIT_SNAPSHOT 133u
+#define WAR3_NATIVE_OP_JASS_SET_UNIT_STATE 134u
 #define WAR3_CLONE_FLAG_HERO 0x01u
 #define WAR3_CLONE_FLAG_INVENTORY 0x02u
 #define WAR3_CLONE_FLAG_PRESERVE_OWNER 0x04u
@@ -391,6 +392,7 @@ static const char *g_persistent_native_names[] = {
     "BlzGetAbilityId",
     "GetUnitAbilityLevel",
     "SetUnitPosition",
+    "SetUnitState",
 };
 
 static War3PersistentNative g_persistent_natives[
@@ -3962,6 +3964,28 @@ static void run_command(void) {
                 __try {
                     set_unit_position(cmd.unit_handle, &x, &y);
                     op->result = (uint64_t)x_bits | ((uint64_t)y_bits << 32);
+                } __except (EXCEPTION_EXECUTE_HANDLER) {
+                    op->last_error = GetExceptionCode();
+                    last_error = op->last_error;
+                    goto finish;
+                }
+                break;
+            }
+            case WAR3_NATIVE_OP_JASS_SET_UNIT_STATE: {
+                JassSetUnitStateFn set_unit_state =
+                    (JassSetUnitStateFn)(uintptr_t)op->handler;
+                uint32_t value_bits = (uint32_t)op->arg0;
+                float value = 0.0f;
+                memcpy(&value, &value_bits, sizeof(value));
+                if (!cmd.unit_handle || !set_unit_state || op->rawcode > 32u ||
+                    !(value == value) || value < -100000000.0f || value > 100000000.0f) {
+                    op->last_error = ERROR_INVALID_PARAMETER;
+                    last_error = ERROR_INVALID_PARAMETER;
+                    goto finish;
+                }
+                __try {
+                    set_unit_state(cmd.unit_handle, (int32_t)op->rawcode, &value);
+                    op->result = value_bits;
                 } __except (EXCEPTION_EXECUTE_HANDLER) {
                     op->last_error = GetExceptionCode();
                     last_error = op->last_error;

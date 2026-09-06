@@ -11854,6 +11854,26 @@ class War3Trainer:
         extra_identities: Iterable[tuple[int, int, int]] | None = None,
     ) -> list[UnitSelectionSummary]:
         with self._process_memory() as pm:
+            if getattr(self, "_persistent_native_initialized", False):
+                selected = self._selected_candidates_snapshot(pm)
+                summaries = list(self._selected_summaries_from_snapshot(pm, selected))
+                if extra_identities is not None:
+                    for handle, owner, unit in extra_identities:
+                        candidate = self._candidate_from_identity(
+                            pm,
+                            handle,
+                            owner,
+                            unit,
+                            f"remembered_identity=0x{handle:x},0x{owner:x},0x{unit:x}",
+                            860,
+                        )
+                        if candidate is not None:
+                            summaries.append(
+                                self._selection_summary_from_candidate(
+                                    pm, candidate, 0, 2, 0,
+                                )
+                            )
+                return summaries[:max(0, int(limit))]
             unit_index = self._build_unit_object_index(pm, force_refresh=True)
             summary_by_unit: dict[int, UnitSelectionSummary] = {}
 

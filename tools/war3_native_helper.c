@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 24u
+#define WAR3_NATIVE_VERSION 25u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -723,7 +723,8 @@ static DWORD war3_persistent_selected_snapshot(
                 }
             }
             if (get_ability_by_index && get_ability_id && get_ability_level) {
-                for (int32_t index = 0; index < 256 && snapshot->ability_count < WAR3_PERSISTENT_SNAPSHOT_MAX_ABILITIES; ++index) {
+                int ability_overflow = 0;
+                for (int32_t index = 0; index < 256; ++index) {
                     uint64_t ability = get_ability_by_index(unit, index);
                     uint32_t rawcode;
                     if (!ability) {
@@ -733,9 +734,17 @@ static DWORD war3_persistent_selected_snapshot(
                     if (!rawcode) {
                         continue;
                     }
+                    if (snapshot->ability_count >= WAR3_PERSISTENT_SNAPSHOT_MAX_ABILITIES) {
+                        ability_overflow = 1;
+                        continue;
+                    }
                     snapshot->ability_ids[snapshot->ability_count] = rawcode;
                     snapshot->ability_levels[snapshot->ability_count] = (uint64_t)(int64_t)get_ability_level(unit, rawcode);
                     ++snapshot->ability_count;
+                }
+                if (ability_overflow) {
+                    error = ERROR_MORE_DATA;
+                    __leave;
                 }
             }
             ++count;

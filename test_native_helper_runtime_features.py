@@ -557,6 +557,22 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
         self.assertEqual(snapshot.ability_ids, (0x41420031, 0x41420032))
         self.assertEqual(snapshot.ability_levels, (1, 3))
 
+    def test_persistent_snapshot_parser_rejects_truncated_ability_payload(self):
+        trainer = object.__new__(trainer_module.War3Trainer)
+        trainer._persistent_bootstrap_lock = threading.RLock()
+        trainer._persistent_native_initialized = True
+        row = [0] * trainer.PERSISTENT_NATIVE_SNAPSHOT_QWORDS
+        row[41] = 49
+        trainer._run_native_helper_ops = Mock(return_value=[
+            trainer_module.NativeHelperOpResult(
+                kind=trainer.NATIVE_HELPER_OP_PERSISTENT_SELECTED_SNAPSHOT,
+                result=1,
+                extra_results=tuple(row),
+            )
+        ])
+        with self.assertRaisesRegex(RuntimeError, "超过固定协议容量"):
+            trainer.persistent_native_selected_snapshots()
+
     def test_elephant_handlers_discovers_every_requested_native(self):
         trainer = object.__new__(trainer_module.War3Trainer)
         trainer._native_handlers = {}

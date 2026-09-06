@@ -2521,7 +2521,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 24
+    NATIVE_HELPER_VERSION = 25
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -4219,7 +4219,11 @@ class War3Trainer:
             item_charges = tuple(row[23:29])
             item_handles = tuple(row[29:35])
             item_addresses = tuple(row[35:41])
-            ability_count = min(int(row[41]), 48)
+            ability_count = int(row[41])
+            if ability_count > 48:
+                raise RuntimeError(
+                    "persistent native snapshot 技能数量超过固定协议容量，已拒绝使用不完整数据"
+                )
             ability_ids = tuple(row[42:42 + ability_count])
             ability_levels = tuple(row[90:90 + ability_count])
             snapshots.append(

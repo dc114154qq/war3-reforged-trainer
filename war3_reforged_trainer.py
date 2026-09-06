@@ -13090,6 +13090,16 @@ class War3Trainer:
                 note="persistent native snapshot for current unit",
             ))
 
+        def append_native_int(
+            key: str, label: str, value: int, address: int, category: str,
+        ) -> None:
+            fields.append(UnitMemoryField(
+                key=key, label=label, value_type="i32", value=int(value),
+                address=address, category=category,
+                write_address=address, write_type="i32" if address else "",
+                note="persistent native snapshot for current unit",
+            ))
+
         if native is None:
             self._append_unit_field(pm, fields, "hp_max", "HP-最大值", "f32", candidate.hp_max_address, "基础")
             self._append_unit_field(pm, fields, "hp_current", "HP-当前值", "f32", candidate.hp_current_address, "基础")
@@ -13130,9 +13140,15 @@ class War3Trainer:
         hero = components.get("hero")
         if hero is not None:
             _wrapper, data = hero
-            self._append_unit_field(pm, fields, "xp", "经验值", "i32", data + 0x100, "英雄")
+            if native is None:
+                self._append_unit_field(pm, fields, "xp", "经验值", "i32", data + 0x100, "英雄")
+            else:
+                append_native_int("xp", "经验值", native.hero_xp, data + 0x100, "英雄")
             self._append_unit_field(pm, fields, "skill_points", "技能点", "i32", data + 0x104, "英雄")
-            self._append_unit_field(pm, fields, "base_strength", "力量(基础)", "i32", data + 0x108, "英雄")
+            if native is None:
+                self._append_unit_field(pm, fields, "base_strength", "力量(基础)", "i32", data + 0x108, "英雄")
+            else:
+                append_native_int("base_strength", "力量(基础)", native.strength, data + 0x108, "英雄")
             try:
                 base_intelligence, total_intelligence = self._get_hero_intelligence_pair_via_native_internal(pm, candidate)
                 fields.append(
@@ -13162,7 +13178,10 @@ class War3Trainer:
                     "英雄",
                     note=f"内部 GetHeroInt 读取失败，暂用旧缓存候选：{exc}",
                 )
-            self._append_unit_field(pm, fields, "base_agility", "敏捷(基础)", "i32", data + 0x130, "英雄")
+            if native is None:
+                self._append_unit_field(pm, fields, "base_agility", "敏捷(基础)", "i32", data + 0x130, "英雄")
+            else:
+                append_native_int("base_agility", "敏捷(基础)", native.agility, data + 0x130, "英雄")
             growth_note = "英雄组件成长值，不是面板装备/光环加成"
             self._append_unit_field(pm, fields, "strength_growth", "力量成长/级", "f32", data + 0x188, "英雄", note=growth_note)
             self._append_unit_field(pm, fields, "intelligence_growth", "智力成长/级", "f32", data + 0x198, "英雄", note=growth_note)

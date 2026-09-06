@@ -4734,9 +4734,10 @@ class War3Trainer:
     def _elephant_selected_candidate(self, pm: ProcessMemory) -> UnitCandidate:
         if self._elephant_selection_override is not None:
             return self._elephant_selection_override[0]
-        candidate = self._locate_selected_unit_by_selection_manager(pm)
+        candidates = self._selected_candidates_from_selection_manager(pm)
+        candidate = candidates[0] if candidates else None
         if candidate is None:
-            raise RuntimeError("selection manager 未返回当前选中单位，已拒绝回退到全进程扫描")
+            raise RuntimeError("selection manager 尚未预热或未返回当前选中单位，已拒绝同步扫描")
         return self._candidate_with_selected_unit_type_id(pm, candidate)
 
     def _elephant_selected_handle(self, pm: ProcessMemory) -> int:
@@ -10963,14 +10964,6 @@ class War3Trainer:
         candidates: list[UnitCandidate] = []
         seen: set[int] = set()
         players = self._selection_player_pointer_candidates(pm, discover=False)
-        if not players:
-            # Selection layout discovery is a one-time bootstrap operation.
-            # Once the player/manager pointer is known, target changes only
-            # read the bounded live list below.
-            probe = self.probe_native_selection_manager()
-            players = self._selection_player_pointer_candidates(pm, discover=False)
-            if not players and probe.candidate is not None:
-                return (probe.candidate,)
         for player in players:
             try:
                 selection_manager = pm.read_u64(player + self._selection_manager_offset)

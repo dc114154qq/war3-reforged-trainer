@@ -12020,11 +12020,15 @@ class War3Trainer:
         return 0x100000000 <= value <= 0x7FFFFFFFFFFF
 
     def _panel_from_candidate(self, pm: ProcessMemory, candidate: UnitCandidate) -> VisibleUnitPanel:
-        actual_hp = int(round(pm.read_f32(candidate.hp_current_address)))
-        actual_hp_max = int(round(pm.read_f32(candidate.hp_max_address)))
+        native = self._native_snapshot_for_candidate(candidate)
+        actual_hp = int(round(native.hp if native is not None else pm.read_f32(candidate.hp_current_address)))
+        actual_hp_max = int(round(native.hp_max if native is not None else pm.read_f32(candidate.hp_max_address)))
         actual_mp = 0
         actual_mp_max = 0
-        if candidate.mp_current_address and candidate.mp_max_address:
+        if native is not None:
+            actual_mp = int(round(native.mp))
+            actual_mp_max = int(round(native.mp_max))
+        elif candidate.mp_current_address and candidate.mp_max_address:
             actual_mp = int(round(pm.read_f32(candidate.mp_current_address)))
             actual_mp_max = int(round(pm.read_f32(candidate.mp_max_address)))
         return VisibleUnitPanel(
@@ -12037,6 +12041,9 @@ class War3Trainer:
         )
 
     def _position_from_candidate(self, pm: ProcessMemory, candidate: UnitCandidate) -> tuple[float, float] | None:
+        native = self._native_snapshot_for_candidate(candidate)
+        if native is not None:
+            return native.x, native.y
         if not candidate.x_address or not candidate.y_address:
             return None
         return pm.read_f32(candidate.x_address), pm.read_f32(candidate.y_address)
@@ -12895,7 +12902,7 @@ class War3Trainer:
             # A native candidate must never pick up another read's payload,
             # even when the engine has reused its unit object address.
             raise RuntimeError("当前 native 快照已经失效，请重新读取选中单位")
-        return next((item for item in self._last_persistent_native_snapshots
+        return next((item for item in getattr(self, "_last_persistent_native_snapshots", ())
                      if identity == (item.full_handle, item.owner_address, item.unit_address)), None)
 
     def _inventory_items_from_candidate(

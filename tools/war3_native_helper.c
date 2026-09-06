@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 26u
+#define WAR3_NATIVE_VERSION 27u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -78,6 +78,7 @@
 #define WAR3_NATIVE_OP_PERSISTENT_REGISTER_NATIVE 130u
 #define WAR3_NATIVE_OP_PERSISTENT_SELECTED_SNAPSHOT 131u
 #define WAR3_NATIVE_OP_MOVE_SELECTED_GROUP_TO_MOUSE 132u
+#define WAR3_NATIVE_OP_PERSISTENT_UNIT_SNAPSHOT 133u
 #define WAR3_CLONE_FLAG_HERO 0x01u
 #define WAR3_CLONE_FLAG_INVENTORY 0x02u
 #define WAR3_CLONE_FLAG_PRESERVE_OWNER 0x04u
@@ -593,6 +594,7 @@ static DWORD war3_persistent_selected_snapshot(
     typedef uint32_t (__fastcall *GetItemTypeIdFn)(uint64_t);
     typedef int32_t (__fastcall *GetItemChargesFn)(uint64_t);
     uint32_t resolved = 0;
+    int targeted = op && op->kind == WAR3_NATIVE_OP_PERSISTENT_UNIT_SNAPSHOT;
     uint64_t group = 0;
     uint64_t player = 0;
     uint64_t *buffer = NULL;
@@ -627,6 +629,9 @@ static DWORD war3_persistent_selected_snapshot(
         !cmd || !op || !extra_results || !extra_result_count ||
         cmd->op_count != 1u
     ) {
+        return ERROR_INVALID_DATA;
+    }
+    if (targeted && (!cmd->unit_handle || !op->handler || !op->arg0 || !op->arg1)) {
         return ERROR_INVALID_DATA;
     }
     error = war3_persistent_resolve_natives(&resolved);
@@ -683,20 +688,39 @@ static DWORD war3_persistent_selected_snapshot(
         return ERROR_OUTOFMEMORY;
     }
     __try {
-        group = ((JassNoArgU64Fn)(uintptr_t)war3_persistent_native_handler("CreateGroup"))();
-        player = get_local_player();
-        if (!group || !player) {
-            error = ERROR_NOT_FOUND;
-            __leave;
+        if (!targeted) {
+            group = ((JassNoArgU64Fn)(uintptr_t)war3_persistent_native_handler("CreateGroup"))();
+            player = get_local_player();
+            if (!group || !player) {
+                error = ERROR_NOT_FOUND;
+                __leave;
+            }
+            enum_selected(group, player, 0);
         }
-        enum_selected(group, player, 0);
         while (count < 12u) {
-            uint64_t unit = first_of_group(group);
+            uint64_t unit = targeted ? (count ? 0 : cmd->unit_handle) : first_of_group(group);
             War3PersistentSnapshot *snapshot;
             if (!unit) {
                 break;
             }
-            remove_unit(group, unit);
+            if (targeted) {
+                /* op.handler is the expected unit object, arg0 the complete
+                   object handle, arg1 the expected owner. Validate before any
+                   field native runs; never follow the current selection. */
+                uint64_t object = resolve_unit(unit);
+                uint64_t owner = ((War3AgentResolveFn)(uintptr_t)g_persistent_agent_resolver)(
+                    (uint32_t)op->arg0, (uint32_t)(op->arg0 >> 32));
+                if (object != op->handler || owner != op->arg1 ||
+                    *(uint64_t *)(uintptr_t)(object + 0x18) != op->arg0 ||
+                    *(uint64_t *)(uintptr_t)(owner + 0x18) != 0x2b7733752b61676cULL ||
+                    *(uint64_t *)(uintptr_t)(owner + 0x20) != op->arg0 ||
+                    *(uint64_t *)(uintptr_t)(owner + 0x90) != object) {
+                    error = ERROR_INVALID_HANDLE;
+                    __leave;
+                }
+            } else {
+                remove_unit(group, unit);
+            }
             snapshot = &((War3PersistentSnapshot *)buffer)[count];
             snapshot->handle = unit;
             snapshot->owner = get_owning_player(unit);
@@ -797,7 +821,7 @@ static DWORD war3_persistent_selected_snapshot(
             }
             ++count;
         }
-        if (count == 12u && first_of_group(group) != 0) {
+        if (!targeted && count == 12u && first_of_group(group) != 0) {
             error = ERROR_MORE_DATA;
             __leave;
         }
@@ -2682,6 +2706,7 @@ static void run_command(void) {
                 op->result = op->handler;
                 break;
             }
+            case WAR3_NATIVE_OP_PERSISTENT_UNIT_SNAPSHOT:
             case WAR3_NATIVE_OP_PERSISTENT_SELECTED_SNAPSHOT: {
                 last_error = war3_persistent_selected_snapshot(
                     &cmd,

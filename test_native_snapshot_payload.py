@@ -35,16 +35,17 @@ static BOOL test_free(HANDLE heap, DWORD flags, void *p) {
 #define HeapFree test_free
 #include "HELPER_SOURCE"
 static unsigned sizes[13], selected, cursor, destroyed, fail_index, holes;
+static unsigned target_unit, target_fault, enumerations, field_reads;
 static uint8_t objects[13][0x20], owners[13][0xa0];
 static uint64_t fake_create(void) { return 1; }
 static uint64_t fake_player(void) { return 2; }
-static void fake_enum(uint64_t g, uint64_t p, uint64_t f) { cursor = 0; }
+static void fake_enum(uint64_t g, uint64_t p, uint64_t f) { cursor = 0; ++enumerations; }
 static uint64_t fake_first(uint64_t g) { return cursor < selected ? cursor + 1 : 0; }
 static void fake_remove(uint64_t g, uint64_t u) { ++cursor; }
 static void fake_destroy(uint64_t g) { ++destroyed; }
 static uint64_t fake_owner(uint64_t u) { return 2; }
 static int32_t fake_player_id(uint64_t p) { return 1; }
-static uint32_t fake_type(uint64_t u) { return 0x68666f6f; }
+static uint32_t fake_type(uint64_t u) { ++field_reads; return 0x68666f6f; }
 static uint32_t fake_real(uint64_t u) { return 0x3f800000; }
 static uint32_t fake_state(uint64_t u, int32_t s) { return 0x40000000; }
 static int32_t fake_hero(uint64_t u) { return u == 1 ? 5 : 0; }
@@ -72,6 +73,7 @@ __declspec(dllexport) unsigned collect(unsigned n, const unsigned *counts, unsig
     NativeCommand cmd = {0}; NativeOp op = {0}; uint64_t *payload = NULL;
     uint32_t payload_count = 0; DWORD error;
     selected = n; cursor = destroyed = 0; fail_index = fail; holes = sparse;
+    enumerations = field_reads = 0;
     allocation_calls = 0;
     *length = *units = 0;
     if (n > 13) return ERROR_INVALID_PARAMETER;
@@ -106,6 +108,20 @@ __declspec(dllexport) unsigned collect(unsigned n, const unsigned *counts, unsig
     g_persistent_agent_resolver = (uint64_t)(uintptr_t)fake_agent;
     g_persistent_item_resolver = (uint64_t)(uintptr_t)fake_item;
     cmd.op_count = 1;
+    if (target_unit) {
+        unsigned index = target_unit - 1;
+        op.kind = WAR3_NATIVE_OP_PERSISTENT_UNIT_SNAPSHOT;
+        cmd.unit_handle = target_unit;
+        op.handler = (uint64_t)(uintptr_t)objects[index];
+        op.arg0 = ((uint64_t)target_unit << 32) | target_unit;
+        op.arg1 = (uint64_t)(uintptr_t)owners[index];
+        if (target_fault == 1) ++op.handler;
+        if (target_fault == 2) op.arg0 += 1ULL << 32;
+        if (target_fault == 3) ++op.arg1;
+        if (target_fault == 4) *(uint64_t *)(objects[index]+0x18) += 1ULL << 32;
+        if (target_fault == 5) *(uint64_t *)(owners[index]+0x90) = 0;
+        if (target_fault == 6) cmd.unit_handle = 0;
+    }
     error = war3_persistent_selected_snapshot(&cmd, &op, &payload, &payload_count);
     if (!error) {
         if (payload_count > out_capacity) error = ERROR_INSUFFICIENT_BUFFER;
@@ -121,6 +137,9 @@ __declspec(dllexport) unsigned destroyed_count(void) { return destroyed; }
 __declspec(dllexport) unsigned live_allocations(void) { return allocations; }
 __declspec(dllexport) unsigned alloc_calls(void) { return allocation_calls; }
 __declspec(dllexport) void set_fail_allocation(unsigned n) { fail_allocation = n; }
+__declspec(dllexport) void set_target(unsigned n, unsigned fault) { target_unit = n; target_fault = fault; }
+__declspec(dllexport) unsigned enumeration_count(void) { return enumerations; }
+__declspec(dllexport) unsigned field_read_count(void) { return field_reads; }
 '''
 
 
@@ -231,3 +250,32 @@ class NativeSnapshotPayloadTests(unittest.TestCase):
             row[41] = ability_count
             with self.assertRaises(RuntimeError):
                 self.parse(1, tuple(row))
+
+    def test_target_snapshot_does_not_enumerate_selection_and_keeps_extended_fields(self):
+        try:
+            self.native.set_target(2, 0)
+            error, count, payload = self.collect((0, 300))
+            self.assertEqual(error, 0)
+            self.assertEqual(count, 1)
+            snapshot = self.parse(count, payload)[0]
+            self.assertEqual(snapshot.handle, 2)
+            self.assertEqual(snapshot.full_handle, 0x200000002)
+            self.assertEqual(len(snapshot.ability_ids), 300)
+            self.assertEqual(snapshot.item_charges[0], 2)
+            self.assertEqual(self.native.enumeration_count(), 0)
+            self.assertEqual(self.native.destroyed_count(), 0)
+        finally:
+            self.native.set_target(0, 0)
+
+    def test_target_mismatch_fails_before_any_field_native(self):
+        try:
+            for fault in range(1, 7):
+                with self.subTest(fault=fault):
+                    self.native.set_target(2, fault)
+                    error, count, payload = self.collect((0, 10))
+                    self.assertEqual(error, 13 if fault == 6 else 6)
+                    self.assertEqual((count, payload), (0, ()))
+                    self.assertEqual(self.native.field_read_count(), 0)
+                    self.assertEqual(self.native.enumeration_count(), 0)
+        finally:
+            self.native.set_target(0, 0)

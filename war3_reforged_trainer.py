@@ -2525,7 +2525,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 26
+    NATIVE_HELPER_VERSION = 27
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -2602,6 +2602,7 @@ class War3Trainer:
     NATIVE_HELPER_OP_PERSISTENT_REGISTER_NATIVE = 130
     NATIVE_HELPER_OP_PERSISTENT_SELECTED_SNAPSHOT = 131
     NATIVE_HELPER_OP_MOVE_SELECTED_GROUP_TO_MOUSE = 132
+    NATIVE_HELPER_OP_PERSISTENT_UNIT_SNAPSHOT = 133
     PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 140
     PERSISTENT_NATIVE_NAMES = (
         "UnitAddAbility",
@@ -4185,6 +4186,13 @@ class War3Trainer:
                 snapshot_op,
                 timeout_ms=timeout_ms,
             )[0]
+        snapshots = self._parse_persistent_native_snapshots(result)
+        self._last_persistent_native_snapshots = snapshots
+        return snapshots
+
+    def _parse_persistent_native_snapshots(
+        self, result: NativeHelperOpResult,
+    ) -> tuple[PersistentNativeUnitSnapshot, ...]:
         values = tuple(int(value) for value in result.extra_results)
         count = int(result.result)
         if not 0 <= count <= self.SELECTED_BATCH_MAX_UNITS:
@@ -4274,9 +4282,27 @@ class War3Trainer:
                 "persistent native snapshot 附加结果长度异常："
                 f"{len(values) - extra_cursor}"
             )
-        result_snapshots = tuple(snapshots)
-        self._last_persistent_native_snapshots = result_snapshots
-        return result_snapshots
+        return tuple(snapshots)
+
+    def _refresh_native_candidate(self, candidate: UnitCandidate) -> UnitCandidate:
+        previous = self._native_snapshot_for_candidate(candidate)
+        if previous is None:
+            return candidate
+        self.persistent_native_init()
+        result = self._run_native_helper_ops(previous.handle, ((
+            self.NATIVE_HELPER_OP_PERSISTENT_UNIT_SNAPSHOT, 0,
+            candidate.unit_address, candidate.handle, candidate.owner_address,
+        ),))[0]
+        snapshots = self._parse_persistent_native_snapshots(result)
+        if len(snapshots) != 1:
+            raise RuntimeError("当前 native 快照已经失效，请重新读取选中单位")
+        current = snapshots[0]
+        if (current.handle, current.full_handle, current.owner_address, current.unit_address) != (
+            previous.handle, candidate.handle, candidate.owner_address, candidate.unit_address
+        ):
+            raise RuntimeError("当前 native 快照已经失效，请重新读取选中单位")
+        # This is a read of one pinned unit, not a new selection snapshot.
+        return replace(candidate, native_snapshot=current, unit_type_id=current.type_id)
 
     def _native_helper_command_path(self) -> Path:
         return Path(tempfile.gettempdir()) / f"war3_reforged_native_{self.pid}.bin"
@@ -4710,6 +4736,7 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_PERSISTENT_REGISTER_NATIVE,
             self.NATIVE_HELPER_OP_PERSISTENT_SELECTED_SNAPSHOT,
             self.NATIVE_HELPER_OP_MOVE_SELECTED_GROUP_TO_MOUSE,
+            self.NATIVE_HELPER_OP_PERSISTENT_UNIT_SNAPSHOT,
         }
         if any(kind not in allowed_kinds for kind, _rawcode, _handler, _arg0, _arg1 in op_list):
             raise RuntimeError("native helper 仅允许结构化验证后的白名单操作")
@@ -4759,6 +4786,7 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_JASS_ITEM_FIELD_SET,
             self.NATIVE_HELPER_OP_JASS_CLONE_SELECTED_UNIT,
         }
+        unit_kinds.add(self.NATIVE_HELPER_OP_PERSISTENT_UNIT_SNAPSHOT)
         if any(kind in unit_kinds for kind, _rawcode, _handler, _arg0, _arg1 in op_list) and not unit_address:
             raise RuntimeError("当前单位缺少运行时 unit 指针，不能调用 native helper")
         command_path = self._native_helper_command_path()
@@ -13922,6 +13950,7 @@ class War3Trainer:
             )
             if candidate is None:
                 raise RuntimeError("候选单位已经失效，请重新读取候选列表")
+            candidate = self._refresh_native_candidate(candidate)
             candidate = self._candidate_with_selected_unit_type_id(pm, candidate)
             panel = self._panel_from_candidate(pm, candidate)
             return panel, candidate, self._unit_fields_from_candidate(pm, candidate)
@@ -14574,12 +14603,15 @@ class War3Trainer:
         if not self._looks_like_item_rawcode(new_rawcode):
             raise ValueError(f"物品 rawcode 无效：{format_rawcode(new_rawcode)}")
 
+        candidate = self._refresh_native_candidate(candidate)
         components = self._selected_components(pm, candidate.owner_address)
         if "inventory" not in components:
             raise RuntimeError("当前选中单位没有物品栏组件")
 
         items = self._inventory_items_from_candidate(pm, candidate, components)
         old_snapshot = next((item for item in items if item.slot == slot_index + 1), None)
+        if candidate.native_snapshot is not None and (len(items) != 6 or old_snapshot is None):
+            raise RuntimeError("当前 native 快照已经失效，请重新读取选中单位")
         before_by_slot = {item.slot: item.rawcode for item in items}
         old_rawcode = old_snapshot.rawcode if old_snapshot is not None else 0
         actions: list[str] = []
@@ -14602,13 +14634,19 @@ class War3Trainer:
 
         final_snapshot: InventoryItem | None = None
         after_items: list[InventoryItem] = []
-        for attempt in range(6):
-            time.sleep(0.03 if attempt == 0 else 0.08)
+        native_readback = candidate.native_snapshot is not None
+        for attempt in range(1 if native_readback else 6):
+            if native_readback:
+                candidate = self._refresh_native_candidate(candidate)
+            else:
+                time.sleep(0.03 if attempt == 0 else 0.08)
             self._item_object_cache.clear()
             after_items = self._inventory_items_from_candidate(pm, candidate, components)
             final_snapshot = next((item for item in after_items if item.slot == slot_index + 1), None)
             if final_snapshot is not None and final_snapshot.rawcode == new_rawcode:
                 break
+        if native_readback and len(after_items) != 6:
+            raise RuntimeError("当前 native 快照已经失效，请重新读取选中单位")
         after_by_slot = {item.slot: item.rawcode for item in after_items}
         changed_other_slots = [
             slot
@@ -14650,7 +14688,7 @@ class War3Trainer:
             value=final_rawcode,
             address=final_address,
             category=field.category,
-            write_address=field.write_address,
+            write_address=final_address,
             write_type=field.write_type,
             write_base=field.write_base,
             note=note,

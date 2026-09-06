@@ -11946,6 +11946,36 @@ class War3Trainer:
         extra_identities: Iterable[tuple[int, int, int]] | None = None,
     ) -> list[UnitSelectionSummary]:
         with self._process_memory() as pm:
+            if getattr(self, "_persistent_native_initialized", False):
+                # The injected helper already owns the live selection group.
+                # Building the legacy object index here would scan private
+                # heap regions again whenever the recovery list is refreshed.
+                snapshots = self.persistent_native_selected_snapshots()
+                summaries: list[UnitSelectionSummary] = []
+                for snapshot in snapshots:
+                    candidate = self._candidate_from_identity(
+                        pm,
+                        snapshot.full_handle,
+                        snapshot.owner_address,
+                        snapshot.unit_address,
+                        "persistent_native_selection",
+                        1000,
+                    )
+                    if candidate is None:
+                        continue
+                    summaries.append(
+                        self._selection_summary_from_candidate(
+                            pm,
+                            candidate,
+                            refs=0,
+                            known_hits=2,
+                        )
+                    )
+                return sorted(
+                    summaries,
+                    key=self._selection_summary_priority,
+                    reverse=True,
+                )[:max(0, int(limit))]
             unit_index = self._build_unit_object_index(pm, force_refresh=True)
             summary_by_unit: dict[int, UnitSelectionSummary] = {}
 

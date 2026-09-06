@@ -1,10 +1,12 @@
 import math
 import struct
+from dataclasses import replace
 from unittest.mock import patch
 
 import pytest
 
 import war3_reforged_trainer as trainer
+from test_native_snapshot_binding import make_snapshot, snapshot_result
 
 
 def _f32(value: float) -> float:
@@ -45,6 +47,33 @@ def large_numeric_context():
             mp_max: _f32(500.0),
         }
     )
+    native = replace(make_snapshot(), handle=7, full_handle=0x1234,
+                     owner_address=owner, unit_address=unit)
+    subject._last_persistent_native_snapshots = (native,)
+    subject.persistent_native_init = lambda: None
+    handlers = {name: trainer.NativeHandler(name, 0, i + 100) for i, name in enumerate(
+        ("BlzSetUnitMaxHP", "BlzSetUnitMaxMana", "SetUnitState"))}
+    subject._elephant_handlers = lambda memory, names: {name: handlers[name] for name in names}
+
+    def run_native(handle, ops):
+        assert handle == 7  # JASS handle, not the full object identity 0x1234.
+        results = []
+        for kind, state, handler, value, unused in ops:
+            if kind == 133:
+                assert (handler, value, unused) == (unit, native.full_handle, owner)
+                results.append(snapshot_result(replace(native,
+                    hp=pm.read_f32(hp_current), hp_max=pm.read_f32(hp_max),
+                    mp=pm.read_f32(mp_current), mp_max=pm.read_f32(mp_max))))
+                continue
+            if kind == 135:
+                address = hp_max if handler == handlers["BlzSetUnitMaxHP"].handler_address else mp_max
+                pm.write_f32(address, value)
+            else:
+                assert kind == 134 and handler == handlers["SetUnitState"].handler_address
+                pm.write_f32(hp_current if state == 0 else mp_current, subject._float_from_bits(value))
+            results.append(trainer.NativeHelperOpResult(kind=kind, result=value))
+        return results
+    subject._run_native_helper_ops = run_native
 
     def candidate():
         def property_for_owner(_pm, candidate_owner, kind):
@@ -75,7 +104,7 @@ def test_large_vitals_can_be_reread_after_successful_write(large_numeric_context
     subject, pm, candidate, hp_current, mp_current = large_numeric_context
     before = candidate()
     assert before is not None
-    stored = _f32(1.0e20)
+    stored = _f32(1.0e7)  # Large but inside the helper's supported vital range.
 
     subject._write_basic_unit_values_to_candidate(
         pm,
@@ -88,6 +117,7 @@ def test_large_vitals_can_be_reread_after_successful_write(large_numeric_context
 
     after = candidate()
     assert after is not None
+    after = subject._refresh_native_candidate(after)
     assert after.mp_current_address == mp_current
     panel = subject._panel_from_candidate(pm, after)
     assert panel.current_hp == int(round(stored))

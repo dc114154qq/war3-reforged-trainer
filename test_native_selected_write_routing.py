@@ -26,7 +26,7 @@ class NativeSelectedWriteRoutingTests(unittest.TestCase):
                        "_discover_native_selection_layout"):
             setattr(self.trainer, method, Mock(side_effect=AssertionError("Unexpected legacy locator")))
         self.trainer._write_unit_fields_to_candidate = Mock(return_value=["written"])
-        self.trainer._write_basic_unit_values_to_candidate = Mock()
+        self.trainer._write_basic_unit_values_to_candidate = Mock(side_effect=lambda pm, candidate, *args: candidate)
         self.trainer._panel_from_candidate = Mock(return_value="panel")
         self.trainer._candidate_with_selected_unit_type_id = Mock(side_effect=lambda pm, candidate: candidate)
         self.trainer._unit_fields_from_candidate = Mock(return_value=[])

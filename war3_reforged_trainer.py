@@ -14832,7 +14832,7 @@ class War3Trainer:
         target_y: float | None = None,
         target_hp_regen: float | None = None,
         target_mp_regen: float | None = None,
-    ) -> None:
+    ) -> UnitCandidate:
         target_hp = coerce_finite_float32(target_hp) if target_hp is not None else None
         target_mp = coerce_finite_float32(target_mp) if target_mp is not None else None
         max_hp = coerce_finite_float32(max_hp) if max_hp is not None else None
@@ -14849,102 +14849,82 @@ class War3Trainer:
             if target_mp_regen is not None
             else None
         )
-        set_unit_state = 0
-        set_max_hp = 0
-        set_max_mp = 0
-        set_position = 0
-        if hasattr(self, "_native_handlers"):
-            requested_handlers = ["SetUnitState"]
-            if max_hp is not None:
-                requested_handlers.append("BlzSetUnitMaxHP")
-            if max_mp is not None:
-                requested_handlers.append("BlzSetUnitMaxMana")
-            if target_x is not None or target_y is not None:
-                requested_handlers.append("SetUnitPosition")
-            native_handlers = self._elephant_handlers(pm, requested_handlers)
-            set_unit_state = native_handlers["SetUnitState"].handler_address
-            set_max_hp = native_handlers.get("BlzSetUnitMaxHP", NativeHandler("", 0, 0)).handler_address
-            set_max_mp = native_handlers.get("BlzSetUnitMaxMana", NativeHandler("", 0, 0)).handler_address
-            set_position = native_handlers.get("SetUnitPosition", NativeHandler("", 0, 0)).handler_address
-        if max_hp is not None or target_hp is not None:
-            try:
-                old_max_hp = pm.read_f32(candidate.hp_max_address)
-            except OSError:
-                old_max_hp = float(target_hp) if target_hp is not None else 0.0
-            target_max_hp = float(max_hp) if max_hp is not None else old_max_hp
-            if target_hp is not None and float(target_hp) > target_max_hp:
-                target_max_hp = float(target_hp)
-            if target_max_hp > 0 and set_max_hp:
-                self._run_native_helper_ops(
-                    candidate.handle,
-                    ((self.NATIVE_HELPER_OP_JASS_SET_UNIT_INT, 0, set_max_hp,
-                      int(round(target_max_hp)), 0),),
-                )
-            elif target_max_hp > 0:
-                pm.write_f32(candidate.hp_max_address, target_max_hp)
-            if target_hp is not None and set_unit_state:
-                self._run_native_helper_ops(
-                    candidate.handle,
-                    ((self.NATIVE_HELPER_OP_JASS_SET_UNIT_STATE, 0, set_unit_state,
-                      self._float_bits(target_hp), 0),),
-                )
-            elif target_hp is not None:
-                pm.write_f32(candidate.hp_current_address, float(target_hp))
-        if max_mp is not None or target_mp is not None:
-            if not candidate.mp_current_address or not candidate.mp_max_address:
-                raise RuntimeError("当前单位没有可写的魔法属性")
-            try:
-                old_max_mp = pm.read_f32(candidate.mp_max_address)
-            except OSError:
-                old_max_mp = float(target_mp) if target_mp is not None else 0.0
-            target_max_mp = float(max_mp) if max_mp is not None else old_max_mp
-            if target_mp is not None and float(target_mp) > target_max_mp:
-                target_max_mp = float(target_mp)
-            if target_max_mp >= 0 and set_max_mp:
-                self._run_native_helper_ops(
-                    candidate.handle,
-                    ((self.NATIVE_HELPER_OP_JASS_SET_UNIT_INT, 0, set_max_mp,
-                      int(round(target_max_mp)), 0),),
-                )
-            elif target_max_mp >= 0:
-                pm.write_f32(candidate.mp_max_address, target_max_mp)
-            if target_mp is not None and set_unit_state:
-                self._run_native_helper_ops(
-                    candidate.handle,
-                    ((self.NATIVE_HELPER_OP_JASS_SET_UNIT_STATE, 2, set_unit_state,
-                      self._float_bits(target_mp), 0),),
-                )
-            elif target_mp is not None:
-                pm.write_f32(candidate.mp_current_address, float(target_mp))
-        if target_hp_regen is not None:
-            if not candidate.hp_regen_address:
-                raise RuntimeError("当前单位没有可写的 HP 回复率属性")
-            pm.write_f32(candidate.hp_regen_address, float(target_hp_regen))
-        if target_mp_regen is not None:
-            if not candidate.mp_regen_address:
-                raise RuntimeError("当前单位没有可写的 MP 回复率属性")
-            pm.write_f32(candidate.mp_regen_address, float(target_mp_regen))
+        # Validate the entire request before submitting any write. The helper
+        # accepts bounded real states and integer maximums, not arbitrary f32s.
+        for value in (target_hp, target_mp):
+            if value is not None and not -100_000_000 <= value <= 100_000_000:
+                raise ValueError("Native current vital is outside the supported range")
+        for value, minimum in ((max_hp, 1), (max_mp, 0)):
+            if value is not None and not minimum <= value <= 1_000_000_000:
+                raise ValueError("Native maximum vital is outside the supported range")
+        for value in (target_x, target_y):
+            if value is not None and abs(value) > 1_000_000:
+                raise ValueError("Native position is outside the supported range")
+        regen_writes = []
+        for value, address in ((target_hp_regen, candidate.hp_regen_address),
+                               (target_mp_regen, candidate.mp_regen_address)):
+            if value is not None:
+                if not address:
+                    raise RuntimeError("Current unit has no writable regeneration field")
+                regen_writes.append((address, value))
+        if all(value is None for value in (target_hp, target_mp, max_hp, max_mp,
+                                           target_x, target_y)) and not regen_writes:
+            return candidate
+
+        native = self._native_snapshot_for_candidate(candidate)
+        if native is None:
+            # A manual identity may not have a bound snapshot. Recover its JASS
+            # handle only from an exact engine identity match; never reinterpret
+            # the 64-bit object identity or silently choose the first selection.
+            identity = (candidate.handle, candidate.owner_address, candidate.unit_address)
+            native = next((snapshot for snapshot in self.persistent_native_selected_snapshots()
+                           if (snapshot.full_handle, snapshot.owner_address, snapshot.unit_address)
+                           == identity), None)
+            if native is None:
+                raise RuntimeError("No native handle for the requested unit identity")
+            candidate = replace(candidate, native_snapshot=native)
+        candidate = self._refresh_native_candidate(candidate)
+        native = self._native_snapshot_for_candidate(candidate)
+        if native is None or not native.handle:
+            raise RuntimeError("No native handle for the requested unit identity")
+
+        # Build one command containing all setters in order. The command header
+        # takes the JASS handle; candidate.handle is the engine object identity.
+        requests = []
+        for current, maximum, old_maximum, state, setter in (
+            (target_hp, max_hp, native.hp_max, 0, "BlzSetUnitMaxHP"),
+            (target_mp, max_mp, native.mp_max, 2, "BlzSetUnitMaxMana"),
+        ):
+            if current is None and maximum is None:
+                continue
+            limit = float(maximum) if maximum is not None else old_maximum
+            if current is not None and current > limit:
+                limit = math.ceil(current)
+            if not math.isfinite(limit) or not 0 <= limit <= 1_000_000_000:
+                raise ValueError("Native maximum vital is outside the supported range")
+            if maximum is not None or limit != old_maximum:
+                requests.append((setter, self.NATIVE_HELPER_OP_JASS_SET_UNIT_INT,
+                                 0, int(round(limit)), 0))
+            if current is not None:
+                requests.append(("SetUnitState", self.NATIVE_HELPER_OP_JASS_SET_UNIT_STATE,
+                                 state, self._float_bits(current), 0))
         if target_x is not None or target_y is not None:
-            if not set_position:
-                if target_x is not None:
-                    if not candidate.x_address:
-                        raise RuntimeError("当前单位没有可写的 X 坐标属性")
-                    pm.write_f32(candidate.x_address, float(target_x))
-                if target_y is not None:
-                    if not candidate.y_address:
-                        raise RuntimeError("当前单位没有可写的 Y 坐标属性")
-                    pm.write_f32(candidate.y_address, float(target_y))
-            else:
-                current_x = pm.read_f32(candidate.x_address) if candidate.x_address else 0.0
-                current_y = pm.read_f32(candidate.y_address) if candidate.y_address else 0.0
-                self._run_native_helper_ops(
-                    candidate.handle,
-                    ((self.NATIVE_HELPER_OP_JASS_SET_UNIT_POSITION,
-                      self._float_bits(target_x if target_x is not None else current_x),
-                      set_position,
-                      self._float_bits(target_y if target_y is not None else current_y),
-                      0),),
-                )
+            x = native.x if target_x is None else target_x
+            y = native.y if target_y is None else target_y
+            if not all(math.isfinite(v) and abs(v) <= 1_000_000 for v in (x, y)):
+                raise ValueError("Native position is outside the supported range")
+            requests.append(("SetUnitPosition", self.NATIVE_HELPER_OP_JASS_SET_UNIT_POSITION,
+                             self._float_bits(x), self._float_bits(y), 0))
+        if requests:
+            handlers = self._elephant_handlers(pm, tuple(dict.fromkeys(row[0] for row in requests)))
+            ops = tuple((kind, rawcode, handlers[name].handler_address, arg0, arg1)
+                        for name, kind, rawcode, arg0, arg1 in requests)
+            self._run_native_helper_ops(native.handle, ops)
+        # Regeneration still uses verified property addresses. It has no native
+        # setter here and is not an alternate path for vital/position failures.
+        for address, value in regen_writes:
+            pm.write_f32(address, value)
+        return self._refresh_native_candidate(candidate)
 
     def set_selected_unit(
         self,
@@ -14961,7 +14941,7 @@ class War3Trainer:
     ) -> UnitCandidate:
         with self._process_memory(write=True) as pm:
             candidate = self.locate_selected_unit_by_handle(pm, allow_deep_scan=True)
-            self._write_basic_unit_values_to_candidate(
+            candidate = self._write_basic_unit_values_to_candidate(
                 pm,
                 candidate,
                 target_hp,
@@ -14973,8 +14953,6 @@ class War3Trainer:
                 target_hp_regen,
                 target_mp_regen,
             )
-            if hasattr(self, "_persistent_bootstrap_lock"):
-                candidate = self._refresh_native_candidate(candidate)
         return candidate
 
     def set_unit_by_identity(
@@ -15004,7 +14982,7 @@ class War3Trainer:
             )
             if candidate is None:
                 raise RuntimeError("候选单位已经失效，请重新读取候选列表")
-            self._write_basic_unit_values_to_candidate(
+            candidate = self._write_basic_unit_values_to_candidate(
                 pm,
                 candidate,
                 target_hp,
@@ -15016,8 +14994,6 @@ class War3Trainer:
                 target_hp_regen,
                 target_mp_regen,
             )
-            if hasattr(self, "_persistent_bootstrap_lock"):
-                candidate = self._refresh_native_candidate(candidate)
             return candidate
 
     def set_unit_by_identity_win10(
@@ -15048,7 +15024,7 @@ class War3Trainer:
                 owner,
                 unit,
             )
-            isolated._write_basic_unit_values_to_candidate(
+            candidate = isolated._write_basic_unit_values_to_candidate(
                 pm,
                 candidate,
                 target_hp,

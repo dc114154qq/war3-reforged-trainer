@@ -4876,6 +4876,13 @@ class War3Trainer:
                 return persistent_selected
             raise RuntimeError("persistent native 已读取选择列表，但无法映射到单位字段对象")
 
+        if self._persistent_native_initialized:
+            # An initialized helper returning an empty snapshot means that
+            # selection is currently empty or between engine updates. Do not
+            # reinterpret that state through legacy handle slots or a global
+            # unit-object index.
+            raise RuntimeError("native helper 当前没有稳定的选中单位快照")
+
         selected: list[tuple[UnitCandidate, int]] = []
         seen_units: set[int] = set()
         handles = tuple(handles) if handles is not None else self._elephant_selected_handles(pm)

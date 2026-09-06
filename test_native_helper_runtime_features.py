@@ -18,6 +18,20 @@ class _Memory:
 
 
 class NativeHelperRuntimeFeatureTests(unittest.TestCase):
+    def test_partial_native_identity_never_uses_legacy_selection_manager(self):
+        trainer = object.__new__(trainer_module.War3Trainer)
+        trainer._candidate_from_identity = Mock(return_value=None)
+        trainer._selected_candidates_from_selection_manager = Mock(
+            side_effect=AssertionError("legacy selection fallback must not run")
+        )
+        pm = Mock()
+        snapshot = SimpleNamespace(
+            handle=1, full_handle=0, owner_address=0, unit_address=0x1234, type_id=0x41414141
+        )
+        with self.assertRaisesRegex(RuntimeError, "拒绝回退"):
+            trainer._selected_candidates_snapshot(pm, persistent_snapshots=(snapshot,))
+        trainer._selected_candidates_from_selection_manager.assert_not_called()
+
     def test_warm_native_handlers_do_not_read_process_records_again(self):
         trainer = object.__new__(trainer_module.War3Trainer)
         handler = trainer_module.NativeHandler("SetUnitPosition", 0x1000, 0x2000)

@@ -4893,13 +4893,11 @@ class War3Trainer:
                         snapshot.unit_address, "native_engine_handle_table", 1000,
                     )
                 else:
-                    candidates = self._selected_candidates_from_selection_manager(pm)
-                    candidate = next(
-                        (
-                            item for item in candidates
-                            if item.unit_address == snapshot.unit_address
-                        ),
-                        None,
+                    # A partial native identity cannot be safely paired with
+                    # a legacy selection-manager result: a newly created unit
+                    # may otherwise inherit the previous unit's fields.
+                    raise RuntimeError(
+                        "native 快照缺少完整单位身份，已拒绝回退到旧选择器；请重试"
                     )
                 if candidate is None:
                     raise RuntimeError("Native selection changed while mapping its field objects; retry the read")

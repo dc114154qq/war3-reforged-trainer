@@ -37,6 +37,7 @@ def detect_ui_language(locale_name: str | None = None) -> str:
 _EN_TRANSLATIONS = {
     "native helper 当前没有稳定的选中单位快照": "The native helper has no stable selected-unit snapshot",
     "当前 native 快照已经失效，请重新读取选中单位": "The current native snapshot has expired; read the selected unit again",
+    "native 快照缺少完整单位身份，已拒绝回退到旧选择器；请重试": "The native snapshot lacks a complete unit identity; retry the read",
     "native helper 未返回完整当前单位身份，已拒绝同步扫描": "The native helper did not return a complete current-unit identity; synchronous scanning was rejected",
     "selection manager 尚未预热或未返回当前选中单位，已拒绝同步扫描": "The selection manager is not warmed up or returned no current selected unit; synchronous scanning was rejected",
     "selection manager 未返回当前选中单位，已拒绝回退到全进程扫描": "The selection manager did not return the current selected unit; falling back to a full-process scan was rejected",

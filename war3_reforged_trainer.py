@@ -2807,7 +2807,9 @@ class War3Trainer:
                     # player-component discovery scan on a first operation.
                     if not self._selection_player_candidates:
                         self._discover_native_selection_layout(pm)
-                        self._selection_player_pointer_candidates(pm, discover=True)
+                        self._selection_player_candidates = list(
+                            self._selection_player_pointer_candidates(pm, discover=True)
+                        )
                     native_selection = self.persistent_native_selected_snapshots(
                         timeout_ms=5000,
                     )

@@ -65,7 +65,7 @@
 
 剩余限制：只有持有本次 native 快照，或最近选择快照仍有完整匹配身份的候选能走该定向路由。UI 只存完整对象身份、未长期持有 JASS 绑定的手动候选，若最近选择已变化，仍可能无法命中此路由；此时原有诊断路径尚存，不能声称所有手动/锁定操作都已迁移。首次初始化的堆搜索、详细字段完整 native 化及真实引擎枚举语义仍待解决。
 
-协议 27 最终离线验证：171 passed、50 subtests passed；`git diff --check` 通过。分支 DLL SHA256：`D69783B1A0D6F32E9F72D2D17FDFF55C52295388A64BE031412D08389A206B07`。这些验证没有启动游戏，也不证明真实游戏中所有字段已经稳定可写。
+协议 27 的历史离线验证：171 passed、50 subtests passed；这些验证没有启动游戏，也不证明真实游戏中所有字段已经稳定可写。当前分支已推进到协议 28，DLL 与 Python 协议一致性需以当前源码和重新构建产物为准。
 
 ## 公共当前单位定位入口统一
 
@@ -81,4 +81,4 @@
 
 基础属性写入现在会在已验证的单位句柄上调用游戏内 `SetUnitState`：生命使用状态 0，魔法使用状态 2；最大生命/魔法值调用已由复制单位链路验证过的 `BlzSetUnitMaxHP/BlzSetUnitMaxMana`。调用由 native helper 的游戏线程回调执行，并对句柄和值范围做校验。回复率仍未找到同等可靠的游戏线程 setter，因此仍是跨进程地址写入，不能把本节描述为全部基础属性已经迁移。
 
-公共定位迁移最终离线验证：`python -m pytest -q --tb=short` 返回 179 passed、54 subtests passed；`git diff --check` 通过。
+公共定位迁移最终离线验证：`python -m pytest -q --tb=short` 返回 179 passed、54 subtests passed；`git diff --check` 通过。用户提供的 `War3ReforgedTrainer-v1.0.18-Capstone.exe` 是历史构建，未包含本分支后续提交；当前源码与协议 28 DLL 尚未打包成新的 EXE。

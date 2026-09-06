@@ -4363,11 +4363,12 @@ class War3Trainer:
         wait_ms = max(5000, min(300000, int(timeout_ms) + 5000))
         with self._native_helper_lock:
             self._ensure_native_helper_persistent_hook(wait_ms=wait_ms)
-            return self._run_native_helper_ops_locked(
-                unit_address,
-                ops,
-                timeout_ms=timeout_ms,
-            )
+            with self._native_helper_transaction(wait_ms=wait_ms):
+                return self._run_native_helper_ops_locked(
+                    unit_address,
+                    ops,
+                    timeout_ms=timeout_ms,
+                )
 
     @contextmanager
     def _native_helper_transaction(self, *, wait_ms: int = 300000) -> Iterator[None]:

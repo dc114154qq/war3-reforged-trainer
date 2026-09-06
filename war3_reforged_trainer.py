@@ -4601,9 +4601,14 @@ class War3Trainer:
             if last_status != self.NATIVE_HELPER_STATUS_PENDING:
                 return self._parse_native_helper_results(data, op_count)
             if not sent:
-                time.sleep(0.02)
+                # The hook normally completes on the same UI-thread message
+                # dispatch. A 20 ms polling quantum made every native action
+                # visibly lag, and multiplied that lag for legacy per-unit
+                # batch actions. Keep a small yield for CPU fairness while
+                # retaining the outer timeout as the hang guard.
+                time.sleep(0.002)
                 continue
-            time.sleep(0.02)
+            time.sleep(0.002)
         raise TimeoutError(f"native helper 执行超时：status={last_status}")
 
     def _run_native_helper_ops_locked(

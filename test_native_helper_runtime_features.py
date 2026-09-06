@@ -228,11 +228,14 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
 
     def test_native_inventory_empty_sentinels_do_not_trigger_item_search(self):
         trainer = object.__new__(trainer_module.War3Trainer)
-        candidate = SimpleNamespace(unit_address=0x2000, owner_address=0x3000)
-        trainer._last_persistent_native_snapshots = (SimpleNamespace(
+        persistent = SimpleNamespace(
+            full_handle=0x1234, owner_address=0x3000,
             unit_address=0x2000, item_handles=(0,) * 6,
             item_addresses=(0,) * 6, item_ids=(0,) * 6, item_charges=(0,) * 6,
-        ),)
+        )
+        candidate = SimpleNamespace(handle=0x1234, unit_address=0x2000, owner_address=0x3000,
+                                    native_snapshot=persistent, selection_source="persistent_native")
+        trainer._last_persistent_native_snapshots = ()
         trainer._inventory_record_address = Mock(return_value=0x4000)
         trainer._item_objects_from_handles = Mock(side_effect=AssertionError("Unexpected item scan"))
         pm = Mock()

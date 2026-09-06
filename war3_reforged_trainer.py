@@ -23,7 +23,7 @@ import sys
 import threading
 import time
 import traceback
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable, Iterable, Iterator
 
@@ -600,6 +600,10 @@ class UnitCandidate:
     selection_source: str = ""
     selection_slot_address: int = 0
     unit_type_id: int = 0
+
+    # Keep the immutable native result attached to the candidate that it
+    # actually described. Other threads may replace the latest-session tuple.
+    native_snapshot: PersistentNativeUnitSnapshot | None = field(default=None, compare=False, repr=False)
 
     @property
     def hp_visible_address(self) -> int:
@@ -4852,7 +4856,8 @@ class War3Trainer:
         )
         if candidate is None:
             raise RuntimeError("当前 native 快照已经失效，请重新读取选中单位")
-        return self._candidate_with_selected_unit_type_id(pm, candidate)
+        return replace(candidate, unit_type_id=int(snapshot.type_id),
+                       selection_source="persistent_native", native_snapshot=snapshot)
 
     def _elephant_selected_handle(self, pm: ProcessMemory) -> int:
         if self._elephant_selection_override is not None:
@@ -4935,6 +4940,7 @@ class War3Trainer:
                 ),
                 selection_source="persistent_native",
                 unit_type_id=int(snapshot.type_id),
+                native_snapshot=snapshot,
             )
             selected.append((candidate, snapshot.handle))
         # Publish only after the whole group has passed identity checks. A
@@ -4950,23 +4956,18 @@ class War3Trainer:
         snapshot: Iterable[tuple[UnitCandidate, int]],
     ) -> tuple[UnitSelectionSummary, ...]:
         snapshot = tuple(snapshot)
-        persistent_by_unit = {
-            item.unit_address: item
-            for item in self._last_persistent_native_snapshots
-            if item.unit_address
-        }
         if (
             snapshot
             and all(
                 candidate.selection_source == "persistent_native"
-                and candidate.unit_address in persistent_by_unit
                 for candidate, _unit_handle in snapshot
             )
         ):
             summaries: list[UnitSelectionSummary] = []
-            for candidate, _unit_handle in snapshot:
-                item = persistent_by_unit[candidate.unit_address]
-                panel = self._panel_from_candidate(pm, candidate)
+            for candidate, unit_handle in snapshot:
+                item = self._native_snapshot_for_candidate(candidate)
+                if item is None or item.handle != unit_handle:
+                    raise RuntimeError("当前 native 快照已经失效，请重新读取选中单位")
                 inventory = tuple(
                     f"{slot}:{format_rawcode(rawcode)}"
                     for slot, rawcode in enumerate(item.item_ids, start=1)
@@ -4985,8 +4986,8 @@ class War3Trainer:
                         refs=1,
                         known_hits=2,
                         region_base=0,
-                        hp_text=panel.hp_text,
-                        mp_text=panel.mp_text,
+                        hp_text=f"{int(round(item.hp))}/{int(round(item.hp_max))}",
+                        mp_text=f"{int(round(item.mp))}/{int(round(item.mp_max))}",
                         position=(item.x, item.y),
                         components=tuple(sorted(components)),
                         inventory=inventory,
@@ -12911,6 +12912,22 @@ class War3Trainer:
                 offset += size
         return found
 
+    def _native_snapshot_for_candidate(
+        self, candidate: UnitCandidate,
+    ) -> PersistentNativeUnitSnapshot | None:
+        identity = (candidate.handle, candidate.owner_address, candidate.unit_address)
+        bound = candidate.native_snapshot
+        if bound is not None:
+            if identity != (bound.full_handle, bound.owner_address, bound.unit_address):
+                raise RuntimeError("当前 native 快照已经失效，请重新读取选中单位")
+            return bound
+        if candidate.selection_source == "persistent_native":
+            # A native candidate must never pick up another read's payload,
+            # even when the engine has reused its unit object address.
+            raise RuntimeError("当前 native 快照已经失效，请重新读取选中单位")
+        return next((item for item in self._last_persistent_native_snapshots
+                     if identity == (item.full_handle, item.owner_address, item.unit_address)), None)
+
     def _inventory_items_from_candidate(
         self,
         pm: ProcessMemory,
@@ -12926,14 +12943,7 @@ class War3Trainer:
         if not record:
             return []
 
-        persistent = next(
-            (
-                item
-                for item in self._last_persistent_native_snapshots
-                if item.unit_address == candidate.unit_address
-            ),
-            None,
-        )
+        persistent = self._native_snapshot_for_candidate(candidate)
         if persistent is not None and len(persistent.item_handles) == 6:
             fast_items: list[InventoryItem] = []
             fast_path_valid = True
@@ -12942,7 +12952,8 @@ class War3Trainer:
                 try:
                     handle = pm.read_u64(handle_address)
                 except OSError:
-                    handle = 0
+                    fast_path_valid = False
+                    break
                 snapshot_handle = int(persistent.item_handles[index])
                 item_address = int(persistent.item_addresses[index])
                 occupied = handle not in (0, 0xFFFFFFFFFFFFFFFF)
@@ -12983,6 +12994,10 @@ class War3Trainer:
                             ability_rawcode = 0
                             ability_rawcode_address = 0
                         charges_address = item_address + self.ITEM_CHARGES_OFFSET
+                        # This function also performs post-write readback.
+                        # The identity snapshot locates the object, but its
+                        # old quantity cannot verify a subsequent mutation.
+                        charges = pm.read_i32(charges_address)
                     except OSError:
                         fast_path_valid = False
                         break
@@ -13005,12 +13020,9 @@ class War3Trainer:
             if fast_path_valid:
                 return fast_items
 
-            if self._persistent_native_initialized:
-                # The helper supplied the item identities for this exact
-                # native snapshot. If the live slot record changed before it
-                # could be validated, report the snapshot as stale instead of
-                # searching the process for a similarly shaped old item.
-                return []
+            # This read owns a native payload even if registration is being
+            # reset concurrently. Never turn stale slots into a heap search.
+            return []
 
         items: list[InventoryItem] = []
         slot_handles: list[tuple[int, int, int]] = []

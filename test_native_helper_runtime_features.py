@@ -382,18 +382,18 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
 
     def test_selected_handles_uses_deduplicated_helper_extra_results(self):
         trainer = self.make_trainer()
-        trainer._selected_candidates_from_selection_manager = Mock(
+        trainer.persistent_native_selected_snapshots = Mock(
             return_value=tuple(SimpleNamespace(handle=value) for value in (0x100, 0x200, 0x100, 0x300))
         )
 
         handles = trainer._elephant_selected_handles(object())
 
         self.assertEqual(handles, (0x100, 0x200, 0x300))
-        trainer._selected_candidates_from_selection_manager.assert_called_once()
+        trainer.persistent_native_selected_snapshots.assert_called_once()
 
     def test_selected_handles_rejects_more_than_twelve(self):
         trainer = self.make_trainer()
-        trainer._selected_candidates_from_selection_manager = Mock(
+        trainer.persistent_native_selected_snapshots = Mock(
             return_value=tuple(SimpleNamespace(handle=value) for value in range(1, 14))
         )
 

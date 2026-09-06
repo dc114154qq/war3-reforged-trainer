@@ -4742,20 +4742,15 @@ class War3Trainer:
     def _elephant_selected_handle(self, pm: ProcessMemory) -> int:
         if self._elephant_selection_override is not None:
             return self._elephant_selection_override[1]
-        candidate = self._locate_selected_unit_by_selection_manager(pm)
-        unit_handle = int(candidate.handle) if candidate is not None else 0
+        snapshots = self.persistent_native_selected_snapshots(timeout_ms=30000)
+        unit_handle = int(snapshots[0].handle) if snapshots else 0
         if not unit_handle:
             raise RuntimeError("游戏当前没有可操作的选中单位")
         return unit_handle
 
     def _elephant_selected_handles(self, pm: ProcessMemory) -> tuple[int, ...]:
-        handles = tuple(
-            dict.fromkeys(
-                int(candidate.handle)
-                for candidate in self._selected_candidates_from_selection_manager(pm)
-                if candidate.handle
-            )
-        )
+        snapshots = self.persistent_native_selected_snapshots(timeout_ms=30000)
+        handles = tuple(dict.fromkeys(int(snapshot.handle) for snapshot in snapshots if snapshot.handle))
         if not handles:
             raise RuntimeError("游戏当前没有可操作的选中单位")
         if len(handles) > self.SELECTED_BATCH_MAX_UNITS:

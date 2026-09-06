@@ -13076,20 +13076,49 @@ class War3Trainer:
         candidate: UnitCandidate,
     ) -> list[UnitMemoryField]:
         fields: list[UnitMemoryField] = []
-        self._append_unit_field(pm, fields, "hp_max", "HP-最大值", "f32", candidate.hp_max_address, "基础")
-        self._append_unit_field(pm, fields, "hp_current", "HP-当前值", "f32", candidate.hp_current_address, "基础")
+        native = self._native_snapshot_for_candidate(candidate)
+
+        def append_native_real(
+            key: str, label: str, value: float, address: int, category: str,
+        ) -> None:
+            if not math.isfinite(float(value)):
+                return
+            fields.append(UnitMemoryField(
+                key=key, label=label, value_type="f32", value=float(value),
+                address=address, category=category,
+                write_address=address, write_type="f32" if address else "",
+                note="persistent native snapshot for current unit",
+            ))
+
+        if native is None:
+            self._append_unit_field(pm, fields, "hp_max", "HP-最大值", "f32", candidate.hp_max_address, "基础")
+            self._append_unit_field(pm, fields, "hp_current", "HP-当前值", "f32", candidate.hp_current_address, "基础")
+        else:
+            append_native_real("hp_max", "HP-最大值", native.hp_max, candidate.hp_max_address, "基础")
+            append_native_real("hp_current", "HP-当前值", native.hp, candidate.hp_current_address, "基础")
         self._append_unit_field(pm, fields, "hp_regen", "HP-回复率", "f32", candidate.hp_regen_address, "基础")
-        self._append_unit_field(pm, fields, "mp_max", "MP-最大值", "f32", candidate.mp_max_address, "基础")
-        self._append_unit_field(pm, fields, "mp_current", "MP-当前值", "f32", candidate.mp_current_address, "基础")
+        if native is None:
+            self._append_unit_field(pm, fields, "mp_max", "MP-最大值", "f32", candidate.mp_max_address, "基础")
+            self._append_unit_field(pm, fields, "mp_current", "MP-当前值", "f32", candidate.mp_current_address, "基础")
+        else:
+            append_native_real("mp_max", "MP-最大值", native.mp_max, candidate.mp_max_address, "基础")
+            append_native_real("mp_current", "MP-当前值", native.mp, candidate.mp_current_address, "基础")
         self._append_unit_field(pm, fields, "mp_regen", "MP-回复率", "f32", candidate.mp_regen_address, "基础")
-        self._append_unit_field(pm, fields, "x", "坐标-X", "f32", candidate.x_address, "坐标")
-        self._append_unit_field(pm, fields, "y", "坐标-Y", "f32", candidate.y_address, "坐标")
+        if native is None:
+            self._append_unit_field(pm, fields, "x", "坐标-X", "f32", candidate.x_address, "坐标")
+            self._append_unit_field(pm, fields, "y", "坐标-Y", "f32", candidate.y_address, "坐标")
+        else:
+            append_native_real("x", "坐标-X", native.x, candidate.x_address, "坐标")
+            append_native_real("y", "坐标-Y", native.y, candidate.y_address, "坐标")
 
         components = self._selected_components(pm, candidate.owner_address)
         move = components.get("move")
         if move is not None:
             _wrapper, data = move
-            self._append_unit_field(pm, fields, "move_speed", "移动速度", "f32", data + 0xD8, "移动")
+            if native is None:
+                self._append_unit_field(pm, fields, "move_speed", "移动速度", "f32", data + 0xD8, "移动")
+            else:
+                append_native_real("move_speed", "移动速度", native.move_speed, data + 0xD8, "移动")
 
         if candidate.unit_address:
             self._append_unit_field(pm, fields, "armor", "护甲", "f32", candidate.unit_address + 0x2E8, "防御")

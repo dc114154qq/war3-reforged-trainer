@@ -4739,7 +4739,20 @@ class War3Trainer:
         candidates = self._selected_candidates_from_selection_manager(pm)
         candidate = candidates[0] if candidates else None
         if candidate is None:
-            raise RuntimeError("selection manager 尚未预热或未返回当前选中单位，已拒绝同步扫描")
+            snapshots = self.persistent_native_selected_snapshots(timeout_ms=10000)
+            if snapshots:
+                snapshot = snapshots[0]
+                if snapshot.full_handle and snapshot.owner_address and snapshot.unit_address:
+                    candidate = self._candidate_from_identity(
+                        pm,
+                        snapshot.full_handle,
+                        snapshot.owner_address,
+                        snapshot.unit_address,
+                        "persistent_native_elephant",
+                        1000,
+                    )
+            if candidate is None:
+                raise RuntimeError("native helper 未返回完整当前单位身份，已拒绝同步扫描")
         return self._candidate_with_selected_unit_type_id(pm, candidate)
 
     def _elephant_selected_handle(self, pm: ProcessMemory) -> int:

@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 29u
+#define WAR3_NATIVE_VERSION 30u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -81,6 +81,7 @@
 #define WAR3_NATIVE_OP_PERSISTENT_UNIT_SNAPSHOT 133u
 #define WAR3_NATIVE_OP_JASS_SET_UNIT_STATE 134u
 #define WAR3_NATIVE_OP_JASS_SET_UNIT_INT 135u
+#define WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY 136u
 #define WAR3_CLONE_FLAG_HERO 0x01u
 #define WAR3_CLONE_FLAG_INVENTORY 0x02u
 #define WAR3_CLONE_FLAG_PRESERVE_OWNER 0x04u
@@ -577,6 +578,34 @@ static uint64_t war3_persistent_native_handler(const char *name) {
     return 0;
 }
 
+/* Guard a pinned unit in the same game-thread callback as its mutations.
+   The JASS handle and the full engine object handle are deliberately separate. */
+static DWORD war3_validate_unit_identity(const NativeCommand *cmd, const NativeOp *guard) {
+    uint64_t object, owner;
+    if (!cmd->unit_handle || !guard->handler || !guard->arg0 || !guard->arg1) {
+        return ERROR_INVALID_HANDLE;
+    }
+    if (!war3_executable_pointer(g_persistent_unit_resolver) ||
+        !war3_executable_pointer(g_persistent_agent_resolver)) {
+        return ERROR_PROC_NOT_FOUND;
+    }
+    __try {
+        object = ((JassUnitHandleResolveFn)(uintptr_t)g_persistent_unit_resolver)(cmd->unit_handle);
+        owner = ((War3AgentResolveFn)(uintptr_t)g_persistent_agent_resolver)(
+            (uint32_t)guard->arg0, (uint32_t)(guard->arg0 >> 32));
+        if (!object || !owner || object != guard->handler || owner != guard->arg1 ||
+            *(uint64_t *)(uintptr_t)(object + 0x18) != guard->arg0 ||
+            *(uint64_t *)(uintptr_t)(owner + 0x18) != 0x2b7733752b61676cULL ||
+            *(uint64_t *)(uintptr_t)(owner + 0x20) != guard->arg0 ||
+            *(uint64_t *)(uintptr_t)(owner + 0x90) != object) {
+            return ERROR_INVALID_HANDLE;
+        }
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return GetExceptionCode();
+    }
+    return ERROR_SUCCESS;
+}
+
 static DWORD war3_persistent_selected_snapshot(
     NativeCommand *cmd,
     NativeOp *op,
@@ -713,15 +742,8 @@ static DWORD war3_persistent_selected_snapshot(
                 /* op.handler is the expected unit object, arg0 the complete
                    object handle, arg1 the expected owner. Validate before any
                    field native runs; never follow the current selection. */
-                uint64_t object = resolve_unit(unit);
-                uint64_t owner = ((War3AgentResolveFn)(uintptr_t)g_persistent_agent_resolver)(
-                    (uint32_t)op->arg0, (uint32_t)(op->arg0 >> 32));
-                if (object != op->handler || owner != op->arg1 ||
-                    *(uint64_t *)(uintptr_t)(object + 0x18) != op->arg0 ||
-                    *(uint64_t *)(uintptr_t)(owner + 0x18) != 0x2b7733752b61676cULL ||
-                    *(uint64_t *)(uintptr_t)(owner + 0x20) != op->arg0 ||
-                    *(uint64_t *)(uintptr_t)(owner + 0x90) != object) {
-                    error = ERROR_INVALID_HANDLE;
+                error = war3_validate_unit_identity(cmd, op);
+                if (error) {
                     __leave;
                 }
             } else {
@@ -2666,6 +2688,21 @@ static void run_command(void) {
         NativeOp *op = &cmd.ops[i];
         op->result = 0;
         op->last_error = 0;
+        if (i > 0 && cmd.ops[0].kind == WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY) {
+            /* A setter can run triggers which destroy/recycle the unit. Check
+               again before each subsequent setter, not only once per batch. */
+            if (op->kind != WAR3_NATIVE_OP_JASS_SET_UNIT_STATE &&
+                op->kind != WAR3_NATIVE_OP_JASS_SET_UNIT_INT &&
+                op->kind != WAR3_NATIVE_OP_JASS_SET_UNIT_POSITION) {
+                last_error = ERROR_INVALID_DATA;
+            } else {
+                last_error = war3_validate_unit_identity(&cmd, &cmd.ops[0]);
+            }
+            if (last_error) {
+                op->last_error = last_error;
+                goto finish;
+            }
+        }
         if (
             op->handler == 0 &&
             op->kind != WAR3_NATIVE_OP_QUERY_WORLD_POINT &&
@@ -2676,6 +2713,16 @@ static void run_command(void) {
             goto finish;
         }
         switch (op->kind) {
+            case WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY: {
+                last_error = (i != 0 || cmd.op_count < 2)
+                    ? ERROR_INVALID_DATA : war3_validate_unit_identity(&cmd, op);
+                if (last_error) {
+                    op->last_error = last_error;
+                    goto finish;
+                }
+                op->result = 1;
+                break;
+            }
             case WAR3_NATIVE_OP_PERSISTENT_REGISTER_NATIVE: {
                 size_t native_count =
                     sizeof(g_persistent_natives) / sizeof(g_persistent_natives[0]);
@@ -3984,7 +4031,9 @@ static void run_command(void) {
                 uint32_t value_bits = (uint32_t)op->arg0;
                 float value = 0.0f;
                 memcpy(&value, &value_bits, sizeof(value));
-                if (!cmd.unit_handle || !set_unit_state || op->rawcode > 32u ||
+                if (cmd.ops[0].kind != WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY ||
+                    !cmd.unit_handle || !war3_executable_pointer(op->handler) ||
+                    (op->rawcode != 0u && op->rawcode != 2u) ||
                     !(value == value) || value < -100000000.0f || value > 100000000.0f) {
                     op->last_error = ERROR_INVALID_PARAMETER;
                     last_error = ERROR_INVALID_PARAMETER;
@@ -4003,7 +4052,8 @@ static void run_command(void) {
             case WAR3_NATIVE_OP_JASS_SET_UNIT_INT: {
                 JassUnitSetIntFn set_unit_int =
                     (JassUnitSetIntFn)(uintptr_t)op->handler;
-                if (!cmd.unit_handle || !set_unit_int || op->arg0 > 1000000000u) {
+                if (cmd.ops[0].kind != WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY ||
+                    !cmd.unit_handle || !war3_executable_pointer(op->handler) || op->arg0 > 1000000000u) {
                     op->last_error = ERROR_INVALID_PARAMETER;
                     last_error = ERROR_INVALID_PARAMETER;
                     goto finish;

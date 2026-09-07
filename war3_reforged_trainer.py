@@ -2529,7 +2529,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 29
+    NATIVE_HELPER_VERSION = 30
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -2609,6 +2609,7 @@ class War3Trainer:
     NATIVE_HELPER_OP_PERSISTENT_UNIT_SNAPSHOT = 133
     NATIVE_HELPER_OP_JASS_SET_UNIT_STATE = 134
     NATIVE_HELPER_OP_JASS_SET_UNIT_INT = 135
+    NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY = 136
     PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 143
     PERSISTENT_NATIVE_NAMES = (
         "UnitAddAbility",
@@ -4752,6 +4753,7 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_PERSISTENT_UNIT_SNAPSHOT,
             self.NATIVE_HELPER_OP_JASS_SET_UNIT_STATE,
             self.NATIVE_HELPER_OP_JASS_SET_UNIT_INT,
+            self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY,
         }
         if any(kind not in allowed_kinds for kind, _rawcode, _handler, _arg0, _arg1 in op_list):
             raise RuntimeError("native helper 仅允许结构化验证后的白名单操作")
@@ -4804,6 +4806,7 @@ class War3Trainer:
         unit_kinds.add(self.NATIVE_HELPER_OP_PERSISTENT_UNIT_SNAPSHOT)
         unit_kinds.add(self.NATIVE_HELPER_OP_JASS_SET_UNIT_STATE)
         unit_kinds.add(self.NATIVE_HELPER_OP_JASS_SET_UNIT_INT)
+        unit_kinds.add(self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY)
         if any(kind in unit_kinds for kind, _rawcode, _handler, _arg0, _arg1 in op_list) and not unit_address:
             raise RuntimeError("当前单位缺少运行时 unit 指针，不能调用 native helper")
         command_path = self._native_helper_command_path()
@@ -14925,7 +14928,9 @@ class War3Trainer:
             handlers = self._elephant_handlers(pm, tuple(dict.fromkeys(row[0] for row in requests)))
             ops = tuple((kind, rawcode, handlers[name].handler_address, arg0, arg1)
                         for name, kind, rawcode, arg0, arg1 in requests)
-            self._run_native_helper_ops(native.handle, ops)
+            guard = (self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY, 0,
+                     candidate.unit_address, candidate.handle, candidate.owner_address)
+            self._run_native_helper_ops(native.handle, (guard, *ops))
         # Regeneration still uses verified property addresses. It has no native
         # setter here and is not an alternate path for vital/position failures.
         for address, value in regen_writes:

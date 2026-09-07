@@ -39,8 +39,9 @@ def test_vitals_and_position_use_jass_handle_in_one_write_batch(context):
         payload = trainer._pack_native_helper_command(handle, ops)
         assert trainer.NATIVE_HELPER_HEADER_STRUCT.unpack_from(payload)[4] == snapshot.handle
     ops = calls[1].args[1]
-    assert [op[0] for op in ops] == [135, 134, 135, 134, 94]
-    assert [ops[0][3], ops[2][3]] == [300, 90]
+    assert [op[0] for op in ops] == [136, 135, 134, 135, 134, 94]
+    assert ops[0][2:] == (candidate.unit_address, candidate.handle, candidate.owner_address)
+    assert [ops[1][3], ops[3][3]] == [300, 90]
     assert trainer._float_from_bits(ops[-1][1]) == 123
     assert trainer._float_from_bits(ops[-1][3]) == snapshot.y
     trainer.persistent_native_selected_snapshots.assert_not_called()
@@ -54,11 +55,11 @@ def test_vitals_and_position_use_jass_handle_in_one_write_batch(context):
     trainer._run_native_helper_ops_locked(snapshot.handle, ops)
     payload = trainer._write_native_helper_command.call_args.args[1]
     header = trainer.NATIVE_HELPER_HEADER_STRUCT.unpack_from(payload)
-    assert header[3:5] == (5, snapshot.handle)
+    assert header[3:5] == (6, snapshot.handle)
     base = trainer.NATIVE_HELPER_HEADER_STRUCT.size
     size = trainer.NATIVE_HELPER_OP_STRUCT.size
     assert [trainer.NATIVE_HELPER_OP_STRUCT.unpack_from(payload, base + i * size)[:5]
-            for i in range(5)] == list(ops)
+            for i in range(6)] == list(ops)
 
 
 @pytest.mark.parametrize('kwargs', [dict(target_hp=1e20), dict(max_mp=-1), dict(target_y=1e7)])

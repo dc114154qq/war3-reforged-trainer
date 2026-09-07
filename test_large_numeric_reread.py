@@ -65,6 +65,10 @@ def large_numeric_context():
                     hp=pm.read_f32(hp_current), hp_max=pm.read_f32(hp_max),
                     mp=pm.read_f32(mp_current), mp_max=pm.read_f32(mp_max))))
                 continue
+            if kind == 136:
+                assert (handler, value, unused) == (unit, native.full_handle, owner)
+                results.append(trainer.NativeHelperOpResult(kind=kind, result=1))
+                continue
             if kind == 135:
                 address = hp_max if handler == handlers["BlzSetUnitMaxHP"].handler_address else mp_max
                 pm.write_f32(address, value)

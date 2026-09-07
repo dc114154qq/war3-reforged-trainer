@@ -637,10 +637,11 @@ class UnitMemoryField:
     write_base: float = 0.0
     note: str = ""
     extra_writes: tuple[tuple[int, str], ...] = ()
+    native_write: bool = False
 
     @property
     def writable(self) -> bool:
-        return bool(self.write_address and self.write_type)
+        return self.native_write or bool(self.write_address and self.write_type)
 
     def value_text(self) -> str:
         if self.value_type == "rawcode":
@@ -2611,6 +2612,14 @@ class War3Trainer:
     NATIVE_HELPER_OP_JASS_SET_UNIT_INT = 135
     NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY = 136
     PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 143
+    NATIVE_BASIC_FIELD_ARGUMENTS = {
+        "hp_current": ("target_hp", "hp"),
+        "hp_max": ("max_hp", "hp_max"),
+        "mp_current": ("target_mp", "mp"),
+        "mp_max": ("max_mp", "mp_max"),
+        "x": ("target_x", "x"),
+        "y": ("target_y", "y"),
+    }
     PERSISTENT_NATIVE_NAMES = (
         "UnitAddAbility",
         "CreateGroup",
@@ -12979,10 +12988,13 @@ class War3Trainer:
         ) -> None:
             if not math.isfinite(float(value)):
                 return
+            uses_native_setter = key in self.NATIVE_BASIC_FIELD_ARGUMENTS
             fields.append(UnitMemoryField(
                 key=key, label=label, value_type="f32", value=float(value),
                 address=address, category=category,
-                write_address=address, write_type="f32" if address else "",
+                write_address=0 if uses_native_setter else address,
+                write_type="f32" if address and not uses_native_setter else "",
+                native_write=uses_native_setter,
                 note="persistent native snapshot for current unit",
             ))
 
@@ -14669,71 +14681,69 @@ class War3Trainer:
         specs = list(specs)
         if not specs:
             return []
-        written: list[UnitMemoryField] = []
-        remaining_specs: list[MemoryWriteSpec] = []
-        for spec in specs:
-            direct_key = self.FIELD_KEY_ALIASES.get(spec.label, spec.label)
-            if self._skill_index_from_field_key(direct_key) is not None:
-                field = UnitMemoryField(
-                    key=direct_key,
-                    label=direct_key,
-                    value_type="rawcode",
-                    value=0,
-                    address=0,
-                    category="技能",
-                    write_address=1,
-                    write_type="rawcode",
-                )
-                written.append(self._write_hero_skill_name_field(pm, candidate, field, spec.value))
-            else:
-                remaining_specs.append(spec)
-        if not remaining_specs:
-            return written
-        fields = self._unit_fields_from_candidate(pm, candidate)
+        # Resolve and validate all requested fields before any mutation. Native
+        # basic fields are batched once; their writability does not depend on an
+        # external property address being available.
+        needs_fields = any(self._skill_index_from_field_key(
+            self.FIELD_KEY_ALIASES.get(spec.label, spec.label)) is None for spec in specs)
+        fields = self._unit_fields_from_candidate(pm, candidate) if needs_fields else []
         by_key = {field.key: field for field in fields}
         by_label = {field.label: field for field in fields}
-        for spec in remaining_specs:
-            field = (
-                by_key.get(spec.label)
-                or by_key.get(self.FIELD_KEY_ALIASES.get(spec.label, ""))
-                or by_label.get(spec.label)
-            )
+        resolved = []
+        basic_values = {"target_hp": None, "target_mp": None}
+        basic_indices = []
+        seen_basic = set()
+        for index, spec in enumerate(specs):
+            direct_key = self.FIELD_KEY_ALIASES.get(spec.label, spec.label)
+            if self._skill_index_from_field_key(direct_key) is not None:
+                field = UnitMemoryField(key=direct_key, label=direct_key, value_type="rawcode",
+                                        value=0, address=0, category="技能", write_address=1, write_type="rawcode")
+            else:
+                field = by_key.get(direct_key) or by_label.get(spec.label)
             if field is None:
                 raise RuntimeError(f"当前选中单位没有字段：{spec.label}")
             if not field.writable:
                 raise RuntimeError(f"字段不可写：{field.label}")
+            resolved.append((field, spec))
+            if field.key in self.NATIVE_BASIC_FIELD_ARGUMENTS:
+                if field.key in seen_basic:
+                    raise ValueError("Duplicate native field in one write request")
+                seen_basic.add(field.key)
+                argument, _attribute = self.NATIVE_BASIC_FIELD_ARGUMENTS[field.key]
+                basic_values[argument] = coerce_finite_float32(spec.value)
+                basic_indices.append(index)
+
+        written = {}
+        if basic_indices:
+            candidate = self._write_basic_unit_values_to_candidate(pm, candidate, **basic_values)
+            snapshot = self._native_snapshot_for_candidate(candidate)
+            if snapshot is None:
+                raise RuntimeError("No native snapshot after basic field write")
+            for index in basic_indices:
+                field, _spec = resolved[index]
+                _argument, attribute = self.NATIVE_BASIC_FIELD_ARGUMENTS[field.key]
+                written[index] = replace(field, value=getattr(snapshot, attribute),
+                                         write_address=0, write_type="", native_write=True)
+        for index, (field, spec) in enumerate(resolved):
+            if index in written:
+                continue
             if field.key == "intelligence_total":
-                written.append(self._write_hero_intelligence_field(pm, candidate, field, spec.value))
-                continue
-            if self._skill_index_from_field_key(field.key) is not None:
-                written.append(self._write_hero_skill_name_field(pm, candidate, field, spec.value))
-                continue
-            if self._inventory_slot_charges_index_from_field_key(field.key) is not None:
-                written.append(self._write_inventory_slot_charges_field(pm, candidate, field, spec.value))
-                continue
-            if self._inventory_slot_index_from_field_key(field.key) is not None:
-                written.append(self._write_inventory_slot_field(pm, candidate, field, spec.value))
-                continue
-            self._write_memory_value(pm, field.write_address, field.write_type, spec.value)
-            for extra_address, extra_type in field.extra_writes:
-                self._write_memory_value(pm, extra_address, extra_type, spec.value)
-            new_value = self._read_memory_value(pm, field.address, field.value_type)
-            written.append(
-                UnitMemoryField(
-                    key=field.key,
-                    label=field.label,
-                    value_type=field.value_type,
-                    value=new_value,
-                    address=field.address,
-                    category=field.category,
-                    write_address=field.write_address,
-                    write_type=field.write_type,
-                    write_base=field.write_base,
-                    note=field.note,
-                    extra_writes=field.extra_writes,
-                )
-            )
-        return written
+                written[index] = self._write_hero_intelligence_field(pm, candidate, field, spec.value)
+            elif self._skill_index_from_field_key(field.key) is not None:
+                written[index] = self._write_hero_skill_name_field(pm, candidate, field, spec.value)
+            elif self._inventory_slot_charges_index_from_field_key(field.key) is not None:
+                written[index] = self._write_inventory_slot_charges_field(pm, candidate, field, spec.value)
+            elif self._inventory_slot_index_from_field_key(field.key) is not None:
+                written[index] = self._write_inventory_slot_field(pm, candidate, field, spec.value)
+            else:
+                if field.native_write:
+                    raise RuntimeError("No native setter for this field")
+                self._write_memory_value(pm, field.write_address, field.write_type, spec.value)
+                for extra_address, extra_type in field.extra_writes:
+                    self._write_memory_value(pm, extra_address, extra_type, spec.value)
+                new_value = self._read_memory_value(pm, field.address, field.value_type)
+                written[index] = replace(field, value=new_value)
+        return [written[index] for index in range(len(resolved))]
 
     def write_selected_unit_fields(self, specs: Iterable[MemoryWriteSpec]) -> list[UnitMemoryField]:
         specs = list(specs)

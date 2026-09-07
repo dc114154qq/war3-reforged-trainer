@@ -119,3 +119,14 @@
 完整离线验证：198 passed、66 subtests passed；git diff --check 通过。DLL 重新编译，SHA256：A1A0BF99B4BEC1CE7D1296223CA288F4912F96C719C7F6FBBF347F552EA8623D。应用仍为 1.0.19，未打包或启动 EXE。
 
 边界：此次覆盖基础属性按钮的 native 批次，独立移动入口、技能/物品修改和通用字段写入尚未全部接入 op 136。回复率仍在外部按地址写入。本批不提供事务回滚，已完成的前序 setter 不会撤销；不能据此宣称所有操作均已消除身份竞争。冷启动定位和字段迁移等完整目标仍未完成。
+
+
+## 字段表基础属性写入统一（2026-09-07）
+
+复审发现字段表和字段锁调用 `_write_unit_fields_to_candidate`，原先 hp_current/hp_max/mp_current/mp_max/x/y 会落到 `_write_memory_value`，绕过基础按钮的 native setter 和 op 136 身份校验。本次六个字段统一映射到 `_write_basic_unit_values_to_candidate`，同一请求中的基础字段合并成一次受校验的 native 写入批次，并使用写后定向快照返回实际值。
+
+`UnitMemoryField` 新增显式 native 写入能力，避免依赖非零 write_address 来标记这些字段可写。来自 native 快照的这六项可在外部属性地址缺失时操作，write_address/write_type 保持空；UI 写入按钮和字段锁已有的 writable 判断因此仍适用。没有把不可写的英雄等级或其他总值字段开放为地址写入。
+
+写入前先解析全部字段、检查存在性和写入能力，并验证基础字段输入的 float32 数值；重复指向同一基础字段的 key/标签请求直接拒绝，避免合并时静默覆盖。混合请求先提交基础字段批次，再执行其他字段，结果按输入顺序返回；仍不提供整批事务回滚，也不能保证其他字段的运行时失败撤销先前写入。其他字段中的地址路径未在本次迁移。
+
+新增测试实际调用公开 write_selected_unit_fields、字段构建器、基础写入函数，覆盖无属性地址、中文标签、六字段合批、guard/JASS 参数、实际读回值、无效混合请求、重复字段、native 失败不得写旧地址。完整离线结果：205 passed、66 subtests passed；git diff --check 通过。协议保持 30，DLL 无改动。应用仍为 1.0.19，未启动或打包 EXE。

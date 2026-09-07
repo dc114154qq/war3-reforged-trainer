@@ -17,6 +17,7 @@ def make_snapshot():
         base_strength=4, base_agility=5, base_intelligence=6,
         item_ids=(0x49303031, 0, 0, 0, 0, 0), item_charges=(3, 0, 0, 0, 0, 0),
         item_handles=(100, 0, 0, 0, 0, 0), item_addresses=(0x100005000, 0, 0, 0, 0, 0),
+        item_full_handles=(0x123400000064, 0, 0, 0, 0, 0),
         ability_ids=(0x41303031,), ability_levels=(2,),
     )
 
@@ -32,7 +33,7 @@ def make_candidate(snapshot):
 
 
 def snapshot_result(snapshot):
-    row = [0] * 143
+    row = [0] * 149
     row[:5] = [snapshot.handle, snapshot.unit_address, snapshot.owner, snapshot.owner_id, snapshot.type_id]
     row[5:12] = [module.War3Trainer._float_bits(v) for v in
                  (snapshot.hp, snapshot.hp_max, snapshot.mp, snapshot.mp_max, snapshot.x, snapshot.y, snapshot.move_speed)]
@@ -42,6 +43,7 @@ def snapshot_result(snapshot):
     row[42:42 + row[41]] = snapshot.ability_ids
     row[90:90 + row[41]] = snapshot.ability_levels
     row[138:140] = [snapshot.full_handle, snapshot.owner_address]
+    row[143:149] = snapshot.item_full_handles
     row[140:143] = [snapshot.base_strength, snapshot.base_agility, snapshot.base_intelligence]
     return module.NativeHelperOpResult(kind=module.War3Trainer.NATIVE_HELPER_OP_PERSISTENT_UNIT_SNAPSHOT,
                                       result=1, extra_results=tuple(row))
@@ -177,12 +179,24 @@ class NativeSnapshotBindingTests(unittest.TestCase):
         self.assertEqual(trainer._run_native_helper_ops.call_args.args, (1, (
             (136, 0, self.candidate.unit_address, self.candidate.handle, self.candidate.owner_address),
             (137, 0, self.snapshot.item_addresses[0], self.snapshot.item_handles[0], 1500),
+            (138, 0, self.snapshot.item_full_handles[0], 0, 0),
         )))
 
     def test_replaced_slot_after_refresh_cannot_receive_quantity_write(self):
         trainer = self.trainer
         trainer.persistent_native_init = Mock()
         changed = replace(self.snapshot, item_handles=(101, 0, 0, 0, 0, 0))
+        trainer._run_native_helper_ops = Mock(return_value=[snapshot_result(changed)])
+        field = module.UnitMemoryField(key="inventory_slot_1_charges", label="charges", value_type="i32",
+                                       value=3, address=0, category="inventory", native_write=True)
+        with self.assertRaisesRegex(RuntimeError, "changed before writing"):
+            trainer._write_inventory_slot_charges_field(Mock(), self.candidate, field, 1500)
+        self.assertEqual(trainer._run_native_helper_ops.call_count, 1)
+
+    def test_same_slot_handle_address_and_rawcode_with_new_generation_cannot_be_written(self):
+        trainer = self.trainer
+        trainer.persistent_native_init = Mock()
+        changed = replace(self.snapshot, item_full_handles=(self.snapshot.item_full_handles[0] + (1 << 32), 0, 0, 0, 0, 0))
         trainer._run_native_helper_ops = Mock(return_value=[snapshot_result(changed)])
         field = module.UnitMemoryField(key="inventory_slot_1_charges", label="charges", value_type="i32",
                                        value=3, address=0, category="inventory", native_write=True)
@@ -276,7 +290,7 @@ class NativeSnapshotBindingTests(unittest.TestCase):
         trainer._run_native_helper_ops_locked(1, ops)
         payload = trainer._write_native_helper_command.call_args.args[1]
         header = trainer.NATIVE_HELPER_HEADER_STRUCT.unpack_from(payload)
-        self.assertEqual(header[1], 31)
+        self.assertEqual(header[1], 32)
         self.assertEqual(header[4], 1)
         operation = trainer.NATIVE_HELPER_OP_STRUCT.unpack_from(payload, trainer.NATIVE_HELPER_HEADER_STRUCT.size)
         self.assertEqual(operation[:5], ops[0])

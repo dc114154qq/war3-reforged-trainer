@@ -17,6 +17,7 @@ def test_missing_metadata_keeps_all_native_slots_and_quantities(hero, component)
                        item_ids=(0x49303031, 0, 0, 0, 0, 0x49303032),
                        item_handles=(100, 0, 0, 0, 0, 200),
                        item_addresses=(0x100005000, 0, 0, 0, 0, 0x100006000),
+                       item_full_handles=(0x123400000064, 0, 0, 0, 0, 0x5678000000c8),
                        item_charges=(1234, 0, 0, 0, 0, 99))
     candidate = replace(candidate, native_snapshot=snapshot)
     trainer._last_persistent_native_snapshots = (replace(snapshot, item_charges=(999,) * 6),)

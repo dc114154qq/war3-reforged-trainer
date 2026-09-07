@@ -791,6 +791,7 @@ class PersistentNativeUnitSnapshot:
     base_strength: int = 0
     base_agility: int = 0
     base_intelligence: int = 0
+    item_full_handles: tuple[int, ...] = (0,) * 6
 
 @dataclass(frozen=True)
 class SelectedAbilityFieldContext:
@@ -2530,7 +2531,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 31
+    NATIVE_HELPER_VERSION = 32
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -2612,7 +2613,8 @@ class War3Trainer:
     NATIVE_HELPER_OP_JASS_SET_UNIT_INT = 135
     NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY = 136
     NATIVE_HELPER_OP_SET_BOUND_ITEM_CHARGES = 137
-    PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 143
+    NATIVE_HELPER_OP_BOUND_ITEM_IDENTITY = 138
+    PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 149
     NATIVE_BASIC_FIELD_ARGUMENTS = {
         "hp_current": ("target_hp", "hp"),
         "hp_max": ("max_hp", "hp_max"),
@@ -4293,6 +4295,7 @@ class War3Trainer:
                     item_charges=item_charges,
                     item_handles=item_handles,
                     item_addresses=item_addresses,
+                    item_full_handles=tuple(row[143:149]),
                     ability_ids=ability_ids,
                     ability_levels=ability_levels,
                     full_handle=int(row[138]),
@@ -4766,6 +4769,7 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_JASS_SET_UNIT_INT,
             self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY,
             self.NATIVE_HELPER_OP_SET_BOUND_ITEM_CHARGES,
+            self.NATIVE_HELPER_OP_BOUND_ITEM_IDENTITY,
         }
         if any(kind not in allowed_kinds for kind, _rawcode, _handler, _arg0, _arg1 in op_list):
             raise RuntimeError("native helper 仅允许结构化验证后的白名单操作")
@@ -13385,7 +13389,7 @@ class War3Trainer:
             display_items = self._inventory_items_from_candidate(pm, candidate, components)
         else:
             if any(len(values) != 6 for values in (native.item_ids, native.item_charges,
-                                                   native.item_handles, native.item_addresses)):
+                                                   native.item_handles, native.item_addresses, native.item_full_handles)):
                 raise RuntimeError("Native inventory snapshot must contain six slots")
             # Optional metadata controls write capability, never the displayed
             # contents. A missing external inventory component cannot erase an
@@ -13400,7 +13404,8 @@ class War3Trainer:
                     raise RuntimeError("Native inventory item identity is incomplete")
                 item = metadata.get(index + 1)
                 if item is not None and (item.rawcode != rawcode or
-                    (rawcode and item.item_address != native.item_addresses[index]) or
+                    (rawcode and (item.item_address != native.item_addresses[index]
+                                  or item.handle != native.item_full_handles[index])) or
                     (not rawcode and item.item_address)):
                     item = None
                 if item is None:
@@ -13452,7 +13457,7 @@ class War3Trainer:
                     write_address=0 if native is not None else item.charges_address,
                     write_type="i32" if native is None and item.charges_address else "",
                     native_write=bool(native is not None and native.item_handles[item.slot - 1]
-                                      and native.item_addresses[item.slot - 1]),
+                                      and native.item_addresses[item.slot - 1] and native.item_full_handles[item.slot - 1]),
                     note=(
                         f"item charges offset=0x{self.ITEM_CHARGES_OFFSET:x}"
                         if item.charges_address
@@ -14703,19 +14708,21 @@ class War3Trainer:
             # Keep the item chosen by this display bound across the targeted
             # refresh; replacing an item in the same slot must not retarget it.
             expected = (native.item_handles[slot_index], native.item_addresses[slot_index],
-                        native.item_ids[slot_index])
+                        native.item_ids[slot_index], native.item_full_handles[slot_index])
             if not all(expected):
                 raise RuntimeError("Native inventory slot has no resolved item")
             candidate = self._refresh_native_candidate(candidate)
             current = self._native_snapshot_for_candidate(candidate)
             if current is None or expected != (current.item_handles[slot_index],
-                                               current.item_addresses[slot_index], current.item_ids[slot_index]):
+                                               current.item_addresses[slot_index], current.item_ids[slot_index],
+                                               current.item_full_handles[slot_index]):
                 raise RuntimeError("Native inventory item changed before writing")
             results = self._run_native_helper_ops(current.handle, (
                 (self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY, 0, candidate.unit_address,
                  candidate.handle, candidate.owner_address),
                 (self.NATIVE_HELPER_OP_SET_BOUND_ITEM_CHARGES, slot_index,
                  expected[1], expected[0], new_charges),
+                (self.NATIVE_HELPER_OP_BOUND_ITEM_IDENTITY, 0, expected[3], 0, 0),
             ))
             actual = int(results[1].result)
             if actual != new_charges:

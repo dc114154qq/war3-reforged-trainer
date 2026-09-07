@@ -36,7 +36,7 @@ static BOOL test_free(HANDLE heap, DWORD flags, void *p) {
 #include "HELPER_SOURCE"
 static unsigned sizes[13], selected, cursor, destroyed, fail_index, holes;
 static unsigned target_unit, target_fault, enumerations, field_reads;
-static uint8_t objects[13][0x20], owners[13][0xa0];
+static uint8_t objects[13][0x20], owners[13][0xa0], items[13][0x20];
 static uint64_t fake_create(void) { return 1; }
 static uint64_t fake_player(void) { return 2; }
 static void fake_enum(uint64_t g, uint64_t p, uint64_t f) { cursor = 0; ++enumerations; }
@@ -55,7 +55,7 @@ static uint64_t fake_agent(uint32_t slot, uint32_t serial) {
     return slot && slot <= 13 && slot == serial ? (uint64_t)(uintptr_t)owners[slot-1] : 0;
 }
 static uint64_t fake_slot(uint64_t u, int32_t s) { return s == 0 ? u + 1000 : 0; }
-static uint64_t fake_item(uint64_t u) { return u + 0x100000; }
+static uint64_t fake_item(uint64_t u) { return (uint64_t)(uintptr_t)items[u-1001]; }
 static uint32_t fake_item_type(uint64_t u) { return 0x49303031; }
 static int32_t fake_charges(uint64_t u) { return (int32_t)(u - 1000); }
 static uint64_t fake_ability(uint64_t u, int32_t i) {
@@ -80,6 +80,7 @@ __declspec(dllexport) unsigned collect(unsigned n, const unsigned *counts, unsig
     for (unsigned i = 0; i < n; ++i) {
         uint64_t full = ((uint64_t)(i+1) << 32) | (i+1);
         sizes[i] = counts[i];
+        *(uint64_t *)(items[i]+0x18) = full + 1000;
         *(uint64_t *)(objects[i]+0x18) = full;
         *(uint64_t *)(owners[i]+0x18) = 0x2b7733752b61676cULL;
         *(uint64_t *)(owners[i]+0x20) = full;
@@ -191,7 +192,7 @@ class NativeSnapshotPayloadTests(unittest.TestCase):
                 error, n, payload = self.collect(counts)
                 self.assertEqual(error, 0)
                 self.assertEqual(self.native.destroyed_count(), 1)
-                self.assertEqual(len(payload), 143 * n + 2 * sum(max(0, c - 48) for c in counts))
+                self.assertEqual(len(payload), 149 * n + 2 * sum(max(0, c - 48) for c in counts))
                 for unit, (snapshot, count) in enumerate(zip(self.parse(n, payload), counts), 1):
                     self.assertEqual(snapshot.handle, unit)
                     self.assertEqual(snapshot.full_handle, (unit << 32) | unit)
@@ -199,6 +200,7 @@ class NativeSnapshotPayloadTests(unittest.TestCase):
                     self.assertEqual(snapshot.ability_levels, tuple(range(1, count + 1)))
                     self.assertEqual(snapshot.hero_level, 5 if unit == 1 else 0)
                     self.assertEqual(snapshot.item_charges[0], unit)
+                    self.assertEqual(snapshot.item_full_handles, (((unit << 32) | unit) + 1000,) + (0,) * 5)
                     self.assertEqual((snapshot.strength, snapshot.agility, snapshot.intelligence), (25 if unit == 1 else 0,) * 3)
                     self.assertEqual((snapshot.base_strength, snapshot.base_agility, snapshot.base_intelligence), (10 if unit == 1 else 0,) * 3)
 
@@ -246,9 +248,9 @@ class NativeSnapshotPayloadTests(unittest.TestCase):
     def test_parser_rejects_invalid_counts(self):
         for count in (-1, 13):
             with self.assertRaises(RuntimeError):
-                self.parse(count, (0,) * 143 * max(0, count))
+                self.parse(count, (0,) * 149 * max(0, count))
         for ability_count in (-1, 4097):
-            row = [0] * 143
+            row = [0] * 149
             row[41] = ability_count
             with self.assertRaises(RuntimeError):
                 self.parse(1, tuple(row))

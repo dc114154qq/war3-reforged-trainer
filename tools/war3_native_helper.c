@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 31u
+#define WAR3_NATIVE_VERSION 32u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -83,6 +83,7 @@
 #define WAR3_NATIVE_OP_JASS_SET_UNIT_INT 135u
 #define WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY 136u
 #define WAR3_NATIVE_OP_SET_BOUND_ITEM_CHARGES 137u
+#define WAR3_NATIVE_OP_BOUND_ITEM_IDENTITY 138u
 #define WAR3_CLONE_FLAG_HERO 0x01u
 #define WAR3_CLONE_FLAG_INVENTORY 0x02u
 #define WAR3_CLONE_FLAG_PRESERVE_OWNER 0x04u
@@ -412,7 +413,7 @@ static uint64_t war3_persistent_native_handler(const char *name);
 #define WAR3_PERSISTENT_SNAPSHOT_MAX_ABILITIES 48u
 #define WAR3_PERSISTENT_SNAPSHOT_ENUM_LIMIT 4096u
 #define WAR3_PERSISTENT_SNAPSHOT_QWORDS \
-    (22u + (WAR3_PERSISTENT_SNAPSHOT_MAX_ITEMS * 4u) + 1u + \
+    (28u + (WAR3_PERSISTENT_SNAPSHOT_MAX_ITEMS * 4u) + 1u + \
      (WAR3_PERSISTENT_SNAPSHOT_MAX_ABILITIES * 2u))
 
 typedef struct War3PersistentSnapshot {
@@ -445,6 +446,7 @@ typedef struct War3PersistentSnapshot {
     uint64_t base_strength;
     uint64_t base_agility;
     uint64_t base_intelligence;
+    uint64_t item_full_handles[WAR3_PERSISTENT_SNAPSHOT_MAX_ITEMS];
 } War3PersistentSnapshot;
 
 /* Protocol 26 keeps the fixed headers and appends pairs beyond the first
@@ -809,6 +811,9 @@ static DWORD war3_persistent_selected_snapshot(
                         snapshot->item_handles[slot] = item;
                         if (resolve_item) {
                             snapshot->item_addresses[slot] = resolve_item(item);
+                            if (snapshot->item_addresses[slot]) {
+                                snapshot->item_full_handles[slot] = *(uint64_t *)(uintptr_t)(snapshot->item_addresses[slot] + 0x18);
+                            }
                         }
                         snapshot->item_ids[slot] = get_item_type_id(item);
                         snapshot->item_charges[slot] = (uint64_t)(int64_t)get_item_charges(item);
@@ -2722,8 +2727,10 @@ static void run_command(void) {
                 JassGetItemChargesFn getter = (JassGetItemChargesFn)(uintptr_t)war3_persistent_native_handler("GetItemCharges");
                 JassUnitHandleResolveFn resolver = (JassUnitHandleResolveFn)(uintptr_t)g_persistent_item_resolver;
                 uint64_t item, object, full;
+                const NativeOp *identity = i + 1 < cmd.op_count ? &cmd.ops[i + 1] : NULL;
                 int32_t actual;
                 if (cmd.ops[0].kind != WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY ||
+                    !identity || identity->kind != WAR3_NATIVE_OP_BOUND_ITEM_IDENTITY || !identity->handler ||
                     op->rawcode >= 6u || !op->arg0 || !op->handler || op->arg1 > 0x7fffffffu) {
                     last_error = ERROR_INVALID_PARAMETER;
                 } else if (!war3_executable_pointer((uint64_t)(uintptr_t)slot_fn) ||
@@ -2735,7 +2742,8 @@ static void run_command(void) {
                     __try {
                         item = slot_fn(cmd.unit_handle, (int32_t)op->rawcode);
                         object = item ? resolver(item) : 0;
-                        if (item != op->arg0 || object != op->handler) {
+                        if (item != op->arg0 || object != op->handler ||
+                            *(uint64_t *)(uintptr_t)(object + 0x18) != identity->handler) {
                             last_error = ERROR_INVALID_HANDLE;
                         } else {
                             full = *(uint64_t *)(uintptr_t)(object + 0x18);
@@ -2759,6 +2767,7 @@ static void run_command(void) {
                     op->last_error = last_error;
                     goto finish;
                 }
+                ++i; /* Consume the immutable item-generation descriptor. */
                 break;
             }
             case WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY: {

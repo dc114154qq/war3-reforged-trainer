@@ -103,7 +103,11 @@ __declspec(dllexport) DWORD execute(const wchar_t *directory, unsigned failure, 
             if (!strcmp(name, "SetItemCharges")) g_persistent_natives[i].handler = (uint64_t)(uintptr_t)fake_set_charges;
             if (!strcmp(name, "GetItemCharges") && fault != 25) g_persistent_natives[i].handler = (uint64_t)(uintptr_t)fake_get_charges;
         }
-        cmd.op_count = 2;
+        cmd.op_count = 3;
+        cmd.ops[2].kind = WAR3_NATIVE_OP_BOUND_ITEM_IDENTITY;
+        cmd.ops[2].handler = 0x555500006666ULL;
+        if (fault == 28) *(uint64_t *)(item_object + 0x18) += 1;
+        if (fault == 29) cmd.op_count = 2;
         cmd.ops[1].kind = WAR3_NATIVE_OP_SET_BOUND_ITEM_CHARGES;
         cmd.ops[1].rawcode = 2;
         cmd.ops[1].handler = (uint64_t)(uintptr_t)item_object;
@@ -176,7 +180,7 @@ class NativeIdentityGuardTests(unittest.TestCase):
         self.assertEqual(self.execute(20), (2, 0, 1, 0))
 
     def test_changed_or_unresolved_item_prevents_setter(self):
-        for fault in (21, 22, 25):
+        for fault in (21, 22, 25, 28, 29):
             with self.subTest(fault=fault):
                 status, error, writes, bad = self.execute(fault)
                 self.assertEqual((status, writes, bad), (3, 0, 0))

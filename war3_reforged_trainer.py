@@ -4894,6 +4894,44 @@ class War3Trainer:
             raise RuntimeError("缺少 native 函数：" + ", ".join(missing))
         return {name: self._native_handlers[name] for name in requested}
 
+    def _candidate_from_native_snapshot(
+        self, pm: ProcessMemory, snapshot: PersistentNativeUnitSnapshot,
+    ) -> UnitCandidate | None:
+        if not (snapshot.handle and snapshot.full_handle and snapshot.owner_address and snapshot.unit_address):
+            return None
+        try:
+            candidate = self._candidate_from_identity(
+                pm, snapshot.full_handle, snapshot.owner_address,
+                snapshot.unit_address, "native_engine_handle_table", 1000,
+            )
+        except OSError:
+            candidate = None
+        if candidate is None:
+            # Missing external property metadata is not a missing native unit.
+            # Recheck identity explicitly: _candidate_from_identity returning
+            # None can also mean the unit was destroyed or its address reused.
+            try:
+                if (pm.read_u64(snapshot.owner_address + 0x18) != self.UNIT_OWNER_TAG
+                    or pm.read_u64(snapshot.owner_address + 0x20) != snapshot.full_handle
+                    or pm.read_u64(snapshot.owner_address + 0x90) != snapshot.unit_address
+                    or pm.read_u64(snapshot.unit_address + 0x18) != snapshot.full_handle):
+                    return None
+            except OSError:
+                return None
+            candidate = UnitCandidate(
+                base=0, score=1000, hp_current_address=0, hp_max_address=0,
+                mp_current_address=0, mp_max_address=0,
+                note="native identity without external property metadata",
+                handle=snapshot.full_handle, owner_address=snapshot.owner_address,
+                unit_address=snapshot.unit_address,
+            )
+        if (candidate.handle, candidate.owner_address, candidate.unit_address) != (
+            snapshot.full_handle, snapshot.owner_address, snapshot.unit_address
+        ):
+            return None
+        return replace(candidate, unit_type_id=int(snapshot.type_id),
+                       selection_source="persistent_native", native_snapshot=snapshot)
+
     def _elephant_selected_candidate(self, pm: ProcessMemory) -> UnitCandidate:
         if self._elephant_selection_override is not None:
             return self._elephant_selection_override[0]
@@ -4903,14 +4941,7 @@ class War3Trainer:
         snapshot = snapshots[0]
         if not (snapshot.full_handle and snapshot.owner_address and snapshot.unit_address):
             raise RuntimeError("native helper 未返回完整当前单位身份，已拒绝同步扫描")
-        candidate = self._candidate_from_identity(
-            pm,
-            snapshot.full_handle,
-            snapshot.owner_address,
-            snapshot.unit_address,
-            "persistent_native_elephant",
-            1000,
-        )
+        candidate = self._candidate_from_native_snapshot(pm, snapshot)
         if candidate is None:
             raise RuntimeError("当前 native 快照已经失效，请重新读取选中单位")
         return replace(candidate, unit_type_id=int(snapshot.type_id),
@@ -4974,10 +5005,7 @@ class War3Trainer:
                 raise RuntimeError(
                     "native 快照缺少完整单位身份，已拒绝回退到旧选择器；请重试"
                 )
-            candidate = self._candidate_from_identity(
-                pm, snapshot.full_handle, snapshot.owner_address,
-                snapshot.unit_address, "native_engine_handle_table", 1000,
-            )
+            candidate = self._candidate_from_native_snapshot(pm, snapshot)
             if (
                 candidate is None
                 or (candidate.handle, candidate.owner_address, candidate.unit_address)
@@ -11791,6 +11819,20 @@ class War3Trainer:
             return None
         return candidate
 
+    def _candidate_from_display_identity(
+        self, pm: ProcessMemory, handle: int, owner: int, unit: int,
+        note: str, score: int = 0,
+    ) -> UnitCandidate | None:
+        # UI identity callbacks retain the complete identity but not the whole
+        # candidate. Recover only a matching native payload, never the first
+        # selected unit or a same-address object from another generation.
+        snapshot = next((item for item in getattr(self, "_last_persistent_native_snapshots", ())
+                         if (item.full_handle, item.owner_address, item.unit_address)
+                         == (handle, owner, unit)), None)
+        if snapshot is not None:
+            return self._candidate_from_native_snapshot(pm, snapshot)
+        return self._candidate_from_identity(pm, handle, owner, unit, note, score)
+
     def _selection_summary_from_candidate(
         self,
         pm: ProcessMemory,
@@ -13840,7 +13882,7 @@ class War3Trainer:
         unit: int,
     ) -> tuple[VisibleUnitPanel, UnitCandidate, list[UnitMemoryField]]:
         with self._process_memory() as pm:
-            candidate = self._candidate_from_identity(
+            candidate = self._candidate_from_display_identity(
                 pm,
                 handle,
                 owner,
@@ -14766,7 +14808,7 @@ class War3Trainer:
         value: int | float | str,
     ) -> UnitMemoryField:
         with self._process_memory(write=True) as pm:
-            candidate = self._candidate_from_identity(
+            candidate = self._candidate_from_display_identity(
                 pm,
                 handle,
                 owner,
@@ -14993,7 +15035,7 @@ class War3Trainer:
         target_mp_regen: float | None = None,
     ) -> UnitCandidate:
         with self._process_memory(write=True) as pm:
-            candidate = self._candidate_from_identity(
+            candidate = self._candidate_from_display_identity(
                 pm,
                 handle,
                 owner,

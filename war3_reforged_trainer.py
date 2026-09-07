@@ -13377,7 +13377,33 @@ class War3Trainer:
             except OSError:
                 pass
 
-        for item in self._inventory_items_from_candidate(pm, candidate, components):
+        if native is None:
+            display_items = self._inventory_items_from_candidate(pm, candidate, components)
+        else:
+            if any(len(values) != 6 for values in (native.item_ids, native.item_charges,
+                                                   native.item_handles, native.item_addresses)):
+                raise RuntimeError("Native inventory snapshot must contain six slots")
+            # Optional metadata controls write capability, never the displayed
+            # contents. A missing external inventory component cannot erase an
+            # item already returned by the engine in this bound snapshot.
+            metadata = {item.slot: item for item in
+                        self._inventory_items_from_candidate(pm, candidate, components)} if "inventory" in components else {}
+            display_items = []
+            for index in range(6):
+                rawcode = native.item_ids[index]
+                handle = native.item_handles[index]
+                if bool(rawcode) != bool(handle):
+                    raise RuntimeError("Native inventory item identity is incomplete")
+                item = metadata.get(index + 1)
+                if item is not None and (item.rawcode != rawcode or
+                    (rawcode and item.item_address != native.item_addresses[index]) or
+                    (not rawcode and item.item_address)):
+                    item = None
+                if item is None:
+                    item = InventoryItem(slot=index + 1, handle=0, handle_address=0)
+                display_items.append(replace(item, rawcode=rawcode, charges=native.item_charges[index]))
+
+        for item in display_items:
             if item.rawcode:
                 fields.append(
                     UnitMemoryField(

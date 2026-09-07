@@ -13086,6 +13086,24 @@ class War3Trainer:
 
         ability_instances: list[AbilityInstance] = []
 
+        if native is not None:
+            if len(native.ability_ids) != len(native.ability_levels):
+                raise RuntimeError("Native ability IDs and levels have different lengths")
+            # The engine enumeration is authoritative for all unit kinds.
+            # Wrapper proximity and the hero's learnable slots cannot determine
+            # which abilities currently exist on a unit.
+            for slot, (rawcode, level) in enumerate(zip(native.ability_ids, native.ability_levels), 1):
+                fields.append(UnitMemoryField(
+                    key=f"ability_{slot:02d}_rawcode", label=f"能力{slot:02d} rawcode",
+                    value_type="rawcode", value=rawcode, address=0,
+                    category="能力实例", note="persistent native ability enumeration",
+                ))
+                fields.append(UnitMemoryField(
+                    key=f"ability_{slot:02d}_level", label=f"能力{slot:02d}等级",
+                    value_type="i32", value=level, address=0,
+                    category="能力实例", note="persistent native ability enumeration",
+                ))
+
         hero_skill_config_rawcodes: list[int] = []
         hero = components.get("hero")
         if native is not None and native.hero_level > 0:
@@ -13147,10 +13165,8 @@ class War3Trainer:
                 except OSError:
                     current_config_rawcode = 0
                 hero_skill_config_rawcodes.append(current_config_rawcode)
-            ability_instances = self._ability_instances_from_candidate(
-                pm,
-                candidate,
-            )
+            if native is None:
+                ability_instances = self._ability_instances_from_candidate(pm, candidate)
             for index in range(self.HERO_SKILL_SLOT_COUNT):
                 number = index + 1
                 config_address = data + 0x204 + index * 4

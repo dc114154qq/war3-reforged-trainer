@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 28u
+#define WAR3_NATIVE_VERSION 29u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -409,7 +409,7 @@ static uint64_t war3_persistent_native_handler(const char *name);
 #define WAR3_PERSISTENT_SNAPSHOT_MAX_ABILITIES 48u
 #define WAR3_PERSISTENT_SNAPSHOT_ENUM_LIMIT 4096u
 #define WAR3_PERSISTENT_SNAPSHOT_QWORDS \
-    (19u + (WAR3_PERSISTENT_SNAPSHOT_MAX_ITEMS * 4u) + 1u + \
+    (22u + (WAR3_PERSISTENT_SNAPSHOT_MAX_ITEMS * 4u) + 1u + \
      (WAR3_PERSISTENT_SNAPSHOT_MAX_ABILITIES * 2u))
 
 typedef struct War3PersistentSnapshot {
@@ -439,6 +439,9 @@ typedef struct War3PersistentSnapshot {
     uint64_t ability_levels[WAR3_PERSISTENT_SNAPSHOT_MAX_ABILITIES];
     uint64_t full_handle;
     uint64_t owner_address;
+    uint64_t base_strength;
+    uint64_t base_agility;
+    uint64_t base_intelligence;
 } War3PersistentSnapshot;
 
 /* Protocol 26 keeps the fixed headers and appends pairs beyond the first
@@ -761,12 +764,15 @@ static DWORD war3_persistent_selected_snapshot(
                 }
                 if (get_hero_str) {
                     snapshot->strength = (uint64_t)(int64_t)get_hero_str(unit, 1);
+                    snapshot->base_strength = (uint64_t)(int64_t)get_hero_str(unit, 0);
                 }
                 if (get_hero_agi) {
                     snapshot->agility = (uint64_t)(int64_t)get_hero_agi(unit, 1);
+                    snapshot->base_agility = (uint64_t)(int64_t)get_hero_agi(unit, 0);
                 }
                 if (get_hero_int) {
                     snapshot->intelligence = (uint64_t)(int64_t)get_hero_int(unit, 1);
+                    snapshot->base_intelligence = (uint64_t)(int64_t)get_hero_int(unit, 0);
                 }
             }
             if (snapshot->owner && get_player_id) {

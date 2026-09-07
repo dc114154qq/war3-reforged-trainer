@@ -787,6 +787,9 @@ class PersistentNativeUnitSnapshot:
     full_handle: int = 0
     owner_address: int = 0
 
+    base_strength: int = 0
+    base_agility: int = 0
+    base_intelligence: int = 0
 
 @dataclass(frozen=True)
 class SelectedAbilityFieldContext:
@@ -2526,7 +2529,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 28
+    NATIVE_HELPER_VERSION = 29
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -2606,7 +2609,7 @@ class War3Trainer:
     NATIVE_HELPER_OP_PERSISTENT_UNIT_SNAPSHOT = 133
     NATIVE_HELPER_OP_JASS_SET_UNIT_STATE = 134
     NATIVE_HELPER_OP_JASS_SET_UNIT_INT = 135
-    PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 140
+    PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 143
     PERSISTENT_NATIVE_NAMES = (
         "UnitAddAbility",
         "CreateGroup",
@@ -4271,9 +4274,9 @@ class War3Trainer:
                     move_speed=struct.unpack("<f", struct.pack("<I", move_speed_bits & 0xFFFFFFFF))[0],
                     hero_level=hero_level & 0xFFFFFFFFFFFFFFFF,
                     hero_xp=hero_xp & 0xFFFFFFFFFFFFFFFF,
-                    strength=strength & 0xFFFFFFFFFFFFFFFF,
-                    agility=agility & 0xFFFFFFFFFFFFFFFF,
-                    intelligence=intelligence & 0xFFFFFFFFFFFFFFFF,
+                    strength=ctypes.c_int32(strength & 0xFFFFFFFF).value,
+                    agility=ctypes.c_int32(agility & 0xFFFFFFFF).value,
+                    intelligence=ctypes.c_int32(intelligence & 0xFFFFFFFF).value,
                     item_ids=item_ids,
                     item_charges=item_charges,
                     item_handles=item_handles,
@@ -4282,6 +4285,9 @@ class War3Trainer:
                     ability_levels=ability_levels,
                     full_handle=int(row[138]),
                     owner_address=int(row[139]),
+                    base_strength=ctypes.c_int32(row[140] & 0xFFFFFFFF).value,
+                    base_agility=ctypes.c_int32(row[141] & 0xFFFFFFFF).value,
+                    base_intelligence=ctypes.c_int32(row[142] & 0xFFFFFFFF).value,
                 )
             )
         if extra_cursor != len(values):
@@ -13025,52 +13031,52 @@ class War3Trainer:
 
         hero_skill_config_rawcodes: list[int] = []
         hero = components.get("hero")
+        if native is not None and native.hero_level > 0:
+            data = hero[1] if hero is not None else 0
+            append_native_int("hero_level", "英雄等级", native.hero_level, 0, "英雄")
+            append_native_int("xp", "经验值", native.hero_xp, data + 0x100 if data else 0, "英雄")
+            append_native_int("base_strength", "力量(基础)", native.base_strength, data + 0x108 if data else 0, "英雄")
+            append_native_int("base_agility", "敏捷(基础)", native.base_agility, data + 0x130 if data else 0, "英雄")
+            append_native_int("base_intelligence", "智力(基础)", native.base_intelligence, 0, "英雄")
+            append_native_int("strength_total", "力量(当前总值)", native.strength, 0, "英雄")
+            append_native_int("agility_total", "敏捷(当前总值)", native.agility, 0, "英雄")
+            append_native_int("intelligence_total", "智力(当前总值)", native.intelligence, data + 0x118 if data else 0, "英雄")
         if hero is not None:
             _wrapper, data = hero
-            if native is not None:
-                append_native_int("hero_level", "英雄等级", native.hero_level, data + 0xF8, "英雄")
             if native is None:
                 self._append_unit_field(pm, fields, "xp", "经验值", "i32", data + 0x100, "英雄")
-            else:
-                append_native_int("xp", "经验值", native.hero_xp, data + 0x100, "英雄")
-            self._append_unit_field(pm, fields, "skill_points", "技能点", "i32", data + 0x104, "英雄")
-            if native is None:
                 self._append_unit_field(pm, fields, "base_strength", "力量(基础)", "i32", data + 0x108, "英雄")
-            else:
-                append_native_int("base_strength", "力量(基础)", native.strength, data + 0x108, "英雄")
-            try:
-                base_intelligence, total_intelligence = self._get_hero_intelligence_pair_via_native_internal(pm, candidate)
-                fields.append(
-                    UnitMemoryField(
-                        key="intelligence_total",
-                        label="智力(当前总值)",
-                        value_type="i32",
-                        value=total_intelligence,
-                        address=data + 0x118,
-                        category="英雄",
-                        write_address=data + 0x118,
-                        write_type="i32",
-                        note=(
-                            "内部 GetHeroInt 真实总智力；写入通过内部 SetHeroInt；"
-                            f"基础智力={base_intelligence}"
-                        ),
-                    )
-                )
-            except Exception as exc:
-                self._append_unit_field(
-                    pm,
-                    fields,
-                    "intelligence_total",
-                    "智力(当前总值候选)",
-                    "f32",
-                    data + 0x118,
-                    "英雄",
-                    note=f"内部 GetHeroInt 读取失败，暂用旧缓存候选：{exc}",
-                )
-            if native is None:
                 self._append_unit_field(pm, fields, "base_agility", "敏捷(基础)", "i32", data + 0x130, "英雄")
-            else:
-                append_native_int("base_agility", "敏捷(基础)", native.agility, data + 0x130, "英雄")
+                try:
+                    base_intelligence, total_intelligence = self._get_hero_intelligence_pair_via_native_internal(pm, candidate)
+                    fields.append(
+                        UnitMemoryField(
+                            key="intelligence_total",
+                            label="智力(当前总值)",
+                            value_type="i32",
+                            value=total_intelligence,
+                            address=data + 0x118,
+                            category="英雄",
+                            write_address=data + 0x118,
+                            write_type="i32",
+                            note=(
+                                "内部 GetHeroInt 真实总智力；写入通过内部 SetHeroInt；"
+                                f"基础智力={base_intelligence}"
+                            ),
+                        )
+                    )
+                except Exception as exc:
+                    self._append_unit_field(
+                        pm,
+                        fields,
+                        "intelligence_total",
+                        "智力(当前总值候选)",
+                        "f32",
+                        data + 0x118,
+                        "英雄",
+                        note=f"内部 GetHeroInt 读取失败，暂用旧缓存候选：{exc}",
+                    )
+            self._append_unit_field(pm, fields, "skill_points", "技能点", "i32", data + 0x104, "英雄")
             growth_note = "英雄组件成长值，不是面板装备/光环加成"
             self._append_unit_field(pm, fields, "strength_growth", "力量成长/级", "f32", data + 0x188, "英雄", note=growth_note)
             self._append_unit_field(pm, fields, "intelligence_growth", "智力成长/级", "f32", data + 0x198, "英雄", note=growth_note)

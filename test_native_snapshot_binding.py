@@ -14,6 +14,7 @@ def make_snapshot():
         owner=2, owner_id=1, type_id=0x68666f6f,
         hp=100, hp_max=200, mp=50, mp_max=60, x=10, y=20, move_speed=300,
         hero_level=5, hero_xp=100, strength=10, agility=20, intelligence=30,
+        base_strength=4, base_agility=5, base_intelligence=6,
         item_ids=(0x49303031, 0, 0, 0, 0, 0), item_charges=(3, 0, 0, 0, 0, 0),
         item_handles=(100, 0, 0, 0, 0, 0), item_addresses=(0x100005000, 0, 0, 0, 0, 0),
         ability_ids=(0x41303031,), ability_levels=(2,),
@@ -31,7 +32,7 @@ def make_candidate(snapshot):
 
 
 def snapshot_result(snapshot):
-    row = [0] * 140
+    row = [0] * 143
     row[:5] = [snapshot.handle, snapshot.unit_address, snapshot.owner, snapshot.owner_id, snapshot.type_id]
     row[5:12] = [module.War3Trainer._float_bits(v) for v in
                  (snapshot.hp, snapshot.hp_max, snapshot.mp, snapshot.mp_max, snapshot.x, snapshot.y, snapshot.move_speed)]
@@ -41,6 +42,7 @@ def snapshot_result(snapshot):
     row[42:42 + row[41]] = snapshot.ability_ids
     row[90:90 + row[41]] = snapshot.ability_levels
     row[138:140] = [snapshot.full_handle, snapshot.owner_address]
+    row[140:143] = [snapshot.base_strength, snapshot.base_agility, snapshot.base_intelligence]
     return module.NativeHelperOpResult(kind=module.War3Trainer.NATIVE_HELPER_OP_PERSISTENT_UNIT_SNAPSHOT,
                                       result=1, extra_results=tuple(row))
 
@@ -240,7 +242,7 @@ class NativeSnapshotBindingTests(unittest.TestCase):
         trainer._run_native_helper_ops_locked(1, ops)
         payload = trainer._write_native_helper_command.call_args.args[1]
         header = trainer.NATIVE_HELPER_HEADER_STRUCT.unpack_from(payload)
-        self.assertEqual(header[1], 28)
+        self.assertEqual(header[1], 29)
         self.assertEqual(header[4], 1)
         operation = trainer.NATIVE_HELPER_OP_STRUCT.unpack_from(payload, trainer.NATIVE_HELPER_HEADER_STRUCT.size)
         self.assertEqual(operation[:5], ops[0])

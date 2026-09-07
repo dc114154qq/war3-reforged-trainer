@@ -49,7 +49,7 @@ static uint32_t fake_type(uint64_t u) { ++field_reads; return 0x68666f6f; }
 static uint32_t fake_real(uint64_t u) { return 0x3f800000; }
 static uint32_t fake_state(uint64_t u, int32_t s) { return 0x40000000; }
 static int32_t fake_hero(uint64_t u) { return u == 1 ? 5 : 0; }
-static int32_t fake_stat(uint64_t u, uint32_t b) { return 25; }
+static int32_t fake_stat(uint64_t u, uint32_t b) { return b ? 25 : 10; }
 static uint64_t fake_unit(uint64_t u) { return (uint64_t)(uintptr_t)objects[u-1]; }
 static uint64_t fake_agent(uint32_t slot, uint32_t serial) {
     return slot && slot <= 13 && slot == serial ? (uint64_t)(uintptr_t)owners[slot-1] : 0;
@@ -191,7 +191,7 @@ class NativeSnapshotPayloadTests(unittest.TestCase):
                 error, n, payload = self.collect(counts)
                 self.assertEqual(error, 0)
                 self.assertEqual(self.native.destroyed_count(), 1)
-                self.assertEqual(len(payload), 140 * n + 2 * sum(max(0, c - 48) for c in counts))
+                self.assertEqual(len(payload), 143 * n + 2 * sum(max(0, c - 48) for c in counts))
                 for unit, (snapshot, count) in enumerate(zip(self.parse(n, payload), counts), 1):
                     self.assertEqual(snapshot.handle, unit)
                     self.assertEqual(snapshot.full_handle, (unit << 32) | unit)
@@ -199,6 +199,8 @@ class NativeSnapshotPayloadTests(unittest.TestCase):
                     self.assertEqual(snapshot.ability_levels, tuple(range(1, count + 1)))
                     self.assertEqual(snapshot.hero_level, 5 if unit == 1 else 0)
                     self.assertEqual(snapshot.item_charges[0], unit)
+                    self.assertEqual((snapshot.strength, snapshot.agility, snapshot.intelligence), (25 if unit == 1 else 0,) * 3)
+                    self.assertEqual((snapshot.base_strength, snapshot.base_agility, snapshot.base_intelligence), (10 if unit == 1 else 0,) * 3)
 
     def test_sparse_legacy_range_keeps_later_entries(self):
         error, n, payload = self.collect((60,), sparse=True)
@@ -244,9 +246,9 @@ class NativeSnapshotPayloadTests(unittest.TestCase):
     def test_parser_rejects_invalid_counts(self):
         for count in (-1, 13):
             with self.assertRaises(RuntimeError):
-                self.parse(count, (0,) * 140 * max(0, count))
+                self.parse(count, (0,) * 143 * max(0, count))
         for ability_count in (-1, 4097):
-            row = [0] * 140
+            row = [0] * 143
             row[41] = ability_count
             with self.assertRaises(RuntimeError):
                 self.parse(1, tuple(row))

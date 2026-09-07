@@ -24,7 +24,8 @@ def test_missing_metadata_keeps_all_native_slots_and_quantities(hero, component)
     for slot in range(1, 7):
         item, charges = fields[f'inventory_slot_{slot}'], fields[f'inventory_slot_{slot}_charges']
         assert (item.value, charges.value) == (snapshot.item_ids[slot - 1], snapshot.item_charges[slot - 1])
-        assert not item.writable and not charges.writable
+        assert not item.writable
+        assert charges.writable == bool(snapshot.item_handles[slot - 1])
     if not component:
         trainer._inventory_items_from_candidate.assert_not_called()
 
@@ -41,7 +42,8 @@ def test_valid_metadata_preserves_existing_write_capability_but_not_its_stale_va
     assert fields['inventory_slot_1'].writable
     assert fields['inventory_slot_1_charges'].writable
     assert fields['inventory_slot_1_charges'].value == 3
-    assert fields['inventory_slot_1_charges'].write_address == 0x8000
+    assert fields['inventory_slot_1_charges'].write_address == 0
+    assert fields['inventory_slot_1_charges'].native_write
 
 
 @pytest.mark.parametrize('mismatch', ['rawcode', 'item_address'])
@@ -56,7 +58,7 @@ def test_changed_metadata_cannot_supply_write_addresses_for_old_display(mismatch
     fields = {f.key: f for f in trainer._unit_fields_from_candidate(memory, candidate)}
     assert fields['inventory_slot_1'].value == snapshot.item_ids[0]
     assert not fields['inventory_slot_1'].writable
-    assert not fields['inventory_slot_1_charges'].writable
+    assert fields['inventory_slot_1_charges'].native_write
 
 
 def test_incomplete_inventory_payload_is_not_displayed_as_empty_slots():

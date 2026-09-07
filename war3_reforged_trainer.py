@@ -2530,7 +2530,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 30
+    NATIVE_HELPER_VERSION = 31
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -2611,6 +2611,7 @@ class War3Trainer:
     NATIVE_HELPER_OP_JASS_SET_UNIT_STATE = 134
     NATIVE_HELPER_OP_JASS_SET_UNIT_INT = 135
     NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY = 136
+    NATIVE_HELPER_OP_SET_BOUND_ITEM_CHARGES = 137
     PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 143
     NATIVE_BASIC_FIELD_ARGUMENTS = {
         "hp_current": ("target_hp", "hp"),
@@ -2649,6 +2650,7 @@ class War3Trainer:
         "GetUnitAbilityLevel",
         "SetUnitPosition",
         "SetUnitState",
+        "SetItemCharges",
     )
 
     def __init__(self, pid: int | None = None):
@@ -4763,6 +4765,7 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_JASS_SET_UNIT_STATE,
             self.NATIVE_HELPER_OP_JASS_SET_UNIT_INT,
             self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY,
+            self.NATIVE_HELPER_OP_SET_BOUND_ITEM_CHARGES,
         }
         if any(kind not in allowed_kinds for kind, _rawcode, _handler, _arg0, _arg1 in op_list):
             raise RuntimeError("native helper 仅允许结构化验证后的白名单操作")
@@ -4816,6 +4819,7 @@ class War3Trainer:
         unit_kinds.add(self.NATIVE_HELPER_OP_JASS_SET_UNIT_STATE)
         unit_kinds.add(self.NATIVE_HELPER_OP_JASS_SET_UNIT_INT)
         unit_kinds.add(self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY)
+        unit_kinds.add(self.NATIVE_HELPER_OP_SET_BOUND_ITEM_CHARGES)
         if any(kind in unit_kinds for kind, _rawcode, _handler, _arg0, _arg1 in op_list) and not unit_address:
             raise RuntimeError("当前单位缺少运行时 unit 指针，不能调用 native helper")
         command_path = self._native_helper_command_path()
@@ -13445,8 +13449,10 @@ class War3Trainer:
                     value=item.charges,
                     address=item.charges_address or item.handle_address,
                     category="物品栏",
-                    write_address=item.charges_address,
-                    write_type="i32" if item.charges_address else "",
+                    write_address=0 if native is not None else item.charges_address,
+                    write_type="i32" if native is None and item.charges_address else "",
+                    native_write=bool(native is not None and native.item_handles[item.slot - 1]
+                                      and native.item_addresses[item.slot - 1]),
                     note=(
                         f"item charges offset=0x{self.ITEM_CHARGES_OFFSET:x}"
                         if item.charges_address
@@ -14692,6 +14698,30 @@ class War3Trainer:
         new_charges = int(self._coerce_memory_value("i32", value))
         if new_charges < 0:
             new_charges = 0
+        native = self._native_snapshot_for_candidate(candidate)
+        if native is not None:
+            # Keep the item chosen by this display bound across the targeted
+            # refresh; replacing an item in the same slot must not retarget it.
+            expected = (native.item_handles[slot_index], native.item_addresses[slot_index],
+                        native.item_ids[slot_index])
+            if not all(expected):
+                raise RuntimeError("Native inventory slot has no resolved item")
+            candidate = self._refresh_native_candidate(candidate)
+            current = self._native_snapshot_for_candidate(candidate)
+            if current is None or expected != (current.item_handles[slot_index],
+                                               current.item_addresses[slot_index], current.item_ids[slot_index]):
+                raise RuntimeError("Native inventory item changed before writing")
+            results = self._run_native_helper_ops(current.handle, (
+                (self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY, 0, candidate.unit_address,
+                 candidate.handle, candidate.owner_address),
+                (self.NATIVE_HELPER_OP_SET_BOUND_ITEM_CHARGES, slot_index,
+                 expected[1], expected[0], new_charges),
+            ))
+            actual = int(results[1].result)
+            if actual != new_charges:
+                raise RuntimeError("Native item quantity readback differs from request")
+            return replace(field, value=actual, write_address=0, write_type="", native_write=True,
+                           note="native item quantity verified in game callback")
         if new_charges > 999:
             raise ValueError("物品数量不能超过 999")
 

@@ -142,19 +142,53 @@ class NativeSnapshotBindingTests(unittest.TestCase):
     def test_quantity_write_verifies_new_value_instead_of_old_snapshot_value(self):
         memory = self.inventory_memory()
         memory.read_i32.return_value = 3
-        self.trainer._set_item_charges_via_native_handler = Mock(
-            side_effect=lambda *args: setattr(memory.read_i32, "return_value", 7))
+        self.trainer.persistent_native_init = Mock()
+        self.trainer._run_native_helper_ops = Mock(side_effect=[
+            [snapshot_result(self.snapshot)],
+            [module.NativeHelperOpResult(kind=136, result=1), module.NativeHelperOpResult(kind=137, result=7)],
+        ])
         field = module.UnitMemoryField(
             key="inventory_slot_1_charges", label="quantity", value_type="i32", value=3,
             category="inventory",
             address=self.snapshot.item_addresses[0] + self.trainer.ITEM_CHARGES_OFFSET,
         )
-        with patch.object(module.time, "sleep"):
+        with patch.object(module.time, "sleep", side_effect=AssertionError("Unexpected fixed wait")):
             result = self.trainer._write_inventory_slot_charges_field(memory, self.candidate, field, 7)
         self.assertEqual(result.value, 7)
         self.assertEqual(self.snapshot.item_charges[0], 3)
-        self.trainer._set_item_charges_via_native_handler.assert_called_once()
+        self.assertEqual(self.trainer._run_native_helper_ops.call_count, 2)
         self.trainer._item_objects_from_handles.assert_not_called()
+
+    def test_native_quantity_write_needs_no_external_inventory_metadata(self):
+        trainer = self.trainer
+        trainer.persistent_native_init = Mock()
+        trainer._selected_components = Mock(side_effect=AssertionError("Unexpected component lookup"))
+        trainer._run_native_helper_ops = Mock(side_effect=[
+            [snapshot_result(self.snapshot)],
+            [module.NativeHelperOpResult(kind=136, result=1), module.NativeHelperOpResult(kind=137, result=1500)],
+        ])
+        field = module.UnitMemoryField(key="inventory_slot_1_charges", label="charges", value_type="i32",
+                                       value=3, address=0, category="inventory", native_write=True)
+        with patch.object(module.time, "sleep", side_effect=AssertionError("Unexpected wait")):
+            result = trainer._write_inventory_slot_charges_field(Mock(), self.candidate, field, 1500)
+        self.assertEqual(result.value, 1500)
+        self.assertEqual(result.write_address, 0)
+        self.assertTrue(result.native_write)
+        self.assertEqual(trainer._run_native_helper_ops.call_args.args, (1, (
+            (136, 0, self.candidate.unit_address, self.candidate.handle, self.candidate.owner_address),
+            (137, 0, self.snapshot.item_addresses[0], self.snapshot.item_handles[0], 1500),
+        )))
+
+    def test_replaced_slot_after_refresh_cannot_receive_quantity_write(self):
+        trainer = self.trainer
+        trainer.persistent_native_init = Mock()
+        changed = replace(self.snapshot, item_handles=(101, 0, 0, 0, 0, 0))
+        trainer._run_native_helper_ops = Mock(return_value=[snapshot_result(changed)])
+        field = module.UnitMemoryField(key="inventory_slot_1_charges", label="charges", value_type="i32",
+                                       value=3, address=0, category="inventory", native_write=True)
+        with self.assertRaisesRegex(RuntimeError, "changed before writing"):
+            trainer._write_inventory_slot_charges_field(Mock(), self.candidate, field, 1500)
+        self.assertEqual(trainer._run_native_helper_ops.call_count, 1)
 
     def test_changed_slot_during_reconnect_never_scans_items(self):
         memory = self.inventory_memory()
@@ -242,7 +276,7 @@ class NativeSnapshotBindingTests(unittest.TestCase):
         trainer._run_native_helper_ops_locked(1, ops)
         payload = trainer._write_native_helper_command.call_args.args[1]
         header = trainer.NATIVE_HELPER_HEADER_STRUCT.unpack_from(payload)
-        self.assertEqual(header[1], 30)
+        self.assertEqual(header[1], 31)
         self.assertEqual(header[4], 1)
         operation = trainer.NATIVE_HELPER_OP_STRUCT.unpack_from(payload, trainer.NATIVE_HELPER_HEADER_STRUCT.size)
         self.assertEqual(operation[:5], ops[0])

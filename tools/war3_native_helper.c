@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 30u
+#define WAR3_NATIVE_VERSION 31u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -82,6 +82,7 @@
 #define WAR3_NATIVE_OP_JASS_SET_UNIT_STATE 134u
 #define WAR3_NATIVE_OP_JASS_SET_UNIT_INT 135u
 #define WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY 136u
+#define WAR3_NATIVE_OP_SET_BOUND_ITEM_CHARGES 137u
 #define WAR3_CLONE_FLAG_HERO 0x01u
 #define WAR3_CLONE_FLAG_INVENTORY 0x02u
 #define WAR3_CLONE_FLAG_PRESERVE_OWNER 0x04u
@@ -395,6 +396,7 @@ static const char *g_persistent_native_names[] = {
     "GetUnitAbilityLevel",
     "SetUnitPosition",
     "SetUnitState",
+    "SetItemCharges",
 };
 
 static War3PersistentNative g_persistent_natives[
@@ -2693,7 +2695,8 @@ static void run_command(void) {
                again before each subsequent setter, not only once per batch. */
             if (op->kind != WAR3_NATIVE_OP_JASS_SET_UNIT_STATE &&
                 op->kind != WAR3_NATIVE_OP_JASS_SET_UNIT_INT &&
-                op->kind != WAR3_NATIVE_OP_JASS_SET_UNIT_POSITION) {
+                op->kind != WAR3_NATIVE_OP_JASS_SET_UNIT_POSITION &&
+                op->kind != WAR3_NATIVE_OP_SET_BOUND_ITEM_CHARGES) {
                 last_error = ERROR_INVALID_DATA;
             } else {
                 last_error = war3_validate_unit_identity(&cmd, &cmd.ops[0]);
@@ -2713,6 +2716,51 @@ static void run_command(void) {
             goto finish;
         }
         switch (op->kind) {
+            case WAR3_NATIVE_OP_SET_BOUND_ITEM_CHARGES: {
+                JassUnitItemInSlotFn slot_fn = (JassUnitItemInSlotFn)(uintptr_t)war3_persistent_native_handler("UnitItemInSlot");
+                JassSetItemChargesFn setter = (JassSetItemChargesFn)(uintptr_t)war3_persistent_native_handler("SetItemCharges");
+                JassGetItemChargesFn getter = (JassGetItemChargesFn)(uintptr_t)war3_persistent_native_handler("GetItemCharges");
+                JassUnitHandleResolveFn resolver = (JassUnitHandleResolveFn)(uintptr_t)g_persistent_item_resolver;
+                uint64_t item, object, full;
+                int32_t actual;
+                if (cmd.ops[0].kind != WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY ||
+                    op->rawcode >= 6u || !op->arg0 || !op->handler || op->arg1 > 0x7fffffffu) {
+                    last_error = ERROR_INVALID_PARAMETER;
+                } else if (!war3_executable_pointer((uint64_t)(uintptr_t)slot_fn) ||
+                           !war3_executable_pointer((uint64_t)(uintptr_t)setter) ||
+                           !war3_executable_pointer((uint64_t)(uintptr_t)getter) ||
+                           !war3_executable_pointer(g_persistent_item_resolver)) {
+                    last_error = ERROR_PROC_NOT_FOUND;
+                } else {
+                    __try {
+                        item = slot_fn(cmd.unit_handle, (int32_t)op->rawcode);
+                        object = item ? resolver(item) : 0;
+                        if (item != op->arg0 || object != op->handler) {
+                            last_error = ERROR_INVALID_HANDLE;
+                        } else {
+                            full = *(uint64_t *)(uintptr_t)(object + 0x18);
+                            setter(item, (int32_t)op->arg1);
+                            last_error = war3_validate_unit_identity(&cmd, &cmd.ops[0]);
+                            if (!last_error && (slot_fn(cmd.unit_handle, (int32_t)op->rawcode) != item ||
+                                resolver(item) != object || *(uint64_t *)(uintptr_t)(object + 0x18) != full)) {
+                                last_error = ERROR_INVALID_HANDLE;
+                            }
+                            if (!last_error) {
+                                actual = getter(item);
+                                op->result = (uint32_t)actual;
+                                if (actual != (int32_t)op->arg1) last_error = ERROR_INVALID_DATA;
+                            }
+                        }
+                    } __except (EXCEPTION_EXECUTE_HANDLER) {
+                        last_error = GetExceptionCode();
+                    }
+                }
+                if (last_error) {
+                    op->last_error = last_error;
+                    goto finish;
+                }
+                break;
+            }
             case WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY: {
                 last_error = (i != 0 || cmd.op_count < 2)
                     ? ERROR_INVALID_DATA : war3_validate_unit_identity(&cmd, op);

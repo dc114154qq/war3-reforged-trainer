@@ -8048,66 +8048,68 @@ class War3Trainer:
         data_address = results[1].result if len(results) >= 2 else 0
         if not data_address:
             raise RuntimeError(f"引擎未能从资源创建 {format_rawcode(rawcode)} 运行时技能实例")
-        if refresh_after_add:
-            self._run_native_helper_ops(
-                candidate.unit_address,
-                (
+        try:
+            if refresh_after_add:
+                self._run_native_helper_ops(
+                    candidate.unit_address,
                     (
-                        self.NATIVE_HELPER_OP_INTERNAL_ABILITY_REFRESH,
-                        0,
-                        internals.refresh_address,
-                        0,
-                        0,
+                        (
+                            self.NATIVE_HELPER_OP_INTERNAL_ABILITY_REFRESH,
+                            0,
+                            internals.refresh_address,
+                            0,
+                            0,
+                        ),
                     ),
-                ),
-            )
-        instance: AbilityInstance | None = None
-        if native_path:
-            try:
+                )
+            instance: AbilityInstance | None = None
+            if native_path:
                 instance, _, _ = self._native_ability_metadata(candidate, rawcode)
                 if instance.data_address != data_address:
                     raise RuntimeError("创建后的技能数据对象与引擎返回对象不一致")
-            except RuntimeError:
-                instance = None
-        else:
-            for lookup_delay in (0.05, 0.10):
-                time.sleep(lookup_delay)
-                if require_wrapper:
-                    pm.regions(force_refresh=True)
-                    instance = self._ability_instance_from_data_for_candidate(
-                        pm, candidate, data_address, rawcode,
-                    )
-                elif self._find_engine_ability_data(pm, candidate, rawcode) == data_address:
-                    instance = self._ability_data_instance_for_candidate(
-                        pm, candidate, data_address, rawcode,
-                    )
-                if instance is not None:
-                    break
-        if instance is None and not native_path:
-            current_instances = self._ability_instances_from_candidate(
-                pm,
-                candidate,
-                required_rawcodes={rawcode},
-                allow_global_scan=True,
-            )
-            matching_instances = [
-                item for item in current_instances
-                if item.data_address == data_address and item.rawcode == rawcode
-            ]
-            if len(matching_instances) == 1:
-                instance = matching_instances[0]
-        if instance is None:
-            create_error = (
-                f"引擎创建了 {format_rawcode(rawcode)}，"
-                "但未能反查到当前单位上的运行时实例"
-            )
+            else:
+                for lookup_delay in (0.05, 0.10):
+                    time.sleep(lookup_delay)
+                    if require_wrapper:
+                        pm.regions(force_refresh=True)
+                        instance = self._ability_instance_from_data_for_candidate(
+                            pm, candidate, data_address, rawcode,
+                        )
+                    elif self._find_engine_ability_data(pm, candidate, rawcode) == data_address:
+                        instance = self._ability_data_instance_for_candidate(
+                            pm, candidate, data_address, rawcode,
+                        )
+                    if instance is not None:
+                        break
+            if instance is None and not native_path:
+                current_instances = self._ability_instances_from_candidate(
+                    pm,
+                    candidate,
+                    required_rawcodes={rawcode},
+                    allow_global_scan=True,
+                )
+                matching_instances = [
+                    item for item in current_instances
+                    if item.data_address == data_address and item.rawcode == rawcode
+                ]
+                if len(matching_instances) == 1:
+                    instance = matching_instances[0]
+            if instance is None:
+                create_error = (
+                    f"引擎创建了 {format_rawcode(rawcode)}，"
+                    "但未能反查到当前单位上的运行时实例"
+                )
+                raise RuntimeError(create_error)
+        except Exception as create_exc:
             try:
+                if native_path:
+                    candidate = self._refresh_native_candidate(candidate)
                 self._remove_engine_ability_instance(pm, candidate, data_address)
             except Exception as cleanup_exc:
                 raise RuntimeError(
-                    f"{create_error}；回滚创建实例失败：{cleanup_exc}"
-                ) from cleanup_exc
-            raise RuntimeError(create_error)
+                    f"{create_exc}；回滚创建实例失败：{cleanup_exc}"
+                ) from create_exc
+            raise
         return instance, True
 
     def _temporary_engine_ability_template(

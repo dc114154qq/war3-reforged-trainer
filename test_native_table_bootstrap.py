@@ -195,7 +195,7 @@ def make_trainer():
 
 def test_bootstrap_uses_one_dll_command_and_discards_previous_process_records():
     trainer, values = make_trainer()
-    assert trainer.persistent_native_init() == 29
+    assert trainer.persistent_native_init() == 30
     trainer._run_native_helper_ops.assert_called_once_with(0, ((139, PROFILE_ID, 0, 0, 0),), timeout_ms=30000)
     assert 'old' not in trainer._native_handlers
     assert trainer._jass_unit_resolver_address == values[0]

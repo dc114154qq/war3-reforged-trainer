@@ -25,7 +25,7 @@ def fields_context(context):
 def test_six_native_fields_are_writable_without_fabricated_addresses(fields_context):
     trainer, memory, candidate, _ = fields_context
     fields = {f.key: f for f in trainer._unit_fields_from_candidate(memory, candidate)}
-    for key in trainer.NATIVE_BASIC_FIELD_ARGUMENTS:
+    for key in ('hp_current','hp_max','mp_current','mp_max','x','y'):
         field = fields[key]
         assert field.writable and field.native_write
         assert field.address == field.write_address == 0

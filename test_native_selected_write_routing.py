@@ -34,7 +34,8 @@ class NativeSelectedWriteRoutingTests(unittest.TestCase):
     @staticmethod
     def snapshot(index):
         return SimpleNamespace(handle=index, full_handle=(index << 32) | index,
-                               owner_address=index*0x10000, unit_address=index*0x20000, type_id=0x68666f6f)
+                               owner_address=index*0x10000, unit_address=index*0x20000, type_id=0x68666f6f,
+                               hp_property=0, mp_property=0)
 
     def assert_current(self, candidate):
         self.assertEqual(candidate.handle, self.current.full_handle)

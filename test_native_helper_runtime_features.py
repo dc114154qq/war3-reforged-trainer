@@ -40,6 +40,7 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
         return SimpleNamespace(
             handle=handle, full_handle=handle + 0x100000000,
             owner_address=unit + 0x100, unit_address=unit, type_id=0x68666F6F,
+            hp_property=0, mp_property=0,
         )
 
     def test_empty_native_selection_never_requeries_or_scans_during_reconnect(self):
@@ -102,12 +103,12 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
         for changed in ("handle", "owner_address", "unit_address"):
             with self.subTest(changed=changed):
                 trainer = self.make_selection_trainer()
-                mapper = trainer._candidate_from_identity.side_effect
+                mapper = trainer._candidate_from_native_snapshot
                 first = self.selection_snapshot()
                 second = self.selection_snapshot(2, 0x2000)
-                good = mapper(None, first.full_handle, first.owner_address, first.unit_address, "", 0)
-                bad = mapper(None, second.full_handle, second.owner_address, second.unit_address, "", 0)
-                trainer._candidate_from_identity.side_effect = [good, replace(bad, **{changed: 0xBAD})]
+                good = mapper(None, first)
+                bad = mapper(None, second)
+                trainer._candidate_from_native_snapshot = Mock(side_effect=[good, replace(bad, **{changed: 0xBAD})])
                 with self.assertRaisesRegex(RuntimeError, "Native selection changed"):
                     trainer._selected_candidates_snapshot(Mock(), persistent_snapshots=(first, second))
                 self.assertEqual(trainer._unit_owner_index, {99: 0x9900})

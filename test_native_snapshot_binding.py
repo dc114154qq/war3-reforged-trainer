@@ -33,7 +33,7 @@ def make_candidate(snapshot):
 
 
 def snapshot_result(snapshot):
-    row = [0] * 149
+    row = [0] * 153
     row[:5] = [snapshot.handle, snapshot.unit_address, snapshot.owner, snapshot.owner_id, snapshot.type_id]
     row[5:12] = [module.War3Trainer._float_bits(v) for v in
                  (snapshot.hp, snapshot.hp_max, snapshot.mp, snapshot.mp_max, snapshot.x, snapshot.y, snapshot.move_speed)]
@@ -45,6 +45,9 @@ def snapshot_result(snapshot):
     row[138:140] = [snapshot.full_handle, snapshot.owner_address]
     row[143:149] = snapshot.item_full_handles
     row[140:143] = [snapshot.base_strength, snapshot.base_agility, snapshot.base_intelligence]
+    row[149:153] = [snapshot.hp_property, snapshot.mp_property,
+                    module.War3Trainer._float_bits(snapshot.hp_regen or 0.0),
+                    module.War3Trainer._float_bits(snapshot.mp_regen or 0.0)]
     return module.NativeHelperOpResult(kind=module.War3Trainer.NATIVE_HELPER_OP_PERSISTENT_UNIT_SNAPSHOT,
                                       result=1, extra_results=tuple(row))
 
@@ -319,7 +322,7 @@ class NativeSnapshotBindingTests(unittest.TestCase):
         trainer._run_native_helper_ops_locked(1, ops)
         payload = trainer._write_native_helper_command.call_args.args[1]
         header = trainer.NATIVE_HELPER_HEADER_STRUCT.unpack_from(payload)
-        self.assertEqual(header[1], 40)
+        self.assertEqual(header[1], 41)
         self.assertEqual(header[4], 1)
         operation = trainer.NATIVE_HELPER_OP_STRUCT.unpack_from(payload, trainer.NATIVE_HELPER_HEADER_STRUCT.size)
         self.assertEqual(operation[:5], ops[0])

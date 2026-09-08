@@ -36,7 +36,7 @@ static BOOL test_free(HANDLE heap, DWORD flags, void *p) {
 #include "HELPER_SOURCE"
 static unsigned sizes[13], selected, cursor, destroyed, fail_index, holes;
 static unsigned target_unit, target_fault, enumerations, field_reads;
-static uint8_t objects[13][0x20], owners[13][0xa0], items[13][0x20];
+static uint8_t objects[13][0x20], owners[13][0xc0], items[13][0x20];
 static uint64_t fake_create(void) { return 1; }
 static uint64_t fake_player(void) { return 2; }
 static void fake_enum(uint64_t g, uint64_t p, uint64_t f) { cursor = 0; ++enumerations; }
@@ -192,7 +192,7 @@ class NativeSnapshotPayloadTests(unittest.TestCase):
                 error, n, payload = self.collect(counts)
                 self.assertEqual(error, 0)
                 self.assertEqual(self.native.destroyed_count(), 1)
-                self.assertEqual(len(payload), 149 * n + 2 * sum(max(0, c - 48) for c in counts))
+                self.assertEqual(len(payload), 153 * n + 2 * sum(max(0, c - 48) for c in counts))
                 for unit, (snapshot, count) in enumerate(zip(self.parse(n, payload), counts), 1):
                     self.assertEqual(snapshot.handle, unit)
                     self.assertEqual(snapshot.full_handle, (unit << 32) | unit)
@@ -248,9 +248,9 @@ class NativeSnapshotPayloadTests(unittest.TestCase):
     def test_parser_rejects_invalid_counts(self):
         for count in (-1, 13):
             with self.assertRaises(RuntimeError):
-                self.parse(count, (0,) * 149 * max(0, count))
+                self.parse(count, (0,) * 153 * max(0, count))
         for ability_count in (-1, 4097):
-            row = [0] * 149
+            row = [0] * 153
             row[41] = ability_count
             with self.assertRaises(RuntimeError):
                 self.parse(1, tuple(row))

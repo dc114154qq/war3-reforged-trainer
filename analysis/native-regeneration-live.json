@@ -1,0 +1,109 @@
+{
+  "pid": 33200,
+  "protocol": 41,
+  "game_build": "2.0.4.23745",
+  "units": [
+    {
+      "handle": 1058016,
+      "hero": true,
+      "hp_regen": 10.549975395202637,
+      "mp_regen": 2.749986171722412,
+      "fields": 115,
+      "read_ms": 35.117,
+      "missing_prior_fields": []
+    },
+    {
+      "handle": 1058028,
+      "hero": true,
+      "hp_regen": 4.349996566772461,
+      "mp_regen": 9.799978256225586,
+      "fields": 133,
+      "read_ms": 35.193,
+      "missing_prior_fields": []
+    },
+    {
+      "handle": 1059280,
+      "hero": false,
+      "hp_regen": 2.25,
+      "mp_regen": 0.0,
+      "fields": 55,
+      "read_ms": 34.473,
+      "missing_prior_fields": []
+    },
+    {
+      "handle": 1059314,
+      "hero": false,
+      "hp_regen": 2.25,
+      "mp_regen": 0.0,
+      "fields": 73,
+      "read_ms": 33.427,
+      "missing_prior_fields": []
+    },
+    {
+      "handle": 1059276,
+      "hero": false,
+      "hp_regen": 2.25,
+      "mp_regen": 0.0,
+      "fields": 73,
+      "read_ms": 36.768,
+      "missing_prior_fields": []
+    },
+    {
+      "handle": 1059228,
+      "hero": false,
+      "hp_regen": 2.25,
+      "mp_regen": 0.0,
+      "fields": 59,
+      "read_ms": 33.955,
+      "missing_prior_fields": []
+    },
+    {
+      "handle": 1059231,
+      "hero": false,
+      "hp_regen": 2.25,
+      "mp_regen": 0.0,
+      "fields": 59,
+      "read_ms": 37.727,
+      "missing_prior_fields": []
+    },
+    {
+      "handle": 1053310,
+      "hero": false,
+      "hp_regen": 2.25,
+      "mp_regen": 0.0,
+      "fields": 59,
+      "read_ms": 35.937,
+      "missing_prior_fields": []
+    },
+    {
+      "handle": 1059232,
+      "hero": false,
+      "hp_regen": 2.25,
+      "mp_regen": 0.0,
+      "fields": 59,
+      "read_ms": 33.677,
+      "missing_prior_fields": []
+    },
+    {
+      "handle": 1052985,
+      "hero": false,
+      "hp_regen": 3.0,
+      "mp_regen": 2.5,
+      "fields": 63,
+      "read_ms": 34.465,
+      "missing_prior_fields": []
+    },
+    {
+      "handle": 1052988,
+      "hero": false,
+      "hp_regen": 3.0,
+      "mp_regen": 2.5,
+      "fields": 63,
+      "read_ms": 36.247,
+      "missing_prior_fields": []
+    }
+  ],
+  "snapshot_ms": 49.944,
+  "mapping_ms": 0.242,
+  "ok": true
+}

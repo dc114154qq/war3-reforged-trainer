@@ -48,7 +48,7 @@ def large_numeric_context():
         }
     )
     native = replace(make_snapshot(), handle=7, full_handle=0x1234,
-                     owner_address=owner, unit_address=unit)
+                     owner_address=owner, unit_address=unit, hp_property=hp_prop, mp_property=mp_prop)
     subject._last_persistent_native_snapshots = (native,)
     subject.persistent_native_init = lambda: None
     handlers = {name: trainer.NativeHandler(name, 0, i + 100) for i, name in enumerate(

@@ -793,6 +793,10 @@ class PersistentNativeUnitSnapshot:
     base_agility: int = 0
     base_intelligence: int = 0
     item_full_handles: tuple[int, ...] = (0,) * 6
+    hp_property: int = 0
+    mp_property: int = 0
+    hp_regen: float | None = None
+    mp_regen: float | None = None
 
 class NativeUnitFieldMemory:
     """One game-thread field response; missing bytes never trigger process reads."""
@@ -2589,7 +2593,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 40
+    NATIVE_HELPER_VERSION = 41
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -2681,12 +2685,15 @@ class War3Trainer:
     NATIVE_HELPER_OP_BOUND_ITEM_TYPE = 145
     NATIVE_HELPER_OP_BOUND_ABILITY_LIST = 146
     NATIVE_HELPER_OP_BOUND_UNIT_FIELDS = 147
-    PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 149
+    NATIVE_HELPER_OP_SET_UNIT_REGEN = 148
+    PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 153
     NATIVE_BASIC_FIELD_ARGUMENTS = {
         "hp_current": ("target_hp", "hp"),
         "hp_max": ("max_hp", "hp_max"),
         "mp_current": ("target_mp", "mp"),
         "mp_max": ("max_mp", "mp_max"),
+        "hp_regen": ("target_hp_regen", "hp_regen"),
+        "mp_regen": ("target_mp_regen", "mp_regen"),
         "x": ("target_x", "x"),
         "y": ("target_y", "y"),
     }
@@ -4037,6 +4044,10 @@ class War3Trainer:
                     base_strength=ctypes.c_int32(row[140] & 0xFFFFFFFF).value,
                     base_agility=ctypes.c_int32(row[141] & 0xFFFFFFFF).value,
                     base_intelligence=ctypes.c_int32(row[142] & 0xFFFFFFFF).value,
+                    hp_property=int(row[149]),
+                    mp_property=int(row[150]),
+                    hp_regen=self._float_from_bits(row[151]) if row[149] else None,
+                    mp_regen=self._float_from_bits(row[152]) if row[150] else None,
                 )
             )
         if extra_cursor != len(values):
@@ -4063,8 +4074,13 @@ class War3Trainer:
             previous.handle, candidate.handle, candidate.owner_address, candidate.unit_address
         ):
             raise RuntimeError("当前 native 快照已经失效，请重新读取选中单位")
-        # This is a read of one pinned unit, not a new selection snapshot.
-        return replace(candidate, native_snapshot=current, unit_type_id=current.type_id)
+        # Refresh property metadata too: a unit can replace its properties
+        # without changing its own generation.
+        refreshed = self._candidate_from_native_snapshot(None, current)
+        if refreshed is None:
+            raise RuntimeError("当前 native 快照已经失效，请重新读取选中单位")
+        return replace(refreshed, score=candidate.score, note=candidate.note,
+                       selection_slot_address=candidate.selection_slot_address)
 
     def _native_helper_command_path(self) -> Path:
         return Path(tempfile.gettempdir()) / f"war3_reforged_native_{self.pid}.bin"
@@ -4511,6 +4527,7 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_BOUND_ABILITY_CONTEXT,
             self.NATIVE_HELPER_OP_BOUND_ABILITY_LIST,
             self.NATIVE_HELPER_OP_BOUND_UNIT_FIELDS,
+            self.NATIVE_HELPER_OP_SET_UNIT_REGEN,
             self.NATIVE_HELPER_OP_BOUND_INVENTORY_ITEM,
             self.NATIVE_HELPER_OP_BOUND_ITEM_TYPE,
         }
@@ -4567,6 +4584,7 @@ class War3Trainer:
         unit_kinds.add(self.NATIVE_HELPER_OP_JASS_SET_UNIT_INT)
         unit_kinds.add(self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY)
         unit_kinds.add(self.NATIVE_HELPER_OP_SET_BOUND_ITEM_CHARGES)
+        unit_kinds.add(self.NATIVE_HELPER_OP_SET_UNIT_REGEN)
         if any(kind in unit_kinds for kind, _rawcode, _handler, _arg0, _arg1 in op_list) and not unit_address:
             raise RuntimeError("当前单位缺少运行时 unit 指针，不能调用 native helper")
         command_path = self._native_helper_command_path()
@@ -4646,39 +4664,27 @@ class War3Trainer:
         return {name: self._native_handlers[name] for name in requested}
 
     def _candidate_from_native_snapshot(
-        self, pm: ProcessMemory, snapshot: PersistentNativeUnitSnapshot,
+        self, pm: ProcessMemory | None, snapshot: PersistentNativeUnitSnapshot,
     ) -> UnitCandidate | None:
         if not (snapshot.handle and snapshot.full_handle and snapshot.owner_address and snapshot.unit_address):
             return None
-        try:
-            candidate = self._candidate_from_identity(
-                pm, snapshot.full_handle, snapshot.owner_address,
-                snapshot.unit_address, "native_engine_handle_table", 1000,
-            )
-        except OSError:
-            candidate = None
-        if candidate is None:
-            try:
-                if (pm.read_u64(snapshot.owner_address + 0x18) != self.UNIT_OWNER_TAG
-                    or pm.read_u64(snapshot.owner_address + 0x20) != snapshot.full_handle
-                    or pm.read_u64(snapshot.owner_address + 0x90) != snapshot.unit_address
-                    or pm.read_u64(snapshot.unit_address + 0x18) != snapshot.full_handle):
-                    return None
-            except OSError:
-                return None
-            candidate = UnitCandidate(
-                base=0, score=1000, hp_current_address=0, hp_max_address=0,
-                mp_current_address=0, mp_max_address=0,
-                note="native identity without external property metadata",
-                handle=snapshot.full_handle, owner_address=snapshot.owner_address,
-                unit_address=snapshot.unit_address,
-            )
-        if (candidate.handle, candidate.owner_address, candidate.unit_address) != (
-            snapshot.full_handle, snapshot.owner_address, snapshot.unit_address
-        ):
-            return None
-        return replace(candidate, unit_type_id=int(snapshot.type_id),
-                       selection_source="persistent_native", native_snapshot=snapshot)
+        # The DLL validates the whole snapshot, including property membership,
+        # before publishing it. Keep that identity intact without external
+        # mapping/scans. Targeted reads and mutations revalidate it in the DLL.
+        hp, mp = snapshot.hp_property, snapshot.mp_property
+        return UnitCandidate(
+            base=hp, score=1000,
+            hp_current_address=hp + 0xD0 if hp else 0,
+            hp_max_address=hp + 0xE0 if hp else 0,
+            hp_regen_address=hp + 0xD4 if hp else 0,
+            mp_current_address=mp + 0xD0 if mp else 0,
+            mp_max_address=mp + 0xE0 if mp else 0,
+            mp_regen_address=mp + 0xD4 if mp else 0,
+            note="native engine identity and property snapshot",
+            handle=snapshot.full_handle, owner_address=snapshot.owner_address,
+            unit_address=snapshot.unit_address, unit_type_id=int(snapshot.type_id),
+            selection_source="persistent_native", native_snapshot=snapshot,
+        )
 
     def _elephant_selected_candidate(self, pm: ProcessMemory) -> UnitCandidate:
         if self._elephant_selection_override is not None:
@@ -12860,14 +12866,20 @@ class War3Trainer:
         else:
             append_native_real("hp_max", "HP-最大值", native.hp_max, candidate.hp_max_address, "基础")
             append_native_real("hp_current", "HP-当前值", native.hp, candidate.hp_current_address, "基础")
-        self._append_unit_field(pm, fields, "hp_regen", "HP-回复率", "f32", candidate.hp_regen_address, "基础")
+        if native is None:
+            self._append_unit_field(pm, fields, "hp_regen", "HP-回复率", "f32", candidate.hp_regen_address, "基础")
+        elif native.hp_regen is not None:
+            append_native_real("hp_regen", "HP-回复率", native.hp_regen, candidate.hp_regen_address, "基础")
         if native is None:
             self._append_unit_field(pm, fields, "mp_max", "MP-最大值", "f32", candidate.mp_max_address, "基础")
             self._append_unit_field(pm, fields, "mp_current", "MP-当前值", "f32", candidate.mp_current_address, "基础")
         else:
             append_native_real("mp_max", "MP-最大值", native.mp_max, candidate.mp_max_address, "基础")
             append_native_real("mp_current", "MP-当前值", native.mp, candidate.mp_current_address, "基础")
-        self._append_unit_field(pm, fields, "mp_regen", "MP-回复率", "f32", candidate.mp_regen_address, "基础")
+        if native is None:
+            self._append_unit_field(pm, fields, "mp_regen", "MP-回复率", "f32", candidate.mp_regen_address, "基础")
+        elif native.mp_regen is not None:
+            append_native_real("mp_regen", "MP-回复率", native.mp_regen, candidate.mp_regen_address, "基础")
         if native is None:
             self._append_unit_field(pm, fields, "x", "坐标-X", "f32", candidate.x_address, "坐标")
             self._append_unit_field(pm, fields, "y", "坐标-Y", "f32", candidate.y_address, "坐标")
@@ -14813,15 +14825,9 @@ class War3Trainer:
         for value in (target_x, target_y):
             if value is not None and abs(value) > 1_000_000:
                 raise ValueError("Native position is outside the supported range")
-        regen_writes = []
-        for value, address in ((target_hp_regen, candidate.hp_regen_address),
-                               (target_mp_regen, candidate.mp_regen_address)):
-            if value is not None:
-                if not address:
-                    raise RuntimeError("Current unit has no writable regeneration field")
-                regen_writes.append((address, value))
+        regen_mask = int(target_hp_regen is not None) | (int(target_mp_regen is not None) << 1)
         if all(value is None for value in (target_hp, target_mp, max_hp, max_mp,
-                                           target_x, target_y)) and not regen_writes:
+                                           target_x, target_y)) and not regen_mask:
             return candidate
 
         native = self._native_snapshot_for_candidate(candidate)
@@ -14840,6 +14846,9 @@ class War3Trainer:
         native = self._native_snapshot_for_candidate(candidate)
         if native is None or not native.handle:
             raise RuntimeError("No native handle for the requested unit identity")
+        for target, current in ((target_hp_regen, native.hp_regen), (target_mp_regen, native.mp_regen)):
+            if target is not None and current is None:
+                raise RuntimeError("Current unit has no writable regeneration field")
 
         # Build one command containing all setters in order. The command header
         # takes the JASS handle; candidate.handle is the engine object identity.
@@ -14868,17 +14877,18 @@ class War3Trainer:
                 raise ValueError("Native position is outside the supported range")
             requests.append(("SetUnitPosition", self.NATIVE_HELPER_OP_JASS_SET_UNIT_POSITION,
                              self._float_bits(x), self._float_bits(y), 0))
+        ops = ()
         if requests:
             handlers = self._elephant_handlers(pm, tuple(dict.fromkeys(row[0] for row in requests)))
             ops = tuple((kind, rawcode, handlers[name].handler_address, arg0, arg1)
                         for name, kind, rawcode, arg0, arg1 in requests)
+        if regen_mask:
+            ops += ((self.NATIVE_HELPER_OP_SET_UNIT_REGEN, regen_mask, 0,
+                     self._float_bits(target_hp_regen or 0.0), self._float_bits(target_mp_regen or 0.0)),)
+        if ops:
             guard = (self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY, 0,
                      candidate.unit_address, candidate.handle, candidate.owner_address)
             self._run_native_helper_ops(native.handle, (guard, *ops))
-        # Regeneration still uses verified property addresses. It has no native
-        # setter here and is not an alternate path for vital/position failures.
-        for address, value in regen_writes:
-            pm.write_f32(address, value)
         return self._refresh_native_candidate(candidate)
 
     def set_selected_unit(
@@ -18599,10 +18609,17 @@ def run_cli(args: argparse.Namespace) -> int:
         with ProcessMemory(t.pid) as pm:
             pos = t._position_from_candidate(pm, cand)
             regen_text = ""
-            if cand.hp_regen_address:
-                regen_text += f" hp_regen={pm.read_f32(cand.hp_regen_address):.6g}"
-            if cand.mp_regen_address:
-                regen_text += f" mp_regen={pm.read_f32(cand.mp_regen_address):.6g}"
+            native = t._native_snapshot_for_candidate(cand)
+            if native is not None:
+                for key in ("hp_regen", "mp_regen"):
+                    value = getattr(native, key)
+                    if value is not None:
+                        regen_text += f" {key}={value:.6g}"
+            else:
+                if cand.hp_regen_address:
+                    regen_text += f" hp_regen={pm.read_f32(cand.hp_regen_address):.6g}"
+                if cand.mp_regen_address:
+                    regen_text += f" mp_regen={pm.read_f32(cand.mp_regen_address):.6g}"
         if pos is not None:
             pos_text = f" x={pos[0]:.3f} y={pos[1]:.3f}"
         print(
@@ -18757,10 +18774,17 @@ def run_cli(args: argparse.Namespace) -> int:
         with ProcessMemory(t.pid) as pm:
             pos = t._position_from_candidate(pm, cand)
             regen_text = ""
-            if cand.hp_regen_address:
-                regen_text += f" hp_regen={pm.read_f32(cand.hp_regen_address):.6g}"
-            if cand.mp_regen_address:
-                regen_text += f" mp_regen={pm.read_f32(cand.mp_regen_address):.6g}"
+            native = t._native_snapshot_for_candidate(cand)
+            if native is not None:
+                for key in ("hp_regen", "mp_regen"):
+                    value = getattr(native, key)
+                    if value is not None:
+                        regen_text += f" {key}={value:.6g}"
+            else:
+                if cand.hp_regen_address:
+                    regen_text += f" hp_regen={pm.read_f32(cand.hp_regen_address):.6g}"
+                if cand.mp_regen_address:
+                    regen_text += f" mp_regen={pm.read_f32(cand.mp_regen_address):.6g}"
         if pos is not None:
             pos_text = f" x={pos[0]:.3f} y={pos[1]:.3f}"
         print(

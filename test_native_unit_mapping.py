@@ -50,24 +50,22 @@ def test_new_unit_with_no_hp_property_still_maps_native_identity(mapping, proper
     assert trainer._elephant_selected_candidate(memory).native_snapshot is snapshot
 
 
-@pytest.mark.parametrize('offset', ['owner_tag', 'owner_handle', 'owner_unit', 'unit_handle'])
-def test_identity_mismatch_cannot_be_hidden_by_missing_properties(mapping, offset):
-    trainer, memory, snapshot, values = mapping
-    addresses = dict(owner_tag=snapshot.owner_address + 0x18,
-                     owner_handle=snapshot.owner_address + 0x20,
-                     owner_unit=snapshot.owner_address + 0x90,
-                     unit_handle=snapshot.unit_address + 0x18)
-    values[addresses[offset]] ^= 1
+@pytest.mark.parametrize('attribute', ['handle', 'owner_address', 'unit_address', 'full_handle'])
+def test_incomplete_native_identity_cannot_publish_selection(mapping, attribute):
+    trainer, memory, snapshot, _ = mapping
+    trainer.persistent_native_selected_snapshots.return_value = (replace(snapshot, **{attribute:0}),)
     with pytest.raises(RuntimeError):
         trainer._selected_candidates_snapshot(memory)
     assert trainer._unit_owner_index == {}
 
 
-def test_unreadable_identity_stays_an_error(mapping):
+def test_native_identity_mapping_never_reads_external_memory(mapping):
     trainer, memory, _, _ = mapping
-    memory.read_u64.side_effect = OSError('unit unreadable')
-    with pytest.raises(RuntimeError):
-        trainer._elephant_selected_candidate(memory)
+    for name in ('read','read_u64','read_u32','read_f32','regions'):
+        getattr(memory,name).side_effect = AssertionError('external identity lookup')
+    assert trainer._elephant_selected_candidate(memory).native_snapshot is not None
+    assert memory.mock_calls == []
+    trainer._property_from_owner.assert_not_called()
 
 
 def test_public_field_read_and_write_work_without_external_hp_block(mapping):

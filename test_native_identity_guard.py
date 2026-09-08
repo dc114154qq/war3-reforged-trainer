@@ -21,7 +21,7 @@ static DWORD fake_temp_path(DWORD count, wchar_t *path) {
 #define GetTempPathW fake_temp_path
 #include "HELPER_SOURCE"
 #undef GetTempPathW
-static uint8_t object[0x20], other[0x20], owner[0xa0];
+static uint8_t object[0x20], other[0x20], owner[0xc0];
 static uint8_t ability_data[0xa8], ability_wrapper[0x98];
 static const uint64_t ability_full = 0x987600005432ULL;
 static unsigned ability_lookups;

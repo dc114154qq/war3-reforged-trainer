@@ -30,8 +30,9 @@ Validation:
   See `native-unit-fields-live.json`; these are current-process observations,
   not a new EXE or a gameplay mutation test.
 
-Still outside this change: native candidate construction/property metadata,
-HP/MP regeneration, inventory write metadata, and generic field writes retain
-external-memory work. In particular, reading a component snapshot does not
+Protocol 41 subsequently moved candidate construction/property metadata and
+HP/MP regeneration into the native chain (see `native-regeneration.md`).
+Inventory write metadata and generic field writes still retain external-memory
+work. In particular, reading a component snapshot does not
 establish that later writes validate the same component generation. The full
 DLL-only goal remains unfinished. The validated 1.0.19 EXE is preserved.

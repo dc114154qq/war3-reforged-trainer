@@ -35,6 +35,8 @@ def detect_ui_language(locale_name: str | None = None) -> str:
 
 
 _EN_TRANSLATIONS = {
+    "当前单位上的 ": "On the current unit, ",
+    " 运行时实例不唯一": " runtime instances are not unique",
     "创建后的技能数据对象与引擎返回对象不一致": "The created ability data object does not match the engine result",
     "DLL 技能枚举返回重复的能力对象": "DLL ability enumeration returned a duplicate object",
     "DLL 技能枚举返回不完整": "Incomplete ability enumeration returned by the DLL",

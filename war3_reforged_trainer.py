@@ -8009,14 +8009,15 @@ class War3Trainer:
         native_path = self._native_snapshot_for_candidate(candidate) is not None
         existing_data = 0
         if native_path:
-            try:
-                existing_instance, _, _ = self._native_ability_metadata(candidate, rawcode)
-                if require_wrapper or existing_instance.data_address:
-                    return existing_instance, False
-            except RuntimeError:
-                # A missing runtime ability is expected here: the subsequent
-                # internal add creates it from the map's resource table.
-                pass
+            existing_instances = self._ability_instances_from_candidate(
+                pm, candidate, required_rawcodes={rawcode}
+            )
+            if len(existing_instances) > 1:
+                raise RuntimeError(
+                    f"当前单位上的 {format_rawcode(rawcode)} 运行时实例不唯一"
+                )
+            if existing_instances:
+                return existing_instances[0], False
         else:
             existing_data = self._find_engine_ability_data(pm, candidate, rawcode)
         if existing_data:

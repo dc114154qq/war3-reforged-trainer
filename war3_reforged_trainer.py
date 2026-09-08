@@ -2673,7 +2673,6 @@ class War3Trainer:
         self._unit_owner_index: dict[int, int] = {}
         self._unit_owner_index_lock = threading.RLock()
         self._unit_object_index_cache: dict[int, tuple[int, int]] | None = None
-        self._owner_properties_cache: dict[int, dict[int, int]] = {}
         self._selected_handle_addresses = list(self.KNOWN_SELECTED_HANDLE_ADDRESSES)
         self._item_object_cache: dict[int, int] = {}
         self._native_handlers: dict[str, NativeHandler] = dict(
@@ -2766,7 +2765,6 @@ class War3Trainer:
                 previous_win10_session.close_session_diagnostics()
             self._unit_owner_index = {}
             self._unit_object_index_cache = None
-            self._owner_properties_cache = {}
             self._selected_handle_addresses = list(self.KNOWN_SELECTED_HANDLE_ADDRESSES)
             self._item_object_cache = {}
             self._native_handlers = {}
@@ -9509,9 +9507,8 @@ class War3Trainer:
 
     def _owner_properties(self, pm: ProcessMemory, owner: int) -> dict[int, int]:
         owner = int(owner)
-        cached = getattr(self, "_owner_properties_cache", {}).get(owner)
-        if cached is not None:
-            return cached
+        # Property membership can change without changing the owner address.
+        # Read its bounded pointer lists; never reuse another read's mapping.
         properties: dict[int, int] = {}
         seen: set[int] = set()
         for prop in self._iter_owner_property_list(pm, owner):
@@ -9529,9 +9526,6 @@ class War3Trainer:
                     properties.setdefault(-1, prop)
             except OSError:
                 continue
-        cache = getattr(self, "_owner_properties_cache", None)
-        if cache is not None:
-            cache[owner] = properties
         return properties
 
     def _unit_object_from_owner(self, pm: ProcessMemory, owner: int, handle: int) -> int:
@@ -13299,13 +13293,6 @@ class War3Trainer:
         owner_index = dict(self._unit_owner_index)
         owner_index.update(isolated._unit_owner_index)
         isolated._unit_owner_index = owner_index
-        owner_properties = {
-            owner: dict(properties)
-            for owner, properties in self._owner_properties_cache.items()
-        }
-        for owner, properties in isolated._owner_properties_cache.items():
-            owner_properties.setdefault(owner, dict(properties))
-        isolated._owner_properties_cache = owner_properties
         isolated._selection_player_candidates = list(
             dict.fromkeys(
                 [

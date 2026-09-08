@@ -19,7 +19,7 @@ def test_persistent_native_ability_list_never_enters_wrapper_scan():
     row = (200, 0x2000, 0x3000, 0x987600005432, 0x4148737400000000,
            0x4000, 0x5000, snapshot.ability_ids[0], 2, 0)
     trainer._run_native_helper_ops = Mock(return_value=(
-        module.NativeHelperOpResult(136, 1), module.NativeHelperOpResult(146, 1, extra_results=row)))
+        module.NativeHelperOpResult(136, 1, extra_results=row), module.NativeHelperOpResult(146, 1)))
     trainer._near_ability_instances_from_candidate = Mock(side_effect=AssertionError("wrapper scan"))
     trainer._global_ability_instances_from_candidate = Mock(side_effect=AssertionError("global scan"))
     result = trainer._ability_instances_from_candidate(Mock(), candidate, allow_global_scan=True)
@@ -42,7 +42,7 @@ def test_persistent_native_ability_list_rejects_duplicate_bound_object():
     row = (200, 0x2000, 0x3000, 0x987600005432, 0x4148737400000000,
            0x4000, 0x5000, snapshot.ability_ids[0], 2, 0)
     trainer._run_native_helper_ops = Mock(return_value=(
-        module.NativeHelperOpResult(136, 1), module.NativeHelperOpResult(146, 2, extra_results=row+row)))
+        module.NativeHelperOpResult(136, 1, extra_results=row+row), module.NativeHelperOpResult(146, 2)))
     snapshot = module.replace(snapshot, ability_ids=(snapshot.ability_ids[0], snapshot.ability_ids[0]))
     trainer._native_snapshot_for_candidate.return_value = snapshot
     with pytest.raises(RuntimeError, match="重复"):

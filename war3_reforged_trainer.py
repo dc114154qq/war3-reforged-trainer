@@ -4459,6 +4459,7 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_BOUND_ABILITY_METADATA,
             self.NATIVE_HELPER_OP_BOUND_ABILITY_IDENTITY,
             self.NATIVE_HELPER_OP_BOUND_ABILITY_CONTEXT,
+            self.NATIVE_HELPER_OP_BOUND_ABILITY_LIST,
             self.NATIVE_HELPER_OP_BOUND_INVENTORY_ITEM,
             self.NATIVE_HELPER_OP_BOUND_ITEM_TYPE,
         }
@@ -8005,7 +8006,19 @@ class War3Trainer:
         if not candidate.unit_address:
             raise RuntimeError("当前单位缺少运行时 unit 指针，不能从资源创建技能模板")
         internals = self._discover_native_ability_internals(pm)
-        existing_data = self._find_engine_ability_data(pm, candidate, rawcode)
+        native_path = self._native_snapshot_for_candidate(candidate) is not None
+        existing_data = 0
+        if native_path:
+            try:
+                existing_instance, _, _ = self._native_ability_metadata(candidate, rawcode)
+                if require_wrapper or existing_instance.data_address:
+                    return existing_instance, False
+            except RuntimeError:
+                # A missing runtime ability is expected here: the subsequent
+                # internal add creates it from the map's resource table.
+                pass
+        else:
+            existing_data = self._find_engine_ability_data(pm, candidate, rawcode)
         if existing_data:
             instance = (
                 self._ability_instance_from_data_for_candidate(
@@ -8052,25 +8065,27 @@ class War3Trainer:
                 ),
             )
         instance: AbilityInstance | None = None
-        for lookup_delay in (0.05, 0.10):
-            time.sleep(lookup_delay)
-            if require_wrapper:
-                pm.regions(force_refresh=True)
-                instance = self._ability_instance_from_data_for_candidate(
-                    pm,
-                    candidate,
-                    data_address,
-                    rawcode,
-                )
-            elif self._find_engine_ability_data(pm, candidate, rawcode) == data_address:
-                instance = self._ability_data_instance_for_candidate(
-                    pm,
-                    candidate,
-                    data_address,
-                    rawcode,
-                )
-            if instance is not None:
-                break
+        if native_path:
+            try:
+                instance, _, _ = self._native_ability_metadata(candidate, rawcode)
+                if instance.data_address != data_address:
+                    raise RuntimeError("创建后的技能数据对象与引擎返回对象不一致")
+            except RuntimeError:
+                instance = None
+        else:
+            for lookup_delay in (0.05, 0.10):
+                time.sleep(lookup_delay)
+                if require_wrapper:
+                    pm.regions(force_refresh=True)
+                    instance = self._ability_instance_from_data_for_candidate(
+                        pm, candidate, data_address, rawcode,
+                    )
+                elif self._find_engine_ability_data(pm, candidate, rawcode) == data_address:
+                    instance = self._ability_data_instance_for_candidate(
+                        pm, candidate, data_address, rawcode,
+                    )
+                if instance is not None:
+                    break
         if instance is None:
             current_instances = self._ability_instances_from_candidate(
                 pm,
@@ -8078,8 +8093,12 @@ class War3Trainer:
                 required_rawcodes={rawcode},
                 allow_global_scan=True,
             )
-            if len(current_instances) == 1:
-                instance = current_instances[0]
+            matching_instances = [
+                item for item in current_instances
+                if item.data_address == data_address and item.rawcode == rawcode
+            ]
+            if len(matching_instances) == 1:
+                instance = matching_instances[0]
         if instance is None:
             create_error = (
                 f"引擎创建了 {format_rawcode(rawcode)}，"
@@ -12294,9 +12313,9 @@ class War3Trainer:
                 ))
                 if len(results) != 2 or any(result.last_error for result in results):
                     raise RuntimeError("DLL 技能枚举返回不完整")
-                values = tuple(int(value) for value in results[1].extra_results)
+                values = tuple(int(value) for value in results[0].extra_results)
                 count = int(results[1].result)
-                if count > 4096 or len(values) != count * 10:
+                if count < 0 or count > 4096 or len(values) != count * 10:
                     raise RuntimeError("DLL 技能枚举结果长度异常")
                 instances: list[AbilityInstance] = []
                 seen_ability_identity: set[tuple[int, int, int]] = set()
@@ -12315,7 +12334,8 @@ class War3Trainer:
                     if identity in seen_ability_identity:
                         raise RuntimeError("DLL 技能枚举返回重复的能力对象")
                     seen_ability_identity.add(identity)
-                    instances.append(instance)
+                    if required_rawcodes is None or rawcode in required_rawcodes:
+                        instances.append(instance)
                 return [replace(instance, slot=index + 1) for index, instance in enumerate(instances)]
         cache_key = (candidate.handle, candidate.owner_address, candidate.unit_address, bool(allow_global_scan))
         if required_rawcodes is None:

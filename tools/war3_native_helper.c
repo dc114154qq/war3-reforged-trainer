@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 32u
+#define WAR3_NATIVE_VERSION 33u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -84,6 +84,8 @@
 #define WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY 136u
 #define WAR3_NATIVE_OP_SET_BOUND_ITEM_CHARGES 137u
 #define WAR3_NATIVE_OP_BOUND_ITEM_IDENTITY 138u
+#define WAR3_NATIVE_OP_BOOTSTRAP_NATIVE_TABLE 139u
+#define WAR3_NATIVE_OP_QUERY_NATIVE_TABLE 140u
 #define WAR3_CLONE_FLAG_HERO 0x01u
 #define WAR3_CLONE_FLAG_INVENTORY 0x02u
 #define WAR3_CLONE_FLAG_PRESERVE_OWNER 0x04u
@@ -539,6 +541,8 @@ static int war3_executable_pointer(uint64_t address) {
         protection == PAGE_EXECUTE_READWRITE ||
         protection == PAGE_EXECUTE_WRITECOPY;
 }
+
+#include "war3_native_bootstrap.h"
 
 static DWORD war3_persistent_resolve_natives(uint32_t *resolved_count) {
     uint32_t count = 0;
@@ -2691,6 +2695,10 @@ static void run_command(void) {
         return;
     }
 
+    if (g_bootstrap_module && cmd.op_count && cmd.ops[0].kind != WAR3_NATIVE_OP_BOOTSTRAP_NATIVE_TABLE) {
+        last_error = war3_bootstrap_refresh();
+        if (last_error) { cmd.ops[0].last_error = last_error; goto finish; }
+    }
     for (uint32_t i = 0; i < cmd.op_count; ++i) {
         NativeOp *op = &cmd.ops[i];
         op->result = 0;
@@ -2714,6 +2722,8 @@ static void run_command(void) {
         if (
             op->handler == 0 &&
             op->kind != WAR3_NATIVE_OP_QUERY_WORLD_POINT &&
+            op->kind != WAR3_NATIVE_OP_BOOTSTRAP_NATIVE_TABLE &&
+            op->kind != WAR3_NATIVE_OP_QUERY_NATIVE_TABLE &&
             op->kind != WAR3_NATIVE_OP_PERSISTENT_SELECTED_SNAPSHOT
         ) {
             op->last_error = ERROR_INVALID_DATA;
@@ -2778,6 +2788,31 @@ static void run_command(void) {
                     goto finish;
                 }
                 op->result = 1;
+                break;
+            }
+            case WAR3_NATIVE_OP_BOOTSTRAP_NATIVE_TABLE: {
+                size_t count = sizeof(g_persistent_natives)/sizeof(g_persistent_natives[0]);
+                if (cmd.op_count != 1 || op->rawcode != WAR3_BOOTSTRAP_PROFILE_ID) {
+                    last_error = ERROR_REVISION_MISMATCH;
+                } else {
+                    extra_results = (uint64_t *)HeapAlloc(GetProcessHeap(), 0, (count + 3u)*sizeof(uint64_t));
+                    last_error = extra_results ? war3_bootstrap_refresh() : ERROR_OUTOFMEMORY;
+                }
+                if (last_error) { op->last_error = last_error; goto finish; }
+                extra_results[0] = g_persistent_unit_resolver;
+                extra_results[1] = g_persistent_item_resolver;
+                extra_results[2] = g_persistent_agent_resolver;
+                for (size_t n = 0; n < count; ++n) extra_results[n+3] = g_persistent_natives[n].handler;
+                extra_result_count = (uint32_t)count + 3u;
+                op->result = count;
+                break;
+            }
+            case WAR3_NATIVE_OP_QUERY_NATIVE_TABLE: {
+                uint8_t *image, *table;
+                last_error = op->arg0 != WAR3_BOOTSTRAP_PROFILE_ID ? ERROR_REVISION_MISMATCH :
+                    war3_bootstrap_context(&image, &table);
+                if (!last_error) last_error = war3_bootstrap_query(image, table, op->rawcode, &op->result);
+                if (last_error) { op->last_error = last_error; goto finish; }
                 break;
             }
             case WAR3_NATIVE_OP_PERSISTENT_REGISTER_NATIVE: {

@@ -35,6 +35,7 @@ from war3_ability_fields import (
 from war3_id_catalog import CATALOG_COUNTS, search_id_entries
 from war3_item_fields import ITEM_FIELD_BY_KEY, ITEM_FIELD_CATALOG, ItemFieldSpec
 from war3_ui_i18n import detect_ui_language, translate_ui_text
+from war3_native_profile import PROFILE_ID as NATIVE_PROFILE_ID, NATIVE_INDEX
 
 
 APP_VERSION = "1.0.19"
@@ -2531,7 +2532,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 32
+    NATIVE_HELPER_VERSION = 33
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -2614,6 +2615,8 @@ class War3Trainer:
     NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY = 136
     NATIVE_HELPER_OP_SET_BOUND_ITEM_CHARGES = 137
     NATIVE_HELPER_OP_BOUND_ITEM_IDENTITY = 138
+    NATIVE_HELPER_OP_BOOTSTRAP_NATIVE_TABLE = 139
+    NATIVE_HELPER_OP_QUERY_NATIVE_TABLE = 140
     PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 149
     NATIVE_BASIC_FIELD_ARGUMENTS = {
         "hp_current": ("target_hp", "hp"),
@@ -3646,344 +3649,21 @@ class War3Trainer:
         pm: ProcessMemory,
         names: Iterable[str] | None = None,
     ) -> dict[str, NativeHandler]:
-        wanted = set(names or self.NATIVE_HANDLER_NAMES)
-        if wanted and wanted.issubset(self._native_handlers):
-            return {name: self._native_handlers[name] for name in wanted}
-
-        regions = pm.regions()
-        table_region = self._find_native_table_region(pm, regions)
-        blob = self._native_table_blob_for_region(pm, table_region)
-        found = self._find_native_handlers_in_table_blob(
-            pm,
-            regions,
-            blob,
-            table_region.base,
-            wanted.difference(self._native_handlers),
-        )
-        for offset in range(8, len(blob) - 24, 8):
-            if wanted.issubset(self._native_handlers.keys() | found.keys()):
-                break
-            handler = struct.unpack_from("<Q", blob, offset - 8)[0]
-            if not self._is_executable_image_address(regions, handler):
-                continue
-            name = self._decode_native_string_from_blob(pm, blob, table_region.base, offset)
-            if name not in wanted:
-                continue
-            record = table_region.base + offset
-            found[name] = NativeHandler(name, record, handler)
-            if wanted.issubset(found):
-                break
-        self._native_handlers.update(found)
-        for name in sorted(wanted.difference(self._native_handlers)):
-            handler = self._find_native_handler_by_name_scan(pm, regions, name)
-            if handler is not None:
-                self._native_handlers[name] = handler
-        missing = wanted.difference(self._native_handlers)
-        if missing:
-            raise RuntimeError("未找到 native 函数：" + ", ".join(sorted(missing)))
-        return {name: self._native_handlers[name] for name in wanted}
+        return self._query_native_table_handlers(names or self.NATIVE_HANDLER_NAMES)
 
     def _discover_native_handlers_near_table_win10(
         self,
         pm: ProcessMemory,
         names: Iterable[str],
     ) -> dict[str, NativeHandler]:
-        wanted = set(names)
-        missing = wanted.difference(self._native_handlers)
-        if not missing:
-            return {name: self._native_handlers[name] for name in wanted}
-
-        regions = pm.regions()
-        anchors = self._find_native_table_regions_win10(pm, regions)
-        regions = pm.regions()
-        found: dict[str, NativeHandler] = {}
-        external_records: set[tuple[int, int]] = set()
-        executable_regions = sorted(
-            (
-                (region.base, region.base + region.size)
-                for region in regions
-                if (region.protect & 0xFF) in EXECUTABLE_PROTECTS
-            ),
-            key=lambda item: item[0],
-        )
-        executable_starts = [start for start, _end in executable_regions]
-
-        def is_executable(address: int) -> bool:
-            index = bisect_right(executable_starts, address) - 1
-            return index >= 0 and address < executable_regions[index][1]
-
-        def scan_ranges_for(
-            candidate_anchors: Iterable[Region],
-            external_names: dict[int, str] | None = None,
-        ) -> None:
-            scan_ranges: list[tuple[int, int]] = []
-            for anchor in sorted(candidate_anchors, key=lambda item: item.base):
-                start = max(0, anchor.base - 0x80000)
-                end = anchor.base + anchor.size + 0x80000
-                if scan_ranges and start <= scan_ranges[-1][1]:
-                    previous_start, previous_end = scan_ranges[-1]
-                    scan_ranges[-1] = (previous_start, max(previous_end, end))
-                else:
-                    scan_ranges.append((start, end))
-
-            for scan_start, scan_end in scan_ranges:
-                for region in sorted(regions, key=lambda item: item.base):
-                    if region.typ not in (MEM_PRIVATE, MEM_MAPPED):
-                        continue
-                    region_start = max(region.base, scan_start - 8)
-                    region_end = min(region.base + region.size, scan_end)
-                    if region_end - region_start < 32:
-                        continue
-                    for block_start, blob in self._iter_readable_blocks_win10(
-                        pm,
-                        region_start,
-                        region_end - region_start,
-                    ):
-                        if len(blob) < 32:
-                            continue
-                        wanted_lengths = {len(name) for name in missing}
-                        first_record = max(scan_start, (block_start + 7) & ~7)
-                        if first_record - block_start < 8:
-                            first_record += 8
-                        block_end = block_start + len(blob)
-                        for record in range(first_record, block_end - 24, 8):
-                            offset = record - block_start
-                            handler = struct.unpack_from("<Q", blob, offset - 8)[0]
-                            if not is_executable(handler):
-                                continue
-                            size = struct.unpack_from("<Q", blob, offset + 8)[0]
-                            if size not in wanted_lengths:
-                                continue
-                            ptr = struct.unpack_from("<Q", blob, offset)[0]
-                            if ptr != record + 0x18 and self._sane_heap_ptr(ptr):
-                                external_records.add((ptr, int(size)))
-                            name = self._decode_native_string_from_blob_win10(
-                                pm,
-                                blob,
-                                block_start,
-                                offset,
-                                external_names,
-                            )
-                            if name not in missing:
-                                continue
-                            found[name] = NativeHandler(name, record, handler)
-                            missing.remove(name)
-                            if not missing:
-                                return
-
-        def recover_handlers_from_record_profile() -> None:
-            translations: dict[int, int] = {}
-            known_handlers = dict(self._native_handlers)
-            known_handlers.update(found)
-            for name, profile_offset in self.NATIVE_RECORD_PROFILE_ANCHORS.items():
-                handler = known_handlers.get(name)
-                if handler is None:
-                    continue
-                translation = handler.record_address - profile_offset
-                translations[translation] = translations.get(translation, 0) + 1
-            if not translations:
-                return
-            translation, votes = max(translations.items(), key=lambda item: item[1])
-            if votes < 6:
-                return
-            for name, profile_offset in self.NATIVE_RECORD_PROFILE_EXTERNALS.items():
-                if name not in missing:
-                    continue
-                record = translation + profile_offset
-                region = self._region_for_address(regions, record)
-                if region is None or region.typ not in (MEM_PRIVATE, MEM_MAPPED):
-                    continue
-                try:
-                    handler_address = pm.read_u64(record - 8)
-                    size = pm.read_u64(record + 8)
-                except OSError:
-                    continue
-                if size != len(name) or not is_executable(handler_address):
-                    continue
-                found[name] = NativeHandler(name, record, handler_address)
-                missing.remove(name)
-
-        scan_ranges_for(anchors)
-        if missing:
-            external_names = self._recover_native_external_names_win10(
-                pm,
-                regions,
-                external_records,
-                missing,
-            )
-            if external_names:
-                scan_ranges_for(anchors, external_names)
-        if missing:
-            recover_handlers_from_record_profile()
-        if missing:
-            broad_anchors = self._scan_native_table_region_candidates_win10(
-                pm,
-                regions,
-                64 * 1024 * 1024,
-            )
-            if not broad_anchors:
-                broad_anchors = self._scan_native_table_region_candidates_win10(
-                    pm,
-                    regions,
-                    None,
-                )
-            anchor_by_region = {
-                (anchor.base, anchor.size): anchor
-                for anchor in (*anchors, *broad_anchors)
-            }
-            anchors = list(anchor_by_region.values())
-            scan_ranges_for(anchors)
-            if missing:
-                external_names = self._recover_native_external_names_win10(
-                    pm,
-                    regions,
-                    external_records,
-                    missing,
-                )
-                if external_names:
-                    scan_ranges_for(anchors, external_names)
-        if missing:
-            patterns = {(name.encode("ascii") + b"\0"): name for name in missing}
-            external_names = {}
-            for pattern, addresses in self._scan_bytes_private_many_win10(
-                pm,
-                patterns,
-                max_region_size=None,
-            ).items():
-                name = patterns[pattern]
-                for address in addresses:
-                    external_names[address] = name
-            scan_ranges_for(anchors, external_names)
-
-        self._native_handlers.update(found)
-        if missing:
-            broad_found = self._find_native_handlers_by_exact_name_scan(
-                pm,
-                regions,
-                missing,
-            )
-            found.update(broad_found)
-            missing.difference_update(broad_found)
-            self._native_handlers.update(broad_found)
-        if missing:
-            raise RuntimeError(
-                "在 native 表邻域未找到函数：" + ", ".join(sorted(missing))
-            )
-        return {name: self._native_handlers[name] for name in wanted}
+        return self._query_native_table_handlers(names)
 
     def _discover_native_handlers_near_table(
         self,
         pm: ProcessMemory,
         names: Iterable[str],
     ) -> dict[str, NativeHandler]:
-        wanted = set(names)
-        missing = wanted.difference(self._native_handlers)
-        if not missing:
-            return {name: self._native_handlers[name] for name in wanted}
-        process_cached = self._PROCESS_NATIVE_HANDLER_CACHE.get(int(self.pid), {})
-        if process_cached:
-            # PIDs can be reused after Warcraft exits. Validate cached
-            # addresses against this process before trusting them; otherwise
-            # a stale handler can survive a restart and call unrelated code.
-            regions = pm.regions()
-            validated_cached: dict[str, NativeHandler] = {}
-            for name, handler in process_cached.items():
-                if name not in missing:
-                    continue
-                if not self._is_executable_image_address(regions, handler.handler_address):
-                    continue
-                try:
-                    record_name = self._decode_native_name_from_record(
-                        pm,
-                        handler.record_address,
-                    )
-                    record_size = pm.read_u64(handler.record_address + 8)
-                except OSError:
-                    continue
-                if record_name == name and record_size == len(name):
-                    validated_cached[name] = handler
-            self._native_handlers.update(validated_cached)
-        missing = wanted.difference(self._native_handlers)
-        if not missing:
-            return {name: self._native_handlers[name] for name in wanted}
-
-        regions = pm.regions()
-        anchors = self._find_native_table_regions(pm, regions)
-        scan_ranges: list[tuple[int, int]] = []
-        for anchor in sorted(anchors, key=lambda item: item.base):
-            start = max(0, anchor.base - 0x80000)
-            end = anchor.base + anchor.size + 0x80000
-            if scan_ranges and start <= scan_ranges[-1][1]:
-                previous_start, previous_end = scan_ranges[-1]
-                scan_ranges[-1] = (previous_start, max(previous_end, end))
-            else:
-                scan_ranges.append((start, end))
-        wanted_lengths = {len(name) for name in missing}
-        found: dict[str, NativeHandler] = {}
-        executable_regions = sorted(
-            (
-                (region.base, region.base + region.size)
-                for region in regions
-                if (region.protect & 0xFF) in EXECUTABLE_PROTECTS
-            ),
-            key=lambda item: item[0],
-        )
-        executable_starts = [start for start, _end in executable_regions]
-
-        def is_executable(address: int) -> bool:
-            index = bisect_right(executable_starts, address) - 1
-            return index >= 0 and address < executable_regions[index][1]
-
-        for scan_start, scan_end in scan_ranges:
-            for region in sorted(regions, key=lambda item: item.base):
-                if region.typ != MEM_PRIVATE:
-                    continue
-                record_scan_start = max(0, scan_start - 0x40)
-                region_start = max(region.base, record_scan_start - 8)
-                region_end = min(region.base + region.size, scan_end)
-                if region_end - region_start < 32:
-                    continue
-                try:
-                    blob = pm.read(region_start, region_end - region_start)
-                except OSError:
-                    continue
-                first_record = max(record_scan_start, (region_start + 7) & ~7)
-                if first_record - region_start < 8:
-                    first_record += 8
-                for record in range(first_record, region_end - 24, 8):
-                    offset = record - region_start
-                    handler = struct.unpack_from("<Q", blob, offset - 8)[0]
-                    if not is_executable(handler):
-                        continue
-                    size = struct.unpack_from("<Q", blob, offset + 8)[0]
-                    if size not in wanted_lengths:
-                        continue
-                    name = self._decode_native_string_from_blob(pm, blob, region_start, offset)
-                    if name not in missing:
-                        name = self._decode_native_name_from_record(pm, record)
-                    if name not in missing:
-                        continue
-                    found[name] = NativeHandler(name, record, handler)
-                    missing.remove(name)
-                    wanted_lengths = {len(item) for item in missing}
-                    if not missing:
-                        break
-                if not missing:
-                    break
-            if not missing:
-                break
-
-        self._native_handlers.update(found)
-        if found:
-            self._PROCESS_NATIVE_HANDLER_CACHE.setdefault(
-                int(self.pid),
-                {},
-            ).update(found)
-        if missing:
-            raise RuntimeError(
-                "在 native 表邻域未找到函数：" + ", ".join(sorted(missing))
-            )
-        return {name: self._native_handlers[name] for name in wanted}
+        return self._query_native_table_handlers(names)
 
     def verify_native_handlers(self) -> dict[str, NativeHandler]:
         with self._process_memory() as pm:
@@ -4135,54 +3815,48 @@ class War3Trainer:
         with self._persistent_bootstrap_lock:
             if getattr(self, "_persistent_native_initialized", False):
                 return len(self.PERSISTENT_NATIVE_NAMES)
-            with self._process_memory() as pm:
-                handlers = self._discover_native_handlers_near_table(
-                    pm,
-                    self.PERSISTENT_NATIVE_NAMES,
-                )
-                self._PROCESS_NATIVE_HANDLER_CACHE[(self.pid, self.hwnd)] = dict(self._native_handlers)
-                calls = self._native_function_calls(
-                    pm,
-                    handlers["UnitAddAbility"].handler_address,
-                )
-                if len(calls) < 2:
-                    raise RuntimeError("UnitAddAbility 未暴露可验证的单位句柄解析函数")
-                resolver = calls[0]
-                if not self._is_executable_image_address(pm.regions(), resolver):
-                    raise RuntimeError("单位句柄解析函数不在游戏可执行代码段")
-                self._jass_unit_resolver_address = resolver
-                item_calls = self._native_function_calls(
-                    pm,
-                    handlers["GetItemTypeId"].handler_address,
-                )
-                if not item_calls:
-                    raise RuntimeError("GetItemTypeId 未暴露物品句柄解析函数")
-                item_resolver = item_calls[0]
-                if not self._is_executable_image_address(pm.regions(), item_resolver):
-                    raise RuntimeError("物品句柄解析函数不在游戏可执行代码段")
-                agent_resolver = self._discover_agent_resolver(pm, handlers["GetUnitState"].handler_address)
-                if not agent_resolver:
-                    raise RuntimeError(
-                        "无法验证游戏对象表句柄解析器；已拒绝回退到全进程对象扫描"
-                    )
-            registrations = tuple(
-                (
-                    self.NATIVE_HELPER_OP_PERSISTENT_REGISTER_NATIVE,
-                    index,
-                    handlers[name].handler_address,
-                    resolver if index == 0 else agent_resolver if index == 1 else 0,
-                    item_resolver if index == 0 else 0,
-                )
-                for index, name in enumerate(self.PERSISTENT_NATIVE_NAMES)
+            results = self._run_native_helper_ops(
+                0, ((self.NATIVE_HELPER_OP_BOOTSTRAP_NATIVE_TABLE, NATIVE_PROFILE_ID, 0, 0, 0),),
+                timeout_ms=timeout_ms,
             )
-            for start in range(0, len(registrations), self.NATIVE_HELPER_MAX_OPS):
-                self._run_native_helper_ops(
-                    0,
-                    registrations[start:start + self.NATIVE_HELPER_MAX_OPS],
-                    timeout_ms=timeout_ms,
-                )
+            count = len(self.PERSISTENT_NATIVE_NAMES)
+            if len(results) != 1 or results[0].last_error or results[0].result != count:
+                raise RuntimeError("DLL native 表初始化结果不完整")
+            values = tuple(results[0].extra_results)
+            if len(values) != count + 3 or any(not 0x10000 <= value < 0x0000800000000000 for value in values):
+                raise RuntimeError("DLL native 表初始化地址无效")
+            handlers = {
+                name: NativeHandler(name, 0, values[index + 3])
+                for index, name in enumerate(self.PERSISTENT_NATIVE_NAMES)
+            }
+            # No PID cache or heap string records: DLL validated this game context.
+            self._native_handlers = handlers
+            self._jass_unit_resolver_address = values[0]
             self._persistent_native_initialized = True
-            return len(registrations)
+            return count
+
+    def _query_native_table_handlers(self, names: Iterable[str]) -> dict[str, NativeHandler]:
+        wanted = tuple(dict.fromkeys(names))
+        unknown = [name for name in wanted if name not in NATIVE_INDEX]
+        if unknown:
+            raise RuntimeError("当前 native 配置不支持：" + ", ".join(unknown))
+        self.persistent_native_init()
+        missing = [name for name in wanted if name not in self._native_handlers]
+        found: dict[str, NativeHandler] = {}
+        for start in range(0, len(missing), self.NATIVE_HELPER_MAX_OPS):
+            batch = missing[start:start + self.NATIVE_HELPER_MAX_OPS]
+            results = self._run_native_helper_ops(0, tuple(
+                (self.NATIVE_HELPER_OP_QUERY_NATIVE_TABLE, NATIVE_INDEX[name], 0, NATIVE_PROFILE_ID, 0)
+                for name in batch
+            ))
+            if len(results) != len(batch):
+                raise RuntimeError("DLL native 表查询结果数量不符")
+            for name, result in zip(batch, results):
+                if result.last_error or not 0x10000 <= result.result < 0x0000800000000000:
+                    raise RuntimeError("DLL native 表查询失败：" + name)
+                found[name] = NativeHandler(name, 0, result.result)
+        self._native_handlers.update(found)
+        return {name: self._native_handlers[name] for name in wanted}
 
     def persistent_native_selected_snapshots(
         self,
@@ -4770,6 +4444,8 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY,
             self.NATIVE_HELPER_OP_SET_BOUND_ITEM_CHARGES,
             self.NATIVE_HELPER_OP_BOUND_ITEM_IDENTITY,
+            self.NATIVE_HELPER_OP_BOOTSTRAP_NATIVE_TABLE,
+            self.NATIVE_HELPER_OP_QUERY_NATIVE_TABLE,
         }
         if any(kind not in allowed_kinds for kind, _rawcode, _handler, _arg0, _arg1 in op_list):
             raise RuntimeError("native helper 仅允许结构化验证后的白名单操作")
@@ -15248,24 +14924,14 @@ class BackupReadWar3Trainer(War3Trainer):
         pm: ProcessMemory,
         names: Iterable[str] | None = None,
     ) -> dict[str, NativeHandler]:
-        safe_pm = self._require_win10_memory(pm)
-        return War3Trainer._discover_native_handlers_near_table_win10(
-            self,
-            safe_pm,
-            names or self.NATIVE_HANDLER_NAMES,
-        )
+        return self._query_native_table_handlers(names or self.NATIVE_HANDLER_NAMES)
 
     def _discover_native_handlers_near_table(
         self,
         pm: ProcessMemory,
         names: Iterable[str],
     ) -> dict[str, NativeHandler]:
-        safe_pm = self._require_win10_memory(pm)
-        return War3Trainer._discover_native_handlers_near_table_win10(
-            self,
-            safe_pm,
-            names,
-        )
+        return self._query_native_table_handlers(names)
 
     def _resource_property_groups(
         self,

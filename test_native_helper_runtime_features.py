@@ -140,6 +140,8 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
         trainer.pid = 123
         trainer._native_handlers = {handler.name: handler}
         trainer._PROCESS_NATIVE_HANDLER_CACHE = {trainer.pid: {handler.name: handler}}
+        trainer._persistent_bootstrap_lock = threading.RLock()
+        trainer._persistent_native_initialized = True
         pm = Mock()
         self.assertEqual(
             trainer._discover_native_handlers_near_table(pm, (handler.name,)),
@@ -147,19 +149,22 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
         )
         self.assertEqual(pm.mock_calls, [])
 
-    def test_new_session_still_validates_shared_native_cache(self):
+    def test_new_session_ignores_shared_heap_records_and_queries_dll(self):
         trainer = object.__new__(trainer_module.War3Trainer)
         trainer.pid = 123
         handler = trainer_module.NativeHandler("SetUnitPosition", 0x1000, 0x2000)
         trainer._native_handlers = {}
         trainer._PROCESS_NATIVE_HANDLER_CACHE = {trainer.pid: {handler.name: handler}}
-        trainer._is_executable_image_address = Mock(return_value=True)
-        trainer._decode_native_name_from_record = Mock(return_value=handler.name)
+        trainer._persistent_bootstrap_lock = threading.RLock()
+        values = tuple(0x100000 + i*0x100 for i in range(len(trainer.PERSISTENT_NATIVE_NAMES)+3))
+        trainer._run_native_helper_ops = Mock(return_value=(trainer_module.NativeHelperOpResult(
+            139, len(trainer.PERSISTENT_NATIVE_NAMES), extra_results=values),))
         pm = Mock()
-        pm.read_u64.return_value = len(handler.name)
-        self.assertEqual(trainer._discover_native_handlers_near_table(pm, (handler.name,)), {handler.name: handler})
-        trainer._decode_native_name_from_record.assert_called_once_with(pm, handler.record_address)
-        pm.read_u64.assert_called_once_with(handler.record_address + 8)
+        actual = trainer._discover_native_handlers_near_table(pm, (handler.name,))[handler.name]
+        self.assertEqual(actual.record_address, 0)
+        self.assertEqual(actual.handler_address, values[trainer.PERSISTENT_NATIVE_NAMES.index(handler.name)+3])
+        self.assertEqual(pm.mock_calls, [])
+        trainer._run_native_helper_ops.assert_called_once()
 
     def test_group_move_uses_one_helper_request_without_unit_readback(self):
         trainer = object.__new__(trainer_module.War3Trainer)

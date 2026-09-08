@@ -35,6 +35,11 @@ def detect_ui_language(locale_name: str | None = None) -> str:
 
 
 _EN_TRANSLATIONS = {
+    "DLL native 表初始化结果不完整": "Incomplete DLL native table initialization result",
+    "DLL native 表初始化地址无效": "Invalid DLL native table initialization addresses",
+    "当前 native 配置不支持：": "Unsupported native in the current profile: ",
+    "DLL native 表查询结果数量不符": "DLL native table query result count mismatch",
+    "DLL native 表查询失败：": "DLL native table query failed: ",
     "persistent native snapshot 技能数量超过安全上限": "The native snapshot ability count exceeds the safety limit",
     "persistent native snapshot 技能扩展结果长度异常": "Invalid native snapshot extended ability payload length",
     "persistent native snapshot 附加结果长度异常：": "Invalid native snapshot trailing payload length: ",

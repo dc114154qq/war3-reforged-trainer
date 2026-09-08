@@ -220,3 +220,17 @@ python tools/war3_native_bootstrap_audit.py --image 'D:\Warcraft III\_retail_\x8
 $env:PYTHONPATH = (Resolve-Path 'analysis/native-bootstrap-20260907/_deps').Path
 python tools/war3_native_registration_extract.py --image 'D:\Warcraft III\_retail_\x86_64\Warcraft III.exe' --text analysis/native-bootstrap-20260907/module-text.bin --output analysis/native-bootstrap-20260907/registrations.json --audit-trainer-bindings
 ```
+
+## 协议 33：DLL 内 native 表初始化与函数发现（2026-09-08）
+
+已把上述离线证据接入正式源码。新增 `tools/war3_native_bootstrap.h`，在 helper 的游戏线程回调中通过上下文 getter 取得槽 5 的表。使用游戏名称 hash 定位唯一桶，按有符号 link offset、结束标记和逐字节名称比较查找，核对完整签名、构建对应 handler 地址和入口代码指纹。查找设置掩码/指针/4096 步上限，异常捕获后返回错误，没有私有堆扫描或函数占位回退。
+
+`tools/generate_native_bootstrap_profile.py` 根据已核对捕获生成 C 配置和 `war3_native_profile.py` 的相同索引，profile ID 为 `0xdeb8f458`，包含 1689 个名称。当前唯一支持的游戏构建是本机 **2.0.4.23745**（timestamp `0x69e54471`、SizeOfImage `0xdd20000`），不是面向任意游戏更新的通用定位器。地址按当前主模块基址重定位；bootstrap 先核对 PE 架构/版本信息及上下文、hash、三个解析器代码指纹，再调用游戏函数。检查过生成指纹的全部范围，未包含 PE 基址重定位项，ASLR 不会改变这些指纹。未知构建/错误代码明确失败；没有 Windows 版本或堆地址分支。
+
+新增 op 139 初始化：在 DLL 内取得全部 29 个持久 native 后才发布绑定，返回三个解析器和 29 个地址。任一查找失败都不发布部分结果。Python 的 `persistent_native_init` 现在只发这一条命令，校验返回数量与地址后更新会话，不再打开 ProcessMemory 搜索表、分析函数或从 PID 共享缓存恢复。新增 op 140 按编译索引查询额外函数；Python 分批接收成功结果，不接受部分批次。普通、兼容和原 Win10 native discovery 入口统一调用 DLL 查询，删除相应堆发现实现的调用路径。底层旧扫描工具和其他尚未迁移的诊断/组件分析仍保留，不能因此称整个项目已经无扫描。
+
+每条后续 helper 命令执行前，在当前游戏线程重新取得上下文并核对所需的 29 个绑定，避免沿用上一张地图的表对象。它是有界的表查询，不是遍历所有 native 或堆；增加的实际耗时尚未实测。当前用配置中的真实 RVA 严格核对函数，不支持地图/插件替换 native handler 的情形。
+
+离线测试实际编译 C helper，在合成表中验证 hash 碰撞后名称匹配、签名不符、占位/错误地址、代码变化、空表、坏掩码、坏指针、合法负 link offset、循环链及无函数地址的 op 139/140 分发。Python 测试覆盖单命令初始化、旧记录丢弃、失败无回退和额外函数查询；旧普通/备用发现测试按统一 DLL 路径更新。完整结果 **267 passed、75 subtests passed**。协议 33 DLL SHA256：`CD6338FA7FC5693D22267ED75F747DB2E7F65CF0AAB42581310F894FF263E934`。
+
+未连接游戏、未调用实际 native、未启动或打包 EXE，应用版本保持 1.0.19。尚未证明当前真实对局的上下文槽/表满足全部校验，也未覆盖不同对局状态、其他机器或所有字段操作。新链路的实机稳定性、技能实例/物品替换/外部字段迁移仍是未完成项；本次完成的是冷启动及函数发现的源码接入，不能宣告整个目标完成。

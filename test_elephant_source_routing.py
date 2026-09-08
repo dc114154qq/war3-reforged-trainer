@@ -136,12 +136,13 @@ class ElephantSourceRoutingTests(unittest.TestCase):
         self.assertIs(second.diagnostics, diagnostics)
         self.assertEqual(diagnostics.close_calls, 0)
 
-    def test_backup_native_discovery_rejects_normal_memory(self):
+    def test_compatibility_native_discovery_uses_dll_without_memory_backend(self):
         backup = object.__new__(trainer_module.BackupReadWar3Trainer)
-        with self.assertRaisesRegex(RuntimeError, "拒绝回落到普通内存路径"):
-            backup._discover_native_handlers_near_table(object(), ("CreateUnit",))
+        with patch.object(backup, "_query_native_table_handlers", return_value={}) as query:
+            self.assertEqual(backup._discover_native_handlers_near_table(object(), ("CreateUnit",)), {})
+        query.assert_called_once_with(("CreateUnit",))
 
-    def test_backup_elephant_handlers_use_win10_discovery(self):
+    def test_compatibility_elephant_handlers_use_same_dll_table_discovery(self):
         backup = object.__new__(trainer_module.BackupReadWar3Trainer)
         handler = trainer_module.NativeHandler("CreateUnit", 0x1000, 0x2000)
         backup._native_handlers = {"CreateUnit": handler}
@@ -149,7 +150,7 @@ class ElephantSourceRoutingTests(unittest.TestCase):
         with (
             patch.object(
                 trainer_module.War3Trainer,
-                "_discover_native_handlers_near_table_win10",
+                "_query_native_table_handlers",
                 return_value={"CreateUnit": handler},
             ) as backup_discovery,
             patch.object(
@@ -168,7 +169,7 @@ class ElephantSourceRoutingTests(unittest.TestCase):
         backup_discovery.assert_called_once()
         self.assertIn(
             "CreateUnit",
-            backup_discovery.call_args.args[2],
+            backup_discovery.call_args.args[0],
         )
 
     def test_batch_gui_reuses_one_edition_session(self):

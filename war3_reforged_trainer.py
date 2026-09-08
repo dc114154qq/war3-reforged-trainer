@@ -12320,9 +12320,13 @@ class War3Trainer:
                                 for address in (data, wrapper, wrapper_vtable, data_vtable))
                             or not full
                             or not self._looks_like_rawcode(rawcode)
-                            or not self._looks_like_rawcode(tag >> 32)
-                            or tag >> 32 in {value >> 32 for value in self.COMPONENT_TAGS.values()}):
+                            or not self._looks_like_rawcode(tag >> 32)):
                         raise RuntimeError("DLL 技能枚举返回无效对象身份")
+                    # Engine ability enumeration includes unit components.
+                    # Their presence is valid; only actual skills belong in
+                    # the editable ability list, as in the legacy mapper.
+                    if tag >> 32 in {value >> 32 for value in self.COMPONENT_TAGS.values()}:
+                        continue
                     instance = AbilityInstance(
                         slot=0, wrapper_address=wrapper, data_address=data,
                         wrapper_vtable=wrapper_vtable, data_vtable=data_vtable,

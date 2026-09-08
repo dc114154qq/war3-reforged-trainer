@@ -36,10 +36,10 @@ static uint64_t list_agent(uint32_t slot, uint32_t serial) {
 static uint32_t list_id(uint64_t handle) {
     if (!list_resolve(handle)) ++bad_arguments;
     /* Two separate instances may have the same rawcode. */
-    return 0x41303031u;
+    return list_fault == 4 && handle == 200 ? 0x41496e76u : 0x41303031u;
 }
 static int32_t list_level(uint64_t unit, uint32_t id) {
-    if (unit != 7 || id != 0x41303031u) ++bad_arguments;
+    if (unit != 7 || (id != 0x41303031u && id != 0x41496e76u)) ++bad_arguments;
     if (list_fault == 1) *(uint64_t *)(object + 0x18) += 1;
     if (list_fault == 2) *(uint64_t *)(list_data[0] + 0x18) += 1;
     return 4;
@@ -65,8 +65,8 @@ __declspec(dllexport) DWORD enumerate_list(const wchar_t *directory, unsigned co
         *(uint64_t *)data = *(uint64_t *)wrapper = (uint64_t)(uintptr_t)list_id;
         *(uint64_t *)(data+0x18) = *(uint64_t *)(wrapper+0x20) = list_full(i);
         *(uint64_t *)(data+0x68) = (uint64_t)(uintptr_t)object;
-        *(uint32_t *)(data+0x70) = *(uint32_t *)(data+0x78) = 0x41303031u;
-        *(uint64_t *)(wrapper+0x18) = 0x4148737430303030ULL;
+        *(uint32_t *)(data+0x70) = *(uint32_t *)(data+0x78) = list_id(200+i);
+        *(uint64_t *)(wrapper+0x18) = failure == 4 && i == 0 ? 0x41496e7630303030ULL : 0x4148737430303030ULL;
         *(uint64_t *)(wrapper+0x50) = (uint64_t)(uintptr_t)owner;
         *(uint64_t *)(wrapper+0x90) = (uint64_t)(uintptr_t)data;
     }
@@ -117,7 +117,7 @@ def dispatcher(tmp_path_factory):
 
 
 @pytest.mark.parametrize('count,failure', [(0,0),(1,0),(2,0),(49,0),(4096,0),(4097,0),
-                                          (2,1),(2,2),(2,3)])
+                                          (2,1),(2,2),(2,3),(2,4)])
 @pytest.mark.parametrize('initialized', [False, True])
 def test_real_dispatch_payload_and_boundaries(dispatcher, tmp_path, count, failure, initialized):
     out = (ctypes.c_uint*2)()
@@ -126,7 +126,7 @@ def test_real_dispatch_payload_and_boundaries(dispatcher, tmp_path, count, failu
     assert out[1] <= 4096*3+1  # bounded lookups even at capacity
     payload = (tmp_path/f'war3_reforged_native_{os.getpid()}.bin').read_bytes()
     trainer = module.War3Trainer.__new__(module.War3Trainer)
-    if failure or count > 4096:
+    if failure in (1,2,3) or count > 4096:
         with pytest.raises(RuntimeError):
             trainer._parse_native_helper_results(payload, 2)
         assert len(payload) == trainer._native_helper_command_size()  # no partial list published
@@ -146,9 +146,10 @@ def test_real_dispatch_payload_and_boundaries(dispatcher, tmp_path, count, failu
     trainer._run_native_helper_ops = Mock(return_value=results)
     memory = Mock()
     instances = trainer._ability_instances_from_candidate(memory, candidate)
-    assert len(instances) == count
-    assert len({item.handle for item in instances}) == count
-    assert [item.slot for item in instances] == list(range(1,count+1))
+    skill_count = count - (1 if failure == 4 else 0)
+    assert len(instances) == skill_count
+    assert len({item.handle for item in instances}) == skill_count
+    assert [item.slot for item in instances] == list(range(1,skill_count+1))
     assert all(item.rawcode == 0x41303031 for item in instances)
     assert memory.mock_calls == []
 

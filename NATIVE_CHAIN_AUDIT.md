@@ -201,3 +201,22 @@ Python 写入前定向刷新并比对原槽位的句柄/地址/ID，有效 nativ
 ```powershell
 python tools/war3_native_bootstrap_audit.py --image 'D:\Warcraft III\_retail_\x86_64\Warcraft III.exe' --text analysis/native-bootstrap-20260907/module-text.bin --output analysis/native-bootstrap-20260907/report.json
 ```
+
+## 还原真实 native 注册与调用入口（2026-09-08）
+
+上一节只追到了静态名称对应的占位注册。本轮发现实际注册函数在栈上通过整数赋值、加减和复制构造名称/签名，所以只搜索明文及 RIP 引用不能发现真实绑定。
+
+新增 `tools/war3_native_registration_extract.py`：以 PE 异常表函数边界和上下文 getter 的直接调用引用筛选候选，在 Unicorn 中模拟构造代码及注册包装器 `0xa15a50` 的真实分支。所有代码均运行于模拟 CPU，代码页只读可执行，只有合成栈可写，安全 cookie 为独立合成页；每个候选恢复初始 CPU 并清空栈。getter 被替换为固定标记，在到达注册分发器 `0x135f4b0` 前提取参数并停止，绝不调用注册后端或 native。未知调用、越界、未映射读取、单候选时间/指令上限均拒绝该候选，冲突绑定不进入可用结果。
+
+结果保存于 `analysis/native-bootstrap-20260907/registrations.json`：1693 个候选，1690 次成功注册，合并一次相同函数/签名的重复注册后为 **1689 个名称**，无冲突。另 3 个候选不满足模拟限制并明确记录原因；不能将它们当作成功，也不能由此声称覆盖整个游戏所有 native。持久快照当前需要的 **29 个名称全部覆盖**。
+
+进一步使用现有 `War3Trainer._native_function_calls` 和 `_discover_agent_resolver`，仅向它们提供离线 `.text` 读取器，验证当前源码可从还原的真实函数推导出：单位句柄解析器 `0xa110b0`、物品句柄解析器 `0xa0dff0`、对象表解析器 `0x31f430`。未实例化正常 trainer、未创建 ProcessMemory、未访问游戏。关键绑定包括 `UnitAddAbility=0xcaaaa0`、`GetUnitState=0xc5bdd0`、`GetItemTypeId=0xc512b0`、`SetUnitPosition=0xca49a0`、`GetHeroStr=0xc50800`。GetUnitState 返回浮点位模式、SetUnitPosition 解引用坐标指针，与当前 helper 的对应声明一致；这不是对所有 native ABI 的实机验证。
+
+后续 DLL 冷启动可以据此核对“模块构建/代码 → 上下文槽 5 → 按名称和签名取真实 handler → 对象解析器”的链，而不必继续依赖私有堆字符串位置。尚需实现此 DLL 入口、拒绝占位/错误上下文、处理游戏状态变化并消除 Python 冷启动对扫描的调用。本轮提交的是可复现逆向证据，没有修改正式协议、DLL 或 EXE。
+
+复跑需 `unicorn`（本机仅安装于未提交的 `_deps`）、`pefile`、`capstone`：
+
+```powershell
+$env:PYTHONPATH = (Resolve-Path 'analysis/native-bootstrap-20260907/_deps').Path
+python tools/war3_native_registration_extract.py --image 'D:\Warcraft III\_retail_\x86_64\Warcraft III.exe' --text analysis/native-bootstrap-20260907/module-text.bin --output analysis/native-bootstrap-20260907/registrations.json --audit-trainer-bindings
+```

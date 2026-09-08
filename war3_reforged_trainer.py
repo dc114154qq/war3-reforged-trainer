@@ -3695,15 +3695,14 @@ class War3Trainer:
         regions = pm.regions()
         code = pm.read(address, max_bytes)
         calls: list[int] = []
-        for offset in range(0, max(0, len(code) - 4)):
-            opcode = code[offset]
-            if opcode == 0xE8:
-                rel = struct.unpack_from("<i", code, offset + 1)[0]
-                target = address + offset + 5 + rel
+        for instruction in Cs(CS_ARCH_X86, CS_MODE_64).disasm(code, address):
+            if instruction.mnemonic.startswith("ret"):
+                break
+            if instruction.size == 5 and instruction.bytes[0] == 0xE8:
+                rel = struct.unpack_from("<i", instruction.bytes, 1)[0]
+                target = instruction.address + instruction.size + rel
                 if self._is_executable_image_address(regions, target):
                     calls.append(target)
-            if opcode == 0xC3 and offset > 0x10:
-                break
         return calls
 
     def _rel32_jumps_in_function(
@@ -3716,15 +3715,14 @@ class War3Trainer:
         regions = pm.regions()
         code = pm.read(address, max_bytes)
         jumps: list[int] = []
-        for offset in range(0, max(0, len(code) - 4)):
-            opcode = code[offset]
-            if opcode == 0xE9:
-                rel = struct.unpack_from("<i", code, offset + 1)[0]
-                target = address + offset + 5 + rel
+        for instruction in Cs(CS_ARCH_X86, CS_MODE_64).disasm(code, address):
+            if instruction.mnemonic.startswith("ret"):
+                break
+            if instruction.size == 5 and instruction.bytes[0] == 0xE9:
+                rel = struct.unpack_from("<i", instruction.bytes, 1)[0]
+                target = instruction.address + instruction.size + rel
                 if self._is_executable_image_address(regions, target):
                     jumps.append(target)
-            if opcode == 0xC3 and offset > 0x10:
-                break
         return jumps
 
     def _discover_native_ability_internals(self, pm: ProcessMemory) -> NativeAbilityInternals:

@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 37u
+#define WAR3_NATIVE_VERSION 38u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -91,6 +91,7 @@
 #define WAR3_NATIVE_OP_BOUND_ABILITY_CONTEXT 143u
 #define WAR3_NATIVE_OP_BOUND_INVENTORY_ITEM 144u
 #define WAR3_NATIVE_OP_BOUND_ITEM_TYPE 145u
+#define WAR3_NATIVE_OP_BOUND_ABILITY_LIST 146u
 #define WAR3_CLONE_FLAG_HERO 0x01u
 #define WAR3_CLONE_FLAG_INVENTORY 0x02u
 #define WAR3_CLONE_FLAG_PRESERVE_OWNER 0x04u
@@ -630,12 +631,14 @@ static DWORD war3_bound_ability_metadata(const NativeCommand *cmd, const NativeO
     JassUnitHandleResolveFn resolve = (JassUnitHandleResolveFn)(uintptr_t)g_persistent_ability_resolver;
     DWORD error = ERROR_INVALID_DATA;
     uint64_t handle, data, wrapper, full, tag;
+    uint32_t lookup_argument = op->arg1 ? (uint32_t)(op->arg1 - 1u) : op->rawcode;
     if (cmd->ops[0].kind != WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY || !op->rawcode ||
+        op->arg1 > WAR3_PERSISTENT_SNAPSHOT_ENUM_LIMIT ||
         !war3_executable_pointer(op->handler) || !war3_executable_pointer(op->arg0) ||
         !war3_executable_pointer((uint64_t)(uintptr_t)get_level) ||
         !war3_executable_pointer(g_persistent_ability_resolver)) return ERROR_INVALID_PARAMETER;
     __try {
-        handle = lookup(cmd->unit_handle, op->rawcode);
+        handle = lookup(cmd->unit_handle, lookup_argument);
         if (!handle) { error = ERROR_NOT_FOUND; __leave; }
         data = resolve(handle);
         if (!data || (uint32_t)get_id(handle) != op->rawcode) __leave;
@@ -659,7 +662,7 @@ static DWORD war3_bound_ability_metadata(const NativeCommand *cmd, const NativeO
         values[9] = *(uint64_t *)(uintptr_t)(data + 0xa0);
         error = war3_validate_unit_identity(cmd, &cmd->ops[0]);
         if (error) __leave;
-        if (lookup(cmd->unit_handle, op->rawcode) != handle || resolve(handle) != data ||
+        if (lookup(cmd->unit_handle, lookup_argument) != handle || resolve(handle) != data ||
             *(uint64_t *)(uintptr_t)(data + 0x18) != full ||
             *(uint64_t *)(uintptr_t)(wrapper + 0x20) != full ||
             *(uint64_t *)(uintptr_t)(wrapper + 0x90) != data) error = ERROR_INVALID_HANDLE;
@@ -2827,6 +2830,7 @@ static void run_command(void) {
                 op->kind != WAR3_NATIVE_OP_JASS_SET_UNIT_POSITION &&
                 op->kind != WAR3_NATIVE_OP_SET_BOUND_ITEM_CHARGES &&
                 op->kind != WAR3_NATIVE_OP_BOUND_ABILITY_METADATA &&
+                op->kind != WAR3_NATIVE_OP_BOUND_ABILITY_LIST &&
                 op->kind != WAR3_NATIVE_OP_BOUND_ABILITY_IDENTITY &&
                 op->kind != WAR3_NATIVE_OP_BOUND_INVENTORY_ITEM &&
                 !war3_is_item_field_op(op->kind) &&
@@ -2853,6 +2857,7 @@ static void run_command(void) {
             op->kind != WAR3_NATIVE_OP_QUERY_WORLD_POINT &&
             op->kind != WAR3_NATIVE_OP_BOOTSTRAP_NATIVE_TABLE &&
             op->kind != WAR3_NATIVE_OP_QUERY_NATIVE_TABLE &&
+            op->kind != WAR3_NATIVE_OP_BOUND_ABILITY_LIST &&
             op->kind != WAR3_NATIVE_OP_PERSISTENT_SELECTED_SNAPSHOT
         ) {
             op->last_error = ERROR_INVALID_DATA;
@@ -2931,6 +2936,44 @@ static void run_command(void) {
                 if (last_error) { op->last_error = last_error; goto finish; }
                 op->result = ability_field_handle;
                 ++i; /* Context is a descriptor, never a separately executable op. */
+                break;
+            }
+            case WAR3_NATIVE_OP_BOUND_ABILITY_LIST: {
+                NativeOp query = {0};
+                uint32_t count = 0;
+                uint64_t handle = 0;
+                JassGetUnitAbilityByIndexFn by_index = (JassGetUnitAbilityByIndexFn)(uintptr_t)war3_persistent_native_handler("BlzGetUnitAbilityByIndex");
+                JassUnitIntQueryFn get_id = (JassUnitIntQueryFn)(uintptr_t)war3_persistent_native_handler("BlzGetAbilityId");
+                if (i != 1 || cmd.op_count != 2 || cmd.ops[0].kind != WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY ||
+                    !war3_executable_pointer((uint64_t)(uintptr_t)by_index) ||
+                    !war3_executable_pointer((uint64_t)(uintptr_t)get_id)) {
+                    last_error = ERROR_INVALID_PARAMETER;
+                } else {
+                    extra_results = (uint64_t *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
+                        WAR3_PERSISTENT_SNAPSHOT_ENUM_LIMIT * 10u * sizeof(uint64_t));
+                    if (!extra_results) last_error = ERROR_OUTOFMEMORY;
+                }
+                if (last_error) { op->last_error = last_error; goto finish; }
+                query.kind = WAR3_NATIVE_OP_BOUND_ABILITY_METADATA;
+                query.handler = (uint64_t)(uintptr_t)by_index;
+                query.arg0 = (uint64_t)(uintptr_t)get_id;
+                __try {
+                    for (; count < WAR3_PERSISTENT_SNAPSHOT_ENUM_LIMIT; ++count) {
+                        handle = by_index(cmd.unit_handle, (int32_t)count);
+                        if (!handle) break;
+                        query.rawcode = (uint32_t)get_id(handle);
+                        query.arg1 = count + 1u;
+                        last_error = war3_bound_ability_metadata(&cmd, &query, extra_results + count*10u);
+                        if (last_error) break;
+                        if (extra_results[count*10u] != handle) { last_error = ERROR_INVALID_HANDLE; break; }
+                    }
+                    if (!last_error && count == WAR3_PERSISTENT_SNAPSHOT_ENUM_LIMIT && by_index(cmd.unit_handle, (int32_t)count))
+                        last_error = ERROR_MORE_DATA;
+                    if (!last_error) last_error = war3_validate_unit_identity(&cmd, &cmd.ops[0]);
+                } __except (EXCEPTION_EXECUTE_HANDLER) { last_error = ERROR_INVALID_ADDRESS; }
+                if (last_error) { op->last_error = last_error; goto finish; }
+                extra_result_count = count*10u;
+                op->result = count;
                 break;
             }
             case WAR3_NATIVE_OP_BOUND_ABILITY_METADATA: {

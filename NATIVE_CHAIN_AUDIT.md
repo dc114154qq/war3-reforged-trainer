@@ -282,3 +282,11 @@ Python 替换路径改为从 `UnitAddItemToSlotById` 的真实 native handler �
 后续审计确认，`UnitAddItemToSlotById` 的公开 handler 本身有 8 个直接调用，最后一个为完整的内部槽位插入函数；旧代码使用 `UnitAddItem` 的第 10 个调用并加 `+0x90`，这在当前构建中并不成立。当前实现已改为使用公开 handler 的真实调用序列，并以 `UnitAddItemById` 的创建调用交叉校验；helper 对第五参数显式传 `0`，避免未定义参数影响物品栏资格判断。
 
 
+
+## 协议 38：技能列表直接走游戏技能索引（2026-09-08）
+
+持久 native 模式下，技能实例列表不再从 owner 邻域或全进程搜索 wrapper。新增 op 146，在同一单位身份 guard 下调用 `BlzGetUnitAbilityByIndex`，直到空项或 4096 上限；每个索引立即通过对象表解析并核对 data、wrapper、完整身份、所属单位、rawcode、镜像 ID、效果类和等级，最后再次核对单位身份。重复的完整能力对象、坏链、超限或中途变化均失败，不发布部分列表。
+
+Python 直接消费 DLL 返回的十项能力元数据，不再调用 `_near_ability_instances_from_candidate` 或 `_global_ability_instances_from_candidate`。这保留了同 rawcode 多实例的索引顺序，并覆盖英雄与非英雄的 native ability 列表。新增离线测试验证持久模式没有 wrapper 扫描、列表重复对象拒绝和现有字段显示仍保持目录顺序。
+
+本轮修改后的专项测试已通过；完整回归将在提交前执行。协议 38 DLL SHA256：`08E57192136BFD423D58CEB88046C49F7030DD5FBD8643D87DDB67D9132ECA88`。应用保持 1.0.19，未连接游戏或打包 EXE。英雄配置技能替换、技能增删和其他内部效果操作仍未全部迁移。

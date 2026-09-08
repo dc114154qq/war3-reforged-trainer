@@ -35,6 +35,10 @@ def detect_ui_language(locale_name: str | None = None) -> str:
 
 
 _EN_TRANSLATIONS = {
+    "DLL 技能枚举返回重复的能力对象": "DLL ability enumeration returned a duplicate object",
+    "DLL 技能枚举返回不完整": "Incomplete ability enumeration returned by the DLL",
+    "DLL 技能枚举结果长度异常": "Invalid ability enumeration length returned by the DLL",
+    "DLL 无法确认技能": "DLL could not confirm the complete identity of ability ",
     "物品创建函数交叉校验失败": "Item creation function cross-check failed",
     "物品查询缺少绑定单位快照": "Item query requires a bound unit snapshot",
     "DLL 物品字段返回不完整": "Incomplete item fields returned by the DLL",

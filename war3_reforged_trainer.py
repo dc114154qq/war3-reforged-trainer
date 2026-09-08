@@ -2536,7 +2536,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 37
+    NATIVE_HELPER_VERSION = 38
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -2626,6 +2626,7 @@ class War3Trainer:
     NATIVE_HELPER_OP_BOUND_ABILITY_CONTEXT = 143
     NATIVE_HELPER_OP_BOUND_INVENTORY_ITEM = 144
     NATIVE_HELPER_OP_BOUND_ITEM_TYPE = 145
+    NATIVE_HELPER_OP_BOUND_ABILITY_LIST = 146
     PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 149
     NATIVE_BASIC_FIELD_ARGUMENTS = {
         "hp_current": ("target_hp", "hp"),
@@ -4605,9 +4606,6 @@ class War3Trainer:
         except OSError:
             candidate = None
         if candidate is None:
-            # Missing external property metadata is not a missing native unit.
-            # Recheck identity explicitly: _candidate_from_identity returning
-            # None can also mean the unit was destroyed or its address reused.
             try:
                 if (pm.read_u64(snapshot.owner_address + 0x18) != self.UNIT_OWNER_TAG
                     or pm.read_u64(snapshot.owner_address + 0x20) != snapshot.full_handle
@@ -12282,6 +12280,43 @@ class War3Trainer:
             # Never widen an ability lookup to a process-wide search for this
             # unit, even when an older caller requested its legacy fallback.
             allow_global_scan = False
+            native = self._native_snapshot_for_candidate(candidate)
+            if native is not None:
+                handlers = self._query_native_table_handlers(
+                    ("BlzGetUnitAbilityByIndex", "BlzGetAbilityId", "GetUnitAbilityLevel")
+                )
+                results = self._run_native_helper_ops(native.handle, (
+                    (self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY, 0, candidate.unit_address,
+                     candidate.handle, candidate.owner_address),
+                    (self.NATIVE_HELPER_OP_BOUND_ABILITY_LIST, 0,
+                     handlers["BlzGetUnitAbilityByIndex"].handler_address,
+                     handlers["BlzGetAbilityId"].handler_address, 0),
+                ))
+                if len(results) != 2 or any(result.last_error for result in results):
+                    raise RuntimeError("DLL 技能枚举返回不完整")
+                values = tuple(int(value) for value in results[1].extra_results)
+                count = int(results[1].result)
+                if count > 4096 or len(values) != count * 10:
+                    raise RuntimeError("DLL 技能枚举结果长度异常")
+                instances: list[AbilityInstance] = []
+                seen_ability_identity: set[tuple[int, int, int]] = set()
+                for index in range(count):
+                    row = values[index * 10:(index + 1) * 10]
+                    ability, data, wrapper, full, tag, wrapper_vtable, data_vtable, rawcode, level, cache = row
+                    instance = AbilityInstance(
+                        slot=0, wrapper_address=wrapper, data_address=data,
+                        wrapper_vtable=wrapper_vtable, data_vtable=data_vtable,
+                        wrapper_tag_address=wrapper + 0x18, wrapper_tag=tag, handle=full,
+                        class_rawcode=tag >> 32, rawcode=rawcode, rawcode_address=data + 0x70,
+                        mirror_rawcode_address=data + 0x78, data_cache_address=data + 0xa0,
+                        data_cache_pointer=cache if 0x10000 <= cache < 0x0000800000000000 else 0,
+                    )
+                    identity = (instance.handle, instance.data_address, instance.wrapper_address)
+                    if identity in seen_ability_identity:
+                        raise RuntimeError("DLL 技能枚举返回重复的能力对象")
+                    seen_ability_identity.add(identity)
+                    instances.append(instance)
+                return [replace(instance, slot=index + 1) for index, instance in enumerate(instances)]
         cache_key = (candidate.handle, candidate.owner_address, candidate.unit_address, bool(allow_global_scan))
         if required_rawcodes is None:
             cached = self._validated_cached_ability_instances(pm, candidate, cache_key)

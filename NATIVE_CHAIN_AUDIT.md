@@ -279,3 +279,6 @@ Python 替换路径改为从 `UnitAddItemToSlotById` 的真实 native handler �
 
 完整离线结果：**303 passed、103 subtests passed**。协议 37 DLL SHA256：`D681700F584FD9CC506B16DCC2A9B4920228E128FAD5CCF87FC3D20E8FF35FAD`。应用版本保持 1.0.19，未连接游戏、未启动或打包 EXE；该修正仍需实机测试新单位和物品替换速度。
 
+后续审计确认，`UnitAddItemToSlotById` 的公开 handler 本身有 8 个直接调用，最后一个为完整的内部槽位插入函数；旧代码使用 `UnitAddItem` 的第 10 个调用并加 `+0x90`，这在当前构建中并不成立。当前实现已改为使用公开 handler 的真实调用序列，并以 `UnitAddItemById` 的创建调用交叉校验；helper 对第五参数显式传 `0`，避免未定义参数影响物品栏资格判断。
+
+

@@ -8796,9 +8796,7 @@ class War3Trainer:
         ):
             if not self._is_executable_image_address(regions, address):
                 raise RuntimeError(f"内部物品栏函数 {name} 地址不可执行：0x{address:x}")
-        results = self._run_native_helper_ops(
-            candidate.unit_address,
-            (
+        item_ops = (
                 (
                     self.NATIVE_HELPER_OP_REMOVE_ITEM_SLOT,
                     slot_index,
@@ -8820,7 +8818,15 @@ class War3Trainer:
                     0,
                     0,
                 ),
-            ),
+            )
+        native = self._native_snapshot_for_candidate(candidate)
+        if native is not None and (getattr(native, "hp_property", 0) or getattr(native, "mp_property", 0)):
+            results = self._run_native_helper_ops(native.handle, (
+                (self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY, 0, candidate.unit_address,
+                 candidate.handle, candidate.owner_address), *item_ops))
+            results = results[1:]
+        else:
+            results = self._run_native_helper_ops(candidate.unit_address, item_ops,
             timeout_ms=1500,
         )
         removed_handle = results[0].result

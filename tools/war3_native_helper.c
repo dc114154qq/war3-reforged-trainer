@@ -635,6 +635,9 @@ static DWORD war3_validate_unit_identity(const NativeCommand *cmd, const NativeO
 static int war3_is_internal_ability_op(uint32_t kind) {
     return kind >= WAR3_NATIVE_OP_INTERNAL_ABILITY_BEGIN && kind <= WAR3_NATIVE_OP_INTERNAL_ABILITY_REMOVE;
 }
+static int war3_is_internal_item_op(uint32_t kind) {
+    return kind >= WAR3_NATIVE_OP_REMOVE_ITEM_SLOT && kind <= WAR3_NATIVE_OP_GET_ITEM_TYPE_IN_SLOT;
+}
 
 static int war3_readable_span(uint64_t address, size_t length) {
     uint64_t end;
@@ -3071,6 +3074,7 @@ static void run_command(void) {
                 op->kind != WAR3_NATIVE_OP_BOUND_ABILITY_IDENTITY &&
                 op->kind != WAR3_NATIVE_OP_BOUND_INVENTORY_ITEM &&
                 !war3_is_internal_ability_op(op->kind) &&
+                !war3_is_internal_item_op(op->kind) &&
                 !war3_is_item_field_op(op->kind) &&
                 !war3_is_ability_field_op(op->kind)) {
                 last_error = ERROR_INVALID_DATA;
@@ -3089,6 +3093,12 @@ static void run_command(void) {
         if (war3_is_internal_ability_op(op->kind) && !war3_executable_pointer(op->handler)) {
             last_error = op->last_error = ERROR_INVALID_PARAMETER;
             goto finish;
+        }
+        if (war3_is_internal_item_op(op->kind) &&
+            (cmd.ops[0].kind == WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY) &&
+            (op->kind == WAR3_NATIVE_OP_REMOVE_ITEM_SLOT || op->kind == WAR3_NATIVE_OP_GET_ITEM_TYPE_IN_SLOT) &&
+            !war3_executable_pointer(op->handler)) {
+            op->last_error = ERROR_INVALID_PARAMETER; last_error = op->last_error; goto finish;
         }
         if (war3_is_item_field_op(op->kind)) {
             last_error = i < 3 ? ERROR_INVALID_DATA : war3_validate_bound_item(&cmd, &item_field_handle);
@@ -3489,19 +3499,19 @@ static void run_command(void) {
                     (InternalUnitRemoveItemFn)(uintptr_t)op->arg0;
                 int32_t slot = (int32_t)op->rawcode;
                 uint64_t item = 0;
-                if (cmd.unit_handle == 0 || remove_item == 0) {
+                if (internal_unit == 0 || remove_item == 0) {
                     op->last_error = ERROR_INVALID_ADDRESS;
                     last_error = ERROR_INVALID_ADDRESS;
                     goto finish;
                 }
                 __try {
-                    item = unit_item_in_slot(cmd.unit_handle, slot);
+                    item = unit_item_in_slot(internal_unit, slot);
                     op->result = item;
                     if (item != 0) {
                         uint64_t vtable = 0;
                         InternalItemPreRemoveFn pre_remove = NULL;
                         InternalItemRemoveFn remove_world_item = NULL;
-                        op->arg1 = remove_item(cmd.unit_handle, item);
+                        op->arg1 = remove_item(internal_unit, item);
                         vtable = *(uint64_t *)(uintptr_t)item;
                         pre_remove = (InternalItemPreRemoveFn)(uintptr_t)(
                             *(uint64_t *)(uintptr_t)(vtable + 0x108u)
@@ -3531,7 +3541,7 @@ static void run_command(void) {
                 float x = 0.0f;
                 float y = 0.0f;
                 uint64_t item = 0;
-                if (cmd.unit_handle == 0 || unit_add_item_to_slot == 0) {
+                if (internal_unit == 0 || unit_add_item_to_slot == 0) {
                     op->last_error = ERROR_INVALID_ADDRESS;
                     last_error = ERROR_INVALID_ADDRESS;
                     goto finish;
@@ -3552,7 +3562,7 @@ static void run_command(void) {
                     }
                     /* Match UnitAddItemToSlotById: the fifth stack argument is
                        read by the inventory eligibility check. Never omit it. */
-                    op->arg1 = unit_add_item_to_slot(cmd.unit_handle, item, slot, 1, 0);
+                    op->arg1 = unit_add_item_to_slot(internal_unit, item, slot, 1, 0);
                     if (!op->arg1) {
                         op->last_error = ERROR_CAN_NOT_COMPLETE;
                         last_error = ERROR_CAN_NOT_COMPLETE;
@@ -3570,13 +3580,13 @@ static void run_command(void) {
                     (InternalUnitItemInSlotFn)(uintptr_t)op->handler;
                 int32_t slot = (int32_t)op->rawcode;
                 uint64_t item = 0;
-                if (cmd.unit_handle == 0) {
+                if (internal_unit == 0) {
                     op->last_error = ERROR_INVALID_ADDRESS;
                     last_error = ERROR_INVALID_ADDRESS;
                     goto finish;
                 }
                 __try {
-                    item = unit_item_in_slot(cmd.unit_handle, slot);
+                    item = unit_item_in_slot(internal_unit, slot);
                     op->arg1 = item;
                     op->result = item ? *(uint32_t *)(uintptr_t)(item + 0x70u) : 0;
                 } __except (EXCEPTION_EXECUTE_HANDLER) {
@@ -5524,6 +5534,10 @@ static void run_command(void) {
         }
         if (war3_is_internal_ability_op(op->kind) &&
             cmd.ops[0].kind == WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY) {
+            last_error = war3_validate_unit_identity(&cmd, &cmd.ops[0]);
+            if (last_error) { op->last_error = last_error; goto finish; }
+        }
+        if (war3_is_internal_item_op(op->kind) && cmd.ops[0].kind == WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY) {
             last_error = war3_validate_unit_identity(&cmd, &cmd.ops[0]);
             if (last_error) { op->last_error = last_error; goto finish; }
         }

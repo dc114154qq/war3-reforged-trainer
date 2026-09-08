@@ -13806,6 +13806,22 @@ class War3Trainer:
         mapped: dict[int, AbilityInstance] = {}
         instances: list[AbilityInstance] = []
         seen_data: set[int] = set()
+        if self._persistent_native_initialized and self._native_snapshot_for_candidate(candidate) is not None:
+            native_instances = self._ability_instances_from_candidate(pm, candidate)
+            for index, rawcode in enumerate(configs):
+                if not rawcode:
+                    continue
+                matches = [
+                    ability for ability in native_instances
+                    if ability.rawcode == rawcode and ability.data_address not in seen_data
+                ]
+                if len(matches) != 1:
+                    continue
+                instance = replace(matches[0], slot=index + 1)
+                seen_data.add(instance.data_address)
+                mapped[index] = instance
+                instances.append(instance)
+            return mapped, instances
         for index, rawcode in enumerate(configs):
             if not rawcode:
                 continue

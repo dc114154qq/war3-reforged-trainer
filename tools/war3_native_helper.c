@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 38u
+#define WAR3_NATIVE_VERSION 39u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -620,6 +620,10 @@ static DWORD war3_validate_unit_identity(const NativeCommand *cmd, const NativeO
         return GetExceptionCode();
     }
     return ERROR_SUCCESS;
+}
+
+static int war3_is_internal_ability_op(uint32_t kind) {
+    return kind >= WAR3_NATIVE_OP_INTERNAL_ABILITY_BEGIN && kind <= WAR3_NATIVE_OP_INTERNAL_ABILITY_REMOVE;
 }
 
 /* Return one ability's metadata while its owning unit is pinned by op 136.
@@ -2820,6 +2824,8 @@ static void run_command(void) {
         NativeOp *op = &cmd.ops[i];
         uint64_t ability_field_handle = 0;
         uint64_t item_field_handle = 0;
+        uint64_t internal_unit = cmd.ops[0].kind == WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY
+            ? cmd.ops[0].handler : cmd.unit_handle;
         op->result = 0;
         op->last_error = 0;
         if (i > 0 && cmd.ops[0].kind == WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY) {
@@ -2833,6 +2839,7 @@ static void run_command(void) {
                 op->kind != WAR3_NATIVE_OP_BOUND_ABILITY_LIST &&
                 op->kind != WAR3_NATIVE_OP_BOUND_ABILITY_IDENTITY &&
                 op->kind != WAR3_NATIVE_OP_BOUND_INVENTORY_ITEM &&
+                !war3_is_internal_ability_op(op->kind) &&
                 !war3_is_item_field_op(op->kind) &&
                 !war3_is_ability_field_op(op->kind)) {
                 last_error = ERROR_INVALID_DATA;
@@ -2847,6 +2854,10 @@ static void run_command(void) {
         if (war3_is_ability_field_op(op->kind)) {
             last_error = i < 3 ? ERROR_INVALID_DATA : war3_validate_bound_ability(&cmd, &ability_field_handle);
             if (last_error) { op->last_error = last_error; goto finish; }
+        }
+        if (war3_is_internal_ability_op(op->kind) && !war3_executable_pointer(op->handler)) {
+            last_error = op->last_error = ERROR_INVALID_PARAMETER;
+            goto finish;
         }
         if (war3_is_item_field_op(op->kind)) {
             last_error = i < 3 ? ERROR_INVALID_DATA : war3_validate_bound_item(&cmd, &item_field_handle);
@@ -3070,13 +3081,13 @@ static void run_command(void) {
             case WAR3_NATIVE_OP_INTERNAL_ABILITY_END:
             case WAR3_NATIVE_OP_INTERNAL_ABILITY_REFRESH: {
                 InternalAbilityUnitFn fn = (InternalAbilityUnitFn)(uintptr_t)op->handler;
-                if (cmd.unit_handle == 0) {
+                if (internal_unit == 0) {
                     op->last_error = ERROR_INVALID_ADDRESS;
                     last_error = ERROR_INVALID_ADDRESS;
                     goto finish;
                 }
                 __try {
-                    fn(cmd.unit_handle);
+                    fn(internal_unit);
                     op->result = 1;
                 } __except (EXCEPTION_EXECUTE_HANDLER) {
                     op->last_error = GetExceptionCode();
@@ -3087,13 +3098,13 @@ static void run_command(void) {
             }
             case WAR3_NATIVE_OP_INTERNAL_ABILITY_FIND: {
                 InternalAbilityFindFn fn = (InternalAbilityFindFn)(uintptr_t)op->handler;
-                if (cmd.unit_handle == 0) {
+                if (internal_unit == 0) {
                     op->last_error = ERROR_INVALID_ADDRESS;
                     last_error = ERROR_INVALID_ADDRESS;
                     goto finish;
                 }
                 __try {
-                    op->result = fn(cmd.unit_handle, op->rawcode, 0, 1, 1, 1, 0);
+                    op->result = fn(internal_unit, op->rawcode, 0, 1, 1, 1, 0);
                 } __except (EXCEPTION_EXECUTE_HANDLER) {
                     op->last_error = GetExceptionCode();
                     last_error = op->last_error;
@@ -3103,13 +3114,13 @@ static void run_command(void) {
             }
             case WAR3_NATIVE_OP_INTERNAL_ABILITY_ADD: {
                 InternalAbilityAddFn fn = (InternalAbilityAddFn)(uintptr_t)op->handler;
-                if (cmd.unit_handle == 0) {
+                if (internal_unit == 0) {
                     op->last_error = ERROR_INVALID_ADDRESS;
                     last_error = ERROR_INVALID_ADDRESS;
                     goto finish;
                 }
                 __try {
-                    op->result = fn(cmd.unit_handle, op->rawcode, 0, 0, 0, 0);
+                    op->result = fn(internal_unit, op->rawcode, 0, 0, 0, 0);
                 } __except (EXCEPTION_EXECUTE_HANDLER) {
                     op->last_error = GetExceptionCode();
                     last_error = op->last_error;
@@ -3121,7 +3132,7 @@ static void run_command(void) {
                 InternalAbilityRemoveFn fn = (InternalAbilityRemoveFn)(uintptr_t)op->handler;
                 InternalAbilityFindFn find_fn = (InternalAbilityFindFn)(uintptr_t)op->arg1;
                 DWORD remove_error = ERROR_SUCCESS;
-                if (cmd.unit_handle == 0) {
+                if (internal_unit == 0) {
                     op->last_error = ERROR_INVALID_ADDRESS;
                     last_error = ERROR_INVALID_ADDRESS;
                     goto finish;
@@ -3137,7 +3148,7 @@ static void run_command(void) {
                 }
                 __try {
                     uint64_t current = find_fn(
-                        cmd.unit_handle,
+                        internal_unit,
                         op->rawcode,
                         0,
                         1,
@@ -3149,7 +3160,7 @@ static void run_command(void) {
                         remove_error = current ? ERROR_INVALID_DATA : ERROR_NOT_FOUND;
                         __leave;
                     }
-                    fn(cmd.unit_handle, op->arg0);
+                    fn(internal_unit, op->arg0);
                     op->result = 1;
                 } __except (EXCEPTION_EXECUTE_HANDLER) {
                     remove_error = GetExceptionCode();
@@ -5223,6 +5234,11 @@ static void run_command(void) {
         }
         if (war3_is_item_field_op(op->kind)) {
             last_error = war3_validate_bound_item(&cmd, &item_field_handle);
+            if (last_error) { op->last_error = last_error; goto finish; }
+        }
+        if (war3_is_internal_ability_op(op->kind) &&
+            cmd.ops[0].kind == WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY) {
+            last_error = war3_validate_unit_identity(&cmd, &cmd.ops[0]);
             if (last_error) { op->last_error = last_error; goto finish; }
         }
     }

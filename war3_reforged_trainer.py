@@ -2536,7 +2536,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 38
+    NATIVE_HELPER_VERSION = 39
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -7990,6 +7990,20 @@ class War3Trainer:
             ),
         )
 
+    def _run_internal_ability_ops(
+        self, candidate: UnitCandidate, ops: Iterable[tuple[int, int, int, int, int]],
+    ) -> list[NativeHelperOpResult]:
+        native = self._native_snapshot_for_candidate(candidate)
+        if native is None:
+            return self._run_native_helper_ops(candidate.unit_address, ops)
+        # The command uses the JASS handle for validation. C passes the
+        # validated object pointer to internal functions, never the JASS ID.
+        results = self._run_native_helper_ops(native.handle, (
+            (self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY, 0, candidate.unit_address,
+             candidate.handle, candidate.owner_address), *tuple(ops),
+        ))
+        return results[1:]
+
     def _create_engine_ability_instance(
         self,
         pm: ProcessMemory,
@@ -8037,8 +8051,8 @@ class War3Trainer:
             raise RuntimeError(
                 f"当前单位已存在 {format_rawcode(rawcode)}，但无法安全映射到运行时实例"
             )
-        results = self._run_native_helper_ops(
-            candidate.unit_address,
+        results = self._run_internal_ability_ops(
+            candidate,
             (
                 (self.NATIVE_HELPER_OP_INTERNAL_ABILITY_BEGIN, 0, internals.begin_address, 0, 0),
                 (self.NATIVE_HELPER_OP_INTERNAL_ABILITY_ADD, rawcode, internals.add_address, 0, 0),
@@ -8050,8 +8064,8 @@ class War3Trainer:
             raise RuntimeError(f"引擎未能从资源创建 {format_rawcode(rawcode)} 运行时技能实例")
         try:
             if refresh_after_add:
-                self._run_native_helper_ops(
-                    candidate.unit_address,
+                self._run_internal_ability_ops(
+                    candidate,
                     (
                         (
                             self.NATIVE_HELPER_OP_INTERNAL_ABILITY_REFRESH,
@@ -8197,8 +8211,8 @@ class War3Trainer:
         rawcode: int,
     ) -> int:
         internals = self._discover_native_ability_internals(pm)
-        results = self._run_native_helper_ops(
-            candidate.unit_address,
+        results = self._run_internal_ability_ops(
+            candidate,
             (
                 (self.NATIVE_HELPER_OP_INTERNAL_ABILITY_FIND, rawcode, internals.find_address, 0, 0),
             ),
@@ -8222,8 +8236,8 @@ class War3Trainer:
         if not rawcode:
             raise RuntimeError(f"临时 ability 实例 rawcode 无效：0x{data_address:x}")
         internals = self._discover_native_ability_internals(pm)
-        self._run_native_helper_ops(
-            candidate.unit_address,
+        self._run_internal_ability_ops(
+            candidate,
             (
                 (
                     self.NATIVE_HELPER_OP_INTERNAL_ABILITY_REMOVE,

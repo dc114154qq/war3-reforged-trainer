@@ -17,6 +17,7 @@ def creation():
         refresh_address=0x100300))
     trainer._ability_instances_from_candidate = Mock(return_value=[])
     trainer._run_native_helper_ops = Mock(return_value=[
+        module.NativeHelperOpResult(136, 1),
         module.NativeHelperOpResult(30, 0), module.NativeHelperOpResult(32, 0x200000),
         module.NativeHelperOpResult(33, 0)])
     instance = SimpleNamespace(data_address=0x200000)
@@ -50,7 +51,7 @@ def test_preexisting_skill_or_failed_precheck_never_creates_or_cleans(creation, 
 
 def test_engine_refusal_has_no_created_object_to_clean(creation):
     trainer, memory, candidate, _ = creation
-    trainer._run_native_helper_ops.return_value[1] = module.NativeHelperOpResult(32, 0)
+    trainer._run_native_helper_ops.return_value[2] = module.NativeHelperOpResult(32, 0)
     with pytest.raises(RuntimeError):
         trainer._create_engine_ability_instance(memory, candidate, 0x41393939)
     trainer._native_ability_metadata.assert_not_called()

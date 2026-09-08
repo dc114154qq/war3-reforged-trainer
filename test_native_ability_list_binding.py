@@ -16,8 +16,8 @@ def test_persistent_native_ability_list_never_enters_wrapper_scan():
     instance = module.AbilityInstance(0, 0x3000, 0x2000, 0x4000, 0x5000, 0x3018,
                                       0x4148737400000000, 0x6000, 0x41487374, snapshot.ability_ids[0],
                                       0x2010, 0, 0, 0)
-    row = (200, 0x2000, 0x3000, 0x987600005432, 0x4148737400000000,
-           0x4000, 0x5000, snapshot.ability_ids[0], 2, 0)
+    row = (200, 0x200000, 0x300000, 0x987600005432, 0x4148737400000000,
+           0x400000, 0x500000, snapshot.ability_ids[0], 2, 0)
     trainer._run_native_helper_ops = Mock(return_value=(
         module.NativeHelperOpResult(136, 1, extra_results=row), module.NativeHelperOpResult(146, 1)))
     trainer._near_ability_instances_from_candidate = Mock(side_effect=AssertionError("wrapper scan"))
@@ -39,8 +39,8 @@ def test_persistent_native_ability_list_rejects_duplicate_bound_object():
     })
     instance = module.AbilityInstance(0, 0x3000, 0x2000, 0, 0, 0, 0, 0x6000, 0x41487374,
                                       snapshot.ability_ids[0], 0)
-    row = (200, 0x2000, 0x3000, 0x987600005432, 0x4148737400000000,
-           0x4000, 0x5000, snapshot.ability_ids[0], 2, 0)
+    row = (200, 0x200000, 0x300000, 0x987600005432, 0x4148737400000000,
+           0x400000, 0x500000, snapshot.ability_ids[0], 2, 0)
     trainer._run_native_helper_ops = Mock(return_value=(
         module.NativeHelperOpResult(136, 1, extra_results=row+row), module.NativeHelperOpResult(146, 2)))
     snapshot = module.replace(snapshot, ability_ids=(snapshot.ability_ids[0], snapshot.ability_ids[0]))

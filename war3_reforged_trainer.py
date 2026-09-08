@@ -8087,7 +8087,7 @@ class War3Trainer:
                     )
                 if instance is not None:
                     break
-        if instance is None:
+        if instance is None and not native_path:
             current_instances = self._ability_instances_from_candidate(
                 pm,
                 candidate,
@@ -12323,6 +12323,13 @@ class War3Trainer:
                 for index in range(count):
                     row = values[index * 10:(index + 1) * 10]
                     ability, data, wrapper, full, tag, wrapper_vtable, data_vtable, rawcode, level, cache = row
+                    if (not all(0x10000 <= address < 0x0000800000000000
+                                for address in (data, wrapper, wrapper_vtable, data_vtable))
+                            or not full
+                            or not self._looks_like_rawcode(rawcode)
+                            or not self._looks_like_rawcode(tag >> 32)
+                            or tag >> 32 in {value >> 32 for value in self.COMPONENT_TAGS.values()}):
+                        raise RuntimeError("DLL 技能枚举返回无效对象身份")
                     instance = AbilityInstance(
                         slot=0, wrapper_address=wrapper, data_address=data,
                         wrapper_vtable=wrapper_vtable, data_vtable=data_vtable,

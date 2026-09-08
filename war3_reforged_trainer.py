@@ -12554,43 +12554,6 @@ class War3Trainer:
         candidate: UnitCandidate,
         components: dict[str, tuple[int, int]] | None = None,
     ) -> list[InventoryItem]:
-        persistent = self._native_snapshot_for_candidate(candidate)
-        if persistent is not None and len(persistent.item_handles) == 6:
-            items: list[InventoryItem] = []
-            for index, (handle, item_address, rawcode, charges) in enumerate(zip(
-                persistent.item_handles, persistent.item_addresses,
-                persistent.item_ids, persistent.item_charges,
-            )):
-                handle = int(handle)
-                item_address = int(item_address)
-                rawcode = int(rawcode)
-                charges = int(charges)
-                occupied = handle not in (0, 0xFFFFFFFFFFFFFFFF)
-                if not occupied:
-                    items.append(InventoryItem(index + 1, 0, 0))
-                    continue
-                if not item_address or not self._sane_heap_ptr(item_address):
-                    return []
-                try:
-                    if (not self._looks_like_vtable(pm.read_u64(item_address))
-                            or pm.read_u64(item_address + 0x18) != handle):
-                        return []
-                    if pm.read_u32(item_address + 0x70) != rawcode:
-                        return []
-                    mirror = pm.read_u32(item_address + 0x178)
-                    ability = pm.read_u32(item_address + 0x1B8)
-                    if not self._looks_like_rawcode(mirror): mirror = 0
-                    if not self._looks_like_rawcode(ability): ability = 0
-                    charges = pm.read_i32(item_address + self.ITEM_CHARGES_OFFSET)
-                except OSError:
-                    return []
-                items.append(InventoryItem(
-                    index + 1, handle, 0, item_address, rawcode,
-                    item_address + 0x70, mirror, item_address + 0x178,
-                    ability, item_address + 0x1B8, charges,
-                    item_address + self.ITEM_CHARGES_OFFSET,
-                ))
-            return items
         components = components if components is not None else self._selected_components(pm, candidate.owner_address)
         inventory = components.get("inventory")
         if inventory is None:

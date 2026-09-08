@@ -179,3 +179,25 @@ Python 写入前定向刷新并比对原槽位的句柄/地址/ID，有效 nativ
 快照固定头扩展为 149 qword，追加六个 item_full_handles（物品对象 +0x18 的完整身份）。数量写入在定向刷新时对比此身份，op 137 后附 op 138 身份描述，由 DLL 在 setter 前核对；缺描述或代次不符即拒绝。已有数量回调内的写后身份及数量验证保留。字段表外部元数据也要求完整物品身份匹配才赋予地址写入能力。
 
 测试覆盖实际 C 快照传输、缺失描述拒绝、同句柄/同地址/同 ID 但代次不同的对象在 Python 和 C 两侧均不得写入。完整离线结果：245 passed、75 subtests passed；DLL SHA256：274503DB431D7144FE5DA7A0B82C3E938B6F3B04CDD9AC79E50F35E3C74190A8。未启动或打包 EXE，应用仍 1.0.19。物品替换等其他操作和冷启动定位仍待迁移，本次不表示完整目标完成。
+
+## 冷启动注册路径的离线证据（2026-09-08）
+
+本轮使用前一轮保存的主模块 `.text` 与本机磁盘 PE 做离线分析，没有重新读取游戏进程或启动 EXE。新增 `tools/war3_native_bootstrap_audit.py`，将四个 native 名称引用、恒成立分支、注册后端及表查找指令逐项核对；固定输入 SHA256，不接受其他版本/不同捕获后仍输出同一结论。机器可读结果见 `analysis/native-bootstrap-20260907/report.json`。原始模块代码不提交。
+
+已确认的链（以下均为这一个游戏构建的 RVA，不是通用偏移）：
+
+- `GroupEnumUnitsSelected`、`GetUnitState`、`GetHeroStr`、`UnitAddAbility` 的名称与 JASS 签名引用处均调用 `0x9dc100` 获取注册分发器，并调用 `0x1fa6ef0` 注册。所传函数地址均为 `0x1fd5620`（返回零的占位函数），因此不能把这些静态 LEA 的目标直接作为可用 native。
+- `0x9dc100` 中成对条件跳转及 TEST/OR 后的恒成立跳转最终返回模块内 `0x2aa2a70`。沿入口线性反汇编会误读大量不可达字节；审计工具明确核对实际分支条件。
+- 注册包装器实际调用 `0x135f4b0`，逐个访问分发器 `+8`、`+0x10` 两个后端的虚表 `+0x10`。第一后端构造器引用虚表 `0x2449b90`，对应注册方法 `0x13614a0`，再调用 `0x15ac140`。
+- 下层注册函数调用 `0x30d360(5)` 获取上下文，以 `context+0x28` 为表，调用 `0x15ad560(table, name)` 查找节点。名称在节点 `+0x28`，函数地址写入 `+0x30`，签名写入 `+0x40`。查找代码使用表掩码、24 字节桶和带标记的链指针，包含 hash 与逐字节名称比较。
+- 上下文 getter 使用一个模块全局索引调用导入跳板，再读取返回对象 `+0x38+slot*8`。保存的代码不包含已解析 IAT 数据，尚不能将该导入确定称为 TlsGetValue 或 FlsGetValue。
+
+这改变了后续方向：应在游戏线程中验证“上下文槽 5 → native 表 → 按名称查找”的入口，再取名称/签名一致且非占位的函数。当前外部扫描把 string record 前 8 字节视为 handler，和此处 JASS 表节点布局不同，不能直接复用旧 record 解析器，也不能仅因二者都含同名字符串就认定函数 ABI 相同。
+
+尚未验证当前对局上下文、注册后实际 handler、与现有调用 ABI 的一致性、不同游戏状态/构建的定位。因此正式 helper 和 Python 冷启动路径仍未替换，不能称为冷启动无扫描已完成。本次只运行离线审计工具，没有重复全套回归；应用 1.0.19、协议 32 和已测试 DLL/EXE 均未更改。
+
+复跑（原始 `.text` 捕获仅本机保留）：
+
+```powershell
+python tools/war3_native_bootstrap_audit.py --image 'D:\Warcraft III\_retail_\x86_64\Warcraft III.exe' --text analysis/native-bootstrap-20260907/module-text.bin --output analysis/native-bootstrap-20260907/report.json
+```

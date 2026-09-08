@@ -1,0 +1,47 @@
+{
+  "status": "offline evidence only; not validated for runtime address use",
+  "image_sha256": "682c12552ca05e43c5fed2340ea132d3b06fe068e676db7d1f5623d8d4633229",
+  "captured_text_sha256": "0b62fa80e351e996e70addb66c5d3c8a818304ec6aa8dcf5fe6c0886cca4127c",
+  "registrations": {
+    "GroupEnumUnitsSelected": {
+      "reference_rva": "0x1fb2072",
+      "name_rva": "0x25706b8",
+      "signature": "(Hgroup;Hplayer;Hboolexpr;)V",
+      "initial_stub_rva": "0x1fd5620"
+    },
+    "GetUnitState": {
+      "reference_rva": "0x1fb37e4",
+      "name_rva": "0x2570ed0",
+      "signature": "(Hunit;Hunitstate;)R",
+      "initial_stub_rva": "0x1fd5620"
+    },
+    "GetHeroStr": {
+      "reference_rva": "0x1fb5215",
+      "name_rva": "0x2571590",
+      "signature": "(Hunit;B)I",
+      "initial_stub_rva": "0x1fd5620"
+    },
+    "UnitAddAbility": {
+      "reference_rva": "0x1fb7330",
+      "name_rva": "0x2571ce0",
+      "signature": "(Hunit;I)B",
+      "initial_stub_rva": "0x1fd5620"
+    }
+  },
+  "dispatcher_root_rva": "0x2aa2a70",
+  "first_backend_vtable_rva": "0x2449b90",
+  "first_backend_register_rva": "0x13614a0",
+  "context_getter_rva": "0x30d360",
+  "context_slot": 5,
+  "context_table_offset": "0x28",
+  "table_find_rva": "0x15ad560",
+  "node_name_offset": "0x28",
+  "node_handler_offset": "0x30",
+  "node_signature_offset": "0x40",
+  "unproven": [
+    "Imported context accessor is not identified from the saved text section.",
+    "Current map context and real (non-stub) native values require a read-only game-thread probe.",
+    "JASS table handlers must be compared with current handler ABI before replacing the old route.",
+    "No evidence yet supports other game builds or process states."
+  ]
+}

@@ -1,0 +1,139 @@
+{
+  "pid": 33200,
+  "protocol": 42,
+  "units": [
+    {
+      "handle": 1058016,
+      "occupied": 6,
+      "charges": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "handle": 1058028,
+      "occupied": 6,
+      "charges": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "handle": 1059280,
+      "occupied": 0,
+      "charges": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "handle": 1059314,
+      "occupied": 0,
+      "charges": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "handle": 1059276,
+      "occupied": 0,
+      "charges": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "handle": 1059228,
+      "occupied": 0,
+      "charges": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "handle": 1059231,
+      "occupied": 0,
+      "charges": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "handle": 1053310,
+      "occupied": 0,
+      "charges": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "handle": 1059232,
+      "occupied": 0,
+      "charges": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "handle": 1052985,
+      "occupied": 0,
+      "charges": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "handle": 1052988,
+      "occupied": 0,
+      "charges": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "ok": true
+}

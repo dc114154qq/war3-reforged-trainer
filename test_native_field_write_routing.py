@@ -17,6 +17,7 @@ def fields_context(context):
     trainer._selected_components = Mock(return_value={})
     memory.components = {}
     memory.attack2 = False
+    memory.inventory_items = []
     trainer._native_unit_field_memory = Mock(return_value=memory)
     trainer._inventory_items_from_candidate = Mock(return_value=[])
     return trainer, memory, candidate, snapshot

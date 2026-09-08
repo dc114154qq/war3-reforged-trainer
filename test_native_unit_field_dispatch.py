@@ -16,6 +16,9 @@ from test_native_snapshot_binding import make_candidate, make_snapshot
 FIELDS_HARNESS = r'''
 static uint8_t field_data[4][0xa00], field_wrappers[4][0x98];
 static unsigned field_fault, field_unit_calls;
+static unsigned field_inventory_size;
+static uint64_t field_slot(uint64_t unit,int32_t slot) { return 0; }
+static int32_t field_capacity(uint64_t unit) { return (int32_t)field_inventory_size; }
 static uint64_t field_vtable[] = {(uint64_t)(uintptr_t)fake_max};
 static const uint32_t field_slots[4] = {0x5a0,0x5a8,0x5b0,0x5c0};
 static uint64_t field_full(unsigned k) { return 0x234500005678ULL + k; }
@@ -45,6 +48,14 @@ __declspec(dllexport) DWORD field_snapshot(const wchar_t *directory,unsigned mas
                           0x416d6f762b61676cULL,0x4161746b2b61676cULL};
     if(wcslen(directory)>=MAX_PATH-1) return ERROR_INVALID_PARAMETER;
     wcscpy(test_directory,directory); field_fault=failure;field_unit_calls=0;
+    field_inventory_size=(mask&1)?6:0;
+    for(unsigned i=0;i<sizeof(g_persistent_natives)/sizeof(g_persistent_natives[0]);++i) {
+        g_persistent_natives[i].name=g_persistent_native_names[i];
+        g_persistent_natives[i].handler=(uint64_t)(uintptr_t)field_capacity;
+        if(!strcmp(g_persistent_native_names[i],"UnitItemInSlot"))
+            g_persistent_natives[i].handler=(uint64_t)(uintptr_t)field_slot;
+    }
+    g_persistent_item_resolver=(uint64_t)(uintptr_t)fake_item_resolver;
     ZeroMemory(object,sizeof(object));ZeroMemory(owner,sizeof(owner));
     ZeroMemory(field_data,sizeof(field_data));ZeroMemory(field_wrappers,sizeof(field_wrappers));
     *(uint64_t *)(object+0x18)=full;

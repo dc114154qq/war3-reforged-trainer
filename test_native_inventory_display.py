@@ -12,7 +12,7 @@ from test_native_hero_fields import context
 def test_missing_metadata_keeps_all_native_slots_and_quantities(hero, component):
     trainer, memory, candidate = context(False, hero)
     trainer._native_unit_field_memory.return_value.components = {'inventory': (0, 0x5000)} if component else {}
-    trainer._inventory_items_from_candidate.return_value = []
+    trainer._native_unit_field_memory.return_value.inventory_items = []
     snapshot = replace(candidate.native_snapshot,
                        item_ids=(0x49303031, 0, 0, 0, 0, 0x49303032),
                        item_handles=(100, 0, 0, 0, 0, 200),
@@ -35,7 +35,7 @@ def test_valid_metadata_preserves_existing_write_capability_but_not_its_stale_va
     trainer, memory, candidate = context(False, False)
     trainer._native_unit_field_memory.return_value.components = {'inventory': (0, 0x5000)}
     snapshot = candidate.native_snapshot
-    trainer._inventory_items_from_candidate.return_value = [module.InventoryItem(
+    trainer._native_unit_field_memory.return_value.inventory_items = [module.InventoryItem(
         slot=1, handle=0x123400000064, handle_address=0x6000,
         rawcode=snapshot.item_ids[0], item_address=snapshot.item_addresses[0],
         rawcode_address=0x7000, charges=888, charges_address=0x8000)]
@@ -55,7 +55,7 @@ def test_changed_metadata_cannot_supply_write_addresses_for_old_display(mismatch
     item = module.InventoryItem(slot=1, handle=12, handle_address=0x6000,
                                 rawcode=snapshot.item_ids[0], item_address=snapshot.item_addresses[0],
                                 rawcode_address=0x7000, charges_address=0x8000)
-    trainer._inventory_items_from_candidate.return_value = [replace(item, **{mismatch: 0xBAD})]
+    trainer._native_unit_field_memory.return_value.inventory_items = [replace(item, **{mismatch: 0xBAD})]
     fields = {f.key: f for f in trainer._unit_fields_from_candidate(memory, candidate)}
     assert fields['inventory_slot_1'].value == snapshot.item_ids[0]
     assert not fields['inventory_slot_1'].writable

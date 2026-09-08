@@ -668,6 +668,7 @@ class InventoryItem:
     ability_rawcode_address: int = 0
     charges: int = 0
     charges_address: int = 0
+    native_slot: bool = False
 
     @property
     def rawcode_text(self) -> str:
@@ -797,6 +798,7 @@ class PersistentNativeUnitSnapshot:
     mp_property: int = 0
     hp_regen: float | None = None
     mp_regen: float | None = None
+    inventory_native: bool = False
 
 class NativeUnitFieldMemory:
     """One game-thread field response; missing bytes never trigger process reads."""
@@ -807,6 +809,7 @@ class NativeUnitFieldMemory:
                 or values[3] & ~15 or values[14] not in (0, 1)):
             raise RuntimeError("DLL 单位字段快照长度或身份异常")
         self.components: dict[str, tuple[int, int]] = {}
+        self.inventory_items: list[InventoryItem] = []
         self.attack2 = bool(values[14])
         self._blocks: dict[int, bytes] = {}
 
@@ -2593,7 +2596,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 41
+    NATIVE_HELPER_VERSION = 42
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -2686,6 +2689,7 @@ class War3Trainer:
     NATIVE_HELPER_OP_BOUND_ABILITY_LIST = 146
     NATIVE_HELPER_OP_BOUND_UNIT_FIELDS = 147
     NATIVE_HELPER_OP_SET_UNIT_REGEN = 148
+    NATIVE_HELPER_OP_BOUND_INVENTORY = 149
     PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 153
     NATIVE_BASIC_FIELD_ARGUMENTS = {
         "hp_current": ("target_hp", "hp"),
@@ -2719,6 +2723,7 @@ class War3Trainer:
         "GetHeroAgi",
         "GetHeroInt",
         "UnitItemInSlot",
+        "UnitInventorySize",
         "GetItemTypeId",
         "GetItemCharges",
         "BlzGetUnitAbilityByIndex",
@@ -4528,6 +4533,7 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_BOUND_ABILITY_LIST,
             self.NATIVE_HELPER_OP_BOUND_UNIT_FIELDS,
             self.NATIVE_HELPER_OP_SET_UNIT_REGEN,
+            self.NATIVE_HELPER_OP_BOUND_INVENTORY,
             self.NATIVE_HELPER_OP_BOUND_INVENTORY_ITEM,
             self.NATIVE_HELPER_OP_BOUND_ITEM_TYPE,
         }
@@ -12622,12 +12628,59 @@ class War3Trainer:
         return next((item for item in getattr(self, "_last_persistent_native_snapshots", ())
                      if identity == (item.full_handle, item.owner_address, item.unit_address)), None)
 
+    def _native_inventory_items(self, candidate: UnitCandidate) -> list[InventoryItem]:
+        native = self._native_snapshot_for_candidate(candidate)
+        if native is None:
+            raise RuntimeError("Native inventory requires a bound unit snapshot")
+        results = self._run_native_helper_ops(native.handle, (
+            (self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY, 0, candidate.unit_address,
+             candidate.handle, candidate.owner_address),
+            (self.NATIVE_HELPER_OP_BOUND_INVENTORY, 0, 0, 0, 0),
+        ))
+        if len(results) != 2 or any(result.last_error for result in results) or results[1].result != 6:
+            raise RuntimeError("Incomplete inventory returned by the DLL")
+        return self._parse_native_inventory_items(tuple(results[0].extra_results))
+
+    def _parse_native_inventory_items(self, values: tuple[int, ...]) -> list[InventoryItem]:
+        if len(values) != 49 or not 0 <= values[0] <= 6:
+            raise RuntimeError("Invalid DLL inventory payload length or capacity")
+        items = []
+        seen_handles, seen_full, seen_objects = set(), set(), set()
+        for index in range(6):
+            handle, full, obj, rawcode, charges, mirror, ability, wrapper = values[1+index*8:9+index*8]
+            if not handle:
+                if any((full, obj, rawcode, charges, mirror, ability, wrapper)):
+                    raise RuntimeError("Empty DLL inventory slot contains item metadata")
+            elif (index >= values[0] or not all((full, obj, rawcode, wrapper))
+                  or handle in seen_handles or full in seen_full or obj in seen_objects):
+                raise RuntimeError("Invalid or duplicate DLL inventory item identity")
+            if handle:
+                seen_handles.add(handle); seen_full.add(full); seen_objects.add(obj)
+            mirror = mirror if self._looks_like_rawcode(mirror) else 0
+            ability = ability if self._looks_like_rawcode(ability) else 0
+            items.append(InventoryItem(
+                slot=index+1, handle=full, handle_address=0, item_address=obj, rawcode=rawcode,
+                rawcode_address=obj+0x70 if obj else 0,
+                charges=ctypes.c_int32(charges & 0xFFFFFFFF).value,
+                charges_address=obj+self.ITEM_CHARGES_OFFSET if obj else 0,
+                mirror_rawcode=mirror, mirror_rawcode_address=obj+0x178 if mirror else 0,
+                ability_rawcode=ability, ability_rawcode_address=obj+0x1B8 if ability else 0,
+                native_slot=index < values[0],
+            ))
+        return items
+
     def _inventory_items_from_candidate(
         self,
         pm: ProcessMemory,
         candidate: UnitCandidate,
         components: dict[str, tuple[int, int]] | None = None,
     ) -> list[InventoryItem]:
+        native = self._native_snapshot_for_candidate(candidate)
+        if native is not None and (getattr(native, "inventory_native", False)
+                                   or bool(getattr(native, "hp_property", 0)
+                                           or getattr(native, "mp_property", 0))):
+            return self._native_inventory_items(candidate)
+
         components = components if components is not None else self._selected_components(pm, candidate.owner_address)
         inventory = components.get("inventory")
         if inventory is None:
@@ -12823,9 +12876,12 @@ class War3Trainer:
             (self.NATIVE_HELPER_OP_BOUND_UNIT_FIELDS, 0, 0, 0, 0),
         ))
         if (len(results) != 2 or any(result.last_error for result in results)
-                or results[1].result != 293):
+                or results[1].result != 342 or len(results[0].extra_results) != 342):
             raise RuntimeError("DLL 单位字段返回不完整")
-        return NativeUnitFieldMemory(candidate, tuple(results[0].extra_results))
+        values = tuple(results[0].extra_results)
+        memory = NativeUnitFieldMemory(candidate, values[:293])
+        memory.inventory_items = self._parse_native_inventory_items(values[293:])
+        return memory
 
     def _unit_fields_from_candidate(
         self,
@@ -13207,11 +13263,9 @@ class War3Trainer:
             if any(len(values) != 6 for values in (native.item_ids, native.item_charges,
                                                    native.item_handles, native.item_addresses, native.item_full_handles)):
                 raise RuntimeError("Native inventory snapshot must contain six slots")
-            # Optional metadata controls write capability, never the displayed
-            # contents. A missing external inventory component cannot erase an
-            # item already returned by the engine in this bound snapshot.
-            metadata = {item.slot: item for item in
-                        self._inventory_items_from_candidate(process_memory, candidate, components)} if "inventory" in components else {}
+            # Both values and optional slot metadata come from the DLL. Bind
+            # write capability only when the two responses identify the same item.
+            metadata = {item.slot: item for item in pm.inventory_items}
             display_items = []
             for index in range(6):
                 rawcode = native.item_ids[index]
@@ -13240,6 +13294,7 @@ class War3Trainer:
                         category="物品栏",
                         write_address=item.rawcode_address,
                         write_type="rawcode",
+                        native_write=item.native_slot,
                         note=(
                             f"handle=0x{item.handle:x} item=0x{item.item_address:x}; "
                             f"mirror=0x{item.mirror_rawcode_address:x} ability={format_rawcode(item.ability_rawcode) if item.ability_rawcode else '0'}; "
@@ -13259,6 +13314,7 @@ class War3Trainer:
                         category="物品栏",
                         write_address=item.handle_address,
                         write_type="rawcode",
+                        native_write=item.native_slot,
                         note=note + "；写入时通过内部物品栏函数在本槽创建物品",
                     )
                 )

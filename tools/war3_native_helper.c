@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 41u
+#define WAR3_NATIVE_VERSION 42u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -94,7 +94,9 @@
 #define WAR3_NATIVE_OP_BOUND_ABILITY_LIST 146u
 #define WAR3_NATIVE_OP_BOUND_UNIT_FIELDS 147u
 #define WAR3_NATIVE_OP_SET_UNIT_REGEN 148u
-#define WAR3_BOUND_UNIT_FIELD_QWORDS (15u + 36u + 121u + 121u)
+#define WAR3_NATIVE_OP_BOUND_INVENTORY 149u
+#define WAR3_BOUND_INVENTORY_QWORDS 49u
+#define WAR3_BOUND_UNIT_FIELD_QWORDS (15u + 36u + 121u + 121u + WAR3_BOUND_INVENTORY_QWORDS)
 #define WAR3_CLONE_FLAG_HERO 0x01u
 #define WAR3_CLONE_FLAG_INVENTORY 0x02u
 #define WAR3_CLONE_FLAG_PRESERVE_OWNER 0x04u
@@ -402,6 +404,7 @@ static const char *g_persistent_native_names[] = {
     "GetHeroAgi",
     "GetHeroInt",
     "UnitItemInSlot",
+    "UnitInventorySize",
     "GetItemTypeId",
     "GetItemCharges",
     "BlzGetUnitAbilityByIndex",
@@ -709,6 +712,7 @@ static DWORD war3_regen_properties(uint64_t owner, War3RegenProperties *out) {
 /* 2.0.4.23745 component fields, copied once on the game thread. The unit's
    fixed component slots are cross-checked against the engine object table;
    no wrapper search, address-range vtable guess, or cached membership. */
+static DWORD war3_bound_inventory(const NativeCommand *cmd, uint64_t *values);
 static DWORD war3_bound_unit_fields(const NativeCommand *cmd, uint64_t *values) {
     static const uint32_t offsets[4] = {0x5a0, 0x5a8, 0x5b0, 0x5c0};
     static const uint64_t tags[4] = {0x41496e762b61676cULL, 0x414865722b61676cULL,
@@ -771,7 +775,7 @@ static DWORD war3_bound_unit_fields(const NativeCommand *cmd, uint64_t *values) 
             }
         }
     } __except (EXCEPTION_EXECUTE_HANDLER) { error = ERROR_INVALID_ADDRESS; }
-    return error;
+    return error ? error : war3_bound_inventory(cmd, values + 293);
 }
 
 /* Return one ability's metadata while its owning unit is pinned by op 136.
@@ -820,6 +824,66 @@ static DWORD war3_bound_ability_metadata(const NativeCommand *cmd, const NativeO
             *(uint64_t *)(uintptr_t)(wrapper + 0x90) != data) error = ERROR_INVALID_HANDLE;
     } __except (EXCEPTION_EXECUTE_HANDLER) { error = ERROR_INVALID_ADDRESS; }
     return error;
+}
+
+/* Six slots plus the engine's usable slot count. Slot membership, item
+   generation and object-table backlinks replace external inventory records. */
+static DWORD war3_bound_inventory(const NativeCommand *cmd, uint64_t *values) {
+    JassUnitItemInSlotFn slot_fn = (JassUnitItemInSlotFn)(uintptr_t)war3_persistent_native_handler("UnitItemInSlot");
+    JassUnitIntQueryFn capacity_fn = (JassUnitIntQueryFn)(uintptr_t)war3_persistent_native_handler("UnitInventorySize");
+    JassUnitIntQueryFn type_fn = (JassUnitIntQueryFn)(uintptr_t)war3_persistent_native_handler("GetItemTypeId");
+    JassUnitIntQueryFn charges_fn = (JassUnitIntQueryFn)(uintptr_t)war3_persistent_native_handler("GetItemCharges");
+    JassUnitHandleResolveFn resolve = (JassUnitHandleResolveFn)(uintptr_t)g_persistent_item_resolver;
+    War3AgentResolveFn agent = (War3AgentResolveFn)(uintptr_t)g_persistent_agent_resolver;
+    int32_t capacity;
+    DWORD error = war3_validate_unit_identity(cmd, &cmd->ops[0]);
+    if (error) return error;
+    if (!war3_executable_pointer((uint64_t)(uintptr_t)slot_fn) ||
+        !war3_executable_pointer((uint64_t)(uintptr_t)capacity_fn) ||
+        !war3_executable_pointer((uint64_t)(uintptr_t)type_fn) ||
+        !war3_executable_pointer((uint64_t)(uintptr_t)charges_fn) ||
+        !war3_executable_pointer(g_persistent_item_resolver)) return ERROR_PROC_NOT_FOUND;
+    capacity = capacity_fn(cmd->unit_handle);
+    if (capacity < 0 || capacity > 6) return ERROR_INVALID_DATA;
+    values[0] = (uint64_t)capacity;
+    for (unsigned slot=0; slot<6; ++slot) {
+        uint64_t *row = values + 1 + slot*8;
+        uint64_t item = slot_fn(cmd->unit_handle, (int32_t)slot), object, full, wrapper;
+        if (!item) continue;
+        if (slot >= (unsigned)capacity) return ERROR_INVALID_DATA;
+        object = resolve(item);
+        if (!war3_readable_span(object, 0x1bc)) return ERROR_INVALID_ADDRESS;
+        full = *(uint64_t *)(uintptr_t)(object+0x18);
+        wrapper = agent((uint32_t)full, (uint32_t)(full>>32));
+        if (!full || !war3_readable_span(wrapper, 0x98) ||
+            *(uint64_t *)(uintptr_t)(wrapper+0x18) != 0x6974656d2b61676cULL ||
+            *(uint64_t *)(uintptr_t)(wrapper+0x20) != full ||
+            *(uint64_t *)(uintptr_t)(wrapper+0x90) != object) return ERROR_INVALID_HANDLE;
+        row[0]=item; row[1]=full; row[2]=object; row[3]=(uint32_t)type_fn(item);
+        if (!row[3] || *(uint32_t *)(uintptr_t)(object+0x70) != row[3]) return ERROR_INVALID_DATA;
+        row[4]=(uint64_t)(int64_t)(int32_t)charges_fn(item);
+        row[5]=*(uint32_t *)(uintptr_t)(object+0x178);
+        row[6]=*(uint32_t *)(uintptr_t)(object+0x1b8);
+        row[7]=wrapper;
+        for (unsigned prior=0; prior<slot; ++prior) {
+            uint64_t *old = values+1+prior*8;
+            if (old[0]==item || (old[0] && (old[1]==full || old[2]==object))) return ERROR_INVALID_DATA;
+        }
+    }
+    if (capacity_fn(cmd->unit_handle) != capacity) return ERROR_INVALID_HANDLE;
+    for (unsigned slot=0; slot<6; ++slot) {
+        uint64_t *row=values+1+slot*8;
+        if (slot_fn(cmd->unit_handle,(int32_t)slot) != row[0]) return ERROR_INVALID_HANDLE;
+        if (row[0] && (resolve(row[0]) != row[2] ||
+            agent((uint32_t)row[1],(uint32_t)(row[1]>>32)) != row[7] ||
+            *(uint64_t *)(uintptr_t)(row[2]+0x18) != row[1] ||
+            *(uint32_t *)(uintptr_t)(row[2]+0x70) != row[3] ||
+            (uint32_t)type_fn(row[0]) != row[3] ||
+            *(uint64_t *)(uintptr_t)(row[7]+0x18) != 0x6974656d2b61676cULL ||
+            *(uint64_t *)(uintptr_t)(row[7]+0x20) != row[1] ||
+            *(uint64_t *)(uintptr_t)(row[7]+0x90) != row[2])) return ERROR_INVALID_HANDLE;
+    }
+    return war3_validate_unit_identity(cmd, &cmd->ops[0]);
 }
 
 static int war3_is_ability_field_op(uint32_t kind) {
@@ -3003,6 +3067,7 @@ static void run_command(void) {
                 op->kind != WAR3_NATIVE_OP_BOUND_ABILITY_LIST &&
                 op->kind != WAR3_NATIVE_OP_BOUND_UNIT_FIELDS &&
                 op->kind != WAR3_NATIVE_OP_SET_UNIT_REGEN &&
+                op->kind != WAR3_NATIVE_OP_BOUND_INVENTORY &&
                 op->kind != WAR3_NATIVE_OP_BOUND_ABILITY_IDENTITY &&
                 op->kind != WAR3_NATIVE_OP_BOUND_INVENTORY_ITEM &&
                 !war3_is_internal_ability_op(op->kind) &&
@@ -3037,6 +3102,7 @@ static void run_command(void) {
             op->kind != WAR3_NATIVE_OP_BOUND_ABILITY_LIST &&
             op->kind != WAR3_NATIVE_OP_BOUND_UNIT_FIELDS &&
             op->kind != WAR3_NATIVE_OP_SET_UNIT_REGEN &&
+            op->kind != WAR3_NATIVE_OP_BOUND_INVENTORY &&
             op->kind != WAR3_NATIVE_OP_PERSISTENT_SELECTED_SNAPSHOT
         ) {
             op->last_error = ERROR_INVALID_DATA;
@@ -3044,6 +3110,18 @@ static void run_command(void) {
             goto finish;
         }
         switch (op->kind) {
+            case WAR3_NATIVE_OP_BOUND_INVENTORY: {
+                if (i != 1 || cmd.op_count != 2 || cmd.ops[0].kind != WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY) {
+                    last_error = ERROR_INVALID_DATA;
+                } else {
+                    extra_results = (uint64_t *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
+                        WAR3_BOUND_INVENTORY_QWORDS*sizeof(uint64_t));
+                    last_error = extra_results ? war3_bound_inventory(&cmd, extra_results) : ERROR_OUTOFMEMORY;
+                }
+                if (last_error) { op->last_error=last_error; goto finish; }
+                extra_result_count=WAR3_BOUND_INVENTORY_QWORDS;op->result=6;
+                break;
+            }
             case WAR3_NATIVE_OP_SET_UNIT_REGEN: {
                 War3RegenProperties properties;
                 uint32_t bits[2] = {(uint32_t)op->arg0, (uint32_t)op->arg1};

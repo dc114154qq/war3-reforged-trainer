@@ -20,6 +20,7 @@ def context(has_component=True, hero=True):
     trainer._selected_components = Mock(return_value={'hero': (0, 0x5000)} if has_component else {})
     memory.components = trainer._selected_components.return_value
     memory.attack2 = False
+    memory.inventory_items = []
     trainer._native_unit_field_memory = Mock(return_value=memory)
     trainer._ability_instances_from_candidate = Mock(return_value=[])
     trainer._inventory_items_from_candidate = Mock(return_value=[])

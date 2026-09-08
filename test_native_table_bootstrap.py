@@ -1,5 +1,7 @@
 """Exercise production table lookup on synthetic memory and Python bootstrap IPC."""
 import ctypes
+import json
+import struct
 import faulthandler
 from pathlib import Path
 import shutil
@@ -67,6 +69,9 @@ __declspec(dllexport) DWORD lookup(unsigned fault, uint64_t *out) {
 __declspec(dllexport) DWORD reject_host_image(void) {
     return war3_bootstrap_validate_image((uint8_t *)GetModuleHandleW(NULL));
 }
+__declspec(dllexport) DWORD validate_captured_image(uint8_t *image) {
+    return war3_bootstrap_validate_image(image);
+}
 __declspec(dllexport) DWORD dispatch(const wchar_t *directory, unsigned kind, unsigned fault) {
     NativeCommand cmd = {0}; wchar_t path[MAX_PATH]; DWORD bytes; HANDLE file;
     wcscpy(test_directory, directory); command_path(path, MAX_PATH);
@@ -101,6 +106,8 @@ def native(tmp_path_factory):
     lib.lookup.argtypes = [ctypes.c_uint, ctypes.POINTER(ctypes.c_uint64)]
     lib.lookup.restype = ctypes.c_uint
     lib.reject_host_image.restype = ctypes.c_uint
+    lib.validate_captured_image.argtypes = [ctypes.c_void_p]
+    lib.validate_captured_image.restype = ctypes.c_uint
     lib.dispatch.argtypes = [ctypes.c_wchar_p, ctypes.c_uint, ctypes.c_uint]
     lib.dispatch.restype = ctypes.c_uint
     yield lib
@@ -126,6 +133,47 @@ def test_real_c_bucket_lookup_checks_name_signature_code_and_bounded_chain(nativ
 
 def test_wrong_executable_rejected_before_context_call(native):
     assert native.reject_host_image() != 0
+
+
+@pytest.mark.parametrize('fault', ['none', 'disk_machine', 'x86_machine', 'pe32',
+                                  'timestamp', 'image_size', 'code', 'nonexecutable'])
+def test_real_c_validation_of_captured_23745_image(native, fault):
+    # Execute the production C validator against the real header/code bytes.
+    # Do not execute captured game code or attach a hook to the game.
+    evidence = json.loads((Path(__file__).parent/'tools/bootstrap-live-23745.json').read_text())
+    header = bytearray.fromhex(evidence['header'])
+    nt = struct.unpack_from('<I', header, 0x3c)[0]
+    assert struct.unpack_from('<H', header, nt+4)[0] == 0x200
+    if fault == 'disk_machine': struct.pack_into('<H', header, nt+4, 0x8664)
+    if fault == 'x86_machine': struct.pack_into('<H', header, nt+4, 0x14c)
+    if fault == 'pe32': struct.pack_into('<H', header, nt+24, 0x10b)
+    if fault == 'timestamp': header[nt+8] ^= 1
+    if fault == 'image_size': header[nt+80] ^= 1
+    api = ctypes.WinDLL('kernel32', use_last_error=True)
+    api.VirtualAlloc.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_uint, ctypes.c_uint]
+    api.VirtualAlloc.restype = ctypes.c_void_p
+    api.VirtualFree.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_uint]
+    api.VirtualProtect.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_uint,
+                                  ctypes.POINTER(ctypes.c_uint)]
+    size = max(row['rva'] + len(bytes.fromhex(row['bytes'])) for row in evidence['checks'])
+    base = api.VirtualAlloc(None, size, 0x3000, 0x04)
+    assert base
+    try:
+        ctypes.memmove(base, bytes(header), len(header))
+        for row in evidence['checks']:
+            code = bytearray.fromhex(row['bytes'])
+            if fault == 'code': code[0] ^= 1
+            ctypes.memmove(base+row['rva'], bytes(code), len(code))
+        old = ctypes.c_uint()
+        assert api.VirtualProtect(base, size, 0x04 if fault == 'nonexecutable' else 0x20,
+                                  ctypes.byref(old))
+        error = native.validate_captured_image(base)
+        if fault in ('none', 'disk_machine'):
+            assert error == 0
+        else:
+            assert error != 0
+    finally:
+        assert api.VirtualFree(base, 0, 0x8000)
 
 
 @pytest.mark.parametrize('kind', [139, 140])

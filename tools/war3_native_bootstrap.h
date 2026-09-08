@@ -28,14 +28,19 @@ static DWORD war3_bootstrap_validate_image(uint8_t *image) {
         if (!image || dos->e_magic != IMAGE_DOS_SIGNATURE || dos->e_lfanew < 0x40 || dos->e_lfanew > 0x1000)
             __leave;
         nt = (IMAGE_NT_HEADERS64 *)(void *)(image + dos->e_lfanew);
-        if (nt->Signature != IMAGE_NT_SIGNATURE || nt->FileHeader.Machine != IMAGE_FILE_MACHINE_AMD64 ||
+        /* The captured 2.0.4.23745 live image reports Machine=0x0200 while
+           the disk image reports AMD64. This is only a header marker: accept
+           either value only with PE32+, the exact build and ALL x64 code
+           fingerprints below. Never infer callable architecture from it. */
+        if (nt->Signature != IMAGE_NT_SIGNATURE ||
+            (nt->FileHeader.Machine != IMAGE_FILE_MACHINE_AMD64 && nt->FileHeader.Machine != 0x0200u) ||
             nt->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC ||
             nt->FileHeader.TimeDateStamp != WAR3_BOOTSTRAP_TIMESTAMP ||
             nt->OptionalHeader.SizeOfImage != WAR3_BOOTSTRAP_IMAGE_SIZE) __leave;
         error = ERROR_REVISION_MISMATCH;
         for (size_t i = 0; i < sizeof(g_bootstrap_checks)/sizeof(g_bootstrap_checks[0]); ++i) {
             const War3BootstrapCodeCheck *check = &g_bootstrap_checks[i];
-            if (!war3_readable_pointer((const void *)(uintptr_t)(image + check->rva)) ||
+            if (!war3_executable_pointer((uint64_t)(uintptr_t)(image + check->rva)) ||
                 war3_bootstrap_hash(image + check->rva, check->size) != check->hash) __leave;
         }
         error = ERROR_SUCCESS;
@@ -99,7 +104,7 @@ static DWORD war3_bootstrap_find(
                 uint64_t value = *(uint64_t *)(node + 0x30);
                 if (value != (uint64_t)(uintptr_t)(image + profile->rva) ||
                     !war3_bootstrap_string_equal(*(const char **)(node + 0x40), profile->signature) ||
-                    !war3_readable_pointer((const void *)(uintptr_t)value) ||
+                    !war3_executable_pointer(value) ||
                     war3_bootstrap_hash((const uint8_t *)(uintptr_t)value, 64) != profile->code_hash) {
                     error = ERROR_INVALID_DATA; __leave;
                 }

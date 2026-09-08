@@ -12557,7 +12557,11 @@ class War3Trainer:
             return []
 
         persistent = self._native_snapshot_for_candidate(candidate)
-        if persistent is not None and len(persistent.item_handles) == 6:
+        if persistent is not None:
+            if any(len(values) != 6 for values in (
+                    persistent.item_handles, persistent.item_addresses, persistent.item_ids,
+                    persistent.item_charges, persistent.item_full_handles)):
+                return []
             fast_items: list[InventoryItem] = []
             fast_path_valid = True
             for index in range(6):
@@ -12582,6 +12586,9 @@ class War3Trainer:
                 ability_rawcode_address = 0
                 charges_address = 0
                 if occupied:
+                    if handle != persistent.item_full_handles[index]:
+                        fast_path_valid = False
+                        break
                     if not item_address or not self._sane_heap_ptr(item_address):
                         fast_path_valid = False
                         break
@@ -12631,6 +12638,18 @@ class War3Trainer:
                     )
                 )
             if fast_path_valid:
+                # External field reads span multiple calls. Check membership
+                # again before returning, including formerly empty slots.
+                try:
+                    for item in fast_items:
+                        if pm.read_u64(item.handle_address) != item.handle:
+                            return []
+                        if item.item_address and (
+                                pm.read_u64(item.item_address + 0x18) != item.handle
+                                or pm.read_u32(item.rawcode_address) != item.rawcode):
+                            return []
+                except OSError:
+                    return []
                 return fast_items
 
             # This read owns a native payload even if registration is being

@@ -141,6 +141,34 @@ class NativeSnapshotBindingTests(unittest.TestCase):
         self.assertEqual(len(items), 6)
         memory.read_i32.assert_called_once_with(self.snapshot.item_addresses[0] + self.trainer.ITEM_CHARGES_OFFSET)
 
+    def test_inventory_recycled_object_and_slot_cannot_override_bound_generation(self):
+        memory = self.inventory_memory()
+        original = memory.read_u64.side_effect
+        item = self.snapshot.item_addresses[0]
+        generation = self.snapshot.item_full_handles[0] + (1 << 32)
+        memory.read_u64.side_effect = lambda address: (
+            generation if address in (0x4000+0xD4, item+0x18) else original(address))
+        self.assertEqual(self.trainer._inventory_items_from_candidate(memory, self.candidate), [])
+        self.trainer._item_objects_from_handles.assert_not_called()
+
+    def test_inventory_slot_change_during_quantity_read_discards_result(self):
+        memory = self.inventory_memory()
+        original = memory.read_u64.side_effect
+        def read_quantity(address):
+            memory.read_u64.side_effect = lambda location: 0 if location == 0x4000+0xD4 else original(location)
+            return 7
+        memory.read_i32.side_effect = read_quantity
+        self.assertEqual(self.trainer._inventory_items_from_candidate(memory, self.candidate), [])
+        self.trainer._item_objects_from_handles.assert_not_called()
+
+    def test_truncated_native_inventory_never_falls_back_to_item_search(self):
+        for field in ('item_handles', 'item_addresses', 'item_ids', 'item_charges', 'item_full_handles'):
+            with self.subTest(field=field):
+                memory = self.inventory_memory()
+                snapshot = replace(self.snapshot, **{field: getattr(self.snapshot, field)[:5]})
+                self.assertEqual(self.trainer._inventory_items_from_candidate(memory, make_candidate(snapshot)), [])
+                self.trainer._item_objects_from_handles.assert_not_called()
+
     def test_quantity_write_verifies_new_value_instead_of_old_snapshot_value(self):
         memory = self.inventory_memory()
         memory.read_i32.return_value = 3
@@ -251,7 +279,8 @@ class NativeSnapshotBindingTests(unittest.TestCase):
         old_full = 0x123400000064
         new_item, new_full, new_id = 0x100008000, 0x234500000065, 0x49303032
         new = replace(current, item_ids=(new_id, 0, 0, 0, 0, 0),
-                      item_handles=(101, 0, 0, 0, 0, 0), item_addresses=(new_item, 0, 0, 0, 0, 0))
+                      item_handles=(101, 0, 0, 0, 0, 0), item_addresses=(new_item, 0, 0, 0, 0, 0),
+                      item_full_handles=(new_full, 0, 0, 0, 0, 0))
         self.trainer._run_native_helper_ops = Mock(side_effect=[[snapshot_result(current)], [snapshot_result(new)]])
 
         def replace_item(*args):

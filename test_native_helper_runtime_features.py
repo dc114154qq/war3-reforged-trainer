@@ -237,6 +237,7 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
             full_handle=0x1234, owner_address=0x3000,
             unit_address=0x2000, item_handles=(0,) * 6,
             item_addresses=(0,) * 6, item_ids=(0,) * 6, item_charges=(0,) * 6,
+            item_full_handles=(0,) * 6,
         )
         candidate = SimpleNamespace(handle=0x1234, unit_address=0x2000, owner_address=0x3000,
                                     native_snapshot=persistent, selection_source="persistent_native")
@@ -244,7 +245,7 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
         trainer._inventory_record_address = Mock(return_value=0x4000)
         trainer._item_objects_from_handles = Mock(side_effect=AssertionError("Unexpected item scan"))
         pm = Mock()
-        pm.read_u64.side_effect = [0, 0xFFFFFFFFFFFFFFFF, 0, 0xFFFFFFFFFFFFFFFF, 0, 0]
+        pm.read_u64.side_effect = [0, 0xFFFFFFFFFFFFFFFF, 0, 0xFFFFFFFFFFFFFFFF, 0, 0] * 2
         items = trainer._inventory_items_from_candidate(pm, candidate, {"inventory": (0, 0x5000)})
         self.assertEqual(len(items), 6)
         self.assertTrue(all(item.item_address == 0 and item.rawcode == 0 for item in items))

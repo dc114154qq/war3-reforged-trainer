@@ -35,7 +35,7 @@ static DWORD war3_bootstrap_validate_image(uint8_t *image) {
         error = ERROR_REVISION_MISMATCH;
         for (size_t i = 0; i < sizeof(g_bootstrap_checks)/sizeof(g_bootstrap_checks[0]); ++i) {
             const War3BootstrapCodeCheck *check = &g_bootstrap_checks[i];
-            if (!war3_executable_pointer((uint64_t)(uintptr_t)(image + check->rva)) ||
+            if (!war3_readable_pointer((const void *)(uintptr_t)(image + check->rva)) ||
                 war3_bootstrap_hash(image + check->rva, check->size) != check->hash) __leave;
         }
         error = ERROR_SUCCESS;
@@ -99,7 +99,7 @@ static DWORD war3_bootstrap_find(
                 uint64_t value = *(uint64_t *)(node + 0x30);
                 if (value != (uint64_t)(uintptr_t)(image + profile->rva) ||
                     !war3_bootstrap_string_equal(*(const char **)(node + 0x40), profile->signature) ||
-                    !war3_executable_pointer(value) ||
+                    !war3_readable_pointer((const void *)(uintptr_t)value) ||
                     war3_bootstrap_hash((const uint8_t *)(uintptr_t)value, 64) != profile->code_hash) {
                     error = ERROR_INVALID_DATA; __leave;
                 }

@@ -854,6 +854,7 @@ class ItemFieldContext:
     item_handle: int
     item_rawcode: int
     handlers: dict[str, NativeHandler]
+    item_identity: tuple[int, int, int] = (0, 0, 0)
 
     @property
     def unit_identity(self) -> tuple[int, int, int]:
@@ -889,6 +890,7 @@ class ItemFieldSnapshot:
     fields: tuple[ItemFieldValue, ...]
     unit_identity: tuple[int, int, int] = (0, 0, 0)
     win10_compat: bool = False
+    item_identity: tuple[int, int, int] = (0, 0, 0)
 
 
 @dataclass(frozen=True)
@@ -2534,7 +2536,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 35
+    NATIVE_HELPER_VERSION = 36
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -2622,6 +2624,8 @@ class War3Trainer:
     NATIVE_HELPER_OP_BOUND_ABILITY_METADATA = 141
     NATIVE_HELPER_OP_BOUND_ABILITY_IDENTITY = 142
     NATIVE_HELPER_OP_BOUND_ABILITY_CONTEXT = 143
+    NATIVE_HELPER_OP_BOUND_INVENTORY_ITEM = 144
+    NATIVE_HELPER_OP_BOUND_ITEM_TYPE = 145
     PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 149
     NATIVE_BASIC_FIELD_ARGUMENTS = {
         "hp_current": ("target_hp", "hp"),
@@ -4454,6 +4458,8 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_BOUND_ABILITY_METADATA,
             self.NATIVE_HELPER_OP_BOUND_ABILITY_IDENTITY,
             self.NATIVE_HELPER_OP_BOUND_ABILITY_CONTEXT,
+            self.NATIVE_HELPER_OP_BOUND_INVENTORY_ITEM,
+            self.NATIVE_HELPER_OP_BOUND_ITEM_TYPE,
         }
         if any(kind not in allowed_kinds for kind, _rawcode, _handler, _arg0, _arg1 in op_list):
             raise RuntimeError("native helper 仅允许结构化验证后的白名单操作")
@@ -7444,37 +7450,16 @@ class War3Trainer:
                 pm,
                 self.ITEM_FIELD_NATIVE_NAMES,
             )
-        item_handle = int(self._run_native_helper_ops(
-            unit_handle,
-            ((
-                self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE,
-                slot_number - 1,
-                handlers["UnitItemInSlot"].handler_address,
-                0,
-                0,
-            ),),
-        )[0].result)
-        if not item_handle:
+        native = self._native_snapshot_for_candidate(candidate)
+        if native is None or native.handle != unit_handle:
+            raise RuntimeError("物品查询缺少绑定单位快照")
+        index = slot_number - 1
+        item_handle = native.item_handles[index]
+        item_rawcode = native.item_ids[index]
+        identity = (item_handle, native.item_addresses[index], native.item_full_handles[index])
+        if not all(identity) or not item_rawcode:
             raise RuntimeError(f"当前选中单位的物品栏 {slot_number} 为空")
-        item_rawcode = int(self._run_native_helper_ops(
-            item_handle,
-            ((
-                self.NATIVE_HELPER_OP_JASS_UNIT_INT_QUERY,
-                0,
-                handlers["GetItemTypeId"].handler_address,
-                0,
-                0,
-            ),),
-        )[0].result) & 0xFFFFFFFF
-        if not item_rawcode:
-            raise RuntimeError(f"无法确认物品栏 {slot_number} 的物品 ID")
-        return ItemFieldContext(
-            candidate=candidate,
-            slot=slot_number,
-            item_handle=item_handle,
-            item_rawcode=item_rawcode,
-            handlers=handlers,
-        )
+        return ItemFieldContext(candidate, slot_number, item_handle, item_rawcode, handlers, identity)
 
     def _item_field_context_by_identity_locked(
         self,
@@ -7483,69 +7468,14 @@ class War3Trainer:
         win10_compat: bool,
     ) -> ItemFieldContext:
         handle, owner, unit = (int(value) for value in unit_identity)
-        if win10_compat:
-            with self._win10_memory_operation("item_field_context") as (diagnostics, pm):
-                isolated = self._win10_session_for_identity(handle, owner, unit, pm)
-                missing_handlers = set(self.ITEM_FIELD_NATIVE_NAMES).difference(
-                    isolated._native_handlers
-                )
-                if missing_handlers:
-                    self._recover_win10_native_handlers(isolated, pm, diagnostics)
-                    missing_handlers = set(self.ITEM_FIELD_NATIVE_NAMES).difference(
-                        isolated._native_handlers
-                    )
-                if missing_handlers:
-                    raise RuntimeError(
-                        "备用读取缺少物品字段 native："
-                        + ", ".join(sorted(missing_handlers))
-                    )
-                candidate = self._win10_candidate_from_identity(
-                    isolated,
-                    pm,
-                    handle,
-                    owner,
-                    unit,
-                )
-                unit_handle = isolated._current_jass_unit_handle_win10(
-                    pm,
-                    candidate,
-                    diagnostics,
-                )
-                handlers = {
-                    name: isolated._native_handlers[name]
-                    for name in self.ITEM_FIELD_NATIVE_NAMES
-                }
-                context = isolated._item_field_context_from_candidate_locked(
-                    pm,
-                    candidate,
-                    unit_handle,
-                    slot,
-                    handlers,
-                )
-                self._native_handlers.update(isolated._native_handlers)
-                return context
-
         with self._process_memory() as pm:
-            candidate = self._candidate_from_identity(
-                pm,
-                handle,
-                owner,
-                unit,
-                f"item_field_candidate handle=0x{handle:x} owner=0x{owner:x} unit=0x{unit:x}",
-                900,
-            )
+            candidate = self._candidate_from_display_identity(pm, handle, owner, unit, "item_field_candidate", 900)
             if candidate is None:
-                raise RuntimeError("普通读取的单位身份已经失效，请重新读取当前选中单位")
-            unit_handle = self._elephant_selected_handle(pm)
-            resolved_unit = self._resolve_jass_unit_handle(unit_handle)
-            if resolved_unit != candidate.unit_address:
-                raise RuntimeError("当前选择已经变化，请重新读取当前选中单位")
-            return self._item_field_context_from_candidate_locked(
-                pm,
-                candidate,
-                unit_handle,
-                slot,
-            )
+                raise RuntimeError("当前选中单位已变化，请重新读取字段")
+            native = self._native_snapshot_for_candidate(candidate)
+            if native is None:
+                raise RuntimeError("物品查询缺少绑定单位快照")
+            return self._item_field_context_from_candidate_locked(pm, candidate, native.handle, slot)
 
     def _item_field_get_op(
         self,
@@ -7571,16 +7501,29 @@ class War3Trainer:
             return ctypes.c_int32(int(raw_value) & 0xFFFFFFFF).value
         return self._float_from_bits(raw_value)
 
-    def _read_single_item_field_locked(
-        self,
-        item_handle: int,
-        handlers: dict[str, NativeHandler],
-        spec: ItemFieldSpec,
-    ) -> bool | int | float:
-        result = self._run_native_helper_ops(
-            item_handle,
-            (self._item_field_get_op(spec, handlers),),
-        )[0]
+    def _run_bound_item_field_ops(
+        self, context: ItemFieldContext, ops: Iterable[tuple[int, int, int, int, int]],
+    ) -> list[NativeHelperOpResult]:
+        candidate = context.candidate
+        native = self._native_snapshot_for_candidate(candidate)
+        if native is None or not all(context.item_identity) or context.item_identity[0] != context.item_handle:
+            raise RuntimeError("物品查询缺少绑定单位快照")
+        batch = tuple(ops)
+        if not batch or len(batch) > self.NATIVE_HELPER_MAX_OPS - 3:
+            raise ValueError("Invalid bound item field batch size")
+        handle, data, full = context.item_identity
+        guards = (
+            (self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY, 0, candidate.unit_address, candidate.handle, candidate.owner_address),
+            (self.NATIVE_HELPER_OP_BOUND_INVENTORY_ITEM, context.slot - 1, handle, data, full),
+            (self.NATIVE_HELPER_OP_BOUND_ITEM_TYPE, context.item_rawcode, 0, 0, 0),
+        )
+        results = self._run_native_helper_ops(native.handle, guards + batch)
+        if len(results) != len(guards) + len(batch) or any(result.last_error for result in results):
+            raise RuntimeError("DLL 物品字段返回不完整")
+        return list(results[3:])
+
+    def _read_single_item_field_locked(self, context: ItemFieldContext, spec: ItemFieldSpec) -> bool | int | float:
+        result = self._run_bound_item_field_ops(context, (self._item_field_get_op(spec, context.handlers),))[0]
         return self._decode_item_field_value(spec, result.result)
 
     def read_selected_item_fields(
@@ -7596,27 +7539,18 @@ class War3Trainer:
                 unit_identity,
                 win10_compat,
             )
-            fields: list[ItemFieldValue] = []
-            for spec in ITEM_FIELD_CATALOG:
-                if not spec.runtime_supported:
-                    fields.append(
-                        ItemFieldValue(
-                            spec,
-                            None,
-                            "未开放",
-                            "native helper 当前未开放字符串传输",
-                        )
-                    )
-                    continue
-                try:
-                    value = self._read_single_item_field_locked(
-                        context.item_handle,
-                        context.handlers,
-                        spec,
-                    )
-                    fields.append(ItemFieldValue(spec, value, "可写" if spec.writable else "只读"))
-                except (OSError, RuntimeError) as exc:
-                    fields.append(ItemFieldValue(spec, None, "读取失败", str(exc)))
+            values = {}
+            supported = [spec for spec in ITEM_FIELD_CATALOG if spec.runtime_supported]
+            batch_size = self.NATIVE_HELPER_MAX_OPS - 3
+            for start in range(0, len(supported), batch_size):
+                batch = supported[start:start + batch_size]
+                results = self._run_bound_item_field_ops(context, tuple(self._item_field_get_op(spec, context.handlers) for spec in batch))
+                for spec, result in zip(batch, results):
+                    values[spec.rawcode] = ItemFieldValue(spec, self._decode_item_field_value(spec, result.result),
+                                                         "可写" if spec.writable else "只读")
+            fields = [values[spec.rawcode] if spec.runtime_supported else
+                      ItemFieldValue(spec, None, "未开放", "native helper 当前未开放字符串传输")
+                      for spec in ITEM_FIELD_CATALOG]
         return ItemFieldSnapshot(
             slot=context.slot,
             item_handle=context.item_handle,
@@ -7624,6 +7558,7 @@ class War3Trainer:
             fields=tuple(fields),
             unit_identity=context.unit_identity,
             win10_compat=bool(win10_compat),
+            item_identity=context.item_identity,
         )
 
     def _coerce_item_field_value(
@@ -7697,17 +7632,18 @@ class War3Trainer:
                 context.unit_identity != expected_snapshot.unit_identity
                 or context.item_handle != expected_snapshot.item_handle
                 or context.item_rawcode != expected_snapshot.item_rawcode
+                or not all(expected_snapshot.item_identity)
+                or context.item_identity != expected_snapshot.item_identity
             ):
                 raise RuntimeError("当前物品已经变化，请重新读取字段")
             original = self._read_single_item_field_locked(
-                context.item_handle,
-                context.handlers,
+                context,
                 spec,
             )
 
             def write_field(field_value: bool | int | float) -> bool:
-                result = self._run_native_helper_ops(
-                    context.item_handle,
+                result = self._run_bound_item_field_ops(
+                    context,
                     (self._item_field_set_op(spec, context.handlers, field_value),),
                 )[0]
                 return bool(result.result)
@@ -7716,8 +7652,7 @@ class War3Trainer:
                 if not write_field(target):
                     raise RuntimeError("游戏拒绝写入该物品字段")
                 actual = self._read_single_item_field_locked(
-                    context.item_handle,
-                    context.handlers,
+                    context,
                     spec,
                 )
                 if not self._ability_field_values_equal(spec, actual, target):
@@ -7727,8 +7662,7 @@ class War3Trainer:
                 try:
                     write_field(original)
                     restored = self._read_single_item_field_locked(
-                        context.item_handle,
-                        context.handlers,
+                        context,
                         spec,
                     )
                     rollback_ok = self._ability_field_values_equal(spec, restored, original)

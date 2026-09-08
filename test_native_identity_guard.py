@@ -57,7 +57,7 @@ static uint8_t item_object[0x20];
 static int32_t quantity;
 static uint64_t fake_item_slot(uint64_t unit, int32_t slot) {
     if (unit != 7 || slot != 2) ++bad_arguments;
-    return fault == 21 || (fault == 23 && writes) ? 101 : 100;
+    return fault == 21 || fault == 71 || ((fault == 23 || fault == 73) && writes) ? 101 : 100;
 }
 static uint64_t fake_item_resolver(uint64_t item) {
     return fault == 22 ? 0 : (uint64_t)(uintptr_t)item_object;
@@ -69,6 +69,18 @@ static void fake_set_charges(uint64_t item, int32_t value) {
     if (fault == 27) *(uint64_t *)(owner + 0x20) += 1;
 }
 static int32_t fake_get_charges(uint64_t item) { return fault == 24 ? quantity - 1 : quantity; }
+static uint32_t fake_item_id(uint64_t item) { return fault == 74 ? 0x49303032u : 0x49303031u; }
+static uint64_t fake_item_field_set(uint64_t item, uint32_t field, uint32_t value) {
+    if (item != 100 || field != 0x61626364u || value != 99) ++bad_arguments;
+    ++writes;
+    if (fault == 72) *(uint64_t *)(item_object + 0x18) += 1;
+    if (fault == 75) *(uint64_t *)(object + 0x18) += 1;
+    return 1;
+}
+static uint64_t fake_item_field_get(uint64_t item, uint32_t field) {
+    if (item != 100 || field != 0x61626364u) ++bad_arguments;
+    return 99;
+}
 static uint64_t fake_ability_lookup(uint64_t unit, uint32_t id) {
     if (unit != 7 || id != 0x41303031u) ++bad_arguments;
     ++ability_lookups;
@@ -195,6 +207,29 @@ __declspec(dllexport) DWORD execute(const wchar_t *directory, unsigned failure, 
             if (fault == 57) cmd.ops[2].kind = 0;
         }
     }
+    if (fault >= 70) {
+        *(uint64_t *)(item_object + 0x18) = 0x555500006666ULL;
+        g_persistent_item_resolver = (uint64_t)(uintptr_t)fake_item_resolver;
+        for (unsigned i = 0; i < sizeof(g_persistent_natives)/sizeof(g_persistent_natives[0]); ++i) {
+            if (!strcmp(g_persistent_native_names[i], "UnitItemInSlot")) g_persistent_natives[i].handler = (uint64_t)(uintptr_t)fake_item_slot;
+            if (!strcmp(g_persistent_native_names[i], "GetItemTypeId")) g_persistent_natives[i].handler = (uint64_t)(uintptr_t)fake_item_id;
+        }
+        cmd.op_count = 5;
+        cmd.ops[1].kind = WAR3_NATIVE_OP_BOUND_INVENTORY_ITEM;
+        cmd.ops[1].rawcode = 2; cmd.ops[1].handler = 100;
+        cmd.ops[1].arg0 = (uint64_t)(uintptr_t)item_object;
+        cmd.ops[1].arg1 = fault == 76 ? 0x555500006667ULL : 0x555500006666ULL;
+        cmd.ops[2].kind = WAR3_NATIVE_OP_BOUND_ITEM_TYPE;
+        cmd.ops[2].rawcode = 0x49303031u; cmd.ops[2].handler = 0;
+        cmd.ops[3].kind = WAR3_NATIVE_OP_JASS_ITEM_FIELD_SET;
+        cmd.ops[3].rawcode = 0x61626364u; cmd.ops[3].handler = (uint64_t)(uintptr_t)fake_item_field_set;
+        cmd.ops[3].arg0 = 99; cmd.ops[3].arg1 = 1;
+        cmd.ops[4].kind = WAR3_NATIVE_OP_JASS_ITEM_FIELD_GET;
+        cmd.ops[4].rawcode = 0x61626364u; cmd.ops[4].handler = (uint64_t)(uintptr_t)fake_item_field_get;
+        if (fault == 77) { cmd.ops[0] = cmd.ops[3]; cmd.op_count = 1; }
+        if (fault == 78) cmd.ops[2].kind = 0;
+        if (fault == 79) cmd.ops[1].rawcode = 6;
+    }
     command_path(path, MAX_PATH);
     file = CreateFileW(path, GENERIC_READ | GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
     if (file == INVALID_HANDLE_VALUE) return GetLastError();
@@ -262,6 +297,23 @@ class NativeIdentityGuardTests(unittest.TestCase):
 
     def test_bound_ability_fields_use_ability_handle_and_guarded_readback(self):
         self.assertEqual(self.execute(50), (2, 0, 1, 0))
+
+    def test_bound_item_fields_use_slot_identity_and_item_handle(self):
+        self.assertEqual(self.execute(70), (2, 0, 1, 0))
+
+    def test_item_fields_reject_slot_type_generation_and_descriptor_mismatches(self):
+        for fault in (71, 74, 76, 77, 78, 79):
+            with self.subTest(fault=fault):
+                status, error, writes, bad = self.execute(fault)
+                self.assertEqual((status, writes, bad), (3, 0, 0))
+                self.assertNotEqual(error, 0)
+
+    def test_item_fields_stop_after_setter_recycles_unit_or_item_or_changes_slot(self):
+        for fault in (72, 73, 75):
+            with self.subTest(fault=fault):
+                status, error, writes, bad = self.execute(fault)
+                self.assertEqual((status, writes, bad), (3, 1, 0))
+                self.assertNotEqual(error, 0)
 
     def test_bound_ability_rejects_recycled_generation_changed_level_and_missing_guard(self):
         for fault in (53, 55, 56, 57):

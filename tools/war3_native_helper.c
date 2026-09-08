@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 35u
+#define WAR3_NATIVE_VERSION 36u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -89,6 +89,8 @@
 #define WAR3_NATIVE_OP_BOUND_ABILITY_METADATA 141u
 #define WAR3_NATIVE_OP_BOUND_ABILITY_IDENTITY 142u
 #define WAR3_NATIVE_OP_BOUND_ABILITY_CONTEXT 143u
+#define WAR3_NATIVE_OP_BOUND_INVENTORY_ITEM 144u
+#define WAR3_NATIVE_OP_BOUND_ITEM_TYPE 145u
 #define WAR3_CLONE_FLAG_HERO 0x01u
 #define WAR3_CLONE_FLAG_INVENTORY 0x02u
 #define WAR3_CLONE_FLAG_PRESERVE_OWNER 0x04u
@@ -691,6 +693,37 @@ static DWORD war3_validate_bound_ability(const NativeCommand *cmd, uint64_t *han
         (uint32_t)(values[4] >> 32) != context->rawcode || values[8] != context->arg1)
         return ERROR_INVALID_HANDLE;
     *handle = values[0];
+    return ERROR_SUCCESS;
+}
+
+static int war3_is_item_field_op(uint32_t kind) {
+    return kind == WAR3_NATIVE_OP_JASS_ITEM_FIELD_GET || kind == WAR3_NATIVE_OP_JASS_ITEM_FIELD_SET;
+}
+
+static DWORD war3_validate_bound_item(const NativeCommand *cmd, uint64_t *handle) {
+    const NativeOp *identity = &cmd->ops[1], *type = &cmd->ops[2];
+    JassUnitItemInSlotFn slot_fn = (JassUnitItemInSlotFn)(uintptr_t)war3_persistent_native_handler("UnitItemInSlot");
+    JassGetItemTypeIdFn id_fn = (JassGetItemTypeIdFn)(uintptr_t)war3_persistent_native_handler("GetItemTypeId");
+    JassUnitHandleResolveFn resolve = (JassUnitHandleResolveFn)(uintptr_t)g_persistent_item_resolver;
+    DWORD error;
+    uint64_t item, object;
+    if (cmd->op_count < 4 || cmd->ops[0].kind != WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY ||
+        identity->kind != WAR3_NATIVE_OP_BOUND_INVENTORY_ITEM || type->kind != WAR3_NATIVE_OP_BOUND_ITEM_TYPE ||
+        identity->rawcode >= 6 || !identity->handler || !identity->arg0 || !identity->arg1 || !type->rawcode)
+        return ERROR_INVALID_DATA;
+    error = war3_validate_unit_identity(cmd, &cmd->ops[0]);
+    if (error) return error;
+    if (!war3_executable_pointer((uint64_t)(uintptr_t)slot_fn) ||
+        !war3_executable_pointer((uint64_t)(uintptr_t)id_fn) || !war3_executable_pointer(g_persistent_item_resolver))
+        return ERROR_PROC_NOT_FOUND;
+    __try {
+        item = slot_fn(cmd->unit_handle, (int32_t)identity->rawcode);
+        object = item ? resolve(item) : 0;
+        if (item != identity->handler || object != identity->arg0 ||
+            *(uint64_t *)(uintptr_t)(object + 0x18) != identity->arg1 || id_fn(item) != type->rawcode)
+            return ERROR_INVALID_HANDLE;
+        *handle = item;
+    } __except (EXCEPTION_EXECUTE_HANDLER) { return ERROR_INVALID_ADDRESS; }
     return ERROR_SUCCESS;
 }
 
@@ -2782,6 +2815,7 @@ static void run_command(void) {
     for (uint32_t i = 0; i < cmd.op_count; ++i) {
         NativeOp *op = &cmd.ops[i];
         uint64_t ability_field_handle = 0;
+        uint64_t item_field_handle = 0;
         op->result = 0;
         op->last_error = 0;
         if (i > 0 && cmd.ops[0].kind == WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY) {
@@ -2793,6 +2827,8 @@ static void run_command(void) {
                 op->kind != WAR3_NATIVE_OP_SET_BOUND_ITEM_CHARGES &&
                 op->kind != WAR3_NATIVE_OP_BOUND_ABILITY_METADATA &&
                 op->kind != WAR3_NATIVE_OP_BOUND_ABILITY_IDENTITY &&
+                op->kind != WAR3_NATIVE_OP_BOUND_INVENTORY_ITEM &&
+                !war3_is_item_field_op(op->kind) &&
                 !war3_is_ability_field_op(op->kind)) {
                 last_error = ERROR_INVALID_DATA;
             } else {
@@ -2805,6 +2841,10 @@ static void run_command(void) {
         }
         if (war3_is_ability_field_op(op->kind)) {
             last_error = i < 3 ? ERROR_INVALID_DATA : war3_validate_bound_ability(&cmd, &ability_field_handle);
+            if (last_error) { op->last_error = last_error; goto finish; }
+        }
+        if (war3_is_item_field_op(op->kind)) {
+            last_error = i < 3 ? ERROR_INVALID_DATA : war3_validate_bound_item(&cmd, &item_field_handle);
             if (last_error) { op->last_error = last_error; goto finish; }
         }
         if (
@@ -2876,6 +2916,13 @@ static void run_command(void) {
                     goto finish;
                 }
                 op->result = 1;
+                break;
+            }
+            case WAR3_NATIVE_OP_BOUND_INVENTORY_ITEM: {
+                last_error = i != 1 ? ERROR_INVALID_DATA : war3_validate_bound_item(&cmd, &item_field_handle);
+                if (last_error) { op->last_error = last_error; goto finish; }
+                op->result = item_field_handle;
+                ++i;
                 break;
             }
             case WAR3_NATIVE_OP_BOUND_ABILITY_IDENTITY: {
@@ -4953,13 +5000,13 @@ static void run_command(void) {
             case WAR3_NATIVE_OP_JASS_ITEM_FIELD_GET: {
                 JassItemFieldGetFn fn =
                     (JassItemFieldGetFn)(uintptr_t)op->handler;
-                if (!cmd.unit_handle || !op->rawcode) {
+                if (!item_field_handle || !op->rawcode) {
                     op->last_error = ERROR_INVALID_PARAMETER;
                     last_error = op->last_error;
                     goto finish;
                 }
                 __try {
-                    op->result = fn(cmd.unit_handle, op->rawcode);
+                    op->result = fn(item_field_handle, op->rawcode);
                 } __except (EXCEPTION_EXECUTE_HANDLER) {
                     op->last_error = GetExceptionCode();
                     last_error = op->last_error;
@@ -4968,7 +5015,7 @@ static void run_command(void) {
                 break;
             }
             case WAR3_NATIVE_OP_JASS_ITEM_FIELD_SET: {
-                if (!cmd.unit_handle || !op->rawcode) {
+                if (!item_field_handle || !op->rawcode) {
                     op->last_error = ERROR_INVALID_PARAMETER;
                     last_error = op->last_error;
                     goto finish;
@@ -4987,12 +5034,12 @@ static void run_command(void) {
                             last_error = op->last_error;
                             goto finish;
                         }
-                        op->result = fn(cmd.unit_handle, op->rawcode, &value);
+                        op->result = fn(item_field_handle, op->rawcode, &value);
                     } else {
                         JassItemScalarFieldSetFn fn =
                             (JassItemScalarFieldSetFn)(uintptr_t)op->handler;
                         op->result = fn(
-                            cmd.unit_handle,
+                            item_field_handle,
                             op->rawcode,
                             (uint32_t)op->arg0
                         );
@@ -5121,6 +5168,10 @@ static void run_command(void) {
         }
         if (war3_is_ability_field_op(op->kind)) {
             last_error = war3_validate_bound_ability(&cmd, &ability_field_handle);
+            if (last_error) { op->last_error = last_error; goto finish; }
+        }
+        if (war3_is_item_field_op(op->kind)) {
+            last_error = war3_validate_bound_item(&cmd, &item_field_handle);
             if (last_error) { op->last_error = last_error; goto finish; }
         }
     }

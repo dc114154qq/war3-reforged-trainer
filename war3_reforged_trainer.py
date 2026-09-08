@@ -12287,7 +12287,8 @@ class War3Trainer:
     ) -> list[AbilityInstance]:
         if not candidate.owner_address or not candidate.unit_address:
             return []
-        if self._persistent_native_initialized:
+        if (self._persistent_native_initialized or candidate.native_snapshot is not None
+                or candidate.selection_source == "persistent_native"):
             # Persistent native selection already identifies the live unit.
             # Never widen an ability lookup to a process-wide search for this
             # unit, even when an older caller requested its legacy fallback.

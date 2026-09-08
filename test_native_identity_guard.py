@@ -87,6 +87,18 @@ static int32_t fake_ability_level(uint64_t unit, uint32_t id) {
     if (fault == 37) *(uint64_t *)(object + 0x18) += 1;
     return 4;
 }
+static uint64_t fake_ability_field_set(uint64_t ability, uint32_t field, uint32_t value) {
+    if (ability != 200 || field != 0x61626364u || value != 99) ++bad_arguments;
+    ++writes;
+    if (fault == 51) *(uint64_t *)(ability_data + 0x18) += 1;
+    if (fault == 52) *(uint64_t *)(object + 0x18) += 1;
+    if (fault == 54) *(uint64_t *)(ability_wrapper + 0x18) = 0x4148737530303030ULL;
+    return 1;
+}
+static uint64_t fake_ability_field_get(uint64_t ability, uint32_t field) {
+    if (ability != 200 || field != 0x61626364u) ++bad_arguments;
+    return 99;
+}
 __declspec(dllexport) DWORD execute(const wchar_t *directory, unsigned failure, unsigned *out) {
     NativeCommand cmd = {0}; DWORD bytes; wchar_t path[MAX_PATH]; HANDLE file;
     fault = failure; writes = bad_arguments = 0;
@@ -161,6 +173,27 @@ __declspec(dllexport) DWORD execute(const wchar_t *directory, unsigned failure, 
         cmd.ops[1].arg0 = (uint64_t)(uintptr_t)fake_ability_id;
         cmd.ops[1].arg1 = 0;
         if (fault == 42) { cmd.ops[0] = cmd.ops[1]; cmd.op_count = 1; }
+        if (fault >= 50) {
+            cmd.op_count = 5;
+            cmd.ops[1].kind = WAR3_NATIVE_OP_BOUND_ABILITY_IDENTITY;
+            cmd.ops[1].handler = 200;
+            cmd.ops[1].arg0 = (uint64_t)(uintptr_t)ability_data;
+            cmd.ops[1].arg1 = fault == 53 ? ability_full + 1 : ability_full;
+            cmd.ops[2].kind = WAR3_NATIVE_OP_BOUND_ABILITY_CONTEXT;
+            cmd.ops[2].rawcode = 0x41487374u;
+            cmd.ops[2].handler = (uint64_t)(uintptr_t)fake_ability_lookup;
+            cmd.ops[2].arg0 = (uint64_t)(uintptr_t)fake_ability_id;
+            cmd.ops[2].arg1 = fault == 55 ? 5 : 4;
+            cmd.ops[3].kind = WAR3_NATIVE_OP_JASS_ABILITY_SCALAR_FIELD_SET;
+            cmd.ops[3].rawcode = 0x61626364u;
+            cmd.ops[3].handler = (uint64_t)(uintptr_t)fake_ability_field_set;
+            cmd.ops[3].arg0 = 99;
+            cmd.ops[4].kind = WAR3_NATIVE_OP_JASS_ABILITY_FIELD_GET;
+            cmd.ops[4].rawcode = 0x61626364u;
+            cmd.ops[4].handler = (uint64_t)(uintptr_t)fake_ability_field_get;
+            if (fault == 56) { cmd.ops[0] = cmd.ops[3]; cmd.op_count = 1; }
+            if (fault == 57) cmd.ops[2].kind = 0;
+        }
     }
     command_path(path, MAX_PATH);
     file = CreateFileW(path, GENERIC_READ | GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -171,7 +204,7 @@ __declspec(dllexport) DWORD execute(const wchar_t *directory, unsigned failure, 
     file = CreateFileW(path, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (file == INVALID_HANDLE_VALUE) return GetLastError();
     if (!ReadFile(file, &cmd, sizeof(cmd), &bytes, NULL)) { CloseHandle(file); DeleteFileW(path); return ERROR_READ_FAULT; }
-    if (fault >= 30 && cmd.status == WAR3_NATIVE_STATUS_OK) {
+    if (fault >= 30 && fault < 50 && cmd.status == WAR3_NATIVE_STATUS_OK) {
         uint64_t metadata[10];
         if (!ReadFile(file, metadata, sizeof(metadata), &bytes, NULL) || bytes != sizeof(metadata) ||
             cmd.ops[1].result != 200 || metadata[0] != 200 ||
@@ -179,6 +212,8 @@ __declspec(dllexport) DWORD execute(const wchar_t *directory, unsigned failure, 
             metadata[3] != ability_full || metadata[4] != 0x4148737430303030ULL ||
             metadata[7] != 0x41303031u || metadata[8] != 4) ++bad_arguments;
     }
+    if (fault >= 50 && cmd.status == WAR3_NATIVE_STATUS_OK &&
+        (cmd.ops[3].result != 1 || cmd.ops[4].result != 99)) ++bad_arguments;
     CloseHandle(file); DeleteFileW(path);
     if (fault >= 20 && fault < 30 && cmd.status == WAR3_NATIVE_STATUS_OK && cmd.ops[1].result != 1500) ++bad_arguments;
     out[0] = cmd.status; out[1] = cmd.last_error; out[2] = writes; out[3] = bad_arguments;
@@ -224,6 +259,23 @@ class NativeIdentityGuardTests(unittest.TestCase):
 
     def test_ability_metadata_returns_object_table_links_in_one_callback(self):
         self.assertEqual(self.execute(30), (2, 0, 0, 0))
+
+    def test_bound_ability_fields_use_ability_handle_and_guarded_readback(self):
+        self.assertEqual(self.execute(50), (2, 0, 1, 0))
+
+    def test_bound_ability_rejects_recycled_generation_changed_level_and_missing_guard(self):
+        for fault in (53, 55, 56, 57):
+            with self.subTest(fault=fault):
+                status, error, writes, bad = self.execute(fault)
+                self.assertEqual((status, writes, bad), (3, 0, 0))
+                self.assertNotEqual(error, 0)
+
+    def test_bound_ability_rechecks_after_setter_and_stops_readback_on_change(self):
+        for fault in (51, 52, 54):
+            with self.subTest(fault=fault):
+                status, error, writes, bad = self.execute(fault)
+                self.assertEqual((status, writes, bad), (3, 1, 0))
+                self.assertNotEqual(error, 0)
 
     def test_stale_or_mismatched_ability_metadata_never_succeeds(self):
         for fault in range(31, 43):

@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 34u
+#define WAR3_NATIVE_VERSION 35u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -87,6 +87,8 @@
 #define WAR3_NATIVE_OP_BOOTSTRAP_NATIVE_TABLE 139u
 #define WAR3_NATIVE_OP_QUERY_NATIVE_TABLE 140u
 #define WAR3_NATIVE_OP_BOUND_ABILITY_METADATA 141u
+#define WAR3_NATIVE_OP_BOUND_ABILITY_IDENTITY 142u
+#define WAR3_NATIVE_OP_BOUND_ABILITY_CONTEXT 143u
 #define WAR3_CLONE_FLAG_HERO 0x01u
 #define WAR3_CLONE_FLAG_INVENTORY 0x02u
 #define WAR3_CLONE_FLAG_PRESERVE_OWNER 0x04u
@@ -660,6 +662,36 @@ static DWORD war3_bound_ability_metadata(const NativeCommand *cmd, const NativeO
             *(uint64_t *)(uintptr_t)(wrapper + 0x90) != data) error = ERROR_INVALID_HANDLE;
     } __except (EXCEPTION_EXECUTE_HANDLER) { error = ERROR_INVALID_ADDRESS; }
     return error;
+}
+
+static int war3_is_ability_field_op(uint32_t kind) {
+    return kind == WAR3_NATIVE_OP_JASS_ABILITY_FIELD_GET ||
+        kind == WAR3_NATIVE_OP_JASS_ABILITY_LEVEL_FIELD_GET ||
+        kind == WAR3_NATIVE_OP_JASS_ABILITY_SCALAR_FIELD_SET ||
+        kind == WAR3_NATIVE_OP_JASS_ABILITY_REAL_FIELD_SET ||
+        kind == WAR3_NATIVE_OP_JASS_ABILITY_SCALAR_LEVEL_FIELD_SET ||
+        kind == WAR3_NATIVE_OP_JASS_ABILITY_REAL_LEVEL_FIELD_SET;
+}
+
+static DWORD war3_validate_bound_ability(const NativeCommand *cmd, uint64_t *handle) {
+    uint64_t values[10];
+    NativeOp query = {0};
+    DWORD error;
+    const NativeOp *identity = &cmd->ops[1], *context = &cmd->ops[2];
+    if (cmd->op_count < 4 || cmd->ops[0].kind != WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY ||
+        identity->kind != WAR3_NATIVE_OP_BOUND_ABILITY_IDENTITY ||
+        context->kind != WAR3_NATIVE_OP_BOUND_ABILITY_CONTEXT ||
+        !identity->handler || !identity->arg0 || !identity->arg1) return ERROR_INVALID_DATA;
+    query.rawcode = identity->rawcode;
+    query.handler = context->handler;
+    query.arg0 = context->arg0;
+    error = war3_bound_ability_metadata(cmd, &query, values);
+    if (error) return error;
+    if (values[0] != identity->handler || values[1] != identity->arg0 || values[3] != identity->arg1 ||
+        (uint32_t)(values[4] >> 32) != context->rawcode || values[8] != context->arg1)
+        return ERROR_INVALID_HANDLE;
+    *handle = values[0];
+    return ERROR_SUCCESS;
 }
 
 static DWORD war3_persistent_selected_snapshot(
@@ -2749,6 +2781,7 @@ static void run_command(void) {
     }
     for (uint32_t i = 0; i < cmd.op_count; ++i) {
         NativeOp *op = &cmd.ops[i];
+        uint64_t ability_field_handle = 0;
         op->result = 0;
         op->last_error = 0;
         if (i > 0 && cmd.ops[0].kind == WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY) {
@@ -2758,7 +2791,9 @@ static void run_command(void) {
                 op->kind != WAR3_NATIVE_OP_JASS_SET_UNIT_INT &&
                 op->kind != WAR3_NATIVE_OP_JASS_SET_UNIT_POSITION &&
                 op->kind != WAR3_NATIVE_OP_SET_BOUND_ITEM_CHARGES &&
-                op->kind != WAR3_NATIVE_OP_BOUND_ABILITY_METADATA) {
+                op->kind != WAR3_NATIVE_OP_BOUND_ABILITY_METADATA &&
+                op->kind != WAR3_NATIVE_OP_BOUND_ABILITY_IDENTITY &&
+                !war3_is_ability_field_op(op->kind)) {
                 last_error = ERROR_INVALID_DATA;
             } else {
                 last_error = war3_validate_unit_identity(&cmd, &cmd.ops[0]);
@@ -2767,6 +2802,10 @@ static void run_command(void) {
                 op->last_error = last_error;
                 goto finish;
             }
+        }
+        if (war3_is_ability_field_op(op->kind)) {
+            last_error = i < 3 ? ERROR_INVALID_DATA : war3_validate_bound_ability(&cmd, &ability_field_handle);
+            if (last_error) { op->last_error = last_error; goto finish; }
         }
         if (
             op->handler == 0 &&
@@ -2837,6 +2876,13 @@ static void run_command(void) {
                     goto finish;
                 }
                 op->result = 1;
+                break;
+            }
+            case WAR3_NATIVE_OP_BOUND_ABILITY_IDENTITY: {
+                last_error = i != 1 ? ERROR_INVALID_DATA : war3_validate_bound_ability(&cmd, &ability_field_handle);
+                if (last_error) { op->last_error = last_error; goto finish; }
+                op->result = ability_field_handle;
+                ++i; /* Context is a descriptor, never a separately executable op. */
                 break;
             }
             case WAR3_NATIVE_OP_BOUND_ABILITY_METADATA: {
@@ -4781,7 +4827,7 @@ static void run_command(void) {
                     (JassAbilityRealLevelFieldSetFn)(uintptr_t)op->handler;
                 float value = war3_real_from_bits((uint32_t)op->arg1);
                 if (
-                    !cmd.unit_handle || !op->rawcode ||
+                    !ability_field_handle || !op->rawcode ||
                     !(value == value) || value < -100000000.0f || value > 100000000.0f
                 ) {
                     op->last_error = ERROR_INVALID_PARAMETER;
@@ -4790,7 +4836,7 @@ static void run_command(void) {
                 }
                 __try {
                     op->result = fn(
-                        cmd.unit_handle,
+                        ability_field_handle,
                         op->rawcode,
                         (int32_t)op->arg0,
                         &value
@@ -4805,13 +4851,13 @@ static void run_command(void) {
             case WAR3_NATIVE_OP_JASS_ABILITY_FIELD_GET: {
                 JassAbilityFieldGetFn fn =
                     (JassAbilityFieldGetFn)(uintptr_t)op->handler;
-                if (!cmd.unit_handle || !op->rawcode) {
+                if (!ability_field_handle || !op->rawcode) {
                     op->last_error = ERROR_INVALID_PARAMETER;
                     last_error = op->last_error;
                     goto finish;
                 }
                 __try {
-                    op->result = fn(cmd.unit_handle, op->rawcode);
+                    op->result = fn(ability_field_handle, op->rawcode);
                 } __except (EXCEPTION_EXECUTE_HANDLER) {
                     op->last_error = GetExceptionCode();
                     last_error = op->last_error;
@@ -4822,14 +4868,14 @@ static void run_command(void) {
             case WAR3_NATIVE_OP_JASS_ABILITY_LEVEL_FIELD_GET: {
                 JassAbilityLevelFieldGetFn fn =
                     (JassAbilityLevelFieldGetFn)(uintptr_t)op->handler;
-                if (!cmd.unit_handle || !op->rawcode || op->arg0 > 1000u) {
+                if (!ability_field_handle || !op->rawcode || op->arg0 > 1000u) {
                     op->last_error = ERROR_INVALID_PARAMETER;
                     last_error = op->last_error;
                     goto finish;
                 }
                 __try {
                     op->result = fn(
-                        cmd.unit_handle,
+                        ability_field_handle,
                         op->rawcode,
                         (int32_t)op->arg0
                     );
@@ -4843,14 +4889,14 @@ static void run_command(void) {
             case WAR3_NATIVE_OP_JASS_ABILITY_SCALAR_FIELD_SET: {
                 JassAbilityScalarFieldSetFn fn =
                     (JassAbilityScalarFieldSetFn)(uintptr_t)op->handler;
-                if (!cmd.unit_handle || !op->rawcode) {
+                if (!ability_field_handle || !op->rawcode) {
                     op->last_error = ERROR_INVALID_PARAMETER;
                     last_error = op->last_error;
                     goto finish;
                 }
                 __try {
                     op->result = fn(
-                        cmd.unit_handle,
+                        ability_field_handle,
                         op->rawcode,
                         (uint32_t)op->arg0
                     );
@@ -4866,7 +4912,7 @@ static void run_command(void) {
                     (JassAbilityRealFieldSetFn)(uintptr_t)op->handler;
                 float value = war3_real_from_bits((uint32_t)op->arg0);
                 if (
-                    !cmd.unit_handle || !op->rawcode ||
+                    !ability_field_handle || !op->rawcode ||
                     !(value == value) || value < -100000000.0f || value > 100000000.0f
                 ) {
                     op->last_error = ERROR_INVALID_PARAMETER;
@@ -4874,7 +4920,7 @@ static void run_command(void) {
                     goto finish;
                 }
                 __try {
-                    op->result = fn(cmd.unit_handle, op->rawcode, &value);
+                    op->result = fn(ability_field_handle, op->rawcode, &value);
                 } __except (EXCEPTION_EXECUTE_HANDLER) {
                     op->last_error = GetExceptionCode();
                     last_error = op->last_error;
@@ -4885,14 +4931,14 @@ static void run_command(void) {
             case WAR3_NATIVE_OP_JASS_ABILITY_SCALAR_LEVEL_FIELD_SET: {
                 JassAbilityScalarLevelFieldSetFn fn =
                     (JassAbilityScalarLevelFieldSetFn)(uintptr_t)op->handler;
-                if (!cmd.unit_handle || !op->rawcode || op->arg0 > 1000u) {
+                if (!ability_field_handle || !op->rawcode || op->arg0 > 1000u) {
                     op->last_error = ERROR_INVALID_PARAMETER;
                     last_error = op->last_error;
                     goto finish;
                 }
                 __try {
                     op->result = fn(
-                        cmd.unit_handle,
+                        ability_field_handle,
                         op->rawcode,
                         (int32_t)op->arg0,
                         (uint32_t)op->arg1
@@ -5072,6 +5118,10 @@ static void run_command(void) {
                 op->last_error = ERROR_INVALID_DATA;
                 last_error = ERROR_INVALID_DATA;
                 goto finish;
+        }
+        if (war3_is_ability_field_op(op->kind)) {
+            last_error = war3_validate_bound_ability(&cmd, &ability_field_handle);
+            if (last_error) { op->last_error = last_error; goto finish; }
         }
     }
     status = WAR3_NATIVE_STATUS_OK;

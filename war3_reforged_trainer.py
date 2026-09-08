@@ -805,6 +805,7 @@ class SelectedAbilityFieldContext:
     effect_class_note: str
     current_level: int
     handlers: dict[str, NativeHandler]
+    ability_identity: tuple[int, int, int] = (0, 0, 0)
 
     @property
     def unit_identity(self) -> tuple[int, int, int]:
@@ -843,6 +844,7 @@ class AbilityFieldSnapshot:
     effect_class_verified: bool = True
     effect_class_note: str = ""
     win10_compat: bool = False
+    ability_identity: tuple[int, int, int] = (0, 0, 0)
 
 
 @dataclass(frozen=True)
@@ -2532,7 +2534,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 34
+    NATIVE_HELPER_VERSION = 35
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -2618,6 +2620,8 @@ class War3Trainer:
     NATIVE_HELPER_OP_BOOTSTRAP_NATIVE_TABLE = 139
     NATIVE_HELPER_OP_QUERY_NATIVE_TABLE = 140
     NATIVE_HELPER_OP_BOUND_ABILITY_METADATA = 141
+    NATIVE_HELPER_OP_BOUND_ABILITY_IDENTITY = 142
+    NATIVE_HELPER_OP_BOUND_ABILITY_CONTEXT = 143
     PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 149
     NATIVE_BASIC_FIELD_ARGUMENTS = {
         "hp_current": ("target_hp", "hp"),
@@ -4448,6 +4452,8 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_BOOTSTRAP_NATIVE_TABLE,
             self.NATIVE_HELPER_OP_QUERY_NATIVE_TABLE,
             self.NATIVE_HELPER_OP_BOUND_ABILITY_METADATA,
+            self.NATIVE_HELPER_OP_BOUND_ABILITY_IDENTITY,
+            self.NATIVE_HELPER_OP_BOUND_ABILITY_CONTEXT,
         }
         if any(kind not in allowed_kinds for kind, _rawcode, _handler, _arg0, _arg1 in op_list):
             raise RuntimeError("native helper 仅允许结构化验证后的白名单操作")
@@ -6968,6 +6974,7 @@ class War3Trainer:
                 candidate=candidate, unit_handle=unit_handle, ability_handle=ability_handle,
                 ability_rawcode=ability_rawcode, effect_class=instance.class_rawcode,
                 effect_class_verified=True, effect_class_note="", current_level=current_level, handlers=handlers,
+                ability_identity=(ability_handle, instance.data_address, instance.handle),
             )
         ability_handle = int(self._run_native_helper_ops(
             unit_handle,
@@ -7095,16 +7102,41 @@ class War3Trainer:
             return ctypes.c_int32(int(raw_value) & 0xFFFFFFFF).value
         return self._float_from_bits(raw_value)
 
+    def _run_bound_ability_field_ops(
+        self, context: SelectedAbilityFieldContext, ops: Iterable[tuple[int, int, int, int, int]],
+    ) -> list[NativeHelperOpResult]:
+        candidate = context.candidate
+        native = self._native_snapshot_for_candidate(candidate)
+        if native is None or native.handle != context.unit_handle or not all(context.ability_identity):
+            raise RuntimeError("技能查询缺少绑定单位快照")
+        handle, data, full = context.ability_identity
+        if handle != context.ability_handle:
+            raise RuntimeError("DLL 技能元数据身份校验失败")
+        batch = tuple(ops)
+        if not batch or len(batch) > self.NATIVE_HELPER_MAX_OPS - 3:
+            raise ValueError("Invalid bound ability field batch size")
+        guards = (
+            (self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY, 0, candidate.unit_address,
+             candidate.handle, candidate.owner_address),
+            (self.NATIVE_HELPER_OP_BOUND_ABILITY_IDENTITY, context.ability_rawcode, handle, data, full),
+            (self.NATIVE_HELPER_OP_BOUND_ABILITY_CONTEXT, context.effect_class,
+             context.handlers["BlzGetUnitAbility"].handler_address,
+             context.handlers["BlzGetAbilityId"].handler_address, context.current_level),
+        )
+        results = self._run_native_helper_ops(native.handle, guards + batch)
+        if len(results) != len(guards) + len(batch) or any(result.last_error for result in results):
+            raise RuntimeError("DLL 技能元数据返回不完整")
+        return list(results[3:])
+
     def _read_single_ability_field_locked(
         self,
-        ability_handle: int,
-        handlers: dict[str, NativeHandler],
+        context: SelectedAbilityFieldContext,
         spec: AbilityFieldSpec,
         level_index: int,
     ) -> bool | int | float:
-        result = self._run_native_helper_ops(
-            ability_handle,
-            (self._ability_field_get_op(spec, handlers, level_index),),
+        result = self._run_bound_ability_field_ops(
+            context,
+            (self._ability_field_get_op(spec, context.handlers, level_index),),
         )[0]
         return self._decode_ability_field_value(spec, result.result)
 
@@ -7138,28 +7170,12 @@ class War3Trainer:
                 if spec.runtime_supported
                 and (context.effect_class_verified or not spec.use_specific)
             ]
-            for start in range(0, len(supported), self.NATIVE_HELPER_MAX_OPS):
-                batch = supported[start : start + self.NATIVE_HELPER_MAX_OPS]
-                try:
-                    results = self._run_native_helper_ops(
-                        context.ability_handle,
-                        tuple(
-                            self._ability_field_get_op(
-                                spec,
-                                context.handlers,
-                                level_index,
-                            )
-                            for spec in batch
-                        ),
-                    )
-                except TimeoutError:
-                    raise
-                except RuntimeError as exc:
-                    for spec in batch:
-                        values_by_key[(spec.rawcode, spec.value_kind, spec.scope)] = (
-                            AbilityFieldValue(spec, None, "读取失败", str(exc))
-                        )
-                    continue
+            batch_size = self.NATIVE_HELPER_MAX_OPS - 3
+            for start in range(0, len(supported), batch_size):
+                batch = supported[start : start + batch_size]
+                results = self._run_bound_ability_field_ops(
+                    context, tuple(self._ability_field_get_op(spec, context.handlers, level_index) for spec in batch),
+                )
                 for spec, result in zip(batch, results):
                     value = self._decode_ability_field_value(spec, result.result)
                     if spec.value_kind == "real" and not math.isfinite(float(value)):
@@ -7206,6 +7222,7 @@ class War3Trainer:
             effect_class_verified=context.effect_class_verified,
             effect_class_note=context.effect_class_note,
             win10_compat=bool(win10_compat and unit_identity is not None),
+            ability_identity=context.ability_identity,
         )
 
     @staticmethod
@@ -7329,6 +7346,9 @@ class War3Trainer:
                 )
             )
             if expected_snapshot is not None:
+                if (not all(expected_snapshot.ability_identity)
+                        or context.ability_identity != expected_snapshot.ability_identity):
+                    raise RuntimeError("技能实例已经变化，请重新读取字段")
                 if (
                     any(expected_snapshot.unit_identity)
                     and context.unit_identity != expected_snapshot.unit_identity
@@ -7357,15 +7377,14 @@ class War3Trainer:
             if key not in applicable or ABILITY_FIELD_BY_KEY.get(key) != spec:
                 raise RuntimeError("当前技能效果类已经变化，请重新读取字段")
             original = self._read_single_ability_field_locked(
-                context.ability_handle,
-                context.handlers,
+                context,
                 spec,
                 level_index,
             )
 
             def write_field(field_value: bool | int | float) -> bool:
-                result = self._run_native_helper_ops(
-                    context.ability_handle,
+                result = self._run_bound_ability_field_ops(
+                    context,
                     (self._ability_field_set_op(
                         spec,
                         context.handlers,
@@ -7379,8 +7398,7 @@ class War3Trainer:
                 if not write_field(target):
                     raise RuntimeError("游戏拒绝写入该技能字段")
                 actual = self._read_single_ability_field_locked(
-                    context.ability_handle,
-                    context.handlers,
+                    context,
                     spec,
                     level_index,
                 )
@@ -7393,8 +7411,7 @@ class War3Trainer:
                 try:
                     write_field(original)
                     restored = self._read_single_ability_field_locked(
-                        context.ability_handle,
-                        context.handlers,
+                        context,
                         spec,
                         level_index,
                     )

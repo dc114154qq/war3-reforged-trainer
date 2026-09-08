@@ -35,6 +35,7 @@ def detect_ui_language(locale_name: str | None = None) -> str:
 
 
 _EN_TRANSLATIONS = {
+    "技能实例已经变化，请重新读取字段": "The ability instance changed; read the fields again",
     "技能查询缺少绑定单位快照": "Ability query requires a bound unit snapshot",
     "DLL 技能元数据返回不完整": "Incomplete ability metadata returned by the DLL",
     "DLL 技能元数据身份校验失败": "DLL ability metadata identity validation failed",

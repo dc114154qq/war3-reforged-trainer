@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 39u
+#define WAR3_NATIVE_VERSION 40u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -92,6 +92,8 @@
 #define WAR3_NATIVE_OP_BOUND_INVENTORY_ITEM 144u
 #define WAR3_NATIVE_OP_BOUND_ITEM_TYPE 145u
 #define WAR3_NATIVE_OP_BOUND_ABILITY_LIST 146u
+#define WAR3_NATIVE_OP_BOUND_UNIT_FIELDS 147u
+#define WAR3_BOUND_UNIT_FIELD_QWORDS (15u + 36u + 121u + 121u)
 #define WAR3_CLONE_FLAG_HERO 0x01u
 #define WAR3_CLONE_FLAG_INVENTORY 0x02u
 #define WAR3_CLONE_FLAG_PRESERVE_OWNER 0x04u
@@ -624,6 +626,91 @@ static DWORD war3_validate_unit_identity(const NativeCommand *cmd, const NativeO
 
 static int war3_is_internal_ability_op(uint32_t kind) {
     return kind >= WAR3_NATIVE_OP_INTERNAL_ABILITY_BEGIN && kind <= WAR3_NATIVE_OP_INTERNAL_ABILITY_REMOVE;
+}
+
+static int war3_readable_span(uint64_t address, size_t length) {
+    uint64_t end;
+    if (address < 0x10000u || address > 0x00007fffffffffffULL ||
+        length > 0x00007fffffffffffULL - address) return 0;
+    end = address + length;
+    while (address < end) {
+        MEMORY_BASIC_INFORMATION region;
+        uint64_t next;
+        if (VirtualQuery((void *)(uintptr_t)address, &region, sizeof(region)) != sizeof(region) ||
+            region.State != MEM_COMMIT || (region.Protect & (PAGE_NOACCESS | PAGE_GUARD))) return 0;
+        next = (uint64_t)(uintptr_t)region.BaseAddress + region.RegionSize;
+        if (next <= address) return 0;
+        address = next;
+    }
+    return 1;
+}
+
+/* 2.0.4.23745 component fields, copied once on the game thread. The unit's
+   fixed component slots are cross-checked against the engine object table;
+   no wrapper search, address-range vtable guess, or cached membership. */
+static DWORD war3_bound_unit_fields(const NativeCommand *cmd, uint64_t *values) {
+    static const uint32_t offsets[4] = {0x5a0, 0x5a8, 0x5b0, 0x5c0};
+    static const uint64_t tags[4] = {0x41496e762b61676cULL, 0x414865722b61676cULL,
+                                    0x416d6f762b61676cULL, 0x4161746b2b61676cULL};
+    uint64_t data[4] = {0}, wrappers[4] = {0}, identities[4] = {0};
+    uint64_t unit = cmd->ops[0].handler, owner = cmd->ops[0].arg1;
+    War3AgentResolveFn resolve = (War3AgentResolveFn)(uintptr_t)g_persistent_agent_resolver;
+    DWORD error = war3_validate_unit_identity(cmd, &cmd->ops[0]);
+    if (error) return error;
+    if (!war3_readable_span(unit, 0x5c8)) return ERROR_INVALID_ADDRESS;
+    __try {
+        values[0] = unit; values[1] = cmd->ops[0].arg0; values[2] = owner;
+        memcpy(values + 4, (void *)(uintptr_t)(unit + 0x2e8), 16);
+        for (unsigned k = 0; k < 4; ++k) {
+            data[k] = *(uint64_t *)(uintptr_t)(unit + offsets[k]);
+            if (!data[k]) continue;
+            if (!war3_readable_span(data[k], k == 3 ? 0x3c8 : k == 1 ? 0x220 : 0x70)) {
+                error = ERROR_INVALID_ADDRESS; __leave;
+            }
+            identities[k] = *(uint64_t *)(uintptr_t)(data[k] + 0x18);
+            wrappers[k] = resolve((uint32_t)identities[k], (uint32_t)(identities[k] >> 32));
+            if (!war3_readable_span(wrappers[k], 0x98)) { error = ERROR_INVALID_ADDRESS; __leave; }
+            if (!identities[k] || !wrappers[k] ||
+                *(uint64_t *)(uintptr_t)(data[k] + 0x68) != unit ||
+                *(uint64_t *)(uintptr_t)(wrappers[k] + 0x18) != tags[k] ||
+                *(uint64_t *)(uintptr_t)(wrappers[k] + 0x20) != identities[k] ||
+                *(uint64_t *)(uintptr_t)(wrappers[k] + 0x50) != owner ||
+                *(uint64_t *)(uintptr_t)(wrappers[k] + 0x90) != data[k]) {
+                error = ERROR_INVALID_HANDLE; __leave;
+            }
+            values[3] |= 1u << k;
+            values[6 + k*2] = data[k]; values[7 + k*2] = wrappers[k];
+        }
+        if (data[1]) memcpy(values + 15, (void *)(uintptr_t)(data[1] + 0x100), 0x120);
+        if (data[3]) {
+            uint64_t second = data[3] + 0x638;
+            uint64_t second_vtable = war3_readable_span(second, 12)
+                ? *(uint64_t *)(uintptr_t)second : 0;
+            memcpy(values + 51, (void *)(uintptr_t)data[3], 0x3c8);
+            if (war3_readable_span(second_vtable, 8) &&
+                war3_executable_pointer(*(uint64_t *)(uintptr_t)second_vtable) &&
+                *(uint32_t *)(uintptr_t)(second + 8) == *(uint32_t *)(uintptr_t)(data[3] + 8)) {
+                if (!war3_readable_span(second, 0x3c8)) { error = ERROR_INVALID_ADDRESS; __leave; }
+                values[14] = 1;
+                memcpy(values + 172, (void *)(uintptr_t)second, 0x3c8);
+            }
+        }
+        error = war3_validate_unit_identity(cmd, &cmd->ops[0]);
+        if (error) __leave;
+        for (unsigned k = 0; k < 4; ++k) {
+            if (*(uint64_t *)(uintptr_t)(unit + offsets[k]) != data[k] || (data[k] && (
+                resolve((uint32_t)identities[k], (uint32_t)(identities[k] >> 32)) != wrappers[k] ||
+                *(uint64_t *)(uintptr_t)(data[k] + 0x18) != identities[k] ||
+                *(uint64_t *)(uintptr_t)(data[k] + 0x68) != unit ||
+                *(uint64_t *)(uintptr_t)(wrappers[k] + 0x18) != tags[k] ||
+                *(uint64_t *)(uintptr_t)(wrappers[k] + 0x20) != identities[k] ||
+                *(uint64_t *)(uintptr_t)(wrappers[k] + 0x50) != owner ||
+                *(uint64_t *)(uintptr_t)(wrappers[k] + 0x90) != data[k]))) {
+                error = ERROR_INVALID_HANDLE; __leave;
+            }
+        }
+    } __except (EXCEPTION_EXECUTE_HANDLER) { error = ERROR_INVALID_ADDRESS; }
+    return error;
 }
 
 /* Return one ability's metadata while its owning unit is pinned by op 136.
@@ -2837,6 +2924,7 @@ static void run_command(void) {
                 op->kind != WAR3_NATIVE_OP_SET_BOUND_ITEM_CHARGES &&
                 op->kind != WAR3_NATIVE_OP_BOUND_ABILITY_METADATA &&
                 op->kind != WAR3_NATIVE_OP_BOUND_ABILITY_LIST &&
+                op->kind != WAR3_NATIVE_OP_BOUND_UNIT_FIELDS &&
                 op->kind != WAR3_NATIVE_OP_BOUND_ABILITY_IDENTITY &&
                 op->kind != WAR3_NATIVE_OP_BOUND_INVENTORY_ITEM &&
                 !war3_is_internal_ability_op(op->kind) &&
@@ -2869,6 +2957,7 @@ static void run_command(void) {
             op->kind != WAR3_NATIVE_OP_BOOTSTRAP_NATIVE_TABLE &&
             op->kind != WAR3_NATIVE_OP_QUERY_NATIVE_TABLE &&
             op->kind != WAR3_NATIVE_OP_BOUND_ABILITY_LIST &&
+            op->kind != WAR3_NATIVE_OP_BOUND_UNIT_FIELDS &&
             op->kind != WAR3_NATIVE_OP_PERSISTENT_SELECTED_SNAPSHOT
         ) {
             op->last_error = ERROR_INVALID_DATA;
@@ -2876,6 +2965,19 @@ static void run_command(void) {
             goto finish;
         }
         switch (op->kind) {
+            case WAR3_NATIVE_OP_BOUND_UNIT_FIELDS: {
+                if (i != 1 || cmd.op_count != 2 || cmd.ops[0].kind != WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY) {
+                    last_error = ERROR_INVALID_DATA;
+                } else {
+                    extra_results = (uint64_t *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
+                        WAR3_BOUND_UNIT_FIELD_QWORDS * sizeof(uint64_t));
+                    last_error = extra_results ? war3_bound_unit_fields(&cmd, extra_results) : ERROR_OUTOFMEMORY;
+                }
+                if (last_error) { op->last_error = last_error; goto finish; }
+                extra_result_count = WAR3_BOUND_UNIT_FIELD_QWORDS;
+                op->result = extra_result_count;
+                break;
+            }
             case WAR3_NATIVE_OP_SET_BOUND_ITEM_CHARGES: {
                 JassUnitItemInSlotFn slot_fn = (JassUnitItemInSlotFn)(uintptr_t)war3_persistent_native_handler("UnitItemInSlot");
                 JassSetItemChargesFn setter = (JassSetItemChargesFn)(uintptr_t)war3_persistent_native_handler("SetItemCharges");

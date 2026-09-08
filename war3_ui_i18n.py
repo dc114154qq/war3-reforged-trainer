@@ -35,6 +35,12 @@ def detect_ui_language(locale_name: str | None = None) -> str:
 
 
 _EN_TRANSLATIONS = {
+    "DLL 单位字段快照长度或身份异常": "Invalid DLL unit field snapshot length or identity",
+    "DLL 单位组件身份不完整": "Incomplete DLL unit component identity",
+    "DLL 第二攻击快照缺少所属组件": "DLL second attack snapshot has no owning component",
+    "字段不在本次 DLL 快照中": "Field is outside the current DLL snapshot",
+    "读取 DLL 单位字段需要当前单位的 native 身份": "DLL unit fields require the current unit's native identity",
+    "DLL 单位字段返回不完整": "Incomplete unit fields returned by the DLL",
     "DLL 技能枚举返回无效对象身份": "DLL ability enumeration returned an invalid object identity",
     "当前单位上的 ": "On the current unit, ",
     " 运行时实例不唯一": " runtime instances are not unique",

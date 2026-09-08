@@ -11,7 +11,7 @@ from test_native_hero_fields import context
 @pytest.mark.parametrize('component', [False, True])
 def test_missing_metadata_keeps_all_native_slots_and_quantities(hero, component):
     trainer, memory, candidate = context(False, hero)
-    trainer._selected_components.return_value = {'inventory': (0, 0x5000)} if component else {}
+    trainer._native_unit_field_memory.return_value.components = {'inventory': (0, 0x5000)} if component else {}
     trainer._inventory_items_from_candidate.return_value = []
     snapshot = replace(candidate.native_snapshot,
                        item_ids=(0x49303031, 0, 0, 0, 0, 0x49303032),
@@ -33,7 +33,7 @@ def test_missing_metadata_keeps_all_native_slots_and_quantities(hero, component)
 
 def test_valid_metadata_preserves_existing_write_capability_but_not_its_stale_values():
     trainer, memory, candidate = context(False, False)
-    trainer._selected_components.return_value = {'inventory': (0, 0x5000)}
+    trainer._native_unit_field_memory.return_value.components = {'inventory': (0, 0x5000)}
     snapshot = candidate.native_snapshot
     trainer._inventory_items_from_candidate.return_value = [module.InventoryItem(
         slot=1, handle=0x123400000064, handle_address=0x6000,
@@ -50,7 +50,7 @@ def test_valid_metadata_preserves_existing_write_capability_but_not_its_stale_va
 @pytest.mark.parametrize('mismatch', ['rawcode', 'item_address'])
 def test_changed_metadata_cannot_supply_write_addresses_for_old_display(mismatch):
     trainer, memory, candidate = context(False, False)
-    trainer._selected_components.return_value = {'inventory': (0, 0x5000)}
+    trainer._native_unit_field_memory.return_value.components = {'inventory': (0, 0x5000)}
     snapshot = candidate.native_snapshot
     item = module.InventoryItem(slot=1, handle=12, handle_address=0x6000,
                                 rawcode=snapshot.item_ids[0], item_address=snapshot.item_addresses[0],

@@ -319,7 +319,7 @@ class NativeSnapshotBindingTests(unittest.TestCase):
         trainer._run_native_helper_ops_locked(1, ops)
         payload = trainer._write_native_helper_command.call_args.args[1]
         header = trainer.NATIVE_HELPER_HEADER_STRUCT.unpack_from(payload)
-        self.assertEqual(header[1], 39)
+        self.assertEqual(header[1], 40)
         self.assertEqual(header[4], 1)
         operation = trainer.NATIVE_HELPER_OP_STRUCT.unpack_from(payload, trainer.NATIVE_HELPER_HEADER_STRUCT.size)
         self.assertEqual(operation[:5], ops[0])

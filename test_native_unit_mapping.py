@@ -5,7 +5,7 @@ from unittest.mock import Mock, MagicMock
 import pytest
 import war3_reforged_trainer as module
 from test_native_basic_writes import context
-from test_native_snapshot_binding import make_snapshot, snapshot_result
+from test_native_snapshot_binding import make_candidate, make_snapshot, snapshot_result
 
 
 @pytest.fixture
@@ -22,6 +22,9 @@ def mapping(context):
     trainer._unit_owner_index = {}
     trainer._elephant_selection_override = None
     trainer._selected_components = Mock(return_value={})
+    trainer._native_unit_field_memory = Mock(return_value=module.NativeUnitFieldMemory(
+        make_candidate(snapshot),
+        (snapshot.unit_address, snapshot.full_handle, snapshot.owner_address) + (0,) * 290))
     trainer._inventory_items_from_candidate = Mock(return_value=[])
     trainer.persistent_native_selected_snapshots.side_effect = None
     trainer.persistent_native_selected_snapshots.return_value = (snapshot,)

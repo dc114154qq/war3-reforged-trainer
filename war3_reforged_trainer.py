@@ -794,6 +794,59 @@ class PersistentNativeUnitSnapshot:
     base_intelligence: int = 0
     item_full_handles: tuple[int, ...] = (0,) * 6
 
+class NativeUnitFieldMemory:
+    """One game-thread field response; missing bytes never trigger process reads."""
+
+    def __init__(self, candidate: UnitCandidate, values: tuple[int, ...]):
+        if (len(values) != 293 or values[:3] != (
+                candidate.unit_address, candidate.handle, candidate.owner_address)
+                or values[3] & ~15 or values[14] not in (0, 1)):
+            raise RuntimeError("DLL 单位字段快照长度或身份异常")
+        self.components: dict[str, tuple[int, int]] = {}
+        self.attack2 = bool(values[14])
+        self._blocks: dict[int, bytes] = {}
+
+        def block(address: int, start: int, end: int) -> None:
+            self._blocks[address] = struct.pack(f"<{end-start}Q", *values[start:end])
+
+        block(candidate.unit_address + 0x2E8, 4, 6)
+        for index, name in enumerate(("inventory", "hero", "move", "attack")):
+            data, wrapper = values[6 + index*2:8 + index*2]
+            present = bool(values[3] & (1 << index))
+            if (present and (not data or not wrapper)) or (not present and (data or wrapper)):
+                raise RuntimeError("DLL 单位组件身份不完整")
+            if present:
+                self.components[name] = (wrapper, data)
+        if "hero" in self.components:
+            block(self.components["hero"][1] + 0x100, 15, 51)
+        if "attack" in self.components:
+            data = self.components["attack"][1]
+            block(data, 51, 172)
+            if self.attack2:
+                block(data + 0x638, 172, 293)
+        elif self.attack2:
+            raise RuntimeError("DLL 第二攻击快照缺少所属组件")
+
+    def read(self, address: int, size: int) -> bytes:
+        for start, data in self._blocks.items():
+            offset = address - start
+            if 0 <= offset and 0 <= size <= len(data) - offset:
+                return data[offset:offset + size]
+        raise OSError("字段不在本次 DLL 快照中")
+
+    def read_f32(self, address: int) -> float:
+        return struct.unpack("<f", self.read(address, 4))[0]
+
+    def read_i32(self, address: int) -> int:
+        return struct.unpack("<i", self.read(address, 4))[0]
+
+    def read_u32(self, address: int) -> int:
+        return struct.unpack("<I", self.read(address, 4))[0]
+
+    def read_u64(self, address: int) -> int:
+        return struct.unpack("<Q", self.read(address, 8))[0]
+
+
 @dataclass(frozen=True)
 class SelectedAbilityFieldContext:
     candidate: UnitCandidate
@@ -2536,7 +2589,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 39
+    NATIVE_HELPER_VERSION = 40
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -2627,6 +2680,7 @@ class War3Trainer:
     NATIVE_HELPER_OP_BOUND_INVENTORY_ITEM = 144
     NATIVE_HELPER_OP_BOUND_ITEM_TYPE = 145
     NATIVE_HELPER_OP_BOUND_ABILITY_LIST = 146
+    NATIVE_HELPER_OP_BOUND_UNIT_FIELDS = 147
     PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 149
     NATIVE_BASIC_FIELD_ARGUMENTS = {
         "hp_current": ("target_hp", "hp"),
@@ -4456,6 +4510,7 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_BOUND_ABILITY_IDENTITY,
             self.NATIVE_HELPER_OP_BOUND_ABILITY_CONTEXT,
             self.NATIVE_HELPER_OP_BOUND_ABILITY_LIST,
+            self.NATIVE_HELPER_OP_BOUND_UNIT_FIELDS,
             self.NATIVE_HELPER_OP_BOUND_INVENTORY_ITEM,
             self.NATIVE_HELPER_OP_BOUND_ITEM_TYPE,
         }
@@ -12752,6 +12807,20 @@ class War3Trainer:
             )
         return items
 
+    def _native_unit_field_memory(self, candidate: UnitCandidate) -> NativeUnitFieldMemory:
+        native = self._native_snapshot_for_candidate(candidate)
+        if native is None:
+            raise RuntimeError("读取 DLL 单位字段需要当前单位的 native 身份")
+        results = self._run_native_helper_ops(native.handle, (
+            (self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY, 0, candidate.unit_address,
+             candidate.handle, candidate.owner_address),
+            (self.NATIVE_HELPER_OP_BOUND_UNIT_FIELDS, 0, 0, 0, 0),
+        ))
+        if (len(results) != 2 or any(result.last_error for result in results)
+                or results[1].result != 293):
+            raise RuntimeError("DLL 单位字段返回不完整")
+        return NativeUnitFieldMemory(candidate, tuple(results[0].extra_results))
+
     def _unit_fields_from_candidate(
         self,
         pm: ProcessMemory,
@@ -12806,7 +12875,12 @@ class War3Trainer:
             append_native_real("x", "坐标-X", native.x, candidate.x_address, "坐标")
             append_native_real("y", "坐标-Y", native.y, candidate.y_address, "坐标")
 
-        components = self._selected_components(pm, candidate.owner_address)
+        process_memory = pm
+        if native is None:
+            components = self._selected_components(pm, candidate.owner_address)
+        else:
+            pm = self._native_unit_field_memory(candidate)
+            components = pm.components
         move = components.get("move")
         if move is not None:
             _wrapper, data = move
@@ -13107,13 +13181,16 @@ class War3Trainer:
             self._append_attack_fields(pm, fields, "attack1", "攻击1", data)
             try:
                 attack2_data = data + 0x638
-                if self._looks_like_vtable(pm.read_u64(attack2_data)) and pm.read_i32(attack2_data + 0x08) == pm.read_i32(data + 0x08):
+                has_attack2 = pm.attack2 if native is not None else (
+                    self._looks_like_vtable(pm.read_u64(attack2_data))
+                    and pm.read_i32(attack2_data + 0x08) == pm.read_i32(data + 0x08))
+                if has_attack2:
                     self._append_attack_fields(pm, fields, "attack2", "攻击2", attack2_data)
             except OSError:
                 pass
 
         if native is None:
-            display_items = self._inventory_items_from_candidate(pm, candidate, components)
+            display_items = self._inventory_items_from_candidate(process_memory, candidate, components)
         else:
             if any(len(values) != 6 for values in (native.item_ids, native.item_charges,
                                                    native.item_handles, native.item_addresses, native.item_full_handles)):
@@ -13122,7 +13199,7 @@ class War3Trainer:
             # contents. A missing external inventory component cannot erase an
             # item already returned by the engine in this bound snapshot.
             metadata = {item.slot: item for item in
-                        self._inventory_items_from_candidate(pm, candidate, components)} if "inventory" in components else {}
+                        self._inventory_items_from_candidate(process_memory, candidate, components)} if "inventory" in components else {}
             display_items = []
             for index in range(6):
                 rawcode = native.item_ids[index]

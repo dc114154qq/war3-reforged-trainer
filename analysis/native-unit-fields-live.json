@@ -1,0 +1,109 @@
+{
+  "pid": 33200,
+  "protocol": 40,
+  "units": [
+    {
+      "handle": 1058016,
+      "hero": true,
+      "fields": 115,
+      "dll_values_checked": 44,
+      "read_ms": 23.87,
+      "missing_prior_fields": [],
+      "mismatches": []
+    },
+    {
+      "handle": 1058028,
+      "hero": true,
+      "fields": 133,
+      "dll_values_checked": 44,
+      "read_ms": 24.82,
+      "missing_prior_fields": [],
+      "mismatches": []
+    },
+    {
+      "handle": 1059280,
+      "hero": false,
+      "fields": 55,
+      "dll_values_checked": 20,
+      "read_ms": 21.89,
+      "missing_prior_fields": [],
+      "mismatches": []
+    },
+    {
+      "handle": 1059314,
+      "hero": false,
+      "fields": 73,
+      "dll_values_checked": 38,
+      "read_ms": 21.57,
+      "missing_prior_fields": [],
+      "mismatches": []
+    },
+    {
+      "handle": 1059276,
+      "hero": false,
+      "fields": 73,
+      "dll_values_checked": 38,
+      "read_ms": 23.39,
+      "missing_prior_fields": [],
+      "mismatches": []
+    },
+    {
+      "handle": 1059228,
+      "hero": false,
+      "fields": 59,
+      "dll_values_checked": 20,
+      "read_ms": 21.51,
+      "missing_prior_fields": [],
+      "mismatches": []
+    },
+    {
+      "handle": 1059231,
+      "hero": false,
+      "fields": 59,
+      "dll_values_checked": 20,
+      "read_ms": 26.06,
+      "missing_prior_fields": [],
+      "mismatches": []
+    },
+    {
+      "handle": 1053310,
+      "hero": false,
+      "fields": 59,
+      "dll_values_checked": 20,
+      "read_ms": 22.46,
+      "missing_prior_fields": [],
+      "mismatches": []
+    },
+    {
+      "handle": 1059232,
+      "hero": false,
+      "fields": 59,
+      "dll_values_checked": 20,
+      "read_ms": 22.42,
+      "missing_prior_fields": [],
+      "mismatches": []
+    },
+    {
+      "handle": 1052985,
+      "hero": false,
+      "fields": 63,
+      "dll_values_checked": 20,
+      "read_ms": 25.35,
+      "missing_prior_fields": [],
+      "mismatches": []
+    },
+    {
+      "handle": 1052988,
+      "hero": false,
+      "fields": 63,
+      "dll_values_checked": 20,
+      "read_ms": 22.99,
+      "missing_prior_fields": [],
+      "mismatches": []
+    }
+  ],
+  "ok": true,
+  "checked_values": 304,
+  "game_build": "2.0.4.23745",
+  "scope": "Read-only component field comparison; no gameplay mutations or EXE validation"
+}

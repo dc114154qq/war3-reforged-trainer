@@ -15,6 +15,9 @@ def fields_context(context):
     # property addresses in this candidate and must still be usable.
     memory.read_f32.side_effect = OSError('No external property')
     trainer._selected_components = Mock(return_value={})
+    memory.components = {}
+    memory.attack2 = False
+    trainer._native_unit_field_memory = Mock(return_value=memory)
     trainer._inventory_items_from_candidate = Mock(return_value=[])
     return trainer, memory, candidate, snapshot
 

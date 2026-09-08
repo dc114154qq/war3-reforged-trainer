@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 33u
+#define WAR3_NATIVE_VERSION 34u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -86,6 +86,7 @@
 #define WAR3_NATIVE_OP_BOUND_ITEM_IDENTITY 138u
 #define WAR3_NATIVE_OP_BOOTSTRAP_NATIVE_TABLE 139u
 #define WAR3_NATIVE_OP_QUERY_NATIVE_TABLE 140u
+#define WAR3_NATIVE_OP_BOUND_ABILITY_METADATA 141u
 #define WAR3_CLONE_FLAG_HERO 0x01u
 #define WAR3_CLONE_FLAG_INVENTORY 0x02u
 #define WAR3_CLONE_FLAG_PRESERVE_OWNER 0x04u
@@ -408,6 +409,7 @@ static War3PersistentNative g_persistent_natives[
 static uint64_t g_persistent_unit_resolver = 0;
 static uint64_t g_persistent_item_resolver = 0;
 static uint64_t g_persistent_agent_resolver = 0;
+static uint64_t g_persistent_ability_resolver = 0;
 typedef uint64_t (__fastcall *War3AgentResolveFn)(uint32_t slot, uint32_t serial);
 static uint64_t war3_persistent_native_handler(const char *name);
 
@@ -612,6 +614,52 @@ static DWORD war3_validate_unit_identity(const NativeCommand *cmd, const NativeO
         return GetExceptionCode();
     }
     return ERROR_SUCCESS;
+}
+
+/* Return one ability's metadata while its owning unit is pinned by op 136.
+   Object-table cross-links replace the old wrapper-neighborhood search. */
+static DWORD war3_bound_ability_metadata(const NativeCommand *cmd, const NativeOp *op, uint64_t *values) {
+    JassUnitRawcodeFn lookup = (JassUnitRawcodeFn)(uintptr_t)op->handler;
+    JassUnitIntQueryFn get_id = (JassUnitIntQueryFn)(uintptr_t)op->arg0;
+    JassGetUnitAbilityLevelFn get_level = (JassGetUnitAbilityLevelFn)(uintptr_t)war3_persistent_native_handler("GetUnitAbilityLevel");
+    JassUnitHandleResolveFn resolve = (JassUnitHandleResolveFn)(uintptr_t)g_persistent_ability_resolver;
+    DWORD error = ERROR_INVALID_DATA;
+    uint64_t handle, data, wrapper, full, tag;
+    if (cmd->ops[0].kind != WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY || !op->rawcode ||
+        !war3_executable_pointer(op->handler) || !war3_executable_pointer(op->arg0) ||
+        !war3_executable_pointer((uint64_t)(uintptr_t)get_level) ||
+        !war3_executable_pointer(g_persistent_ability_resolver)) return ERROR_INVALID_PARAMETER;
+    __try {
+        handle = lookup(cmd->unit_handle, op->rawcode);
+        if (!handle) { error = ERROR_NOT_FOUND; __leave; }
+        data = resolve(handle);
+        if (!data || (uint32_t)get_id(handle) != op->rawcode) __leave;
+        full = *(uint64_t *)(uintptr_t)(data + 0x18);
+        if (!full) __leave;
+        wrapper = ((War3AgentResolveFn)(uintptr_t)g_persistent_agent_resolver)((uint32_t)full, (uint32_t)(full >> 32));
+        if (!wrapper ||
+            *(uint64_t *)(uintptr_t)(wrapper + 0x20) != full ||
+            *(uint64_t *)(uintptr_t)(wrapper + 0x50) != cmd->ops[0].arg1 ||
+            *(uint64_t *)(uintptr_t)(wrapper + 0x90) != data ||
+            *(uint64_t *)(uintptr_t)(data + 0x68) != cmd->ops[0].handler ||
+            *(uint32_t *)(uintptr_t)(data + 0x70) != op->rawcode ||
+            *(uint32_t *)(uintptr_t)(data + 0x78) != op->rawcode) __leave;
+        tag = *(uint64_t *)(uintptr_t)(wrapper + 0x18);
+        if (!(tag >> 32)) __leave;
+        values[0] = handle; values[1] = data; values[2] = wrapper; values[3] = full;
+        values[4] = tag; values[5] = *(uint64_t *)(uintptr_t)wrapper;
+        values[6] = *(uint64_t *)(uintptr_t)data;
+        values[7] = op->rawcode;
+        values[8] = (uint32_t)get_level(cmd->unit_handle, op->rawcode);
+        values[9] = *(uint64_t *)(uintptr_t)(data + 0xa0);
+        error = war3_validate_unit_identity(cmd, &cmd->ops[0]);
+        if (error) __leave;
+        if (lookup(cmd->unit_handle, op->rawcode) != handle || resolve(handle) != data ||
+            *(uint64_t *)(uintptr_t)(data + 0x18) != full ||
+            *(uint64_t *)(uintptr_t)(wrapper + 0x20) != full ||
+            *(uint64_t *)(uintptr_t)(wrapper + 0x90) != data) error = ERROR_INVALID_HANDLE;
+    } __except (EXCEPTION_EXECUTE_HANDLER) { error = ERROR_INVALID_ADDRESS; }
+    return error;
 }
 
 static DWORD war3_persistent_selected_snapshot(
@@ -2709,7 +2757,8 @@ static void run_command(void) {
             if (op->kind != WAR3_NATIVE_OP_JASS_SET_UNIT_STATE &&
                 op->kind != WAR3_NATIVE_OP_JASS_SET_UNIT_INT &&
                 op->kind != WAR3_NATIVE_OP_JASS_SET_UNIT_POSITION &&
-                op->kind != WAR3_NATIVE_OP_SET_BOUND_ITEM_CHARGES) {
+                op->kind != WAR3_NATIVE_OP_SET_BOUND_ITEM_CHARGES &&
+                op->kind != WAR3_NATIVE_OP_BOUND_ABILITY_METADATA) {
                 last_error = ERROR_INVALID_DATA;
             } else {
                 last_error = war3_validate_unit_identity(&cmd, &cmd.ops[0]);
@@ -2788,6 +2837,18 @@ static void run_command(void) {
                     goto finish;
                 }
                 op->result = 1;
+                break;
+            }
+            case WAR3_NATIVE_OP_BOUND_ABILITY_METADATA: {
+                if (i != 1 || cmd.op_count != 2 || cmd.ops[0].kind != WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY) {
+                    last_error = ERROR_INVALID_DATA;
+                } else {
+                    extra_results = (uint64_t *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, 10u*sizeof(uint64_t));
+                    last_error = extra_results ? war3_bound_ability_metadata(&cmd, op, extra_results) : ERROR_OUTOFMEMORY;
+                }
+                if (last_error) { op->last_error = last_error; goto finish; }
+                extra_result_count = 10;
+                op->result = extra_results[0];
                 break;
             }
             case WAR3_NATIVE_OP_BOOTSTRAP_NATIVE_TABLE: {

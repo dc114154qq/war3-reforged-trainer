@@ -35,6 +35,9 @@ def detect_ui_language(locale_name: str | None = None) -> str:
 
 
 _EN_TRANSLATIONS = {
+    "技能查询缺少绑定单位快照": "Ability query requires a bound unit snapshot",
+    "DLL 技能元数据返回不完整": "Incomplete ability metadata returned by the DLL",
+    "DLL 技能元数据身份校验失败": "DLL ability metadata identity validation failed",
     "DLL native 表初始化结果不完整": "Incomplete DLL native table initialization result",
     "DLL native 表初始化地址无效": "Invalid DLL native table initialization addresses",
     "当前 native 配置不支持：": "Unsupported native in the current profile: ",

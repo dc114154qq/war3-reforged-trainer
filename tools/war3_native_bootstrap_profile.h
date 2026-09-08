@@ -7,12 +7,14 @@
 #define WAR3_BOOTSTRAP_UNIT_RVA 0xa110b0u
 #define WAR3_BOOTSTRAP_ITEM_RVA 0xa0dff0u
 #define WAR3_BOOTSTRAP_AGENT_RVA 0x31f430u
+#define WAR3_BOOTSTRAP_ABILITY_RVA 0xa0b8f0u
 static const War3BootstrapCodeCheck g_bootstrap_checks[] = {
     {0x30d360u, 127u, 0xee47d32ded5646b8ULL},
     {0x2e6940u, 64u, 0x79ee034bd900d81aULL},
     {0xa110b0u, 64u, 0x83b07cdee8d62f5aULL},
     {0xa0dff0u, 64u, 0xe796972a8ed4f9ecULL},
     {0x31f430u, 64u, 0x6f5b6cf163633067ULL},
+    {0xa0b8f0u, 64u, 0xe826839cff1768eaULL},
 };
 static const War3BootstrapNative g_bootstrap_names[] = {
     {"AbilityId", "(S)I", 0xc38ab0u, 0x0afff37d5d57870dULL},

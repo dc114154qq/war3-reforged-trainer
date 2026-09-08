@@ -159,6 +159,7 @@ static DWORD war3_bootstrap_bind(uint8_t *image, uint8_t *table) {
     g_persistent_unit_resolver = (uint64_t)(uintptr_t)(image + WAR3_BOOTSTRAP_UNIT_RVA);
     g_persistent_item_resolver = (uint64_t)(uintptr_t)(image + WAR3_BOOTSTRAP_ITEM_RVA);
     g_persistent_agent_resolver = (uint64_t)(uintptr_t)(image + WAR3_BOOTSTRAP_AGENT_RVA);
+    g_persistent_ability_resolver = (uint64_t)(uintptr_t)(image + WAR3_BOOTSTRAP_ABILITY_RVA);
     g_bootstrap_module = image;
     InterlockedExchange(&g_persistent_ready, 1);
     return ERROR_SUCCESS;

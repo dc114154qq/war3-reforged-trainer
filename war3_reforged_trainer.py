@@ -2532,7 +2532,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 33
+    NATIVE_HELPER_VERSION = 34
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -2617,6 +2617,7 @@ class War3Trainer:
     NATIVE_HELPER_OP_BOUND_ITEM_IDENTITY = 138
     NATIVE_HELPER_OP_BOOTSTRAP_NATIVE_TABLE = 139
     NATIVE_HELPER_OP_QUERY_NATIVE_TABLE = 140
+    NATIVE_HELPER_OP_BOUND_ABILITY_METADATA = 141
     PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 149
     NATIVE_BASIC_FIELD_ARGUMENTS = {
         "hp_current": ("target_hp", "hp"),
@@ -4446,6 +4447,7 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_BOUND_ITEM_IDENTITY,
             self.NATIVE_HELPER_OP_BOOTSTRAP_NATIVE_TABLE,
             self.NATIVE_HELPER_OP_QUERY_NATIVE_TABLE,
+            self.NATIVE_HELPER_OP_BOUND_ABILITY_METADATA,
         }
         if any(kind not in allowed_kinds for kind, _rawcode, _handler, _arg0, _arg1 in op_list):
             raise RuntimeError("native helper 仅允许结构化验证后的白名单操作")
@@ -6870,6 +6872,44 @@ class War3Trainer:
         except (OverflowError, UnicodeDecodeError):
             return format_rawcode(int(rawcode))
 
+    def _native_ability_metadata(
+        self, candidate: UnitCandidate, rawcode: int,
+        handlers: dict[str, NativeHandler] | None = None,
+    ) -> tuple[AbilityInstance, int, int]:
+        native = self._native_snapshot_for_candidate(candidate)
+        if native is None:
+            raise RuntimeError("技能查询缺少绑定单位快照")
+        if handlers is None:
+            handlers = self._query_native_table_handlers(("BlzGetUnitAbility", "BlzGetAbilityId"))
+        results = self._run_native_helper_ops(native.handle, (
+            (self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY, 0, candidate.unit_address,
+             candidate.handle, candidate.owner_address),
+            (self.NATIVE_HELPER_OP_BOUND_ABILITY_METADATA, rawcode,
+             handlers["BlzGetUnitAbility"].handler_address,
+             handlers["BlzGetAbilityId"].handler_address, 0),
+        ))
+        if len(results) != 2 or any(result.last_error for result in results):
+            raise RuntimeError("DLL 技能元数据返回不完整")
+        values = results[0].extra_results
+        if len(values) != 10:
+            raise RuntimeError("DLL 技能元数据返回不完整")
+        ability, data, wrapper, full, tag, wrapper_vtable, data_vtable, actual_id, level, cache = values
+        if (not ability or ability != results[1].result or not full or actual_id != rawcode
+                or not all(0x10000 <= address < 0x0000800000000000
+                           for address in (data, wrapper, wrapper_vtable, data_vtable))
+                or not self._looks_like_rawcode(tag >> 32)
+                or tag >> 32 in {value >> 32 for value in self.COMPONENT_TAGS.values()}):
+            raise RuntimeError("DLL 技能元数据身份校验失败")
+        instance = AbilityInstance(
+            slot=0, wrapper_address=wrapper, data_address=data,
+            wrapper_vtable=wrapper_vtable, data_vtable=data_vtable,
+            wrapper_tag_address=wrapper + 0x18, wrapper_tag=tag, handle=full,
+            class_rawcode=tag >> 32, rawcode=rawcode, rawcode_address=data + 0x70,
+            mirror_rawcode_address=data + 0x78, data_cache_address=data + 0xa0,
+            data_cache_pointer=cache if 0x10000 <= cache < 0x0000800000000000 else 0,
+        )
+        return instance, ability, int(level)
+
     def _ability_effect_class_for_candidate(
         self,
         pm: ProcessMemory,
@@ -6877,6 +6917,9 @@ class War3Trainer:
         ability_rawcode: int,
     ) -> tuple[int, bool, str]:
         try:
+            if self._native_snapshot_for_candidate(candidate) is not None:
+                instance, _, _ = self._native_ability_metadata(candidate, ability_rawcode)
+                return instance.class_rawcode, True, ""
             ability_data = self._find_engine_ability_data(
                 pm,
                 candidate,
@@ -6915,6 +6958,16 @@ class War3Trainer:
             handlers = self._discover_native_handlers_near_table(
                 pm,
                 self.ABILITY_FIELD_NATIVE_NAMES,
+            )
+        native = self._native_snapshot_for_candidate(candidate)
+        if native is not None:
+            if native.handle != unit_handle:
+                raise RuntimeError("当前选中单位已变化，请重新读取字段")
+            instance, ability_handle, current_level = self._native_ability_metadata(candidate, ability_rawcode, handlers)
+            return SelectedAbilityFieldContext(
+                candidate=candidate, unit_handle=unit_handle, ability_handle=ability_handle,
+                ability_rawcode=ability_rawcode, effect_class=instance.class_rawcode,
+                effect_class_verified=True, effect_class_note="", current_level=current_level, handlers=handlers,
             )
         ability_handle = int(self._run_native_helper_ops(
             unit_handle,
@@ -6979,7 +7032,7 @@ class War3Trainer:
         rawcode: int | str,
         level: int,
     ) -> SelectedAbilityFieldContext:
-        candidate, unit_handle = self._direct_selected_context()
+        candidate, unit_handle = War3Trainer._direct_selected_context(self)
         with self._process_memory() as pm:
             return self._ability_field_context_from_candidate_locked(
                 pm,
@@ -6997,70 +7050,18 @@ class War3Trainer:
         win10_compat: bool,
     ) -> SelectedAbilityFieldContext:
         handle, owner, unit = (int(value) for value in unit_identity)
-        if win10_compat:
-            with self._win10_memory_operation("ability_field_context") as (diagnostics, pm):
-                isolated = self._win10_session_for_identity(handle, owner, unit, pm)
-                missing_handlers = set(self.ABILITY_FIELD_NATIVE_NAMES).difference(
-                    isolated._native_handlers
-                )
-                if missing_handlers:
-                    self._recover_win10_native_handlers(isolated, pm, diagnostics)
-                    missing_handlers = set(self.ABILITY_FIELD_NATIVE_NAMES).difference(
-                        isolated._native_handlers
-                    )
-                if missing_handlers:
-                    raise RuntimeError(
-                        "备用读取缺少技能字段 native："
-                        + ", ".join(sorted(missing_handlers))
-                    )
-                candidate = self._win10_candidate_from_identity(
-                    isolated,
-                    pm,
-                    handle,
-                    owner,
-                    unit,
-                )
-                unit_handle = isolated._current_jass_unit_handle_win10(
-                    pm,
-                    candidate,
-                    diagnostics,
-                )
-                handlers = {
-                    name: isolated._native_handlers[name]
-                    for name in self.ABILITY_FIELD_NATIVE_NAMES
-                }
-                context = isolated._ability_field_context_from_candidate_locked(
-                    pm,
-                    candidate,
-                    unit_handle,
-                    rawcode,
-                    level,
-                    handlers,
-                )
-                self._native_handlers.update(isolated._native_handlers)
-                return context
-
+        # Both UI editions bind the same native identity; no compatibility recovery.
         with self._process_memory() as pm:
-            candidate = self._candidate_from_identity(
-                pm,
-                handle,
-                owner,
-                unit,
-                f"ability_field_candidate handle=0x{handle:x} owner=0x{owner:x} unit=0x{unit:x}",
-                900,
+            candidate = self._candidate_from_display_identity(
+                pm, handle, owner, unit, "ability_field_candidate", 900,
             )
             if candidate is None:
-                raise RuntimeError("普通读取的单位身份已经失效，请重新读取当前选中单位")
-            unit_handle = self._elephant_selected_handle(pm)
-            resolved_unit = self._resolve_jass_unit_handle(unit_handle)
-            if resolved_unit != candidate.unit_address:
-                raise RuntimeError("当前选择已经变化，请重新读取当前选中单位")
+                raise RuntimeError("当前选中单位已变化，请重新读取字段")
+            native = self._native_snapshot_for_candidate(candidate)
+            if native is None:
+                raise RuntimeError("技能查询缺少绑定单位快照")
             return self._ability_field_context_from_candidate_locked(
-                pm,
-                candidate,
-                unit_handle,
-                rawcode,
-                level,
+                pm, candidate, native.handle, rawcode, level,
             )
 
     def _ability_field_get_op(
@@ -7954,6 +7955,9 @@ class War3Trainer:
         data_address: int,
         rawcode: int,
     ) -> AbilityInstance | None:
+        if self._native_snapshot_for_candidate(candidate) is not None:
+            instance, _, _ = self._native_ability_metadata(candidate, rawcode)
+            return instance if instance.data_address == data_address else None
         if self._ability_data_instance_for_candidate(
             pm,
             candidate,

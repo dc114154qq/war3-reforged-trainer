@@ -40,8 +40,9 @@ def main():
              '#define WAR3_BOOTSTRAP_UNIT_RVA 0xa110b0u',
              '#define WAR3_BOOTSTRAP_ITEM_RVA 0xa0dff0u',
              '#define WAR3_BOOTSTRAP_AGENT_RVA 0x31f430u',
+             '#define WAR3_BOOTSTRAP_ABILITY_RVA 0xa0b8f0u',
              'static const War3BootstrapCodeCheck g_bootstrap_checks[] = {']
-    for rva, size in ((0x30d360, 0x7f), (0x2e6940, 64), (0xa110b0, 64), (0xa0dff0, 64), (0x31f430, 64)):
+    for rva, size in ((0x30d360, 0x7f), (0x2e6940, 64), (0xa110b0, 64), (0xa0dff0, 64), (0x31f430, 64), (0xa0b8f0, 64)):
         lines.append(f'    {{0x{rva:x}u, {size}u, 0x{fnv(code[rva-4096:rva-4096+size]):016x}ULL}},')
     lines += ['};', 'static const War3BootstrapNative g_bootstrap_names[] = {']
     for name, record in rows:

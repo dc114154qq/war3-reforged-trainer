@@ -22,6 +22,9 @@ static DWORD fake_temp_path(DWORD count, wchar_t *path) {
 #include "HELPER_SOURCE"
 #undef GetTempPathW
 static uint8_t object[0x20], other[0x20], owner[0xa0];
+static uint8_t ability_data[0xa8], ability_wrapper[0x98];
+static const uint64_t ability_full = 0x987600005432ULL;
+static unsigned ability_lookups;
 static unsigned fault, writes, bad_arguments;
 static const uint64_t full = 0x123400005678ULL;
 static uint64_t fake_unit(uint64_t handle) {
@@ -32,6 +35,8 @@ static uint64_t fake_unit(uint64_t handle) {
     return (uint64_t)(uintptr_t)object;
 }
 static uint64_t fake_agent(uint32_t slot, uint32_t serial) {
+    if (slot == (uint32_t)ability_full && serial == (uint32_t)(ability_full >> 32))
+        return fault == 38 ? 0 : (uint64_t)(uintptr_t)ability_wrapper;
     if (fault == 3 || slot != (uint32_t)full || serial != (uint32_t)(full >> 32)) return 0;
     return (uint64_t)(uintptr_t)owner;
 }
@@ -64,6 +69,24 @@ static void fake_set_charges(uint64_t item, int32_t value) {
     if (fault == 27) *(uint64_t *)(owner + 0x20) += 1;
 }
 static int32_t fake_get_charges(uint64_t item) { return fault == 24 ? quantity - 1 : quantity; }
+static uint64_t fake_ability_lookup(uint64_t unit, uint32_t id) {
+    if (unit != 7 || id != 0x41303031u) ++bad_arguments;
+    ++ability_lookups;
+    return fault == 31 ? 0 : fault == 39 && ability_lookups > 1 ? 201 : 200;
+}
+static uint64_t fake_ability_resolver(uint64_t handle) {
+    return handle == 200 ? (uint64_t)(uintptr_t)ability_data : 0;
+}
+static int32_t fake_ability_id(uint64_t handle) {
+    if (handle != 200) ++bad_arguments;
+    return fault == 32 ? 0x41303032u : 0x41303031u;
+}
+static int32_t fake_ability_level(uint64_t unit, uint32_t id) {
+    if (unit != 7 || id != 0x41303031u) ++bad_arguments;
+    if (fault == 36) *(uint64_t *)(ability_data + 0x18) += 1;
+    if (fault == 37) *(uint64_t *)(object + 0x18) += 1;
+    return 4;
+}
 __declspec(dllexport) DWORD execute(const wchar_t *directory, unsigned failure, unsigned *out) {
     NativeCommand cmd = {0}; DWORD bytes; wchar_t path[MAX_PATH]; HANDLE file;
     fault = failure; writes = bad_arguments = 0;
@@ -91,7 +114,7 @@ __declspec(dllexport) DWORD execute(const wchar_t *directory, unsigned failure, 
     cmd.ops[3].rawcode = 0x41400000u; cmd.ops[3].arg0 = 0xc0800000u;
     if (fault == 8) { memmove(cmd.ops, cmd.ops + 1, 3 * sizeof(NativeOp)); cmd.op_count = 3; }
     if (fault == 9) { NativeOp swap = cmd.ops[0]; cmd.ops[0] = cmd.ops[1]; cmd.ops[1] = swap; }
-    if (fault >= 20) {
+    if (fault >= 20 && fault < 30) {
         quantity = 3;
         *(uint64_t *)(item_object + 0x18) = 0x555500006666ULL;
         g_persistent_item_resolver = (uint64_t)(uintptr_t)fake_item_resolver;
@@ -113,6 +136,32 @@ __declspec(dllexport) DWORD execute(const wchar_t *directory, unsigned failure, 
         cmd.ops[1].handler = (uint64_t)(uintptr_t)item_object;
         cmd.ops[1].arg0 = 100; cmd.ops[1].arg1 = 1500;
     }
+    if (fault >= 30) {
+        ZeroMemory(ability_data, sizeof(ability_data)); ZeroMemory(ability_wrapper, sizeof(ability_wrapper));
+        ability_lookups = 0;
+        *(uint64_t *)ability_data = *(uint64_t *)ability_wrapper = (uint64_t)(uintptr_t)fake_ability_id;
+        *(uint64_t *)(ability_data + 0x18) = ability_full;
+        *(uint64_t *)(ability_data + 0x68) = fault == 34 ? 0 : (uint64_t)(uintptr_t)object;
+        *(uint32_t *)(ability_data + 0x70) = 0x41303031u;
+        *(uint32_t *)(ability_data + 0x78) = fault == 35 ? 0 : 0x41303031u;
+        *(uint64_t *)(ability_wrapper + 0x18) = fault == 41 ? 0 : 0x4148737430303030ULL;
+        *(uint64_t *)(ability_wrapper + 0x20) = fault == 40 ? 0 : ability_full;
+        *(uint64_t *)(ability_wrapper + 0x50) = fault == 33 ? 0 : (uint64_t)(uintptr_t)owner;
+        *(uint64_t *)(ability_wrapper + 0x90) = (uint64_t)(uintptr_t)ability_data;
+        g_persistent_ability_resolver = (uint64_t)(uintptr_t)fake_ability_resolver;
+        for (unsigned i = 0; i < sizeof(g_persistent_natives)/sizeof(g_persistent_natives[0]); ++i) {
+            g_persistent_natives[i].name = g_persistent_native_names[i];
+            if (!strcmp(g_persistent_native_names[i], "GetUnitAbilityLevel"))
+                g_persistent_natives[i].handler = (uint64_t)(uintptr_t)fake_ability_level;
+        }
+        cmd.op_count = 2;
+        cmd.ops[1].kind = WAR3_NATIVE_OP_BOUND_ABILITY_METADATA;
+        cmd.ops[1].rawcode = 0x41303031u;
+        cmd.ops[1].handler = (uint64_t)(uintptr_t)fake_ability_lookup;
+        cmd.ops[1].arg0 = (uint64_t)(uintptr_t)fake_ability_id;
+        cmd.ops[1].arg1 = 0;
+        if (fault == 42) { cmd.ops[0] = cmd.ops[1]; cmd.op_count = 1; }
+    }
     command_path(path, MAX_PATH);
     file = CreateFileW(path, GENERIC_READ | GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
     if (file == INVALID_HANDLE_VALUE) return GetLastError();
@@ -122,8 +171,16 @@ __declspec(dllexport) DWORD execute(const wchar_t *directory, unsigned failure, 
     file = CreateFileW(path, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (file == INVALID_HANDLE_VALUE) return GetLastError();
     if (!ReadFile(file, &cmd, sizeof(cmd), &bytes, NULL)) { CloseHandle(file); DeleteFileW(path); return ERROR_READ_FAULT; }
+    if (fault >= 30 && cmd.status == WAR3_NATIVE_STATUS_OK) {
+        uint64_t metadata[10];
+        if (!ReadFile(file, metadata, sizeof(metadata), &bytes, NULL) || bytes != sizeof(metadata) ||
+            cmd.ops[1].result != 200 || metadata[0] != 200 ||
+            metadata[1] != (uint64_t)(uintptr_t)ability_data || metadata[2] != (uint64_t)(uintptr_t)ability_wrapper ||
+            metadata[3] != ability_full || metadata[4] != 0x4148737430303030ULL ||
+            metadata[7] != 0x41303031u || metadata[8] != 4) ++bad_arguments;
+    }
     CloseHandle(file); DeleteFileW(path);
-    if (fault >= 20 && cmd.status == WAR3_NATIVE_STATUS_OK && cmd.ops[1].result != 1500) ++bad_arguments;
+    if (fault >= 20 && fault < 30 && cmd.status == WAR3_NATIVE_STATUS_OK && cmd.ops[1].result != 1500) ++bad_arguments;
     out[0] = cmd.status; out[1] = cmd.last_error; out[2] = writes; out[3] = bad_arguments;
     return ERROR_SUCCESS;
 }
@@ -164,6 +221,16 @@ class NativeIdentityGuardTests(unittest.TestCase):
 
     def test_matching_identity_dispatches_all_setters_with_jass_handle(self):
         self.assertEqual(self.execute(0), (2, 0, 3, 0))
+
+    def test_ability_metadata_returns_object_table_links_in_one_callback(self):
+        self.assertEqual(self.execute(30), (2, 0, 0, 0))
+
+    def test_stale_or_mismatched_ability_metadata_never_succeeds(self):
+        for fault in range(31, 43):
+            with self.subTest(fault=fault):
+                status, error, writes, bad = self.execute(fault)
+                self.assertEqual((status, writes, bad), (3, 0, 0))
+                self.assertNotEqual(error, 0)
 
     def test_invalid_identity_and_missing_or_misplaced_guard_never_write(self):
         for fault in (1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13):

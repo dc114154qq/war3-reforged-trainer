@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 36u
+#define WAR3_NATIVE_VERSION 37u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -125,7 +125,8 @@ typedef uint8_t (__fastcall *InternalUnitAddItemToSlotFn)(
     uint64_t unit,
     uint64_t item,
     int32_t slot,
-    uint8_t unknown
+    uint8_t notify,
+    uint8_t check_mode
 );
 typedef void (__fastcall *InternalItemPreRemoveFn)(uint64_t item);
 typedef void (__fastcall *InternalItemRemoveFn)(uint64_t item, const char *reason);
@@ -3186,13 +3187,18 @@ static void run_command(void) {
                 InternalCreateItemFn create_item = (InternalCreateItemFn)(uintptr_t)op->handler;
                 InternalUnitAddItemToSlotFn unit_add_item_to_slot =
                     (InternalUnitAddItemToSlotFn)(uintptr_t)op->arg0;
-                int32_t slot = (int32_t)op->arg0;
+                int32_t slot = (int32_t)op->arg1;
                 float x = 0.0f;
                 float y = 0.0f;
                 uint64_t item = 0;
                 if (cmd.unit_handle == 0 || unit_add_item_to_slot == 0) {
                     op->last_error = ERROR_INVALID_ADDRESS;
                     last_error = ERROR_INVALID_ADDRESS;
+                    goto finish;
+                }
+                if (op->arg1 >= 6u) {
+                    op->last_error = ERROR_INVALID_PARAMETER;
+                    last_error = op->last_error;
                     goto finish;
                 }
                 __try {
@@ -3204,7 +3210,9 @@ static void run_command(void) {
                         last_error = ERROR_NOT_FOUND;
                         goto finish;
                     }
-                    op->arg1 = unit_add_item_to_slot(cmd.unit_handle, item, slot, 1);
+                    /* Match UnitAddItemToSlotById: the fifth stack argument is
+                       read by the inventory eligibility check. Never omit it. */
+                    op->arg1 = unit_add_item_to_slot(cmd.unit_handle, item, slot, 1, 0);
                     if (!op->arg1) {
                         op->last_error = ERROR_CAN_NOT_COMPLETE;
                         last_error = ERROR_CAN_NOT_COMPLETE;

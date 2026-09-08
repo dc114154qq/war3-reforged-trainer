@@ -35,6 +35,7 @@ def detect_ui_language(locale_name: str | None = None) -> str:
 
 
 _EN_TRANSLATIONS = {
+    "物品创建函数交叉校验失败": "Item creation function cross-check failed",
     "物品查询缺少绑定单位快照": "Item query requires a bound unit snapshot",
     "DLL 物品字段返回不完整": "Incomplete item fields returned by the DLL",
     "技能实例已经变化，请重新读取字段": "The ability instance changed; read the fields again",

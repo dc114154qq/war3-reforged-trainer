@@ -81,6 +81,16 @@ static uint64_t fake_item_field_get(uint64_t item, uint32_t field) {
     if (item != 100 || field != 0x61626364u) ++bad_arguments;
     return 99;
 }
+static uint64_t fake_create_slot_item(uint32_t id, float *x, float *y, uint32_t player) {
+    if (id != 0x49303031u || *x != 0 || *y != 0 || player != 0 || fault == 81) ++bad_arguments;
+    return (uint64_t)(uintptr_t)item_object;
+}
+static uint8_t fake_add_exact_slot(uint64_t unit, uint64_t item, int32_t slot, uint8_t flag4, uint8_t flag5) {
+    if (unit != 7 || item != (uint64_t)(uintptr_t)item_object || slot != 5 || flag4 != 1 || flag5 != 0)
+        ++bad_arguments;
+    ++writes;
+    return fault == 82 ? 0 : 1;
+}
 static uint64_t fake_ability_lookup(uint64_t unit, uint32_t id) {
     if (unit != 7 || id != 0x41303031u) ++bad_arguments;
     ++ability_lookups;
@@ -230,6 +240,14 @@ __declspec(dllexport) DWORD execute(const wchar_t *directory, unsigned failure, 
         if (fault == 78) cmd.ops[2].kind = 0;
         if (fault == 79) cmd.ops[1].rawcode = 6;
     }
+    if (fault >= 80) {
+        cmd.op_count = 1;
+        cmd.ops[0].kind = WAR3_NATIVE_OP_ADD_ITEM_TO_SLOT_BY_ID;
+        cmd.ops[0].rawcode = 0x49303031u;
+        cmd.ops[0].handler = (uint64_t)(uintptr_t)fake_create_slot_item;
+        cmd.ops[0].arg0 = (uint64_t)(uintptr_t)fake_add_exact_slot;
+        cmd.ops[0].arg1 = fault == 81 ? 6 : 5;
+    }
     command_path(path, MAX_PATH);
     file = CreateFileW(path, GENERIC_READ | GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
     if (file == INVALID_HANDLE_VALUE) return GetLastError();
@@ -247,7 +265,7 @@ __declspec(dllexport) DWORD execute(const wchar_t *directory, unsigned failure, 
             metadata[3] != ability_full || metadata[4] != 0x4148737430303030ULL ||
             metadata[7] != 0x41303031u || metadata[8] != 4) ++bad_arguments;
     }
-    if (fault >= 50 && cmd.status == WAR3_NATIVE_STATUS_OK &&
+    if (fault >= 50 && fault < 80 && cmd.status == WAR3_NATIVE_STATUS_OK &&
         (cmd.ops[3].result != 1 || cmd.ops[4].result != 99)) ++bad_arguments;
     CloseHandle(file); DeleteFileW(path);
     if (fault >= 20 && fault < 30 && cmd.status == WAR3_NATIVE_STATUS_OK && cmd.ops[1].result != 1500) ++bad_arguments;
@@ -300,6 +318,19 @@ class NativeIdentityGuardTests(unittest.TestCase):
 
     def test_bound_item_fields_use_slot_identity_and_item_handle(self):
         self.assertEqual(self.execute(70), (2, 0, 1, 0))
+
+    def test_internal_add_to_slot_passes_all_five_arguments(self):
+        self.assertEqual(self.execute(80), (2, 0, 1, 0))
+
+    def test_invalid_slot_is_rejected_before_creating_an_item(self):
+        status, error, writes, bad = self.execute(81)
+        self.assertEqual((status, writes, bad), (3, 0, 0))
+        self.assertNotEqual(error, 0)
+
+    def test_internal_add_refusal_is_not_reported_as_success(self):
+        status, error, writes, bad = self.execute(82)
+        self.assertEqual((status, writes, bad), (3, 1, 0))
+        self.assertNotEqual(error, 0)
 
     def test_item_fields_reject_slot_type_generation_and_descriptor_mismatches(self):
         for fault in (71, 74, 76, 77, 78, 79):

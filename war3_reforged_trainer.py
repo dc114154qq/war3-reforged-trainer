@@ -2536,7 +2536,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 36
+    NATIVE_HELPER_VERSION = 37
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -8656,7 +8656,7 @@ class War3Trainer:
         handlers = self._discover_native_handlers(
             pm,
             (
-                "UnitAddItem",
+                "UnitAddItemToSlotById",
                 "UnitAddItemById",
                 "UnitItemInSlot",
                 "UnitRemoveItem",
@@ -8669,7 +8669,7 @@ class War3Trainer:
         )
         add_item_calls = self._rel32_calls_in_function(
             pm,
-            handlers["UnitAddItem"].handler_address,
+            handlers["UnitAddItemToSlotById"].handler_address,
             max_bytes=0x180,
         )
         add_by_id_calls = self._rel32_calls_in_function(
@@ -8682,12 +8682,13 @@ class War3Trainer:
             handlers["UnitRemoveItem"].handler_address,
             max_bytes=0x80,
         )
-        if len(item_in_slot_calls) < 3 or len(add_item_calls) < 10 or len(add_by_id_calls) < 8 or len(remove_item_calls) < 4:
+        if len(item_in_slot_calls) < 3 or len(add_item_calls) != 8 or len(add_by_id_calls) < 8 or len(remove_item_calls) < 4:
             raise RuntimeError("未能从物品 native handler 中定位内部物品栏函数")
         item_in_slot_internal = item_in_slot_calls[2]
-        add_first_slot_internal = add_item_calls[9]
-        add_exact_slot_internal = add_first_slot_internal + 0x90
+        add_exact_slot_internal = add_item_calls[-1]
         create_item_internal = add_by_id_calls[2]
+        if add_item_calls[2] != create_item_internal:
+            raise RuntimeError("物品创建函数交叉校验失败")
         remove_item_internal = remove_item_calls[3]
         regions = pm.regions()
         for name, address in (

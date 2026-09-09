@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 49u
+#define WAR3_NATIVE_VERSION 50u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -102,6 +102,7 @@
 #define WAR3_NATIVE_OP_REPLACE_HERO_SKILL 154u
 #define WAR3_NATIVE_OP_IDENTITY_UNIT_SNAPSHOT 155u
 #define WAR3_NATIVE_OP_MANAGE_BOUND_ABILITY 156u
+#define WAR3_NATIVE_OP_BOUND_DIRECT_ABILITY 157u
 #define WAR3_BOUND_INVENTORY_QWORDS 49u
 #define WAR3_BOUND_UNIT_FIELD_QWORDS (15u + 36u + 121u + 121u + WAR3_BOUND_INVENTORY_QWORDS + 4u)
 #define WAR3_CLONE_FLAG_HERO 0x01u
@@ -930,6 +931,98 @@ static DWORD war3_bound_ability_metadata(const NativeCommand *cmd, const NativeO
 }
 
 #include "war3_native_ability_actions.h"
+
+/* No engine callbacks between this check and a direct call or cleanup. */
+static DWORD war3_direct_identity_memory(const NativeCommand *cmd,uint32_t id,const uint64_t *v) {
+    uint64_t unit=cmd->ops[0].handler,owner=cmd->ops[0].arg1,data=v[1],wrapper=v[2];
+    if(!v[0] || !v[3] || !war3_readable_span(unit,0x20) || !war3_readable_span(owner,0x98) ||
+       !war3_readable_span(data,0xa8) || !war3_readable_span(wrapper,0x98)) return ERROR_INVALID_ADDRESS;
+    if(*(uint64_t *)(uintptr_t)(unit+0x18)!=cmd->ops[0].arg0 ||
+       *(uint64_t *)(uintptr_t)(owner+0x18)!=0x2b7733752b61676cULL ||
+       *(uint64_t *)(uintptr_t)(owner+0x20)!=cmd->ops[0].arg0 ||
+       *(uint64_t *)(uintptr_t)(owner+0x90)!=unit ||
+       *(uint64_t *)(uintptr_t)(data+0x18)!=v[3] ||
+       *(uint64_t *)(uintptr_t)(data+0x68)!=unit ||
+       *(uint32_t *)(uintptr_t)(data+0x70)!=id || *(uint32_t *)(uintptr_t)(data+0x78)!=id ||
+       *(uint64_t *)(uintptr_t)(wrapper+0x18)!=v[4] ||
+       *(uint64_t *)(uintptr_t)(wrapper+0x20)!=v[3] ||
+       *(uint64_t *)(uintptr_t)(wrapper+0x50)!=owner ||
+       *(uint64_t *)(uintptr_t)(wrapper+0x90)!=data) return ERROR_INVALID_HANDLE;
+    return ERROR_SUCCESS;
+}
+
+/* Execute one direct ability effect while the unit and ability generations
+   remain pinned inside the game-thread callback. The controller supplies no
+   ability object or callback address. */
+static DWORD war3_bound_direct_ability(NativeCommand *cmd, NativeOp *op) {
+    JassUnitRawcodeFn lookup=(JassUnitRawcodeFn)(uintptr_t)war3_persistent_native_handler("BlzGetUnitAbility");
+    JassGetAbilityIdFn get_id=(JassGetAbilityIdFn)(uintptr_t)war3_persistent_native_handler("BlzGetAbilityId");
+    JassUnitAddAbilityFn add=(JassUnitAddAbilityFn)(uintptr_t)war3_persistent_native_handler("UnitAddAbility");
+    JassUnitRemoveAbilityFn remove=(JassUnitRemoveAbilityFn)(uintptr_t)war3_persistent_native_handler("UnitRemoveAbility");
+    uint64_t values[10],after[10],ability,vtable,callback;
+    uint32_t offset,added=0,captured=0,creation_attempted=0,creation_returned=0;
+    DWORD error=ERROR_SUCCESS,cleanup=ERROR_SUCCESS;
+    float x=war3_real_from_bits((uint32_t)op->arg0),y=war3_real_from_bits((uint32_t)op->arg1);
+    if(cmd->op_count!=2 || cmd->ops[0].kind!=WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY ||
+       !op->rawcode || op->handler<1 || op->handler>4 ||
+       !war3_executable_pointer((uint64_t)(uintptr_t)lookup) ||
+       !war3_executable_pointer((uint64_t)(uintptr_t)get_id) ||
+       !war3_executable_pointer((uint64_t)(uintptr_t)add) ||
+       !war3_executable_pointer((uint64_t)(uintptr_t)remove)) return ERROR_INVALID_PARAMETER;
+    if(op->handler==3) {
+        if(op->arg0>UINT32_MAX || op->arg1>UINT32_MAX || !(x==x) || !(y==y) ||
+           x < -1000000.0f || x > 1000000.0f || y < -1000000.0f || y > 1000000.0f)
+            return ERROR_INVALID_PARAMETER;
+    } else if(op->arg0 || op->arg1) return ERROR_INVALID_PARAMETER;
+    offset=op->handler==1?0xa70u:op->handler==2?0x998u:op->handler==3?0xa58u:0xa78u;
+    op->result=0;op->reserved=0;
+    ZeroMemory(values,sizeof(values));ZeroMemory(after,sizeof(after));
+    __try {
+        error=war3_validate_unit_identity(cmd,&cmd->ops[0]);if(error) __leave;
+        error=war3_action_ability_state(cmd,op->rawcode,values);if(error) __leave;
+        if(!values[0]) {
+            creation_attempted=1;
+            added=add(cmd->unit_handle,op->rawcode);
+            creation_returned=1;
+            error=war3_action_ability_state(cmd,op->rawcode,values);if(error) __leave;
+            if(!added || !values[0]) {error=ERROR_INVALID_DATA;__leave;}
+        }
+        captured=1;
+        error=war3_validate_unit_identity(cmd,&cmd->ops[0]);if(error) __leave;
+        error=war3_direct_identity_memory(cmd,op->rawcode,values);if(error) __leave;
+        ability=values[1];
+        if(!war3_readable_span(ability,0xa8)) {error=ERROR_INVALID_ADDRESS;__leave;}
+        vtable=*(uint64_t *)(uintptr_t)ability;
+        if(!war3_readable_span(vtable,(size_t)offset+8u)) {error=ERROR_INVALID_ADDRESS;__leave;}
+        callback=*(uint64_t *)(uintptr_t)(vtable+offset);
+        if(!war3_executable_pointer(callback)) {error=ERROR_INVALID_ADDRESS;__leave;}
+        if(op->handler==1) {
+            ((DirectAbilityTargetFn)(uintptr_t)callback)(ability,cmd->ops[0].handler);
+        } else if(op->handler==3) {
+            ((DirectAbilityPointFn)(uintptr_t)callback)(ability,&x,&y);
+        } else ((DirectAbilityImmediateFn)(uintptr_t)callback)(ability);
+        error=war3_validate_unit_identity(cmd,&cmd->ops[0]);if(error) __leave;
+        error=war3_action_ability_state(cmd,op->rawcode,after);if(error) __leave;
+        if(!war3_action_same_ability(values,after)) {error=ERROR_INVALID_HANDLE;__leave;}
+        op->result=1;
+    } __except(EXCEPTION_EXECUTE_HANDLER) {error=GetExceptionCode();}
+    if(added && captured) {
+        __try {
+            cleanup=war3_validate_unit_identity(cmd,&cmd->ops[0]);
+            if(!cleanup) cleanup=war3_action_ability_state(cmd,op->rawcode,after);
+            if(!cleanup && after[0]) {
+                if(!war3_action_same_ability(values,after) || after[8]!=values[8]) cleanup=ERROR_INVALID_HANDLE;
+                if(!cleanup) cleanup=war3_direct_identity_memory(cmd,op->rawcode,values);
+                if(!cleanup && !remove(cmd->unit_handle,op->rawcode)) cleanup=ERROR_INVALID_DATA;
+                if(!cleanup) { cleanup=war3_action_ability_state(cmd,op->rawcode,after); if(!cleanup && after[0]) cleanup=ERROR_INVALID_DATA; }
+            }
+        } __except(EXCEPTION_EXECUTE_HANDLER) {cleanup=GetExceptionCode();}
+    }
+    if(creation_attempted && (!creation_returned || (added && !captured) || (!added && values[0])))
+        cleanup=ERROR_INVALID_DATA; /* Creation ownership could not be proven. */
+    op->reserved=cleanup;
+    return error ? error : cleanup;
+}
 
 /* Six slots plus the engine's usable slot count. Slot membership, item
    generation and object-table backlinks replace external inventory records. */
@@ -3449,6 +3542,7 @@ static void run_command(void) {
                 op->kind != WAR3_NATIVE_OP_SET_BOUND_HERO_INT &&
                 op->kind != WAR3_NATIVE_OP_REPLACE_HERO_SKILL &&
                 op->kind != WAR3_NATIVE_OP_MANAGE_BOUND_ABILITY &&
+                op->kind != WAR3_NATIVE_OP_BOUND_DIRECT_ABILITY &&
                 op->kind != WAR3_NATIVE_OP_BOUND_ABILITY_IDENTITY &&
                 op->kind != WAR3_NATIVE_OP_BOUND_INVENTORY_ITEM &&
                 !war3_is_internal_ability_op(op->kind) &&
@@ -3500,6 +3594,11 @@ static void run_command(void) {
         switch (op->kind) {
             case WAR3_NATIVE_OP_MANAGE_BOUND_ABILITY: {
                 last_error=i?war3_manage_bound_ability(&cmd,op):ERROR_INVALID_PARAMETER;
+                if(last_error) {op->last_error=last_error;goto finish;}
+                break;
+            }
+            case WAR3_NATIVE_OP_BOUND_DIRECT_ABILITY: {
+                last_error=i==1?war3_bound_direct_ability(&cmd,op):ERROR_INVALID_PARAMETER;
                 if(last_error) {op->last_error=last_error;goto finish;}
                 break;
             }

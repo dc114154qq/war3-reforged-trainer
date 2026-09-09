@@ -2619,7 +2619,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 49
+    NATIVE_HELPER_VERSION = 50
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -2720,6 +2720,7 @@ class War3Trainer:
     NATIVE_HELPER_OP_REPLACE_HERO_SKILL = 154
     NATIVE_HELPER_OP_IDENTITY_UNIT_SNAPSHOT = 155
     NATIVE_HELPER_OP_MANAGE_BOUND_ABILITY = 156
+    NATIVE_HELPER_OP_BOUND_DIRECT_ABILITY = 157
     PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 154
     NATIVE_BASIC_FIELD_ARGUMENTS = {
         "hp_current": ("target_hp", "hp"),
@@ -4214,6 +4215,8 @@ class War3Trainer:
                     data, self.NATIVE_HELPER_HEADER_STRUCT.size + self.NATIVE_HELPER_OP_STRUCT.size)
                 if operation[0] == self.NATIVE_HELPER_OP_REPLACE_HERO_SKILL:
                     details = f" skill_phase={operation[5]} skill_cleanup_error={operation[7]}"
+                elif operation[0] == self.NATIVE_HELPER_OP_BOUND_DIRECT_ABILITY:
+                    details = f" direct_effect_completed={operation[5]} direct_cleanup_error={operation[7]}"
             if actual_count == op_count == 3:
                 base, size = self.NATIVE_HELPER_HEADER_STRUCT.size, self.NATIVE_HELPER_OP_STRUCT.size
                 operation = self.NATIVE_HELPER_OP_STRUCT.unpack_from(data, base + size)
@@ -4603,6 +4606,7 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_REPLACE_HERO_SKILL,
             self.NATIVE_HELPER_OP_IDENTITY_UNIT_SNAPSHOT,
             self.NATIVE_HELPER_OP_MANAGE_BOUND_ABILITY,
+            self.NATIVE_HELPER_OP_BOUND_DIRECT_ABILITY,
             self.NATIVE_HELPER_OP_BOUND_INVENTORY_ITEM,
             self.NATIVE_HELPER_OP_BOUND_ITEM_TYPE,
         }
@@ -4653,6 +4657,7 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_JASS_ITEM_FIELD_GET,
             self.NATIVE_HELPER_OP_JASS_ITEM_FIELD_SET,
             self.NATIVE_HELPER_OP_JASS_CLONE_SELECTED_UNIT,
+            self.NATIVE_HELPER_OP_BOUND_DIRECT_ABILITY,
         }
         unit_kinds.add(self.NATIVE_HELPER_OP_PERSISTENT_UNIT_SNAPSHOT)
         unit_kinds.add(self.NATIVE_HELPER_OP_JASS_SET_UNIT_STATE)
@@ -5411,68 +5416,33 @@ class War3Trainer:
         ability_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
         if not ability_rawcode:
             raise ValueError("技能 ID 无效")
-        added = False
-        candidate: UnitCandidate | None = None
-        ability_data = 0
-        try:
-            candidate, unit_handle = self._direct_selected_context()
-            with self._process_memory() as pm:
-                get_level = self._elephant_handlers(
-                    pm,
-                    ("GetUnitAbilityLevel",),
-                )["GetUnitAbilityLevel"].handler_address
-            level = int(self._run_native_helper_ops(
-                unit_handle,
-                ((
-                    self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE_LEVEL,
-                    ability_rawcode,
-                    get_level,
-                    0,
-                    0,
-                ),),
-            )[0].result)
-            if not level:
-                with self._process_memory() as pm:
-                    created_instance, added = self._create_engine_ability_instance(
-                        pm,
-                        candidate,
-                        ability_rawcode,
-                        require_wrapper=False,
-                    )
-                    ability_data = created_instance.data_address
-            with self._process_memory() as pm:
-                assert candidate is not None
-                ability_data = ability_data or self._find_engine_ability_data(
-                    pm,
-                    candidate,
-                    ability_rawcode,
-                )
-                if not ability_data:
-                    raise RuntimeError(
-                        f"找不到 {format_rawcode(ability_rawcode)} 的运行时技能实例"
-                    )
-                ability_vtable = pm.read_u64(ability_data)
-                direct_handler = pm.read_u64(ability_vtable + int(vtable_offset))
-                if not self._is_executable_image_address(pm.regions(), direct_handler):
-                    raise RuntimeError("技能直接效果回调不在游戏可执行代码段")
-                target_unit = candidate.unit_address
-            return int(self._run_native_helper_ops(
-                target_unit,
-                ((
-                    op_kind,
-                    ability_rawcode,
-                    direct_handler,
-                    ability_data,
-                    arg1,
-                ),),
-            )[0].result)
-        finally:
-            if added and candidate is not None and ability_data:
-                self._remove_captured_engine_ability_instance(
-                    candidate,
-                    unit_handle,
-                    ability_data,
-                )
+        effect_kind = {
+            self.NATIVE_HELPER_OP_DIRECT_ABILITY_TARGET: 1,
+            self.NATIVE_HELPER_OP_DIRECT_ABILITY_IMMEDIATE: 2,
+            self.NATIVE_HELPER_OP_DIRECT_ABILITY_POINT: 3,
+            self.NATIVE_HELPER_OP_DIRECT_ABILITY_NOARG_DERIVED: 4,
+        }.get(op_kind)
+        if effect_kind is None or int(vtable_offset) != {1: 0xA70, 2: 0x998, 3: 0xA58, 4: 0xA78}[effect_kind]:
+            raise ValueError("Unsupported direct ability effect type")
+        candidate, unit_handle = self._direct_selected_context()
+        native = self._native_snapshot_for_candidate(candidate)
+        if native is None or native.handle != unit_handle:
+            raise RuntimeError("Direct ability effect requires a bound native unit identity")
+        point_x = int(arg1) & 0xFFFFFFFF if effect_kind == 3 else 0
+        point_y = (int(arg1) >> 32) & 0xFFFFFFFF if effect_kind == 3 else 0
+        response = self._run_native_helper_ops(unit_handle, (
+            (self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY, 0,
+             candidate.unit_address, candidate.handle, candidate.owner_address),
+            (self.NATIVE_HELPER_OP_BOUND_DIRECT_ABILITY, ability_rawcode,
+             effect_kind, point_x, point_y),
+        ))
+        if (len(response) != 2 or any(item.last_error for item in response)
+                or response[0].kind != self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY
+                or response[0].result != 1
+                or response[1].kind != self.NATIVE_HELPER_OP_BOUND_DIRECT_ABILITY
+                or response[1].result != 1):
+            raise RuntimeError("Incomplete direct ability effect result")
+        return int(response[1].result)
 
     def apply_direct_ability_to_selected_unit(self, rawcode: int | str) -> int:
         return self._run_direct_selected_ability(

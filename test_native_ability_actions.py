@@ -231,3 +231,53 @@ def test_bad_later_entry_and_failed_batch_do_not_start_more_work(trainer):
     t._run_native_helper_ops.side_effect=RuntimeError('recycled unit')
     with pytest.raises(RuntimeError):t.add_abilities_to_selected_unit(['A001']*32)
     assert t._run_native_helper_ops.call_count==1
+
+
+def test_direct_effect_uses_bound_native_identity_and_no_controller_discovery(trainer):
+    t,c=trainer
+    t._run_native_helper_ops=Mock(return_value=[
+        module.NativeHelperOpResult(136,1),
+        module.NativeHelperOpResult(157,1),
+    ])
+    assert t._run_direct_selected_ability_locked(
+        'A001',t.NATIVE_HELPER_OP_DIRECT_ABILITY_IMMEDIATE,0x998,0
+    )==1
+    t._process_memory.assert_not_called()
+    t._elephant_handlers.assert_not_called()
+    handle,ops=t._run_native_helper_ops.call_args.args
+    assert handle==c.native_snapshot.handle
+    assert ops==(
+        (136,0,c.unit_address,c.handle,c.owner_address),
+        (157,0x41303031,2,0,0),
+    )
+
+
+@pytest.mark.parametrize('kind,offset,packed,effect,x,y',[
+    (101,0xA70,0,1,0,0),(102,0x998,0,2,0,0),
+    (103,0xA58,0xC080000041400000,3,0x41400000,0xC0800000),(104,0xA78,0,4,0,0),
+])
+def test_direct_effect_arguments_preserve_pointer_free_payload(trainer,kind,offset,packed,effect,x,y):
+    t,c=trainer
+    t._run_native_helper_ops=Mock(return_value=[module.NativeHelperOpResult(136,1),module.NativeHelperOpResult(157,1)])
+    with patch.object(module.time,'sleep',side_effect=AssertionError('fixed wait')):
+        assert t._run_direct_selected_ability_locked('A001',kind,offset,packed)==1
+    assert t._run_native_helper_ops.call_args.args[1][1]==(157,0x41303031,effect,x,y)
+
+
+@pytest.mark.parametrize('result',[
+    [],[module.NativeHelperOpResult(136,1)],
+    [module.NativeHelperOpResult(136,1),module.NativeHelperOpResult(157,0)],
+    [module.NativeHelperOpResult(136,0),module.NativeHelperOpResult(157,1)],
+    [module.NativeHelperOpResult(136,1),module.NativeHelperOpResult(102,1)],
+    [module.NativeHelperOpResult(136,1),module.NativeHelperOpResult(157,1,last_error=13)],
+])
+def test_direct_effect_rejects_incomplete_response(trainer,result):
+    t,c=trainer;t._run_native_helper_ops=Mock(return_value=result)
+    with pytest.raises(RuntimeError,match='Incomplete direct'):
+        t._run_direct_selected_ability_locked('A001',102,0x998,0)
+
+
+def test_direct_effect_rejects_wrong_callback_type_before_query(trainer):
+    t,c=trainer
+    with pytest.raises(ValueError):t._run_direct_selected_ability_locked('A001',102,0xA70,0)
+    t._direct_selected_context.assert_not_called()

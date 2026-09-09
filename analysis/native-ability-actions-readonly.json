@@ -1,0 +1,54 @@
+{
+  "pid": 15028,
+  "protocol": 49,
+  "natives": 38,
+  "mutation": false,
+  "checked": "bound ability metadata and list; no add/remove/set/reset",
+  "units": [
+    {
+      "handle": 1058016,
+      "hero": true,
+      "ability_count": 21
+    },
+    {
+      "handle": 1058028,
+      "hero": true,
+      "ability_count": 25
+    },
+    {
+      "handle": 1052980,
+      "hero": false,
+      "ability_count": 8
+    },
+    {
+      "handle": 1052981,
+      "hero": false,
+      "ability_count": 7
+    },
+    {
+      "handle": 1052982,
+      "hero": false,
+      "ability_count": 7
+    },
+    {
+      "handle": 1052983,
+      "hero": false,
+      "ability_count": 8
+    },
+    {
+      "handle": 1052984,
+      "hero": false,
+      "ability_count": 7
+    },
+    {
+      "handle": 1052989,
+      "hero": false,
+      "ability_count": 7
+    },
+    {
+      "handle": 1052990,
+      "hero": false,
+      "ability_count": 7
+    }
+  ]
+}

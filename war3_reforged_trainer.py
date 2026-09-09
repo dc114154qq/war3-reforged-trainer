@@ -2619,7 +2619,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 48
+    NATIVE_HELPER_VERSION = 49
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -2719,6 +2719,7 @@ class War3Trainer:
     NATIVE_HELPER_OP_SET_BOUND_HERO_INT = 153
     NATIVE_HELPER_OP_REPLACE_HERO_SKILL = 154
     NATIVE_HELPER_OP_IDENTITY_UNIT_SNAPSHOT = 155
+    NATIVE_HELPER_OP_MANAGE_BOUND_ABILITY = 156
     PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 154
     NATIVE_BASIC_FIELD_ARGUMENTS = {
         "hp_current": ("target_hp", "hp"),
@@ -4200,6 +4201,14 @@ class War3Trainer:
             raise RuntimeError("native helper 返回协议不匹配")
         if status != self.NATIVE_HELPER_STATUS_OK:
             details = ""
+            for index in range(min(actual_count, self.NATIVE_HELPER_MAX_OPS)):
+                operation = self.NATIVE_HELPER_OP_STRUCT.unpack_from(
+                    data, self.NATIVE_HELPER_HEADER_STRUCT.size + index * self.NATIVE_HELPER_OP_STRUCT.size)
+                if operation[0] == self.NATIVE_HELPER_OP_MANAGE_BOUND_ABILITY and operation[6]:
+                    actual_level = str(operation[4]) if operation[7] & 1 else "unavailable"
+                    details = (f" ability={format_rawcode(operation[1])} action={operation[2]}"
+                               f" requested_level={operation[3]} actual_level={actual_level}")
+                    break
             if actual_count == op_count == 2:
                 operation = self.NATIVE_HELPER_OP_STRUCT.unpack_from(
                     data, self.NATIVE_HELPER_HEADER_STRUCT.size + self.NATIVE_HELPER_OP_STRUCT.size)
@@ -4593,6 +4602,7 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_SET_BOUND_HERO_INT,
             self.NATIVE_HELPER_OP_REPLACE_HERO_SKILL,
             self.NATIVE_HELPER_OP_IDENTITY_UNIT_SNAPSHOT,
+            self.NATIVE_HELPER_OP_MANAGE_BOUND_ABILITY,
             self.NATIVE_HELPER_OP_BOUND_INVENTORY_ITEM,
             self.NATIVE_HELPER_OP_BOUND_ITEM_TYPE,
         }
@@ -6795,24 +6805,47 @@ class War3Trainer:
             ),),
         )[0].result)
 
+    def _run_bound_ability_actions(
+        self, entries: Iterable[tuple[int, int, int, int]], candidate: UnitCandidate | None = None,
+    ) -> list[NativeHelperOpResult]:
+        entries = tuple(entries)
+        if any(action not in (1, 2, 3, 4) or not 0 < rawcode <= 0xFFFFFFFF
+               or not 0 <= level <= 100000 or (action == 3 and not level)
+               or (action in (2, 4) and level) or not 0 <= full < (1 << 64)
+               for action, rawcode, level, full in entries):
+            raise ValueError("Invalid native ability action")
+        if not entries:
+            return []
+        if candidate is None:
+            candidate, unit_handle = self._direct_selected_context()
+        else:
+            native = self._native_snapshot_for_candidate(candidate)
+            unit_handle = native.handle if native is not None else 0
+        native = self._native_snapshot_for_candidate(candidate)
+        if native is None or native.handle != unit_handle:
+            raise RuntimeError("Ability actions require a bound native unit identity")
+        results = []
+        size = self.NATIVE_HELPER_MAX_OPS - 1
+        for start in range(0, len(entries), size):
+            batch = entries[start:start + size]
+            response = self._run_native_helper_ops(unit_handle, (
+                (self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY, 0, candidate.unit_address,
+                 candidate.handle, candidate.owner_address),
+                *((self.NATIVE_HELPER_OP_MANAGE_BOUND_ABILITY, rawcode, action, level, full)
+                  for action, rawcode, level, full in batch),
+            ))
+            if (len(response) != len(batch) + 1 or any(item.last_error for item in response)
+                    or any(item.kind != self.NATIVE_HELPER_OP_MANAGE_BOUND_ABILITY for item in response[1:])):
+                raise RuntimeError("Incomplete native ability action result")
+            results.extend(response[1:])
+        return results
+
     def _run_selected_ability_rawcode(self, native_name: str, rawcode: int | str) -> int:
         ability_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
         if not ability_rawcode:
             raise ValueError("技能 ID 无效")
-        with self._process_memory() as pm:
-            unit_handle = self._elephant_selected_handle(pm)
-            handlers = self._elephant_handlers(pm, (native_name,))
-        result = self._run_native_helper_ops(
-            unit_handle,
-            ((
-                self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE,
-                ability_rawcode,
-                handlers[native_name].handler_address,
-                0,
-                0,
-            ),),
-        )[0].result
-        return int(result)
+        action = {"UnitAddAbility": 1, "UnitRemoveAbility": 2}[native_name]
+        return int(self._run_bound_ability_actions(((action, ability_rawcode, 0, 0),))[0].result)
 
     def add_ability_to_selected_unit(self, rawcode: int | str) -> None:
         if not self._run_selected_ability_rawcode("UnitAddAbility", rawcode):
@@ -6823,70 +6856,24 @@ class War3Trainer:
             raise RuntimeError("游戏拒绝删除该技能；目标可能没有此技能")
 
     def add_abilities_to_selected_unit(self, rawcodes: Iterable[int | str]) -> int:
-        ability_ids = tuple(
-            int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
-            for rawcode in rawcodes
-        )
+        ability_ids = tuple(int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF for rawcode in rawcodes)
         if not ability_ids or any(not rawcode for rawcode in ability_ids):
             raise ValueError("技能 ID 列表无效")
-        with self._process_memory() as pm:
-            unit_handle = self._elephant_selected_handle(pm)
-            handler = self._elephant_handlers(pm, ("UnitAddAbility",))["UnitAddAbility"].handler_address
-        added = 0
-        for start in range(0, len(ability_ids), self.NATIVE_HELPER_MAX_OPS):
-            results = self._run_native_helper_ops(
-                unit_handle,
-                tuple(
-                    (self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE, rawcode, handler, 0, 0)
-                    for rawcode in ability_ids[start : start + self.NATIVE_HELPER_MAX_OPS]
-                ),
-            )
-            added += sum(bool(result.result) for result in results)
-        return added
+        return sum(bool(item.result) for item in self._run_bound_ability_actions(
+            (1, rawcode, 0, 0) for rawcode in ability_ids))
 
     def add_ability_bundle_to_selected_unit(
         self,
         entries: Iterable[tuple[int | str, int | None]],
     ) -> tuple[int, int]:
-        bundle = tuple(
-            (
-                int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF,
-                None if level is None else int(level),
-            )
-            for rawcode, level in entries
-        )
-        if not bundle or any(not rawcode for rawcode, _level in bundle):
+        bundle = tuple((int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF,
+                        None if level is None else int(level)) for rawcode, level in entries)
+        if not bundle or any(not rawcode for rawcode, _ in bundle):
             raise ValueError("技能组合无效")
-        if any(level is not None and not 1 <= level <= 100000 for _rawcode, level in bundle):
+        if any(level is not None and not 1 <= level <= 100000 for _, level in bundle):
             raise ValueError("技能组合等级必须在 1 到 100000 之间")
-        with self._process_memory() as pm:
-            unit_handle = self._elephant_selected_handle(pm)
-            handlers = self._elephant_handlers(pm, ("UnitAddAbility", "SetUnitAbilityLevel"))
-        add_handler = handlers["UnitAddAbility"].handler_address
-        level_handler = handlers["SetUnitAbilityLevel"].handler_address
-        ops: list[tuple[int, int, int, int, int]] = []
-        for rawcode, level in bundle:
-            ops.append((self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE, rawcode, add_handler, 0, 0))
-            if level is not None:
-                ops.append((
-                    self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE_LEVEL,
-                    rawcode,
-                    level_handler,
-                    level,
-                    0,
-                ))
-        added = 0
-        for start in range(0, len(ops), self.NATIVE_HELPER_MAX_OPS):
-            results = self._run_native_helper_ops(
-                unit_handle,
-                tuple(ops[start : start + self.NATIVE_HELPER_MAX_OPS]),
-            )
-            added += sum(
-                bool(result.result)
-                for result in results
-                if result.kind == self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE
-            )
-        return added, len(bundle)
+        results = self._run_bound_ability_actions((1, rawcode, level or 0, 0) for rawcode, level in bundle)
+        return sum(bool(item.result) for item in results), len(bundle)
 
     def replace_selected_inventory_items(
         self,
@@ -6920,77 +6907,26 @@ class War3Trainer:
         ability_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
         if not ability_rawcode:
             raise ValueError("技能 ID 无效")
-        with self._process_memory() as pm:
-            unit_handle = self._elephant_selected_handle(pm)
-            handlers = self._elephant_handlers(pm, ("UnitRemoveAbility", "UnitAddAbility"))
-        results = self._run_native_helper_ops(
-            unit_handle,
-            (
-                (
-                    self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE,
-                    ability_rawcode,
-                    handlers["UnitRemoveAbility"].handler_address,
-                    0,
-                    0,
-                ),
-                (
-                    self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE,
-                    ability_rawcode,
-                    handlers["UnitAddAbility"].handler_address,
-                    0,
-                    0,
-                ),
-            ),
-        )
-        if not results[1].result:
+        if not self._run_bound_ability_actions(((4, ability_rawcode, 0, 0),))[0].result:
             raise RuntimeError("游戏拒绝重置该技能；地图中可能没有该对象")
 
     def remove_all_selected_unit_abilities(self) -> int:
+        candidate, unit_handle = self._direct_selected_context()
+        native = self._native_snapshot_for_candidate(candidate)
+        if native is None or native.handle != unit_handle:
+            raise RuntimeError("Ability removal requires a bound native unit identity")
         with self._process_memory() as pm:
-            unit_handle = self._elephant_selected_handle(pm)
-            handlers = self._elephant_handlers(
-                pm,
-                ("BlzGetUnitAbilityByIndex", "BlzGetAbilityId", "UnitRemoveAbility"),
-            )
-        return int(self._run_native_helper_ops(
-            unit_handle,
-            ((
-                self.NATIVE_HELPER_OP_JASS_REMOVE_ALL_ABILITIES,
-                0,
-                handlers["BlzGetUnitAbilityByIndex"].handler_address,
-                handlers["BlzGetAbilityId"].handler_address,
-                handlers["UnitRemoveAbility"].handler_address,
-            ),),
-        )[0].result)
+            abilities = self._ability_instances_from_candidate(pm, candidate)
+        results = self._run_bound_ability_actions(
+            ((2, item.rawcode, 0, item.handle) for item in abilities), candidate)
+        return sum(bool(item.result) for item in results)
 
     def set_selected_unit_ability_level(self, rawcode: int | str, level: int) -> int:
         ability_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
         target_level = int(level)
         if not ability_rawcode or not 1 <= target_level <= 100000:
             raise ValueError("请提供有效技能 ID，等级必须在 1 到 100000 之间")
-        with self._process_memory() as pm:
-            unit_handle = self._elephant_selected_handle(pm)
-            handlers = self._elephant_handlers(pm, ("SetUnitAbilityLevel", "GetUnitAbilityLevel"))
-        self._run_native_helper_ops(
-            unit_handle,
-            ((
-                self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE_LEVEL,
-                ability_rawcode,
-                handlers["SetUnitAbilityLevel"].handler_address,
-                target_level,
-                0,
-            ),),
-        )
-        actual = int(self._run_native_helper_ops(
-            unit_handle,
-            ((
-                self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE,
-                ability_rawcode,
-                handlers["GetUnitAbilityLevel"].handler_address,
-                0,
-                0,
-            ),),
-        )[0].result & 0xFFFFFFFF)
+        actual = int(self._run_bound_ability_actions(((3, ability_rawcode, target_level, 0),))[0].arg1)
         if actual != target_level:
             raise RuntimeError(f"技能等级写入后读回 {actual}，目标为 {target_level}")
         return actual

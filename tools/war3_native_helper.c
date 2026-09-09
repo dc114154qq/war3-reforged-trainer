@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 48u
+#define WAR3_NATIVE_VERSION 49u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -101,6 +101,7 @@
 #define WAR3_NATIVE_OP_SET_BOUND_HERO_INT 153u
 #define WAR3_NATIVE_OP_REPLACE_HERO_SKILL 154u
 #define WAR3_NATIVE_OP_IDENTITY_UNIT_SNAPSHOT 155u
+#define WAR3_NATIVE_OP_MANAGE_BOUND_ABILITY 156u
 #define WAR3_BOUND_INVENTORY_QWORDS 49u
 #define WAR3_BOUND_UNIT_FIELD_QWORDS (15u + 36u + 121u + 121u + WAR3_BOUND_INVENTORY_QWORDS + 4u)
 #define WAR3_CLONE_FLAG_HERO 0x01u
@@ -881,50 +882,54 @@ static DWORD war3_bound_unit_fields(const NativeCommand *cmd, uint64_t *values) 
 /* Return one ability's metadata while its owning unit is pinned by op 136.
    Object-table cross-links replace the old wrapper-neighborhood search. */
 static DWORD war3_bound_ability_metadata(const NativeCommand *cmd, const NativeOp *op, uint64_t *values) {
-    JassUnitRawcodeFn lookup = (JassUnitRawcodeFn)(uintptr_t)op->handler;
-    JassUnitIntQueryFn get_id = (JassUnitIntQueryFn)(uintptr_t)op->arg0;
-    JassGetUnitAbilityLevelFn get_level = (JassGetUnitAbilityLevelFn)(uintptr_t)war3_persistent_native_handler("GetUnitAbilityLevel");
-    JassUnitHandleResolveFn resolve = (JassUnitHandleResolveFn)(uintptr_t)g_persistent_ability_resolver;
-    DWORD error = ERROR_INVALID_DATA;
-    uint64_t handle, data, wrapper, full, tag;
-    uint32_t lookup_argument = op->arg1 ? (uint32_t)(op->arg1 - 1u) : op->rawcode;
-    if (cmd->ops[0].kind != WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY || !op->rawcode ||
-        op->arg1 > WAR3_PERSISTENT_SNAPSHOT_ENUM_LIMIT ||
-        !war3_executable_pointer(op->handler) || !war3_executable_pointer(op->arg0) ||
-        !war3_executable_pointer((uint64_t)(uintptr_t)get_level) ||
-        !war3_executable_pointer(g_persistent_ability_resolver)) return ERROR_INVALID_PARAMETER;
+    JassUnitRawcodeFn lookup=(JassUnitRawcodeFn)(uintptr_t)op->handler;
+    JassUnitIntQueryFn get_id=(JassUnitIntQueryFn)(uintptr_t)op->arg0;
+    JassGetUnitAbilityLevelFn get_level=(JassGetUnitAbilityLevelFn)(uintptr_t)war3_persistent_native_handler("GetUnitAbilityLevel");
+    JassUnitHandleResolveFn resolve=(JassUnitHandleResolveFn)(uintptr_t)g_persistent_ability_resolver;
+    DWORD error;
+    uint64_t handle,data,wrapper,full,tag;uint32_t actual_id,level;
+    uint32_t argument=op->arg1?(uint32_t)(op->arg1-1u):op->rawcode;
+    if(cmd->ops[0].kind!=WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY || !op->rawcode ||
+       op->arg1>WAR3_PERSISTENT_SNAPSHOT_ENUM_LIMIT || !war3_executable_pointer(op->handler) ||
+       !war3_executable_pointer(op->arg0) || !war3_executable_pointer((uint64_t)(uintptr_t)get_level) ||
+       !war3_executable_pointer(g_persistent_ability_resolver)) return ERROR_INVALID_PARAMETER;
+#define ABILITY_UNIT_CHECK() do { error=war3_validate_unit_identity(cmd,&cmd->ops[0]);if(error) return error; } while(0)
     __try {
-        handle = lookup(cmd->unit_handle, lookup_argument);
-        if (!handle) { error = ERROR_NOT_FOUND; __leave; }
-        data = resolve(handle);
-        if (!data || (uint32_t)get_id(handle) != op->rawcode) __leave;
-        full = *(uint64_t *)(uintptr_t)(data + 0x18);
-        if (!full) __leave;
-        wrapper = ((War3AgentResolveFn)(uintptr_t)g_persistent_agent_resolver)((uint32_t)full, (uint32_t)(full >> 32));
-        if (!wrapper ||
-            *(uint64_t *)(uintptr_t)(wrapper + 0x20) != full ||
-            *(uint64_t *)(uintptr_t)(wrapper + 0x50) != cmd->ops[0].arg1 ||
-            *(uint64_t *)(uintptr_t)(wrapper + 0x90) != data ||
-            *(uint64_t *)(uintptr_t)(data + 0x68) != cmd->ops[0].handler ||
-            *(uint32_t *)(uintptr_t)(data + 0x70) != op->rawcode ||
-            *(uint32_t *)(uintptr_t)(data + 0x78) != op->rawcode) __leave;
-        tag = *(uint64_t *)(uintptr_t)(wrapper + 0x18);
-        if (!(tag >> 32)) __leave;
-        values[0] = handle; values[1] = data; values[2] = wrapper; values[3] = full;
-        values[4] = tag; values[5] = *(uint64_t *)(uintptr_t)wrapper;
-        values[6] = *(uint64_t *)(uintptr_t)data;
-        values[7] = op->rawcode;
-        values[8] = (uint32_t)get_level(cmd->unit_handle, op->rawcode);
-        values[9] = *(uint64_t *)(uintptr_t)(data + 0xa0);
-        error = war3_validate_unit_identity(cmd, &cmd->ops[0]);
-        if (error) __leave;
-        if (lookup(cmd->unit_handle, lookup_argument) != handle || resolve(handle) != data ||
-            *(uint64_t *)(uintptr_t)(data + 0x18) != full ||
-            *(uint64_t *)(uintptr_t)(wrapper + 0x20) != full ||
-            *(uint64_t *)(uintptr_t)(wrapper + 0x90) != data) error = ERROR_INVALID_HANDLE;
-    } __except (EXCEPTION_EXECUTE_HANDLER) { error = ERROR_INVALID_ADDRESS; }
-    return error;
+        ABILITY_UNIT_CHECK();
+        handle=lookup(cmd->unit_handle,argument);ABILITY_UNIT_CHECK();
+        if(!handle) return ERROR_NOT_FOUND;
+        data=resolve(handle);ABILITY_UNIT_CHECK();
+        if(!war3_readable_span(data,0xa8)) return ERROR_INVALID_ADDRESS;
+        full=*(uint64_t *)(uintptr_t)(data+0x18);
+        if(!full) return ERROR_INVALID_HANDLE;
+        wrapper=((War3AgentResolveFn)(uintptr_t)g_persistent_agent_resolver)((uint32_t)full,(uint32_t)(full>>32));
+        ABILITY_UNIT_CHECK();
+        actual_id=(uint32_t)get_id(handle);ABILITY_UNIT_CHECK();
+        if(actual_id!=op->rawcode) return ERROR_INVALID_DATA;
+        level=(uint32_t)get_level(cmd->unit_handle,op->rawcode);ABILITY_UNIT_CHECK();
+        if(lookup(cmd->unit_handle,argument)!=handle) return ERROR_INVALID_HANDLE;
+        ABILITY_UNIT_CHECK();
+        if(resolve(handle)!=data) return ERROR_INVALID_HANDLE;
+        ABILITY_UNIT_CHECK();
+        if(!war3_readable_span(data,0xa8) || !war3_readable_span(wrapper,0x98)) return ERROR_INVALID_ADDRESS;
+        if(*(uint64_t *)(uintptr_t)(data+0x18)!=full ||
+           *(uint64_t *)(uintptr_t)(wrapper+0x20)!=full ||
+           *(uint64_t *)(uintptr_t)(wrapper+0x50)!=cmd->ops[0].arg1 ||
+           *(uint64_t *)(uintptr_t)(wrapper+0x90)!=data ||
+           *(uint64_t *)(uintptr_t)(data+0x68)!=cmd->ops[0].handler ||
+           *(uint32_t *)(uintptr_t)(data+0x70)!=op->rawcode ||
+           *(uint32_t *)(uintptr_t)(data+0x78)!=op->rawcode) return ERROR_INVALID_HANDLE;
+        tag=*(uint64_t *)(uintptr_t)(wrapper+0x18);
+        if(!(tag>>32)) return ERROR_INVALID_DATA;
+        values[0]=handle;values[1]=data;values[2]=wrapper;values[3]=full;values[4]=tag;
+        values[5]=*(uint64_t *)(uintptr_t)wrapper;values[6]=*(uint64_t *)(uintptr_t)data;
+        values[7]=op->rawcode;values[8]=level;values[9]=*(uint64_t *)(uintptr_t)(data+0xa0);
+    } __except(EXCEPTION_EXECUTE_HANDLER) { return GetExceptionCode(); }
+#undef ABILITY_UNIT_CHECK
+    return ERROR_SUCCESS;
 }
+
+#include "war3_native_ability_actions.h"
 
 /* Six slots plus the engine's usable slot count. Slot membership, item
    generation and object-table backlinks replace external inventory records. */
@@ -3443,6 +3448,7 @@ static void run_command(void) {
                 op->kind != WAR3_NATIVE_OP_WRITE_COMPONENT_FIELDS &&
                 op->kind != WAR3_NATIVE_OP_SET_BOUND_HERO_INT &&
                 op->kind != WAR3_NATIVE_OP_REPLACE_HERO_SKILL &&
+                op->kind != WAR3_NATIVE_OP_MANAGE_BOUND_ABILITY &&
                 op->kind != WAR3_NATIVE_OP_BOUND_ABILITY_IDENTITY &&
                 op->kind != WAR3_NATIVE_OP_BOUND_INVENTORY_ITEM &&
                 !war3_is_internal_ability_op(op->kind) &&
@@ -3492,6 +3498,11 @@ static void run_command(void) {
             goto finish;
         }
         switch (op->kind) {
+            case WAR3_NATIVE_OP_MANAGE_BOUND_ABILITY: {
+                last_error=i?war3_manage_bound_ability(&cmd,op):ERROR_INVALID_PARAMETER;
+                if(last_error) {op->last_error=last_error;goto finish;}
+                break;
+            }
             case WAR3_NATIVE_OP_REPLACE_HERO_SKILL: {
                 last_error=i==1?war3_replace_hero_skill(&cmd,op):ERROR_INVALID_PARAMETER;
                 if(last_error) { op->last_error=last_error;goto finish; }

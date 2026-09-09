@@ -42,6 +42,7 @@ static uint64_t life_set(uint64_t ability,uint32_t field,int32_t level,float *va
     life_get(ability,field,level);++life_sets;
     uint32_t bits;memcpy(&bits,value,4);
     if(life_fault==2 && life_sets==1) return 0;
+    if(life_fault==34 && life_sets==2) return 0;
     life_area=bits;
     if(life_fault==3 && life_sets==1) RaiseException(0xe0000001,0,0,NULL);
     if(life_fault==4 && life_sets==1) ++*(uint64_t *)(object+0x18);
@@ -56,6 +57,8 @@ static uint32_t life_stop(uint64_t unit,int32_t order) {
     if(life_fault==6) return 0;
     if(life_fault==7) ++*(uint64_t *)(object+0x18);
     if(life_fault==8) life_area=0x44000000u;
+    if(life_fault==32) action_present[0]=0;
+    if(life_fault==39) {++*(uint64_t *)(action_data[0]+0x18);++*(uint64_t *)(action_wrappers[0]+0x20);}
     return 1;
 }
 static int32_t life_current(uint64_t unit) {action_check(unit);return life_order;}
@@ -66,6 +69,10 @@ static void life_effect(uint64_t ability) {
     if(life_fault==9) RaiseException(0xe0000001,0,0,NULL);
     if(life_fault==10) ++*(uint64_t *)(object+0x18);
     if(life_fault==11) ++action_levels[0];
+    if(life_fault==38) action_present[0]=0;
+}
+static uint64_t life_detached_resolve(uint64_t handle) {
+    return handle==100?(uint64_t)(uintptr_t)action_data[0]:0;
 }
 static void life_point(uint64_t ability,float *x,float *y) {
     if(*x!=12 || *y!=-4) ++bad_arguments;life_effect(ability);
@@ -127,7 +134,9 @@ __declspec(dllexport) DWORD lifecycle_test(const wchar_t *directory,unsigned ini
             }
             out[19]=life_stops;out[20]=action_removes;out[21]=fake_timer_kills;
         }
-        if(failure>=20 && failure<=25) {
+        if((failure>=20 && failure<=25) || failure==41 || failure==42) {
+            if(failure==41) action_present[0]=0;
+            if(failure==42) life_order=0;
             if(failure==25) ++*(uint64_t *)(action_data[0]+0x18);
             fake_effect_clock=failure==20?12999:13000;
             if(failure==23) ++g_effect_timer_thread;
@@ -142,6 +151,10 @@ __declspec(dllexport) DWORD lifecycle_test(const wchar_t *directory,unsigned ini
         if(failure==14) {++*(uint64_t *)(action_data[0]+0x18);++*(uint64_t *)(action_wrappers[0]+0x20);}
         if(failure==15) ++life_order;
         if(failure==16) life_area=0x44000000u;
+        if(failure==31 || failure==37) action_present[0]=0;
+        if(failure==37) g_persistent_ability_resolver=(uint64_t)(uintptr_t)life_detached_resolve;
+        if(failure==33) action_fault=12; /* remove takes effect, then throws */
+        if(failure==35) life_order=0;
         if(failure==17) {
             NativeCommand duplicate=start;error=life_submit(&duplicate);if(error) return error;out[15]=duplicate.last_error;
         }
@@ -149,6 +162,12 @@ __declspec(dllexport) DWORD lifecycle_test(const wchar_t *directory,unsigned ini
         cmd.ops[1].handler=failure==18?token+1:token;
         error=life_submit(&cmd);if(error) return error;
         out[7]=cmd.status;out[8]=cmd.last_error;
+        if(failure==33 || failure==34) {
+            out[24]=cmd.status;out[25]=cmd.last_error;
+            action_fault=0;cmd.status=WAR3_NATIVE_STATUS_PENDING;
+            error=life_submit(&cmd);if(error) return error;
+            out[7]=cmd.status;out[8]=cmd.last_error;
+        }
         if(failure==19) {cmd.status=WAR3_NATIVE_STATUS_PENDING;error=life_submit(&cmd);if(error) return error;out[15]=cmd.last_error;}
     }
     out[9]=action_adds;out[10]=action_removes;out[11]=life_sets;out[12]=life_stops;out[13]=direct_calls;out[14]=bad_arguments;
@@ -176,7 +195,7 @@ def native(tmp_path_factory):
 
 
 def run(native,tmp_path,initial=0,mode=2,flags=3,passes=3,fault=0):
-    out=(ctypes.c_uint64*24)();enabled=faulthandler.is_enabled()
+    out=(ctypes.c_uint64*26)();enabled=faulthandler.is_enabled()
     if enabled: faulthandler.disable()
     try: assert native.lifecycle_test(str(tmp_path)+'\\',initial,mode,flags,passes,fault,out)==0
     finally:
@@ -287,7 +306,7 @@ def test_real_windows_message_pump_expires_effect_without_finish_command(tmp_pat
     harness=HARNESS.replace('#include "HELPER_SOURCE"',TIMER_API+'\n#include "HELPER_SOURCE"')
     main=r'''
 int wmain(int argc,wchar_t **argv) {
-    uint64_t out[24]={0};if(argc!=2) return 1;real_effect_timer=1;
+    uint64_t out[26]={0};if(argc!=2) return 1;real_effect_timer=1;
     DWORD error=lifecycle_test(argv[1],0,2,3,3,30,out);
     if(error || out[0]!=2 || out[7]!=2 || out[19]!=1 || out[20]!=1 || out[21]!=1 ||
        out[10]!=1 || out[12]!=1 || out[14]!=0 || out[16]!=0 || out[17]!=0x43800000) return 2;
@@ -300,3 +319,34 @@ int wmain(int argc,wchar_t **argv) {
     assert build.returncode==0,build.stderr
     run=subprocess.run([str(exe),str(tmp_path)+'\\'],capture_output=True,timeout=10)
     assert run.returncode==0,(run.returncode,run.stdout,run.stderr)
+
+
+@pytest.mark.parametrize('fault,stops,sets,removes',[(31,0,1,0),(32,1,1,0),(33,1,2,1),(34,1,3,1),(35,0,2,1)])
+def test_cleanup_recovers_completed_phases_without_repeating_mutations(native,tmp_path,fault,stops,sets,removes):
+    out=run(native,tmp_path,fault=fault)
+    assert out[0]==out[7]==2 and out[8]==0
+    assert (out[12],out[11],out[10])==(stops,sets,removes)
+    assert out[16]==0 and out[23]==1
+    if fault in (33,34): assert out[24]==3 and out[25]!=0
+
+
+@pytest.mark.parametrize('fault',[37,39])
+def test_detached_or_replaced_ability_is_not_treated_as_destroyed(native,tmp_path,fault):
+    out=run(native,tmp_path,fault=fault)
+    assert out[0]==2 and out[7]==3 and out[8]!=0
+    assert out[11]==1 and out[10]==0
+    assert out[12]==(1 if fault==39 else 0)
+
+
+def test_self_removal_during_start_does_not_leak_failed_cleanup_record(native,tmp_path):
+    out=run(native,tmp_path,fault=38)
+    assert out[0]==3 and out[1]!=0 and out[2]==0 and out[4]==0
+    assert out[13]==1 and out[10]==out[12]==0 and out[23]==1
+
+
+@pytest.mark.parametrize('fault,removed',[(41,0),(42,1)])
+def test_deadline_retires_destroyed_or_idle_effect_and_late_finish(native,tmp_path,fault,removed):
+    out=run(native,tmp_path,fault=fault)
+    assert out[0]==out[7]==2 and out[8]==0
+    assert out[19:22]==[0,removed,1]
+    assert out[12]==0 and out[10]==removed and out[16]==0

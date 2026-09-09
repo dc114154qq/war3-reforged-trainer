@@ -62,22 +62,49 @@ static DWORD war3_effect_store_area(War3AbilityEffect *s,uint32_t bits) {
     return ok && actual==bits?ERROR_SUCCESS:ERROR_INVALID_DATA;
 }
 
+/* Absence from the unit alone is insufficient: a detached ability may still
+   be alive. Resolve the originally captured JASS handle before retiring it.
+   Do not dereference the former ability pointer on the absent path. */
+static DWORD war3_effect_cleanup_probe(War3AbilityEffect *s,int *gone) {
+    uint64_t current[10];DWORD error;
+    JassUnitHandleResolveFn resolve=(JassUnitHandleResolveFn)(uintptr_t)g_persistent_ability_resolver;
+    *gone=0;
+    if(!s->captured || !war3_executable_pointer((uint64_t)(uintptr_t)resolve)) return ERROR_INVALID_DATA;
+    error=war3_action_ability_state(&s->bound,s->id,current);if(error) return error;
+    if(current[0]) {
+        if(!war3_action_same_ability(s->identity,current) || current[8]!=s->identity[8]) return ERROR_INVALID_HANDLE;
+        return war3_direct_identity_memory(&s->bound,s->id,s->identity);
+    }
+    if(resolve(s->identity[0])) return ERROR_INVALID_HANDLE;
+    error=war3_validate_unit_identity(&s->bound,&s->bound.ops[0]);if(error) return error;
+    error=war3_action_ability_state(&s->bound,s->id,current);if(error) return error;
+    if(current[0] || resolve(s->identity[0])) return ERROR_INVALID_HANDLE;
+    error=war3_validate_unit_identity(&s->bound,&s->bound.ops[0]);if(error) return error;
+    *gone=1;return ERROR_SUCCESS;
+}
+
 /* Retain the record on cleanup failure so a caller holding its token can
    retry. Never restore a field overwritten by a trigger with a third value. */
 static DWORD war3_effect_cleanup(War3AbilityEffect *s) {
-    DWORD error;uint32_t bits;
+    DWORD error;uint32_t bits;int gone=0;
     if(!s->captured) return ERROR_INVALID_DATA;
-    error=war3_effect_check(s);if(error) return error;
+    error=war3_effect_cleanup_probe(s,&gone);if(error) return error;
+    if(gone) {ZeroMemory(s,sizeof(*s));return ERROR_SUCCESS;}
     if(s->hold && s->invoked) {
         JassUnitIntQueryFn current=(JassUnitIntQueryFn)(uintptr_t)war3_persistent_native_handler("GetUnitCurrentOrder");
         JassIssueImmediateOrderByIdFn stop=(JassIssueImmediateOrderByIdFn)(uintptr_t)war3_persistent_native_handler("IssueImmediateOrderById");
         if(!s->order_known) return ERROR_INVALID_DATA;
         uint32_t order=(uint32_t)current(s->bound.unit_handle);
         error=war3_effect_check(s);if(error) return error;
-        if(order!=s->order) return ERROR_INVALID_DATA;
-        uint32_t stopped=stop(s->bound.unit_handle,851972);
-        error=war3_effect_check(s);if(error) return error;
-        if(!stopped) return ERROR_INVALID_DATA;
+        /* A zero order means the unit is already idle. Do not send a new
+           stop command just to clean up its original ability fields. */
+        if(order) {
+            if(order!=s->order) return ERROR_INVALID_DATA;
+            uint32_t stopped=stop(s->bound.unit_handle,851972);
+            error=war3_effect_cleanup_probe(s,&gone);if(error) return error;
+            if(gone) {ZeroMemory(s,sizeof(*s));return ERROR_SUCCESS;}
+            if(!stopped) return ERROR_INVALID_DATA;
+        }
         s->invoked=0;
     }
     if(s->area_touched) {

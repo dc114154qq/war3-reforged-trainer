@@ -33,3 +33,17 @@ freshly read values. The user's acceptance of 047b4e5 does not prove this new
 setter path. Overall goal remains incomplete pending verification and other
 unproven requirements. Per user instruction, stop changes after this EXE handoff
 and wait for this package's feedback.
+
+## Subsequent user acceptance
+
+On 2026-09-09, following this package handoff, the user replied:
+“测试没问题了”. This confirms the requested gameplay check for the e034231
+base strength/agility correction package. The pending-feedback statement above
+describes the handoff state and is now superseded for this specific test gate.
+
+The delivered EXE was rechecked and retains SHA256
+`6deb0e9435fd348e3f084c811353c4e07f09d5e18e5950632e8f7dfb9392f460`.
+No code or executable changed while recording this feedback. Preserve this
+accepted package; further development belongs on a new branch, with application
+version 1.0.19 retained. This feedback is distinct from the earlier 047b4e5
+acceptance and does not claim exhaustive coverage of every game state.

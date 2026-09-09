@@ -2618,7 +2618,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 46
+    NATIVE_HELPER_VERSION = 47
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -2717,6 +2717,7 @@ class War3Trainer:
     NATIVE_HELPER_OP_WRITE_COMPONENT_FIELDS = 152
     NATIVE_HELPER_OP_SET_BOUND_HERO_INT = 153
     NATIVE_HELPER_OP_REPLACE_HERO_SKILL = 154
+    NATIVE_HELPER_OP_IDENTITY_UNIT_SNAPSHOT = 155
     PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 153
     NATIVE_BASIC_FIELD_ARGUMENTS = {
         "hp_current": ("target_hp", "hp"),
@@ -4587,6 +4588,7 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_WRITE_COMPONENT_FIELDS,
             self.NATIVE_HELPER_OP_SET_BOUND_HERO_INT,
             self.NATIVE_HELPER_OP_REPLACE_HERO_SKILL,
+            self.NATIVE_HELPER_OP_IDENTITY_UNIT_SNAPSHOT,
             self.NATIVE_HELPER_OP_BOUND_INVENTORY_ITEM,
             self.NATIVE_HELPER_OP_BOUND_ITEM_TYPE,
         }
@@ -11083,6 +11085,9 @@ class War3Trainer:
         return bool(result & 0xFFFFFFFF)
 
     def _read_selected_unit_type_id(self, pm: ProcessMemory, candidate: UnitCandidate) -> int:
+        native = self._native_snapshot_for_candidate(candidate)
+        if native is not None:
+            return native.type_id
         if not candidate.unit_address:
             return 0
         primary = pm.read_u32(candidate.unit_address + 0x70)
@@ -11655,15 +11660,22 @@ class War3Trainer:
         self, pm: ProcessMemory, handle: int, owner: int, unit: int,
         note: str, score: int = 0,
     ) -> UnitCandidate | None:
-        # UI identity callbacks retain the complete identity but not the whole
-        # candidate. Recover only a matching native payload, never the first
-        # selected unit or a same-address object from another generation.
-        snapshot = next((item for item in getattr(self, "_last_persistent_native_snapshots", ())
-                         if (item.full_handle, item.owner_address, item.unit_address)
-                         == (handle, owner, unit)), None)
-        if snapshot is not None:
-            return self._candidate_from_native_snapshot(pm, snapshot)
-        return self._candidate_from_identity(pm, handle, owner, unit, note, score)
+        # Resolve the full object identity in the DLL, including its current
+        # JASS handle. This also works after the selection cache was replaced.
+        if not handle or not owner or not unit:
+            return None
+        self.persistent_native_init()
+        results = self._run_native_helper_ops(0, (
+            (self.NATIVE_HELPER_OP_IDENTITY_UNIT_SNAPSHOT, 0, unit, handle, owner),
+        ))
+        if len(results) != 1 or results[0].last_error:
+            raise RuntimeError("Incomplete native identity snapshot")
+        snapshots = self._parse_persistent_native_snapshots(results[0])
+        if len(snapshots) != 1 or (snapshots[0].full_handle, snapshots[0].owner_address,
+                                   snapshots[0].unit_address) != (handle, owner, unit):
+            raise RuntimeError("Native identity snapshot does not match the requested unit")
+        candidate = self._candidate_from_native_snapshot(None, snapshots[0])
+        return replace(candidate, note=note, score=score) if candidate is not None else None
 
     def _selection_summary_from_candidate(
         self,
@@ -11676,6 +11688,19 @@ class War3Trainer:
         include_inventory: bool = True,
         include_abilities: bool = True,
     ) -> UnitSelectionSummary:
+        native = self._native_snapshot_for_candidate(candidate)
+        if native is not None:
+            memory = self._native_unit_field_memory(candidate)
+            return UnitSelectionSummary(
+                candidate=candidate, refs=refs, known_hits=known_hits, region_base=region_base,
+                hp_text=f"{int(round(native.hp))}/{int(round(native.hp_max))}",
+                mp_text=f"{int(round(native.mp))}/{int(round(native.mp_max))}",
+                position=(native.x, native.y), components=tuple(sorted(memory.components)),
+                inventory=tuple(f"{item.slot}:{item.rawcode_text}" for item in memory.inventory_items
+                                if item.rawcode) if include_inventory else (),
+                ability_count=len(native.ability_ids) if include_abilities else 0,
+                hero="hero" in memory.components,
+            )
         panel = self._panel_from_candidate(pm, candidate)
         position = self._position_from_candidate(pm, candidate)
         components = components if components is not None else self._selected_components(pm, candidate.owner_address)
@@ -11707,7 +11732,7 @@ class War3Trainer:
         note: str = "",
     ) -> UnitSelectionSummary:
         with self._process_memory() as pm:
-            candidate = self._candidate_from_identity(
+            candidate = self._candidate_from_display_identity(
                 pm,
                 handle,
                 owner,
@@ -13478,18 +13503,8 @@ class War3Trainer:
         identity: tuple[int, int, int],
         win10_compat: bool,
     ) -> "War3Trainer":
-        if not win10_compat:
-            return self
-        normalized = tuple(int(value) for value in identity)
-        isolated = self._win10_session_trainer
-        if (
-            not isinstance(isolated, BackupReadWar3Trainer)
-            or isolated.pid != self.pid
-            or self._win10_session_identity != normalized
-        ):
-            raise RuntimeError("备用读取会话已经失效，请重新点击备用读取")
-        isolated.bind_selected_identity(normalized)
-        return isolated
+        # Display source labels do not select a different execution engine.
+        return self
 
     def _seed_win10_isolated_state(self, isolated: "War3Trainer") -> dict[str, int]:
         owner_index = dict(self._unit_owner_index)
@@ -13829,7 +13844,6 @@ class War3Trainer:
             )
             if candidate is None:
                 raise RuntimeError("候选单位已经失效，请重新读取候选列表")
-            candidate = self._refresh_native_candidate(candidate)
             candidate = self._candidate_with_selected_unit_type_id(pm, candidate)
             panel = self._panel_from_candidate(pm, candidate)
             return panel, candidate, self._unit_fields_from_candidate(pm, candidate)
@@ -13840,32 +13854,8 @@ class War3Trainer:
         owner: int,
         unit: int,
     ) -> tuple[VisibleUnitPanel, UnitCandidate, list[UnitMemoryField]]:
-        with self._win10_memory_operation("read_unit_fields_by_identity") as (diagnostics, pm):
-            isolated = self._win10_session_for_identity(handle, owner, unit, pm)
-            candidate = self._win10_candidate_from_identity(
-                isolated,
-                pm,
-                handle,
-                owner,
-                unit,
-            )
-            candidate = isolated._candidate_with_selected_unit_type_id(pm, candidate)
-            panel = isolated._panel_from_candidate(pm, candidate)
-            fields = isolated._unit_fields_from_candidate(pm, candidate)
-            fields = isolated._replace_win10_intelligence_field(
-                pm,
-                candidate,
-                fields,
-                diagnostics,
-            )
-            diagnostics.log(
-                "win10_identity_read",
-                handle=f"0x{handle:x}",
-                owner=f"0x{owner:x}",
-                unit=f"0x{unit:x}",
-                field_count=len(fields),
-            )
-            return panel, candidate, fields
+        # Compatibility entry points share the native object-table identity path.
+        return self.read_unit_fields_by_identity(handle, owner, unit)
 
     def _skill_index_from_field_key(self, key: str) -> int | None:
         if not key.startswith("skill") or not key.endswith("_name"):
@@ -14882,53 +14872,8 @@ class War3Trainer:
         key: str,
         value: int | float | str,
     ) -> UnitMemoryField:
-        with self._win10_memory_operation(
-            "write_unit_field_by_identity",
-            write=True,
-        ) as (diagnostics, pm):
-            isolated = self._win10_session_for_identity(handle, owner, unit, pm)
-            candidate = self._win10_candidate_from_identity(
-                isolated,
-                pm,
-                handle,
-                owner,
-                unit,
-            )
-            if key in {"int", "intelligence", "intelligence_total"}:
-                if (isolated._native_snapshot_for_candidate(candidate) is None
-                        and not {"SetHeroInt", "GetHeroInt"}.issubset(isolated._native_handlers)):
-                    isolated._recover_win10_native_handlers(isolated, pm, diagnostics)
-                fields = isolated._unit_fields_from_candidate(pm, candidate)
-                field = next(
-                    (item for item in fields if item.key == "intelligence_total"),
-                    None,
-                )
-                if field is None:
-                    raise RuntimeError("当前备用读取单位没有可写的智力字段")
-                field = isolated._write_hero_intelligence_field_win10(
-                    pm,
-                    candidate,
-                    field,
-                    value,
-                    diagnostics,
-                )
-            else:
-                field = isolated._write_unit_fields_to_candidate(
-                    pm,
-                    candidate,
-                    [MemoryWriteSpec(key, 0, "", value)],
-                )[0]
-            diagnostics.log(
-                "win10_identity_write",
-                handle=f"0x{handle:x}",
-                owner=f"0x{owner:x}",
-                unit=f"0x{unit:x}",
-                key=key,
-                value=field.value,
-                address=f"0x{field.address:x}",
-                write_address=f"0x{field.write_address:x}",
-            )
-            return field
+        # Compatibility entry points share the native object-table identity path.
+        return self.write_unit_field_by_identity(handle, owner, unit, key, value)
 
     def locate_current_selected_unit(self) -> tuple[VisibleUnitPanel, UnitCandidate]:
         with self._process_memory() as pm:
@@ -14983,16 +14928,12 @@ class War3Trainer:
 
         native = self._native_snapshot_for_candidate(candidate)
         if native is None:
-            # A manual identity may not have a bound snapshot. Recover its JASS
-            # handle only from an exact engine identity match; never reinterpret
-            # the 64-bit object identity or silently choose the first selection.
-            identity = (candidate.handle, candidate.owner_address, candidate.unit_address)
-            native = next((snapshot for snapshot in self.persistent_native_selected_snapshots()
-                           if (snapshot.full_handle, snapshot.owner_address, snapshot.unit_address)
-                           == identity), None)
-            if native is None:
+            candidate = self._candidate_from_display_identity(
+                pm, candidate.handle, candidate.owner_address, candidate.unit_address,
+                candidate.note, candidate.score,
+            )
+            if candidate is None:
                 raise RuntimeError("No native handle for the requested unit identity")
-            candidate = replace(candidate, native_snapshot=native)
         candidate = self._refresh_native_candidate(candidate)
         native = self._native_snapshot_for_candidate(candidate)
         if native is None or not native.handle:
@@ -15128,45 +15069,8 @@ class War3Trainer:
         target_hp_regen: float | None = None,
         target_mp_regen: float | None = None,
     ) -> UnitCandidate:
-        with self._win10_memory_operation(
-            "set_unit_by_identity",
-            write=True,
-        ) as (diagnostics, pm):
-            isolated = self._win10_session_for_identity(handle, owner, unit, pm)
-            candidate = self._win10_candidate_from_identity(
-                isolated,
-                pm,
-                handle,
-                owner,
-                unit,
-            )
-            candidate = isolated._write_basic_unit_values_to_candidate(
-                pm,
-                candidate,
-                target_hp,
-                target_mp,
-                max_hp,
-                max_mp,
-                target_x,
-                target_y,
-                target_hp_regen,
-                target_mp_regen,
-            )
-            diagnostics.log(
-                "win10_identity_basic_write",
-                handle=f"0x{handle:x}",
-                owner=f"0x{owner:x}",
-                unit=f"0x{unit:x}",
-                target_hp=target_hp,
-                target_mp=target_mp,
-                max_hp=max_hp,
-                max_mp=max_mp,
-                target_x=target_x,
-                target_y=target_y,
-                target_hp_regen=target_hp_regen,
-                target_mp_regen=target_mp_regen,
-            )
-            return candidate
+        # Compatibility entry points share the native object-table identity path.
+        return self.set_unit_by_identity(handle, owner, unit, current_hp, current_mp, target_hp, target_mp, max_hp, max_mp, target_x, target_y, target_hp_regen, target_mp_regen)
 
 
 class BackupReadWar3Trainer(War3Trainer):

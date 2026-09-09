@@ -101,7 +101,9 @@ def test_display_identity_write_keeps_native_path_without_hp_metadata(mapping):
     memory.read_f32.side_effect = OSError('optional property missing')
     memory.read_i32.side_effect = OSError('optional property missing')
     fresh = replace(snapshot, hp=180)
-    trainer._run_native_helper_ops.side_effect = [[snapshot_result(snapshot)], [], [snapshot_result(fresh)]]
+    trainer._run_native_helper_ops.side_effect = [
+        [snapshot_result(snapshot)], [snapshot_result(snapshot)], [], [snapshot_result(fresh)],
+    ]
     result = trainer.write_unit_field_by_identity(snapshot.full_handle, snapshot.owner_address,
                                                  snapshot.unit_address, 'hp_current', 180)
     assert result.value == 180
@@ -112,7 +114,11 @@ def test_old_display_identity_cannot_use_new_generation_snapshot(mapping):
     trainer, memory, snapshot, values = mapping
     trainer._last_persistent_native_snapshots = (replace(snapshot, full_handle=snapshot.full_handle + 1),)
     values[snapshot.owner_address + 0x20] = snapshot.full_handle + 1
+    trainer._run_native_helper_ops.side_effect = RuntimeError('native identity no longer exists')
     with pytest.raises(RuntimeError):
         trainer.write_unit_field_by_identity(snapshot.full_handle, snapshot.owner_address,
                                              snapshot.unit_address, 'hp_current', 180)
-    trainer._run_native_helper_ops.assert_not_called()
+    trainer._run_native_helper_ops.assert_called_once_with(0, (
+        (155,0,snapshot.unit_address,snapshot.full_handle,snapshot.owner_address),
+    ))
+    memory.write_f32.assert_not_called()

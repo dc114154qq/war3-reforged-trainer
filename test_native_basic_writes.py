@@ -111,12 +111,14 @@ def test_native_failure_does_not_fall_back_to_address_writes(context):
     memory.write_f32.assert_not_called()
 
 
-def test_unbound_identity_must_match_native_selection_before_writing(context):
+def test_unbound_identity_must_resolve_in_native_object_table_before_writing(context):
     trainer, memory, candidate, snapshot = context
     manual = replace(candidate, native_snapshot=None, selection_source="memory")
-    trainer.persistent_native_selected_snapshots.side_effect = None
-    trainer.persistent_native_selected_snapshots.return_value = (replace(snapshot, full_handle=0xBAD),)
+    trainer._run_native_helper_ops.side_effect = RuntimeError('native identity no longer exists')
     with pytest.raises(RuntimeError):
         trainer._write_basic_unit_values_to_candidate(memory, manual, 150, None)
-    trainer._run_native_helper_ops.assert_not_called()
+    trainer._run_native_helper_ops.assert_called_once_with(0, (
+        (155,0,snapshot.unit_address,snapshot.full_handle,snapshot.owner_address),
+    ))
+    trainer.persistent_native_selected_snapshots.assert_not_called()
     memory.write_f32.assert_not_called()

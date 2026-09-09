@@ -62,7 +62,7 @@ class ElephantSourceRoutingTests(unittest.TestCase):
         identity = (0x10, 0x20, 0x30)
         self.assertIs(main.trainer_for_read_source(identity, False), main)
 
-    def test_backup_source_returns_matching_backup_session(self):
+    def test_backup_source_label_uses_same_native_trainer(self):
         main = object.__new__(trainer_module.War3Trainer)
         backup = object.__new__(trainer_module.BackupReadWar3Trainer)
         main.pid = backup.pid = 123
@@ -73,16 +73,15 @@ class ElephantSourceRoutingTests(unittest.TestCase):
 
         selected = main.trainer_for_read_source(identity, True)
 
-        self.assertIs(selected, backup)
-        self.assertEqual(backup._backup_selected_identity, identity)
+        self.assertIs(selected, main)
+        self.assertIsNone(backup._backup_selected_identity)
 
-    def test_backup_source_rejects_stale_session(self):
+    def test_backup_source_label_does_not_require_a_backup_session(self):
         main = object.__new__(trainer_module.War3Trainer)
         main.pid = 123
         main._win10_session_trainer = None
         main._win10_session_identity = None
-        with self.assertRaisesRegex(RuntimeError, "备用读取会话已经失效"):
-            main.trainer_for_read_source((0x10, 0x20, 0x30), True)
+        self.assertIs(main.trainer_for_read_source((0x10, 0x20, 0x30), True), main)
 
     def test_failed_backup_read_invalidates_previous_session(self):
         main = object.__new__(trainer_module.War3Trainer)

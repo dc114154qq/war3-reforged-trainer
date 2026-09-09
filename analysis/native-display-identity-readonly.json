@@ -1,0 +1,60 @@
+{
+  "protocol": 47,
+  "pid": 15028,
+  "natives": 38,
+  "mutation": false,
+  "selection_cache_empty": true,
+  "units": [
+    {
+      "jass_handle": 1058016,
+      "fields": 123,
+      "compat_entry": false
+    },
+    {
+      "jass_handle": 1058028,
+      "fields": 131,
+      "compat_entry": true
+    },
+    {
+      "jass_handle": 1052980,
+      "fields": 79,
+      "compat_entry": false
+    },
+    {
+      "jass_handle": 1052981,
+      "fields": 77,
+      "compat_entry": true
+    },
+    {
+      "jass_handle": 1052982,
+      "fields": 77,
+      "compat_entry": false
+    },
+    {
+      "jass_handle": 1052983,
+      "fields": 79,
+      "compat_entry": true
+    },
+    {
+      "jass_handle": 1052984,
+      "fields": 61,
+      "compat_entry": false
+    },
+    {
+      "jass_handle": 1052989,
+      "fields": 77,
+      "compat_entry": true
+    },
+    {
+      "jass_handle": 1052990,
+      "fields": 77,
+      "compat_entry": false
+    }
+  ],
+  "summary_components": [
+    "attack",
+    "hero",
+    "inventory",
+    "move"
+  ]
+}

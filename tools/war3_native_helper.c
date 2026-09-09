@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 46u
+#define WAR3_NATIVE_VERSION 47u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -100,6 +100,7 @@
 #define WAR3_NATIVE_OP_WRITE_COMPONENT_FIELDS 152u
 #define WAR3_NATIVE_OP_SET_BOUND_HERO_INT 153u
 #define WAR3_NATIVE_OP_REPLACE_HERO_SKILL 154u
+#define WAR3_NATIVE_OP_IDENTITY_UNIT_SNAPSHOT 155u
 #define WAR3_BOUND_INVENTORY_QWORDS 49u
 #define WAR3_BOUND_UNIT_FIELD_QWORDS (15u + 36u + 121u + 121u + WAR3_BOUND_INVENTORY_QWORDS + 4u)
 #define WAR3_CLONE_FLAG_HERO 0x01u
@@ -617,6 +618,8 @@ static uint64_t war3_persistent_native_handler(const char *name) {
     return 0;
 }
 
+static int war3_readable_span(uint64_t address, size_t length);
+
 /* Guard a pinned unit in the same game-thread callback as its mutations.
    The JASS handle and the full engine object handle are deliberately separate. */
 static DWORD war3_validate_unit_identity(const NativeCommand *cmd, const NativeOp *guard) {
@@ -633,6 +636,7 @@ static DWORD war3_validate_unit_identity(const NativeCommand *cmd, const NativeO
         owner = ((War3AgentResolveFn)(uintptr_t)g_persistent_agent_resolver)(
             (uint32_t)guard->arg0, (uint32_t)(guard->arg0 >> 32));
         if (!object || !owner || object != guard->handler || owner != guard->arg1 ||
+            !war3_readable_span(object,0x20) || !war3_readable_span(owner,0x98) ||
             *(uint64_t *)(uintptr_t)(object + 0x18) != guard->arg0 ||
             *(uint64_t *)(uintptr_t)(owner + 0x18) != 0x2b7733752b61676cULL ||
             *(uint64_t *)(uintptr_t)(owner + 0x20) != guard->arg0 ||
@@ -667,6 +671,45 @@ static int war3_readable_span(uint64_t address, size_t length) {
         address = next;
     }
     return 1;
+}
+
+/* Exact 23745 FirstOfGroup body. Only its three rel32 operands vary. Its
+   tail call converts a validated unit object to a JASS handle with flag 1,
+   just as the selection snapshot does. Never execute scanned byte hits. */
+static const uint8_t war3_first_group_code[51]={
+    0x48,0x83,0xec,0x28,0xe8,0x07,0x7a,0xdc,0xff,0x48,0x85,0xc0,0x74,0x1e,
+    0x48,0x8d,0x48,0x58,0x33,0xd2,0xe8,0x57,0x97,0x13,0x00,0x48,0x85,0xc0,
+    0x74,0x0e,0xb2,0x01,0x48,0x8b,0xc8,0x48,0x83,0xc4,0x28,0xe9,0x14,0x08,
+    0x02,0x00,0x33,0xc0,0x48,0x83,0xc4,0x28,0xc3
+};
+
+static DWORD war3_identity_unit_handle(NativeCommand *cmd,NativeOp *op) {
+    typedef uint64_t (__fastcall *ObjectHandleFn)(uint64_t,uint8_t);
+    uint64_t first=war3_persistent_native_handler("FirstOfGroup"),owner,target;
+    DWORD error=ERROR_SUCCESS;
+    if(cmd->op_count!=1 || cmd->unit_handle || !op->handler || !op->arg0 || !op->arg1)
+        return ERROR_INVALID_PARAMETER;
+    if(!war3_executable_pointer(first) || !war3_executable_pointer(g_persistent_agent_resolver) ||
+       !war3_executable_pointer(g_persistent_unit_resolver)) return ERROR_PROC_NOT_FOUND;
+    __try {
+        if(!war3_readable_span(first,sizeof(war3_first_group_code))) {error=ERROR_INVALID_ADDRESS;__leave;}
+        for(unsigned n=0;n<sizeof(war3_first_group_code);++n) {
+            if((n>=5 && n<9) || (n>=21 && n<25) || (n>=40 && n<44)) continue;
+            if(*(uint8_t *)(uintptr_t)(first+n)!=war3_first_group_code[n]) {error=ERROR_BAD_FORMAT;__leave;}
+        }
+        if(error) __leave;
+        target=first+44+(int64_t)*(int32_t *)(uintptr_t)(first+40);
+        if(!war3_executable_pointer(target)) {error=ERROR_INVALID_ADDRESS;__leave;}
+        owner=((War3AgentResolveFn)(uintptr_t)g_persistent_agent_resolver)((uint32_t)op->arg0,(uint32_t)(op->arg0>>32));
+        if(owner!=op->arg1 || !war3_readable_span(owner,0x98) || !war3_readable_span(op->handler,0x20) ||
+           *(uint64_t *)(uintptr_t)(owner+0x18)!=0x2b7733752b61676cULL ||
+           *(uint64_t *)(uintptr_t)(owner+0x20)!=op->arg0 ||
+           *(uint64_t *)(uintptr_t)(owner+0x90)!=op->handler ||
+           *(uint64_t *)(uintptr_t)(op->handler+0x18)!=op->arg0) {error=ERROR_INVALID_HANDLE;__leave;}
+        cmd->unit_handle=((ObjectHandleFn)(uintptr_t)target)(op->handler,1);
+        error=war3_validate_unit_identity(cmd,op);
+    } __except(EXCEPTION_EXECUTE_HANDLER) {error=GetExceptionCode();}
+    return error;
 }
 
 typedef struct War3RegenProperties {
@@ -1255,7 +1298,8 @@ static DWORD war3_persistent_selected_snapshot(
     typedef uint32_t (__fastcall *GetItemTypeIdFn)(uint64_t);
     typedef int32_t (__fastcall *GetItemChargesFn)(uint64_t);
     uint32_t resolved = 0;
-    int targeted = op && op->kind == WAR3_NATIVE_OP_PERSISTENT_UNIT_SNAPSHOT;
+    int targeted = op && (op->kind == WAR3_NATIVE_OP_PERSISTENT_UNIT_SNAPSHOT ||
+                          op->kind == WAR3_NATIVE_OP_IDENTITY_UNIT_SNAPSHOT);
     uint64_t group = 0;
     uint64_t player = 0;
     uint64_t *buffer = NULL;
@@ -3667,8 +3711,13 @@ static void run_command(void) {
                 op->result = op->handler;
                 break;
             }
+            case WAR3_NATIVE_OP_IDENTITY_UNIT_SNAPSHOT:
             case WAR3_NATIVE_OP_PERSISTENT_UNIT_SNAPSHOT:
             case WAR3_NATIVE_OP_PERSISTENT_SELECTED_SNAPSHOT: {
+                if(op->kind==WAR3_NATIVE_OP_IDENTITY_UNIT_SNAPSHOT) {
+                    last_error=war3_identity_unit_handle(&cmd,op);
+                    if(last_error) {op->last_error=last_error;goto finish;}
+                }
                 last_error = war3_persistent_selected_snapshot(
                     &cmd,
                     op,

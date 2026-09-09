@@ -4814,7 +4814,7 @@ class War3Trainer:
 
     def _selected_candidates_snapshot(
         self,
-        pm: ProcessMemory,
+        pm: ProcessMemory | None,
         *,
         persistent_snapshots: Iterable[PersistentNativeUnitSnapshot] | None = None,
     ) -> list[tuple[UnitCandidate, int]]:
@@ -4976,8 +4976,7 @@ class War3Trainer:
     def _direct_selected_context(self) -> tuple[UnitCandidate, int]:
         if self._elephant_selection_override is not None:
             return self._elephant_selection_override
-        with self._process_memory() as pm:
-            snapshot = self._selected_candidates_snapshot(pm)
+        snapshot = self._selected_candidates_snapshot(None)
         if not snapshot:
             raise RuntimeError("游戏当前没有可操作的选中单位")
         # Use the candidate and JASS handle from one snapshot. Resolving them
@@ -15075,12 +15074,9 @@ class BackupReadWar3Trainer(War3Trainer):
         return War3Trainer._elephant_selected_handle(self, pm)
 
     def _direct_selected_context(self) -> tuple[UnitCandidate, int]:
-        if self._elephant_selection_override is not None:
-            return self._elephant_selection_override
-        with self._process_memory() as pm:
-            safe_pm = self._require_win10_memory(pm)
-            candidate = War3Trainer._elephant_selected_candidate(self, safe_pm)
-            return candidate, int(candidate.handle)
+        # candidate.handle is the full object generation, not a JASS handle.
+        # Keep selection and its executable handle paired by the native path.
+        return War3Trainer._direct_selected_context(self)
 
     def _resolve_jass_unit_handle(
         self,

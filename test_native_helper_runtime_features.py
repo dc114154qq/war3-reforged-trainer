@@ -232,24 +232,18 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
                     self.assertIsNone(trainer._native_helper_batch_thread_id)
                     self.assertEqual(probe(), trainer_module.WAIT_OBJECT_0)
 
-    def test_native_inventory_empty_sentinels_do_not_trigger_item_search(self):
+    def test_native_empty_inventory_needs_neither_properties_nor_external_slots(self):
+        from test_native_snapshot_binding import make_snapshot, make_candidate, inventory_result
         trainer = object.__new__(trainer_module.War3Trainer)
-        persistent = SimpleNamespace(
-            full_handle=0x1234, owner_address=0x3000,
-            unit_address=0x2000, item_handles=(0,) * 6,
-            item_addresses=(0,) * 6, item_ids=(0,) * 6, item_charges=(0,) * 6,
-            item_full_handles=(0,) * 6,
-        )
-        candidate = SimpleNamespace(handle=0x1234, unit_address=0x2000, owner_address=0x3000,
-                                    native_snapshot=persistent, selection_source="persistent_native")
-        trainer._last_persistent_native_snapshots = ()
-        trainer._inventory_record_address = Mock(return_value=0x4000)
-        trainer._item_objects_from_handles = Mock(side_effect=AssertionError("Unexpected item scan"))
+        snapshot = replace(make_snapshot(), item_handles=(0,)*6, item_addresses=(0,)*6,
+                           item_ids=(0,)*6, item_charges=(0,)*6, item_full_handles=(0,)*6)
+        trainer._run_native_helper_ops = Mock(return_value=inventory_result(snapshot, capacity=0))
+        trainer._item_objects_from_handles = Mock(side_effect=AssertionError("Unexpected scan"))
         pm = Mock()
-        pm.read_u64.side_effect = [0, 0xFFFFFFFFFFFFFFFF, 0, 0xFFFFFFFFFFFFFFFF, 0, 0] * 2
-        items = trainer._inventory_items_from_candidate(pm, candidate, {"inventory": (0, 0x5000)})
+        items = trainer._inventory_items_from_candidate(pm, make_candidate(snapshot))
         self.assertEqual(len(items), 6)
-        self.assertTrue(all(item.item_address == 0 and item.rawcode == 0 for item in items))
+        self.assertTrue(all(not item.item_address and not item.native_slot for item in items))
+        self.assertEqual(pm.mock_calls, [])
         trainer._item_objects_from_handles.assert_not_called()
 
     def test_decoder_does_not_treat_instruction_operands_as_calls_or_returns(self):

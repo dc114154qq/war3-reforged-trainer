@@ -52,6 +52,16 @@ def snapshot_result(snapshot):
                                       result=1, extra_results=tuple(row))
 
 
+def inventory_result(snapshot, capacity=6):
+    values = [capacity]
+    for index in range(6):
+        handle, obj = snapshot.item_handles[index], snapshot.item_addresses[index]
+        values.extend((handle, snapshot.item_full_handles[index], obj, snapshot.item_ids[index],
+                       snapshot.item_charges[index], 0, 0, obj + 0x1000 if handle else 0))
+    return [module.NativeHelperOpResult(136, 1, extra_results=tuple(values)),
+            module.NativeHelperOpResult(149, 6)]
+
+
 class NativeSnapshotBindingTests(unittest.TestCase):
     def setUp(self):
         self.trainer = object.__new__(module.War3Trainer)
@@ -133,44 +143,27 @@ class NativeSnapshotBindingTests(unittest.TestCase):
         self.trainer._selected_components = Mock(return_value={"inventory": (0, 0x5000)})
         return memory
 
-    def test_inventory_readback_reads_live_quantity_on_bound_object(self):
+    def test_inventory_readback_uses_fresh_dll_quantity_with_no_external_reads(self):
         memory = self.inventory_memory()
-        self.trainer._last_persistent_native_snapshots = (replace(
-            self.snapshot, item_addresses=(0x200005000,) * 6, item_charges=(900,) * 6,
-        ),)
+        fresh = replace(self.snapshot, item_charges=(7, 0, 0, 0, 0, 0))
+        self.trainer._run_native_helper_ops = Mock(return_value=inventory_result(fresh))
+        self.trainer._last_persistent_native_snapshots = (replace(self.snapshot, item_charges=(900,) * 6),)
         items = self.trainer._inventory_items_from_candidate(memory, self.candidate)
         self.assertEqual(items[0].charges, 7)
         self.assertEqual(items[0].item_address, self.snapshot.item_addresses[0])
         self.assertEqual(len(items), 6)
-        memory.read_i32.assert_called_once_with(self.snapshot.item_addresses[0] + self.trainer.ITEM_CHARGES_OFFSET)
+        self.assertEqual(memory.mock_calls, [])
+        self.trainer._selected_components.assert_not_called()
 
-    def test_inventory_recycled_object_and_slot_cannot_override_bound_generation(self):
+    def test_truncated_dll_inventory_never_falls_back_to_item_search(self):
         memory = self.inventory_memory()
-        original = memory.read_u64.side_effect
-        item = self.snapshot.item_addresses[0]
-        generation = self.snapshot.item_full_handles[0] + (1 << 32)
-        memory.read_u64.side_effect = lambda address: (
-            generation if address in (0x4000+0xD4, item+0x18) else original(address))
-        self.assertEqual(self.trainer._inventory_items_from_candidate(memory, self.candidate), [])
+        result = inventory_result(self.snapshot)
+        result[0] = replace(result[0], extra_results=result[0].extra_results[:-1])
+        self.trainer._run_native_helper_ops = Mock(return_value=result)
+        with self.assertRaises(RuntimeError):
+            self.trainer._inventory_items_from_candidate(memory, self.candidate)
+        self.assertEqual(memory.mock_calls, [])
         self.trainer._item_objects_from_handles.assert_not_called()
-
-    def test_inventory_slot_change_during_quantity_read_discards_result(self):
-        memory = self.inventory_memory()
-        original = memory.read_u64.side_effect
-        def read_quantity(address):
-            memory.read_u64.side_effect = lambda location: 0 if location == 0x4000+0xD4 else original(location)
-            return 7
-        memory.read_i32.side_effect = read_quantity
-        self.assertEqual(self.trainer._inventory_items_from_candidate(memory, self.candidate), [])
-        self.trainer._item_objects_from_handles.assert_not_called()
-
-    def test_truncated_native_inventory_never_falls_back_to_item_search(self):
-        for field in ('item_handles', 'item_addresses', 'item_ids', 'item_charges', 'item_full_handles'):
-            with self.subTest(field=field):
-                memory = self.inventory_memory()
-                snapshot = replace(self.snapshot, **{field: getattr(self.snapshot, field)[:5]})
-                self.assertEqual(self.trainer._inventory_items_from_candidate(memory, make_candidate(snapshot)), [])
-                self.trainer._item_objects_from_handles.assert_not_called()
 
     def test_quantity_write_verifies_new_value_instead_of_old_snapshot_value(self):
         memory = self.inventory_memory()
@@ -235,21 +228,25 @@ class NativeSnapshotBindingTests(unittest.TestCase):
             trainer._write_inventory_slot_charges_field(Mock(), self.candidate, field, 1500)
         self.assertEqual(trainer._run_native_helper_ops.call_count, 1)
 
-    def test_changed_slot_during_reconnect_never_scans_items(self):
+    def test_failed_dll_inventory_during_reconnect_never_scans_items(self):
         memory = self.inventory_memory()
         self.trainer._persistent_native_initialized = False
-        memory.read_u64.return_value = 0
-        memory.read_u64.side_effect = None
-        self.assertEqual(self.trainer._inventory_items_from_candidate(memory, self.candidate), [])
+        self.trainer._run_native_helper_ops = Mock(side_effect=RuntimeError("slot changed"))
+        with self.assertRaisesRegex(RuntimeError, "slot changed"):
+            self.trainer._inventory_items_from_candidate(memory, self.candidate)
+        self.assertEqual(memory.mock_calls, [])
         self.trainer._item_objects_from_handles.assert_not_called()
 
-    def test_unreadable_empty_slot_is_not_reported_as_valid_empty_inventory(self):
+    def test_dll_empty_inventory_does_not_require_readable_external_slots(self):
         memory = self.inventory_memory()
         empty = replace(self.snapshot, item_handles=(0,) * 6, item_addresses=(0,) * 6,
-                        item_ids=(0,) * 6, item_charges=(0,) * 6)
-        memory.read_u64.side_effect = OSError("slot unavailable")
-        self.assertEqual(self.trainer._inventory_items_from_candidate(memory, make_candidate(empty)), [])
-        self.trainer._item_objects_from_handles.assert_not_called()
+                        item_ids=(0,) * 6, item_charges=(0,) * 6, item_full_handles=(0,) * 6)
+        self.trainer._run_native_helper_ops = Mock(return_value=inventory_result(empty))
+        memory.read_u64.side_effect = AssertionError("external slot read")
+        items = self.trainer._inventory_items_from_candidate(memory, make_candidate(empty))
+        self.assertEqual(len(items), 6)
+        self.assertTrue(all(item.native_slot and not item.handle for item in items))
+        self.assertEqual(memory.mock_calls, [])
 
     def test_target_refresh_keeps_selection_cache_and_original_candidate_unchanged(self):
         self.trainer.persistent_native_init = Mock()
@@ -284,22 +281,10 @@ class NativeSnapshotBindingTests(unittest.TestCase):
         new = replace(current, item_ids=(new_id, 0, 0, 0, 0, 0),
                       item_handles=(101, 0, 0, 0, 0, 0), item_addresses=(new_item, 0, 0, 0, 0, 0),
                       item_full_handles=(new_full, 0, 0, 0, 0, 0))
-        self.trainer._run_native_helper_ops = Mock(side_effect=[[snapshot_result(current)], [snapshot_result(new)]])
+        self.trainer._run_native_helper_ops = Mock(side_effect=[[snapshot_result(current)], inventory_result(current),
+                                                               [snapshot_result(new)], inventory_result(new)])
 
-        def replace_item(*args):
-            def read_u64(address):
-                if address in (0x4000 + 0xD4, new_item + 0x18):
-                    return new_full
-                if address == new_item:
-                    return 0x140001000
-                if old_item <= address < old_item + 0x1000:
-                    raise OSError("old item freed")
-                return 0
-            memory.read_u64.side_effect = read_u64
-            memory.read_u32.side_effect = lambda address: new_id if address == new_item + 0x70 else 0
-            return old_full, 101, new_id
-
-        self.trainer._set_inventory_slot_item_via_native_handler = Mock(side_effect=replace_item)
+        self.trainer._set_inventory_slot_item_via_native_handler = Mock(return_value=(old_full,101,new_id))
         field = module.UnitMemoryField(key="inventory_slot_1", label="item", value_type="rawcode",
                                        value=current.item_ids[0], category="inventory", address=old_item + 0x70,
                                        write_address=old_item + 0x70, write_type="rawcode")
@@ -307,8 +292,10 @@ class NativeSnapshotBindingTests(unittest.TestCase):
             result = self.trainer._write_inventory_slot_field(memory, self.candidate, field, new_id)
         self.assertEqual(result.value, new_id)
         self.assertEqual((result.address, result.write_address), (new_item + 0x70,) * 2)
-        self.assertEqual(self.trainer._run_native_helper_ops.call_count, 2)
+        self.assertEqual(self.trainer._run_native_helper_ops.call_count, 4)
         self.trainer.persistent_native_selected_snapshots.assert_not_called()
+        self.assertEqual(memory.mock_calls, [])
+        self.trainer._selected_components.assert_not_called()
         self.trainer._item_objects_from_handles.assert_not_called()
 
     def test_target_command_passes_real_dispatch_validation_and_packing(self):

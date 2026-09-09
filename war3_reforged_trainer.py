@@ -798,7 +798,6 @@ class PersistentNativeUnitSnapshot:
     mp_property: int = 0
     hp_regen: float | None = None
     mp_regen: float | None = None
-    inventory_native: bool = False
 
 class NativeUnitFieldMemory:
     """One game-thread field response; missing bytes never trigger process reads."""
@@ -8820,7 +8819,7 @@ class War3Trainer:
                 ),
             )
         native = self._native_snapshot_for_candidate(candidate)
-        if native is not None and (getattr(native, "hp_property", 0) or getattr(native, "mp_property", 0)):
+        if native is not None:
             results = self._run_native_helper_ops(native.handle, (
                 (self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY, 0, candidate.unit_address,
                  candidate.handle, candidate.owner_address), *item_ops))
@@ -12682,9 +12681,7 @@ class War3Trainer:
         components: dict[str, tuple[int, int]] | None = None,
     ) -> list[InventoryItem]:
         native = self._native_snapshot_for_candidate(candidate)
-        if native is not None and (getattr(native, "inventory_native", False)
-                                   or bool(getattr(native, "hp_property", 0)
-                                           or getattr(native, "mp_property", 0))):
+        if native is not None:
             return self._native_inventory_items(candidate)
 
         components = components if components is not None else self._selected_components(pm, candidate.owner_address)
@@ -12694,106 +12691,6 @@ class War3Trainer:
         _wrapper, data = inventory
         record = self._inventory_record_address(pm, candidate, data)
         if not record:
-            return []
-
-        persistent = self._native_snapshot_for_candidate(candidate)
-        if persistent is not None:
-            if any(len(values) != 6 for values in (
-                    persistent.item_handles, persistent.item_addresses, persistent.item_ids,
-                    persistent.item_charges, persistent.item_full_handles)):
-                return []
-            fast_items: list[InventoryItem] = []
-            fast_path_valid = True
-            for index in range(6):
-                handle_address = record + 0xD4 + index * 0x0C
-                try:
-                    handle = pm.read_u64(handle_address)
-                except OSError:
-                    fast_path_valid = False
-                    break
-                snapshot_handle = int(persistent.item_handles[index])
-                item_address = int(persistent.item_addresses[index])
-                occupied = handle not in (0, 0xFFFFFFFFFFFFFFFF)
-                if occupied != bool(snapshot_handle):
-                    fast_path_valid = False
-                    break
-                rawcode = int(persistent.item_ids[index])
-                charges = int(persistent.item_charges[index])
-                rawcode_address = 0
-                mirror_rawcode = 0
-                mirror_rawcode_address = 0
-                ability_rawcode = 0
-                ability_rawcode_address = 0
-                charges_address = 0
-                if occupied:
-                    if handle != persistent.item_full_handles[index]:
-                        fast_path_valid = False
-                        break
-                    if not item_address or not self._sane_heap_ptr(item_address):
-                        fast_path_valid = False
-                        break
-                    try:
-                        if not self._looks_like_vtable(pm.read_u64(item_address)):
-                            fast_path_valid = False
-                            break
-                        if pm.read_u64(item_address + 0x18) != handle:
-                            fast_path_valid = False
-                            break
-                        rawcode_address = item_address + 0x70
-                        if pm.read_u32(rawcode_address) != rawcode:
-                            fast_path_valid = False
-                            break
-                        mirror_rawcode_address = item_address + 0x178
-                        mirror_rawcode = pm.read_u32(mirror_rawcode_address)
-                        if not self._looks_like_rawcode(mirror_rawcode):
-                            mirror_rawcode = 0
-                            mirror_rawcode_address = 0
-                        ability_rawcode_address = item_address + 0x1B8
-                        ability_rawcode = pm.read_u32(ability_rawcode_address)
-                        if not self._looks_like_rawcode(ability_rawcode):
-                            ability_rawcode = 0
-                            ability_rawcode_address = 0
-                        charges_address = item_address + self.ITEM_CHARGES_OFFSET
-                        # This function also performs post-write readback.
-                        # The identity snapshot locates the object, but its
-                        # old quantity cannot verify a subsequent mutation.
-                        charges = pm.read_i32(charges_address)
-                    except OSError:
-                        fast_path_valid = False
-                        break
-                fast_items.append(
-                    InventoryItem(
-                        slot=index + 1,
-                        handle=handle,
-                        handle_address=handle_address,
-                        item_address=item_address if occupied else 0,
-                        rawcode=rawcode,
-                        rawcode_address=rawcode_address,
-                        mirror_rawcode=mirror_rawcode,
-                        mirror_rawcode_address=mirror_rawcode_address,
-                        ability_rawcode=ability_rawcode,
-                        ability_rawcode_address=ability_rawcode_address,
-                        charges=charges,
-                        charges_address=charges_address,
-                    )
-                )
-            if fast_path_valid:
-                # External field reads span multiple calls. Check membership
-                # again before returning, including formerly empty slots.
-                try:
-                    for item in fast_items:
-                        if pm.read_u64(item.handle_address) != item.handle:
-                            return []
-                        if item.item_address and (
-                                pm.read_u64(item.item_address + 0x18) != item.handle
-                                or pm.read_u32(item.rawcode_address) != item.rawcode):
-                            return []
-                except OSError:
-                    return []
-                return fast_items
-
-            # This read owns a native payload even if registration is being
-            # reset concurrently. Never turn stale slots into a heap search.
             return []
 
         items: list[InventoryItem] = []
@@ -14486,14 +14383,19 @@ class War3Trainer:
             raise ValueError(f"物品 rawcode 无效：{format_rawcode(new_rawcode)}")
 
         candidate = self._refresh_native_candidate(candidate)
-        components = self._selected_components(pm, candidate.owner_address)
-        if "inventory" not in components:
-            raise RuntimeError("当前选中单位没有物品栏组件")
+        if self._native_snapshot_for_candidate(candidate) is not None:
+            components = None
+        else:
+            components = self._selected_components(pm, candidate.owner_address)
+            if "inventory" not in components:
+                raise RuntimeError("当前选中单位没有物品栏组件")
 
         items = self._inventory_items_from_candidate(pm, candidate, components)
         old_snapshot = next((item for item in items if item.slot == slot_index + 1), None)
         if candidate.native_snapshot is not None and (len(items) != 6 or old_snapshot is None):
             raise RuntimeError("当前 native 快照已经失效，请重新读取选中单位")
+        if candidate.native_snapshot is not None and not old_snapshot.native_slot:
+            raise RuntimeError("当前选中单位没有物品栏组件")
         before_by_slot = {item.slot: item.rawcode for item in items}
         old_rawcode = old_snapshot.rawcode if old_snapshot is not None else 0
         actions: list[str] = []

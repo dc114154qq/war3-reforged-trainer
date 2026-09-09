@@ -1,0 +1,26 @@
+{
+  "pid": 15028,
+  "protocol": 43,
+  "mutations": false,
+  "exact_slot_function": "0x7ff77dd57560",
+  "units": 9,
+  "inventory_slots": [
+    6,
+    6,
+    6,
+    6,
+    6,
+    6,
+    6,
+    6,
+    6
+  ],
+  "bound_handlers": [
+    "CreateItem",
+    "RemoveItem",
+    "UnitRemoveItem",
+    "IsItemOwned",
+    "UnitAddItemToSlotById"
+  ],
+  "ok": true
+}

@@ -2595,7 +2595,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 42
+    NATIVE_HELPER_VERSION = 43
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -2689,6 +2689,8 @@ class War3Trainer:
     NATIVE_HELPER_OP_BOUND_UNIT_FIELDS = 147
     NATIVE_HELPER_OP_SET_UNIT_REGEN = 148
     NATIVE_HELPER_OP_BOUND_INVENTORY = 149
+    NATIVE_HELPER_OP_REPLACE_INVENTORY_ITEM = 150
+    NATIVE_HELPER_OP_REPLACE_INVENTORY_CONTEXT = 151
     PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 153
     NATIVE_BASIC_FIELD_ARGUMENTS = {
         "hp_current": ("target_hp", "hp"),
@@ -2723,6 +2725,10 @@ class War3Trainer:
         "GetHeroInt",
         "UnitItemInSlot",
         "UnitInventorySize",
+        "CreateItem",
+        "RemoveItem",
+        "UnitRemoveItem",
+        "IsItemOwned",
         "GetItemTypeId",
         "GetItemCharges",
         "BlzGetUnitAbilityByIndex",
@@ -4158,7 +4164,15 @@ class War3Trainer:
         if magic != self.NATIVE_HELPER_MAGIC or version != self.NATIVE_HELPER_VERSION:
             raise RuntimeError("native helper 返回协议不匹配")
         if status != self.NATIVE_HELPER_STATUS_OK:
-            raise RuntimeError(f"native helper 执行失败：status={status} last_error={last_error}")
+            details = ""
+            if actual_count == op_count == 3:
+                base, size = self.NATIVE_HELPER_HEADER_STRUCT.size, self.NATIVE_HELPER_OP_STRUCT.size
+                operation = self.NATIVE_HELPER_OP_STRUCT.unpack_from(data, base + size)
+                context = self.NATIVE_HELPER_OP_STRUCT.unpack_from(data, base + 2*size)
+                if (operation[0] == self.NATIVE_HELPER_OP_REPLACE_INVENTORY_ITEM
+                        and context[0] == self.NATIVE_HELPER_OP_REPLACE_INVENTORY_CONTEXT):
+                    details = f" item_recovery_error={context[5]} item_cleanup_error={context[4]}"
+            raise RuntimeError(f"native helper 执行失败：status={status} last_error={last_error}{details}")
         if actual_count != op_count:
             raise RuntimeError(f"native helper 返回操作数量异常：{actual_count}!={op_count}")
         extra_offset = self._native_helper_command_size()
@@ -4533,6 +4547,8 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_BOUND_UNIT_FIELDS,
             self.NATIVE_HELPER_OP_SET_UNIT_REGEN,
             self.NATIVE_HELPER_OP_BOUND_INVENTORY,
+            self.NATIVE_HELPER_OP_REPLACE_INVENTORY_ITEM,
+            self.NATIVE_HELPER_OP_REPLACE_INVENTORY_CONTEXT,
             self.NATIVE_HELPER_OP_BOUND_INVENTORY_ITEM,
             self.NATIVE_HELPER_OP_BOUND_ITEM_TYPE,
         }
@@ -8747,6 +8763,26 @@ class War3Trainer:
         slot_index: int,
         rawcode: int,
     ) -> tuple[int, int, int]:
+        native = self._native_snapshot_for_candidate(candidate)
+        if native is not None:
+            if not 0 <= slot_index < 6:
+                raise ValueError("Invalid inventory slot")
+            handler = self._query_native_table_handlers(("UnitAddItemToSlotById",))["UnitAddItemToSlotById"]
+            calls = self._rel32_calls_in_function(pm, handler.handler_address, max_bytes=0x180)
+            if len(calls) != 8:
+                raise RuntimeError("未能从物品 native handler 中定位内部物品栏函数")
+            results = self._run_native_helper_ops(native.handle, (
+                (self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY, 0, candidate.unit_address,
+                 candidate.handle, candidate.owner_address),
+                (self.NATIVE_HELPER_OP_REPLACE_INVENTORY_ITEM, rawcode, calls[-1],
+                 native.item_handles[slot_index], native.item_full_handles[slot_index]),
+                (self.NATIVE_HELPER_OP_REPLACE_INVENTORY_CONTEXT, slot_index,
+                 native.item_addresses[slot_index], native.item_ids[slot_index], 0),
+            ))
+            if (len(results) != 3 or any(result.last_error for result in results)
+                    or not results[1].result or results[2].result != rawcode):
+                raise RuntimeError("Native item replacement returned an incomplete result")
+            return native.item_addresses[slot_index], results[1].result, results[2].result
         if not candidate.unit_address:
             raise RuntimeError("当前单位缺少运行时 unit 指针，不能调用物品 native handler")
         handlers = self._discover_native_handlers(
@@ -14382,8 +14418,15 @@ class War3Trainer:
         if not self._looks_like_item_rawcode(new_rawcode):
             raise ValueError(f"物品 rawcode 无效：{format_rawcode(new_rawcode)}")
 
+        previous = self._native_snapshot_for_candidate(candidate)
         candidate = self._refresh_native_candidate(candidate)
-        if self._native_snapshot_for_candidate(candidate) is not None:
+        current = self._native_snapshot_for_candidate(candidate)
+        if previous is not None:
+            names = ("item_handles", "item_addresses", "item_ids", "item_full_handles")
+            if current is None or any(getattr(previous, name)[slot_index] != getattr(current, name)[slot_index]
+                                      for name in names):
+                raise RuntimeError("Native inventory item changed before writing")
+        if current is not None:
             components = None
         else:
             components = self._selected_components(pm, candidate.owner_address)
@@ -14396,6 +14439,9 @@ class War3Trainer:
             raise RuntimeError("当前 native 快照已经失效，请重新读取选中单位")
         if candidate.native_snapshot is not None and not old_snapshot.native_slot:
             raise RuntimeError("当前选中单位没有物品栏组件")
+        if current is not None and (old_snapshot.handle, old_snapshot.item_address, old_snapshot.rawcode) != (
+                current.item_full_handles[slot_index], current.item_addresses[slot_index], current.item_ids[slot_index]):
+            raise RuntimeError("Native inventory item changed before writing")
         before_by_slot = {item.slot: item.rawcode for item in items}
         old_rawcode = old_snapshot.rawcode if old_snapshot is not None else 0
         actions: list[str] = []

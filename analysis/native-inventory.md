@@ -20,9 +20,9 @@ The final DLL was also exercised read-only in the running 2.0.4.23745 process:
 nonheroes had empty slots in the captured state. No mutation was performed.
 The validated 1.0.19 EXE remains untouched.
 
-Item replacement and some item field operations still discover internal item
-functions from the native handler code and need the same complete identity
-transaction work. The overall DLL-only goal remains in progress.
+Protocol 43 adds a guarded replacement and recovery transaction; see
+`native-item-transaction.md` for its checks, evidence and limits. The overall
+DLL-only goal remains in progress.
 
 ## Routing audit, 2026-09-09
 

@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 42u
+#define WAR3_NATIVE_VERSION 43u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -95,6 +95,8 @@
 #define WAR3_NATIVE_OP_BOUND_UNIT_FIELDS 147u
 #define WAR3_NATIVE_OP_SET_UNIT_REGEN 148u
 #define WAR3_NATIVE_OP_BOUND_INVENTORY 149u
+#define WAR3_NATIVE_OP_REPLACE_INVENTORY_ITEM 150u
+#define WAR3_NATIVE_OP_REPLACE_INVENTORY_CONTEXT 151u
 #define WAR3_BOUND_INVENTORY_QWORDS 49u
 #define WAR3_BOUND_UNIT_FIELD_QWORDS (15u + 36u + 121u + 121u + WAR3_BOUND_INVENTORY_QWORDS)
 #define WAR3_CLONE_FLAG_HERO 0x01u
@@ -405,6 +407,10 @@ static const char *g_persistent_native_names[] = {
     "GetHeroInt",
     "UnitItemInSlot",
     "UnitInventorySize",
+    "CreateItem",
+    "RemoveItem",
+    "UnitRemoveItem",
+    "IsItemOwned",
     "GetItemTypeId",
     "GetItemCharges",
     "BlzGetUnitAbilityByIndex",
@@ -887,6 +893,132 @@ static DWORD war3_bound_inventory(const NativeCommand *cmd, uint64_t *values) {
             *(uint64_t *)(uintptr_t)(row[7]+0x90) != row[2])) return ERROR_INVALID_HANDLE;
     }
     return war3_validate_unit_identity(cmd, &cmd->ops[0]);
+}
+
+typedef struct War3ItemIdentity {
+    uint64_t handle, object, full;
+    uint32_t rawcode;
+} War3ItemIdentity;
+
+static DWORD war3_item_identity(const War3ItemIdentity *item) {
+    JassUnitHandleResolveFn resolve=(JassUnitHandleResolveFn)(uintptr_t)g_persistent_item_resolver;
+    War3AgentResolveFn agent=(War3AgentResolveFn)(uintptr_t)g_persistent_agent_resolver;
+    JassGetItemTypeIdFn type=(JassGetItemTypeIdFn)(uintptr_t)war3_persistent_native_handler("GetItemTypeId");
+    uint64_t wrapper;
+    if (!item->handle || !item->full || !war3_readable_span(item->object,0x78) ||
+        resolve(item->handle)!=item->object || *(uint64_t *)(uintptr_t)(item->object+0x18)!=item->full ||
+        *(uint32_t *)(uintptr_t)(item->object+0x70)!=item->rawcode || type(item->handle)!=item->rawcode)
+        return ERROR_INVALID_HANDLE;
+    wrapper=agent((uint32_t)item->full,(uint32_t)(item->full>>32));
+    if (!war3_readable_span(wrapper,0x98) ||
+        *(uint64_t *)(uintptr_t)(wrapper+0x18)!=0x6974656d2b61676cULL ||
+        *(uint64_t *)(uintptr_t)(wrapper+0x20)!=item->full ||
+        *(uint64_t *)(uintptr_t)(wrapper+0x90)!=item->object) return ERROR_INVALID_HANDLE;
+    return ERROR_SUCCESS;
+}
+
+static DWORD war3_same_inventory(const NativeCommand *cmd,const uint64_t *before,unsigned slot,
+                                  const War3ItemIdentity *expected) {
+    uint64_t now[WAR3_BOUND_INVENTORY_QWORDS]={0};
+    DWORD error=war3_bound_inventory(cmd,now);
+    if(error) return error;
+    if(now[0]!=before[0]) return ERROR_INVALID_HANDLE;
+    for(unsigned n=0;n<6;++n) {
+        const uint64_t *row=now+1+n*8,*old=before+1+n*8;
+        if(n==slot) {
+            if(row[0]!=expected->handle || row[1]!=expected->full || row[2]!=expected->object || row[3]!=expected->rawcode)
+                return ERROR_INVALID_HANDLE;
+        } else if(memcmp(row,old,4*sizeof(uint64_t))) return ERROR_INVALID_HANDLE;
+    }
+    return ERROR_SUCCESS;
+}
+
+/* Return success only after the new object occupies the exact slot. Retain
+   the old object until then; never restore into a slot claimed by a trigger. */
+static DWORD war3_replace_inventory_item(NativeCommand *cmd) {
+    NativeOp *op=&cmd->ops[1],*context=&cmd->ops[2];
+    InternalUnitAddItemToSlotFn add=(InternalUnitAddItemToSlotFn)(uintptr_t)op->handler;
+    JassCreateItemFn create=(JassCreateItemFn)(uintptr_t)war3_persistent_native_handler("CreateItem");
+    JassRemoveItemFn destroy=(JassRemoveItemFn)(uintptr_t)war3_persistent_native_handler("RemoveItem");
+    JassUnitRemoveItemFn detach=(JassUnitRemoveItemFn)(uintptr_t)war3_persistent_native_handler("UnitRemoveItem");
+    JassUnitIntQueryFn owned=(JassUnitIntQueryFn)(uintptr_t)war3_persistent_native_handler("IsItemOwned");
+    JassUnitRealQueryFn get_x=(JassUnitRealQueryFn)(uintptr_t)war3_persistent_native_handler("GetUnitX");
+    JassUnitRealQueryFn get_y=(JassUnitRealQueryFn)(uintptr_t)war3_persistent_native_handler("GetUnitY");
+    JassUnitItemInSlotFn slot_fn=(JassUnitItemInSlotFn)(uintptr_t)war3_persistent_native_handler("UnitItemInSlot");
+    JassUnitHandleResolveFn resolve=(JassUnitHandleResolveFn)(uintptr_t)g_persistent_item_resolver;
+    War3ItemIdentity old={op->arg0,context->handler,op->arg1,(uint32_t)context->arg0}, fresh={0}, empty={0};
+    uint64_t before[WAR3_BOUND_INVENTORY_QWORDS]={0},unit=cmd->ops[0].handler;
+    unsigned slot=context->rawcode;
+    DWORD error=ERROR_SUCCESS,recovery=ERROR_SUCCESS;
+    int committed=0;
+    float x,y;
+    if(cmd->op_count!=3 || cmd->ops[0].kind!=WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY ||
+       context->kind!=WAR3_NATIVE_OP_REPLACE_INVENTORY_CONTEXT || slot>=6 || !op->rawcode ||
+       context->arg0>UINT32_MAX || !war3_executable_pointer(op->handler)) return ERROR_INVALID_PARAMETER;
+    const uint64_t functions[]={ (uint64_t)(uintptr_t)create,(uint64_t)(uintptr_t)destroy,
+        (uint64_t)(uintptr_t)detach,(uint64_t)(uintptr_t)owned,(uint64_t)(uintptr_t)get_x,(uint64_t)(uintptr_t)get_y };
+    for(unsigned n=0;n<sizeof(functions)/sizeof(functions[0]);++n)
+        if(!war3_executable_pointer(functions[n])) return ERROR_PROC_NOT_FOUND;
+    __try {
+        error=war3_bound_inventory(cmd,before);if(error) __leave;
+        if(slot>=before[0]) { error=ERROR_INVALID_PARAMETER;__leave; }
+        error=war3_same_inventory(cmd,before,slot,&old);if(error) __leave;
+        x=war3_real_from_bits(get_x(cmd->unit_handle));y=war3_real_from_bits(get_y(cmd->unit_handle));
+        fresh.handle=create(op->rawcode,&x,&y);
+        if(!fresh.handle) { error=ERROR_NOT_FOUND;__leave; }
+        fresh.object=resolve(fresh.handle);
+        if(!war3_readable_span(fresh.object,0x78)) { error=ERROR_INVALID_ADDRESS;__leave; }
+        fresh.full=*(uint64_t *)(uintptr_t)(fresh.object+0x18);
+        fresh.rawcode=*(uint32_t *)(uintptr_t)(fresh.object+0x70);
+        error=war3_item_identity(&fresh);if(error) __leave;
+        if(fresh.rawcode!=op->rawcode) { error=ERROR_INVALID_DATA;__leave; }
+        if(owned(fresh.handle)) { error=ERROR_INVALID_HANDLE;__leave; }
+        error=war3_same_inventory(cmd,before,slot,&old);if(error) __leave;
+        if(old.handle) detach(cmd->unit_handle,old.handle);
+        error=war3_same_inventory(cmd,before,slot,&empty);if(error) __leave;
+        error=war3_item_identity(&fresh);if(error) __leave;
+        if(owned(fresh.handle)) { error=ERROR_INVALID_HANDLE;__leave; }
+        if(!add(unit,fresh.object,(int32_t)slot,1,0)) { error=ERROR_CAN_NOT_COMPLETE;__leave; }
+        error=war3_same_inventory(cmd,before,slot,&fresh);if(error) __leave;
+        if(old.handle) {
+            error=war3_item_identity(&old);if(error) __leave;
+            if(owned(old.handle)) { error=ERROR_INVALID_HANDLE;__leave; }
+            committed=1;
+            destroy(old.handle);
+        }
+        error=war3_same_inventory(cmd,before,slot,&fresh);if(error) __leave;
+        op->result=fresh.object;context->result=fresh.rawcode;
+    } __except(EXCEPTION_EXECUTE_HANDLER) { error=GetExceptionCode(); }
+    if(committed && error) context->result=ERROR_CAN_NOT_COMPLETE;
+    if(!error || !fresh.handle || committed) return error;
+    __try {
+        /* Recovery must not touch a recycled unit, recycled item, or another
+           item's slot. If a map trigger took ownership, leave that item alone. */
+        recovery=war3_validate_unit_identity(cmd,&cmd->ops[0]);
+        if(!recovery) {
+            uint64_t current=slot_fn(cmd->unit_handle,(int32_t)slot);
+            if(current==fresh.handle && !war3_item_identity(&fresh)) {
+                detach(cmd->unit_handle,fresh.handle);
+                recovery=war3_validate_unit_identity(cmd,&cmd->ops[0]);
+            }
+            if(!recovery && slot_fn(cmd->unit_handle,(int32_t)slot) &&
+                slot_fn(cmd->unit_handle,(int32_t)slot)!=old.handle) recovery=ERROR_INVALID_HANDLE;
+            if(!recovery && old.handle && !slot_fn(cmd->unit_handle,(int32_t)slot)) {
+                recovery=war3_item_identity(&old);
+                if(!recovery && !owned(old.handle)) {
+                    if(!add(unit,old.object,(int32_t)slot,1,0)) recovery=ERROR_CAN_NOT_COMPLETE;
+                    if(!recovery) recovery=war3_same_inventory(cmd,before,slot,&old);
+                } else if(!recovery) recovery=ERROR_INVALID_HANDLE;
+            }
+        }
+        context->arg1=war3_item_identity(&fresh);
+        if(!context->arg1) {
+            if(owned(fresh.handle)) context->arg1=ERROR_BUSY;
+            else destroy(fresh.handle);
+        }
+    } __except(EXCEPTION_EXECUTE_HANDLER) { recovery=GetExceptionCode(); }
+    context->result=recovery; /* original failure remains cmd.last_error */
+    return error;
 }
 
 static int war3_is_ability_field_op(uint32_t kind) {
@@ -3071,6 +3203,7 @@ static void run_command(void) {
                 op->kind != WAR3_NATIVE_OP_BOUND_UNIT_FIELDS &&
                 op->kind != WAR3_NATIVE_OP_SET_UNIT_REGEN &&
                 op->kind != WAR3_NATIVE_OP_BOUND_INVENTORY &&
+                op->kind != WAR3_NATIVE_OP_REPLACE_INVENTORY_ITEM &&
                 op->kind != WAR3_NATIVE_OP_BOUND_ABILITY_IDENTITY &&
                 op->kind != WAR3_NATIVE_OP_BOUND_INVENTORY_ITEM &&
                 !war3_is_internal_ability_op(op->kind) &&
@@ -3120,6 +3253,12 @@ static void run_command(void) {
             goto finish;
         }
         switch (op->kind) {
+            case WAR3_NATIVE_OP_REPLACE_INVENTORY_ITEM: {
+                last_error=(i==1 && cmd.op_count==3) ? war3_replace_inventory_item(&cmd) : ERROR_INVALID_DATA;
+                if(last_error) { op->last_error=last_error;goto finish; }
+                ++i;
+                break;
+            }
             case WAR3_NATIVE_OP_BOUND_INVENTORY: {
                 if (i != 1 || cmd.op_count != 2 || cmd.ops[0].kind != WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY) {
                     last_error = ERROR_INVALID_DATA;

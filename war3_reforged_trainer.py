@@ -2619,7 +2619,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 55
+    NATIVE_HELPER_VERSION = 56
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -2725,6 +2725,7 @@ class War3Trainer:
     NATIVE_HELPER_OP_ABILITY_EFFECT_OPTIONS = 159
     NATIVE_HELPER_OP_FINISH_ABILITY_EFFECT = 160
     NATIVE_HELPER_OP_ENABLE_BOUND_TOGGLE = 161
+    NATIVE_HELPER_OP_BOUND_WORLD_EFFECT = 162
     PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 154
     NATIVE_BASIC_FIELD_ARGUMENTS = {
         "hp_current": ("target_hp", "hp"),
@@ -2780,6 +2781,10 @@ class War3Trainer:
         "BlzUnitHideAbility",
         "IssueImmediateOrderById",
         "GetUnitCurrentOrder",
+        "GroupEnumUnitsOfPlayer",
+        "Player",
+        "GetWidgetLife",
+        "IsPlayerEnemy",
     )
 
     def __init__(self, pid: int | None = None):
@@ -4228,6 +4233,8 @@ class War3Trainer:
                     details = f" effect_token={operation[2]} effect_cleanup_error={operation[7]}"
                 elif operation[0] == self.NATIVE_HELPER_OP_ENABLE_BOUND_TOGGLE:
                     details = f" toggle_order_accepted={operation[5]} toggle_cleanup_error={operation[7]}"
+                elif operation[0] == self.NATIVE_HELPER_OP_BOUND_WORLD_EFFECT:
+                    details = f" world_attempts={operation[5] >> 32} world_callbacks={operation[5] & 0xFFFFFFFF} world_cleanup_error={operation[7]}"
             if actual_count == op_count == 3:
                 base, size = self.NATIVE_HELPER_HEADER_STRUCT.size, self.NATIVE_HELPER_OP_STRUCT.size
                 operation = self.NATIVE_HELPER_OP_STRUCT.unpack_from(data, base + size)
@@ -4624,6 +4631,7 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_ABILITY_EFFECT_OPTIONS,
             self.NATIVE_HELPER_OP_FINISH_ABILITY_EFFECT,
             self.NATIVE_HELPER_OP_ENABLE_BOUND_TOGGLE,
+            self.NATIVE_HELPER_OP_BOUND_WORLD_EFFECT,
             self.NATIVE_HELPER_OP_BOUND_INVENTORY_ITEM,
             self.NATIVE_HELPER_OP_BOUND_ITEM_TYPE,
         }
@@ -5524,143 +5532,31 @@ class War3Trainer:
             )
 
     def _run_direct_ability_over_enemy_units_locked(
-        self,
-        rawcode: int | str,
-        mode: str,
-        *,
-        success_limit: int = 0,
+        self, rawcode: int | str, mode: str, *, success_limit: int = 0,
     ) -> tuple[int, int]:
         ability_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
-        mode_values = {"target": (0, 0xA70), "point": (1, 0xA58)}
-        if mode not in mode_values:
-            raise ValueError(f"不支持的全图直接效果类型：{mode}")
-        target_limit = int(success_limit)
-        if not 0 <= target_limit <= 0xFFFF:
-            raise ValueError("成功目标上限必须在 0 到 65535 之间")
-        mode_value, vtable_offset = mode_values[mode]
-        added = False
-        candidate: UnitCandidate | None = None
-        ability_data = 0
-        try:
-            candidate, unit_handle = self._direct_selected_context()
-            with self._process_memory() as pm:
-                handlers = self._elephant_handlers(
-                    pm,
-                    (
-                        "GetUnitAbilityLevel",
-                        "GetOwningPlayer",
-                        "CreateGroup",
-                        "GroupEnumUnitsOfPlayer",
-                        "FirstOfGroup",
-                        "GroupRemoveUnit",
-                        "DestroyGroup",
-                        "Player",
-                        "GetUnitTypeId",
-                        "GetWidgetLife",
-                        "GetUnitX",
-                        "GetUnitY",
-                        "IsPlayerEnemy",
-                    ),
-                )
-                resolver = self._discover_jass_unit_resolver(pm)
-            level = int(self._run_native_helper_ops(
-                unit_handle,
-                ((
-                    self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE_LEVEL,
-                    ability_rawcode,
-                    handlers["GetUnitAbilityLevel"].handler_address,
-                    0,
-                    0,
-                ),),
-            )[0].result)
-            if not level:
-                with self._process_memory() as pm:
-                    created_instance, added = self._create_engine_ability_instance(
-                        pm,
-                        candidate,
-                        ability_rawcode,
-                        require_wrapper=False,
-                    )
-                    ability_data = created_instance.data_address
-            with self._process_memory() as pm:
-                assert candidate is not None
-                ability_data = ability_data or self._find_engine_ability_data(
-                    pm,
-                    candidate,
-                    ability_rawcode,
-                )
-                if not ability_data:
-                    raise RuntimeError(
-                        f"找不到 {format_rawcode(ability_rawcode)} 的运行时技能实例"
-                    )
-                ability_vtable = pm.read_u64(ability_data)
-                direct_handler = pm.read_u64(ability_vtable + vtable_offset)
-                if not self._is_executable_image_address(pm.regions(), direct_handler):
-                    raise RuntimeError("技能直接效果回调不在游戏可执行代码段")
-            flags = mode_value | (target_limit << 16)
-            result = self._run_native_helper_ops(
-                unit_handle,
-                (
-                    (
-                        self.NATIVE_HELPER_OP_DIRECT_ABILITY_ENUM,
-                        ability_rawcode,
-                        direct_handler,
-                        ability_data,
-                        flags,
-                    ),
-                    (
-                        self.NATIVE_HELPER_OP_JASS_MULTI_ARG,
-                        0,
-                        handlers["GetOwningPlayer"].handler_address,
-                        handlers["CreateGroup"].handler_address,
-                        handlers["GroupEnumUnitsOfPlayer"].handler_address,
-                    ),
-                    (
-                        self.NATIVE_HELPER_OP_JASS_MULTI_ARG,
-                        0,
-                        handlers["FirstOfGroup"].handler_address,
-                        handlers["GroupRemoveUnit"].handler_address,
-                        handlers["DestroyGroup"].handler_address,
-                    ),
-                    (
-                        self.NATIVE_HELPER_OP_JASS_MULTI_ARG,
-                        0,
-                        handlers["Player"].handler_address,
-                        handlers["GetUnitTypeId"].handler_address,
-                        handlers["GetWidgetLife"].handler_address,
-                    ),
-                    (
-                        self.NATIVE_HELPER_OP_JASS_MULTI_ARG,
-                        0,
-                        handlers["GetUnitX"].handler_address,
-                        handlers["GetUnitY"].handler_address,
-                        handlers["IsPlayerEnemy"].handler_address,
-                    ),
-                    (
-                        self.NATIVE_HELPER_OP_JASS_MULTI_ARG,
-                        vtable_offset,
-                        resolver,
-                        110000,
-                        0,
-                    ),
-                ),
-                timeout_ms=120000,
-            )[0]
-            packed = int(result.result)
-            attempts = (packed >> 32) & 0xFFFFFFFF
-            successes = packed & 0xFFFFFFFF
-            if len(result.extra_results) != successes:
-                raise RuntimeError(
-                    f"全图技能返回的目标数量异常：{len(result.extra_results)}!={successes}"
-                )
-            return attempts, successes
-        finally:
-            if added and candidate is not None and ability_data:
-                self._remove_captured_engine_ability_instance(
-                    candidate,
-                    unit_handle,
-                    ability_data,
-                )
+        effect_mode = {"target": 1, "point": 3}.get(mode)
+        limit = int(success_limit)
+        if not ability_rawcode or effect_mode is None or not 0 <= limit <= 65535:
+            raise ValueError("Invalid world ability effect parameters")
+        candidate, handle = self._direct_selected_context()
+        native = self._native_snapshot_for_candidate(candidate)
+        if native is None or native.handle != handle:
+            raise RuntimeError("World effect requires a bound native unit identity")
+        response = self._run_native_helper_ops(handle, (
+            (self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY, 0,
+             candidate.unit_address, candidate.handle, candidate.owner_address),
+            (self.NATIVE_HELPER_OP_BOUND_WORLD_EFFECT, ability_rawcode, effect_mode, limit, 0),
+        ), timeout_ms=120000)
+        if (len(response) != 2 or any(item.last_error for item in response)
+                or response[0].kind != self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY or response[0].result != 1
+                or response[1].kind != self.NATIVE_HELPER_OP_BOUND_WORLD_EFFECT):
+            raise RuntimeError("Incomplete native world effect result")
+        packed = int(response[1].result)
+        attempts, successes = packed >> 32, packed & 0xFFFFFFFF
+        if not 0 <= successes <= attempts <= 100000 or (limit and successes > limit):
+            raise RuntimeError("Invalid native world effect counts")
+        return attempts, successes
 
     def get_selected_unit_position(self) -> tuple[float, float]:
         with self._process_memory() as pm:

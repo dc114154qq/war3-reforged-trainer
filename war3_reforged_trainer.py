@@ -2619,7 +2619,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 53
+    NATIVE_HELPER_VERSION = 54
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -5435,8 +5435,9 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_DIRECT_ABILITY_IMMEDIATE: 2,
             self.NATIVE_HELPER_OP_DIRECT_ABILITY_POINT: 3,
             self.NATIVE_HELPER_OP_DIRECT_ABILITY_NOARG_DERIVED: 4,
+            self.NATIVE_HELPER_OP_DIRECT_ABILITY_BUFF: 5,
         }.get(op_kind)
-        if effect_kind is None or int(vtable_offset) != {1: 0xA70, 2: 0x998, 3: 0xA58, 4: 0xA78}[effect_kind]:
+        if effect_kind is None or int(vtable_offset) != {1: 0xA70, 2: 0x998, 3: 0xA58, 4: 0xA78, 5: 0xA00}[effect_kind]:
             raise ValueError("Unsupported direct ability effect type")
         candidate, unit_handle = self._direct_selected_context()
         native = self._native_snapshot_for_candidate(candidate)
@@ -5497,99 +5498,14 @@ class War3Trainer:
         self._jass_unit_resolver_address = resolver
         return resolver
 
-    def _discover_buff_data_constructor(self, pm: ProcessMemory, effect_handler: int) -> int:
-        if self._buff_data_constructor_address:
-            if self._is_executable_image_address(pm.regions(), self._buff_data_constructor_address):
-                return self._buff_data_constructor_address
-            self._buff_data_constructor_address = 0
-        signature = b"\xc7\x41\x20\xff\xff\xff\xff"
-        for address in self._rel32_calls_in_function(pm, effect_handler, max_bytes=0x500):
-            try:
-                code = pm.read(address, 0x180)
-            except OSError:
-                continue
-            if signature not in code[:0x40]:
-                continue
-            if not self._is_executable_image_address(pm.regions(), address):
-                continue
-            self._buff_data_constructor_address = address
-            return address
-        raise RuntimeError("未能从技能效果函数中定位 SBuffData 构造函数")
-
     def apply_direct_roar_buff_to_selected_unit(self, rawcode: int | str) -> int:
         with self._native_helper_transaction():
             return self._apply_direct_roar_buff_to_selected_unit_locked(rawcode)
 
     def _apply_direct_roar_buff_to_selected_unit_locked(self, rawcode: int | str) -> int:
-        ability_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
-        if not ability_rawcode:
-            raise ValueError("技能 ID 无效")
-        added = False
-        candidate: UnitCandidate | None = None
-        ability_data = 0
-        try:
-            candidate, unit_handle = self._direct_selected_context()
-            with self._process_memory() as pm:
-                get_level = self._elephant_handlers(
-                    pm,
-                    ("GetUnitAbilityLevel",),
-                )["GetUnitAbilityLevel"].handler_address
-            level = int(self._run_native_helper_ops(
-                unit_handle,
-                ((
-                    self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE_LEVEL,
-                    ability_rawcode,
-                    get_level,
-                    0,
-                    0,
-                ),),
-            )[0].result)
-            if not level:
-                with self._process_memory() as pm:
-                    created_instance, added = self._create_engine_ability_instance(
-                        pm,
-                        candidate,
-                        ability_rawcode,
-                        require_wrapper=False,
-                    )
-                    ability_data = created_instance.data_address
-            with self._process_memory() as pm:
-                assert candidate is not None
-                ability_data = ability_data or self._find_engine_ability_data(
-                    pm,
-                    candidate,
-                    ability_rawcode,
-                )
-                if not ability_data:
-                    raise RuntimeError(
-                        f"找不到 {format_rawcode(ability_rawcode)} 的运行时技能实例"
-                    )
-                ability_vtable = pm.read_u64(ability_data)
-                effect_handler = pm.read_u64(ability_vtable + 0x998)
-                buff_handler = pm.read_u64(ability_vtable + 0xA00)
-                constructor = self._discover_buff_data_constructor(pm, effect_handler)
-                regions = pm.regions()
-                for label, address in (("AddBuff", buff_handler), ("SBuffData", constructor)):
-                    if not self._is_executable_image_address(regions, address):
-                        raise RuntimeError(f"{label} 回调不在游戏可执行代码段")
-                target_unit = candidate.unit_address
-            return int(self._run_native_helper_ops(
-                target_unit,
-                ((
-                    self.NATIVE_HELPER_OP_DIRECT_ABILITY_BUFF,
-                    ability_rawcode,
-                    buff_handler,
-                    ability_data,
-                    constructor,
-                ),),
-            )[0].result)
-        finally:
-            if added and candidate is not None and ability_data:
-                self._remove_captured_engine_ability_instance(
-                    candidate,
-                    unit_handle,
-                    ability_data,
-                )
+        return self._run_direct_selected_ability_locked(
+            rawcode, self.NATIVE_HELPER_OP_DIRECT_ABILITY_BUFF, 0xA00, 0,
+        )
 
     def _run_direct_ability_over_enemy_units(
         self,

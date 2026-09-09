@@ -46,6 +46,7 @@ __declspec(dllexport) DWORD direct_test(const wchar_t *directory,unsigned effect
     direct_vtable[0xa70/8]=(uint64_t)(uintptr_t)direct_target;
     direct_vtable[0x998/8]=direct_vtable[0xa78/8]=(uint64_t)(uintptr_t)direct_effect;
     direct_vtable[0xa58/8]=(uint64_t)(uintptr_t)direct_point;
+    direct_vtable[0xa00/8]=(uint64_t)(uintptr_t)direct_effect;
     *(uint64_t *)action_data[0]=(uint64_t)(uintptr_t)direct_vtable;
     if(failure==106) direct_vtable[0x998/8]=0;
     if(failure==107) *(uint64_t *)action_data[0]=1;
@@ -122,6 +123,7 @@ def test_effect_lifecycle_with_existing_or_resource_created_ability(native,tmp_p
     (2,0,1,[0,0,0,0]),(2,1,18,[0,0,0,1]),(2,1,26,[0,0,0,1]),
     (2,0,5,[1,0,0,0]),(2,0,6,[1,0,0,1]),(2,0,7,[1,0,0,1]),(2,0,8,[1,0,0,1]),
     (2,0,9,[1,1,1,1]),(2,0,10,[1,1,1,0]),(2,0,11,[1,1,1,1]),(2,0,12,[1,1,1,0]),
+    (5,0,0,[1,1,0,0]),(5,1,0,[0,0,0,1]), # unknown buff effect ABI is never invoked
 ])
 def test_failures_preserve_identity_and_report_cleanup(native,tmp_path,effect,initial,fault,counts):
     out,payload=execute(native,tmp_path,effect,initial,fault)

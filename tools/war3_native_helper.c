@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 53u
+#define WAR3_NATIVE_VERSION 54u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -959,6 +959,8 @@ static DWORD war3_direct_identity_memory(const NativeCommand *cmd,uint32_t id,co
     return ERROR_SUCCESS;
 }
 
+#include "war3_native_buff.h"
+
 /* Execute one direct ability effect while the unit and ability generations
    remain pinned inside the game-thread callback. The controller supplies no
    ability object or callback address. */
@@ -972,7 +974,7 @@ static DWORD war3_bound_direct_ability(NativeCommand *cmd, NativeOp *op) {
     DWORD error=ERROR_SUCCESS,cleanup=ERROR_SUCCESS;
     float x=war3_real_from_bits((uint32_t)op->arg0),y=war3_real_from_bits((uint32_t)op->arg1);
     if(cmd->op_count!=2 || cmd->ops[0].kind!=WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY ||
-       !op->rawcode || op->handler<1 || op->handler>4 ||
+       !op->rawcode || op->handler<1 || op->handler>5 ||
        !war3_executable_pointer((uint64_t)(uintptr_t)lookup) ||
        !war3_executable_pointer((uint64_t)(uintptr_t)get_id) ||
        !war3_executable_pointer((uint64_t)(uintptr_t)add) ||
@@ -982,7 +984,7 @@ static DWORD war3_bound_direct_ability(NativeCommand *cmd, NativeOp *op) {
            x < -1000000.0f || x > 1000000.0f || y < -1000000.0f || y > 1000000.0f)
             return ERROR_INVALID_PARAMETER;
     } else if(op->arg0 || op->arg1) return ERROR_INVALID_PARAMETER;
-    offset=op->handler==1?0xa70u:op->handler==2?0x998u:op->handler==3?0xa58u:0xa78u;
+    offset=op->handler==1?0xa70u:op->handler==2?0x998u:op->handler==3?0xa58u:op->handler==4?0xa78u:0xa00u;
     op->result=0;op->reserved=0;
     ZeroMemory(values,sizeof(values));ZeroMemory(after,sizeof(after));
     __try {
@@ -1004,7 +1006,14 @@ static DWORD war3_bound_direct_ability(NativeCommand *cmd, NativeOp *op) {
         if(!war3_readable_span(vtable,(size_t)offset+8u)) {error=ERROR_INVALID_ADDRESS;__leave;}
         callback=*(uint64_t *)(uintptr_t)(vtable+offset);
         if(!war3_executable_pointer(callback)) {error=ERROR_INVALID_ADDRESS;__leave;}
-        if(op->handler==1) {
+        if(op->handler==5) {
+            uint64_t constructor=0;
+            error=war3_buff_constructor((uint64_t)(uintptr_t)g_bootstrap_module,
+                                       *(uint64_t *)(uintptr_t)(vtable+0x998),&constructor);
+            if(error) __leave;
+            error=war3_invoke_bound_buff(cmd,op->rawcode,values,constructor,callback);
+            if(error) __leave;
+        } else if(op->handler==1) {
             ((DirectAbilityTargetFn)(uintptr_t)callback)(ability,cmd->ops[0].handler);
         } else if(op->handler==3) {
             ((DirectAbilityPointFn)(uintptr_t)callback)(ability,&x,&y);

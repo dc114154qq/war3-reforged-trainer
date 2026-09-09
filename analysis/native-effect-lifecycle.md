@@ -1,5 +1,9 @@
 # Ability effect lifecycle, protocol 51
 
+Historical increment: protocol 52 adds game-thread deadline cleanup and late
+finish receipts; see `native-effect-deadline.md`. The limitations below describe
+the protocol 51 state and are not all still outstanding.
+
 The selected sustained/area effect entry point now uses op 136 + 158 + 159 to
 start, and op 136 + 160 to finish. The native helper retains the unit's JASS
 handle and full identity, ability wrapper/data generation and level, original

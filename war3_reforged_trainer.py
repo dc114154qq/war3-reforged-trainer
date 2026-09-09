@@ -2619,7 +2619,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 51
+    NATIVE_HELPER_VERSION = 52
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -5945,7 +5945,7 @@ class War3Trainer:
         response = self._run_native_helper_ops(handle, (
             guard,
             (self.NATIVE_HELPER_OP_START_ABILITY_EFFECT, ability_rawcode, mode, count, packed_point),
-            (self.NATIVE_HELPER_OP_ABILITY_EFFECT_OPTIONS, flags, 0, area_bits, 0),
+            (self.NATIVE_HELPER_OP_ABILITY_EFFECT_OPTIONS, flags, 0, area_bits, math.ceil(duration * 1000)),
         ))
         token = response[1].result if len(response) >= 2 and response[1].kind == self.NATIVE_HELPER_OP_START_ABILITY_EFFECT else 0
         try:

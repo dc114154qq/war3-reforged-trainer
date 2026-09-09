@@ -1,13 +1,42 @@
 /* All access is serialized by the existing game-thread dispatcher. Tokens
    describe a particular effect instance, never a currently selected unit. */
 typedef struct War3AbilityEffect {
-    uint64_t token,identity[10];
+    uint64_t token,identity[10],deadline;
     NativeCommand bound;
     uint32_t id,added,captured,area_touched,original_area,requested_area;
     uint32_t hold,invoked,order,order_known,level,executed;
 } War3AbilityEffect;
 static War3AbilityEffect g_ability_effects[16];
 static uint64_t g_ability_effect_serial;
+typedef struct War3EffectReceipt {
+    uint64_t token,unit,full,owner,jass;
+} War3EffectReceipt;
+static War3EffectReceipt g_effect_receipts[32];
+static unsigned g_effect_receipt_next;
+static UINT_PTR g_effect_timer;
+static DWORD g_effect_timer_thread;
+static int g_effect_module_pinned;
+static VOID CALLBACK war3_effect_timer_proc(HWND window,UINT message,UINT_PTR timer,DWORD tick);
+
+static DWORD war3_effect_arm_timer(void) {
+    if(g_effect_timer) return g_effect_timer_thread==GetCurrentThreadId()?ERROR_SUCCESS:ERROR_INVALID_THREAD_ID;
+    if(!g_effect_module_pinned) {
+        HMODULE module=NULL;
+        /* The timer must remain callable if Windows removes the controller's
+           hook after its process exits. Keep this helper until game exit. */
+        if(!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS|GET_MODULE_HANDLE_EX_FLAG_PIN,
+            (LPCWSTR)(uintptr_t)war3_effect_timer_proc,&module)) return ERROR_MOD_NOT_FOUND;
+        g_effect_module_pinned=1;
+    }
+    g_effect_timer=SetTimer(NULL,0,50,war3_effect_timer_proc);
+    if(!g_effect_timer) return ERROR_NOT_ENOUGH_MEMORY;
+    g_effect_timer_thread=GetCurrentThreadId();return ERROR_SUCCESS;
+}
+
+static void war3_effect_disarm_if_idle(void) {
+    for(unsigned n=0;n<16;++n) if(g_ability_effects[n].token && g_ability_effects[n].deadline) return;
+    if(g_effect_timer) {KillTimer(NULL,g_effect_timer);g_effect_timer=0;g_effect_timer_thread=0;}
+}
 
 static DWORD war3_effect_check(War3AbilityEffect *s) {
     uint64_t current[10];DWORD error=war3_action_ability_state(&s->bound,s->id,current);
@@ -67,23 +96,62 @@ static DWORD war3_effect_cleanup(War3AbilityEffect *s) {
     ZeroMemory(s,sizeof(*s));return ERROR_SUCCESS;
 }
 
+static DWORD war3_effect_complete(War3AbilityEffect *s) {
+    War3EffectReceipt receipt={s->token,s->bound.ops[0].handler,s->bound.ops[0].arg0,s->bound.ops[0].arg1,s->bound.unit_handle};
+    DWORD error;
+    __try {error=war3_effect_cleanup(s);} __except(EXCEPTION_EXECUTE_HANDLER) {error=GetExceptionCode();}
+    if(!error) {g_effect_receipts[g_effect_receipt_next++%32]=receipt;}
+    return error;
+}
+
+static VOID CALLBACK war3_effect_timer_proc(HWND window,UINT message,UINT_PTR timer,DWORD tick) {
+    (void)window;(void)message;(void)tick;
+    if(!g_effect_timer || timer!=g_effect_timer || GetCurrentThreadId()!=g_effect_timer_thread ||
+       InterlockedCompareExchange(&g_processing,1,0)!=0) return;
+    __try {
+        uint64_t now=GetTickCount64();int due=0;
+        for(unsigned n=0;n<16;++n) if(g_ability_effects[n].token && g_ability_effects[n].deadline && now>=g_ability_effects[n].deadline) due=1;
+        if(due) {
+            DWORD binding=g_bootstrap_module?war3_bootstrap_refresh():ERROR_SUCCESS;
+            for(unsigned n=0;n<16;++n) {
+                War3AbilityEffect *s=&g_ability_effects[n];
+                if(!s->token || !s->deadline || now<s->deadline) continue;
+                /* One deadline attempt; failures retain their token for an
+                   explicit retry rather than repeatedly touching the game. */
+                s->deadline=0;
+                DWORD error=binding?binding:war3_effect_complete(s);
+                if(error) s->bound.last_error=error;
+            }
+        }
+        war3_effect_disarm_if_idle();
+    } __finally {InterlockedExchange(&g_processing,0);}
+}
+
 static DWORD war3_finish_ability_effect(NativeCommand *cmd,NativeOp *op) {
     if(cmd->op_count!=2 || cmd->ops[0].kind!=WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY ||
        !op->handler || op->rawcode || op->arg0 || op->arg1) return ERROR_INVALID_PARAMETER;
+    for(unsigned n=0;n<32;++n) {
+        const War3EffectReceipt *r=&g_effect_receipts[n];if(r->token!=op->handler) continue;
+        if(r->unit!=cmd->ops[0].handler || r->full!=cmd->ops[0].arg0 || r->owner!=cmd->ops[0].arg1 || r->jass!=cmd->unit_handle)
+            return ERROR_INVALID_HANDLE;
+        op->result=1;op->reserved=0;return ERROR_SUCCESS;
+    }
     for(unsigned n=0;n<16;++n) {
         War3AbilityEffect *s=&g_ability_effects[n];if(s->token!=op->handler) continue;
         if(cmd->unit_handle!=s->bound.unit_handle || cmd->ops[0].handler!=s->bound.ops[0].handler ||
            cmd->ops[0].arg0!=s->bound.ops[0].arg0 || cmd->ops[0].arg1!=s->bound.ops[0].arg1)
             return ERROR_INVALID_HANDLE;
         DWORD error;
-        __try {error=war3_effect_cleanup(s);} __except(EXCEPTION_EXECUTE_HANDLER) {error=GetExceptionCode();}
+        error=war3_effect_complete(s);
+        war3_effect_disarm_if_idle();
         op->reserved=error;op->result=error?0:1;return error;
     }
     return ERROR_NOT_FOUND;
 }
 
 /* op158: rawcode=id, handler=mode(2/3/4), arg0=passes, arg1=packed XY.
-   op159: rawcode=flags(area=1,hold=2,unit-position=4), arg0=area float bits. */
+   op159: rawcode=flags(area=1,hold=2,unit-position=4), arg0=area float bits,
+   arg1=hold duration in milliseconds (1..120000 when held, otherwise zero). */
 static DWORD war3_start_ability_effect(NativeCommand *cmd,NativeOp *op) {
     const NativeOp *options=&cmd->ops[2];uint32_t flags=options->rawcode;
     DWORD error=ERROR_SUCCESS,cleanup=ERROR_SUCCESS;War3AbilityEffect *s=NULL;
@@ -93,7 +161,8 @@ static DWORD war3_start_ability_effect(NativeCommand *cmd,NativeOp *op) {
     const char *required[]={"UnitAddAbility","UnitRemoveAbility","BlzGetAbilityRealLevelField",
         "BlzSetAbilityRealLevelField","BlzUnitHideAbility","IssueImmediateOrderById","GetUnitCurrentOrder","GetUnitX","GetUnitY"};
     if(cmd->op_count!=3 || cmd->ops[0].kind!=WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY ||
-       options->kind!=WAR3_NATIVE_OP_ABILITY_EFFECT_OPTIONS || options->handler || options->arg1 ||
+       options->kind!=WAR3_NATIVE_OP_ABILITY_EFFECT_OPTIONS || options->handler ||
+       ((flags&2)?(!options->arg1 || options->arg1>120000):options->arg1!=0) ||
        flags>7 || !op->rawcode || op->handler<2 || op->handler>4 || !op->arg0 || op->arg0>255 ||
        options->arg0>UINT32_MAX || (!(flags&1) && options->arg0) ||
        ((flags&1) && (!(area==area) || area<1.0f || area>1000000.0f)) ||
@@ -110,6 +179,7 @@ static DWORD war3_start_ability_effect(NativeCommand *cmd,NativeOp *op) {
         if(!entry->token && !s) s=entry;
     }
     if(!s || g_ability_effect_serial==UINT64_MAX) return ERROR_TOO_MANY_CMDS;
+    if(flags&2) {error=war3_effect_arm_timer();if(error) return error;}
     ZeroMemory(s,sizeof(*s));s->token=++g_ability_effect_serial;s->bound=*cmd;s->id=op->rawcode;s->hold=flags&2;
     slot=op->handler==2?0x998u:op->handler==3?0xa58u:0xa78u;
     __try {
@@ -157,6 +227,7 @@ static DWORD war3_start_ability_effect(NativeCommand *cmd,NativeOp *op) {
         if(s->hold) {
             s->order=(uint32_t)((JassUnitIntQueryFn)(uintptr_t)war3_persistent_native_handler("GetUnitCurrentOrder"))(cmd->unit_handle);
             error=war3_effect_check(s);if(error) __leave;s->order_known=1;
+            s->deadline=GetTickCount64()+options->arg1;
         }
     } __except(EXCEPTION_EXECUTE_HANDLER) {error=GetExceptionCode();}
     op->arg0=s->executed;
@@ -168,5 +239,6 @@ static DWORD war3_start_ability_effect(NativeCommand *cmd,NativeOp *op) {
         } __except(EXCEPTION_EXECUTE_HANDLER) {cleanup=GetExceptionCode();}
     }
     op->result=s->token;op->reserved=cleanup;
+    war3_effect_disarm_if_idle();
     return error?error:cleanup;
 }

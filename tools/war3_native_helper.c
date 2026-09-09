@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 44u
+#define WAR3_NATIVE_VERSION 45u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -98,6 +98,7 @@
 #define WAR3_NATIVE_OP_REPLACE_INVENTORY_ITEM 150u
 #define WAR3_NATIVE_OP_REPLACE_INVENTORY_CONTEXT 151u
 #define WAR3_NATIVE_OP_WRITE_COMPONENT_FIELDS 152u
+#define WAR3_NATIVE_OP_SET_BOUND_HERO_INT 153u
 #define WAR3_BOUND_INVENTORY_QWORDS 49u
 #define WAR3_BOUND_UNIT_FIELD_QWORDS (15u + 36u + 121u + 121u + WAR3_BOUND_INVENTORY_QWORDS + 4u)
 #define WAR3_CLONE_FLAG_HERO 0x01u
@@ -406,6 +407,7 @@ static const char *g_persistent_native_names[] = {
     "GetHeroStr",
     "GetHeroAgi",
     "GetHeroInt",
+    "SetHeroInt",
     "UnitItemInSlot",
     "UnitInventorySize",
     "CreateItem",
@@ -1107,6 +1109,58 @@ static DWORD war3_write_component_fields(NativeCommand *cmd) {
             *(uint32_t *)(uintptr_t)addresses[n]=(uint32_t)cmd->ops[n].arg1;
         for(unsigned n=1;n<cmd->op_count;++n)
             cmd->ops[n].result=*(uint32_t *)(uintptr_t)addresses[n];
+    } __except(EXCEPTION_EXECUTE_HANDLER) { error=GetExceptionCode(); }
+    return error;
+}
+
+static DWORD war3_validate_hero_component(const NativeCommand *cmd,const NativeOp *op) {
+    uint64_t unit=cmd->ops[0].handler,data=op->handler,wrapper;
+    DWORD error=war3_validate_unit_identity(cmd,&cmd->ops[0]);
+    if(error) return error;
+    if(!op->arg0 || !war3_readable_span(unit+0x5a8,8) ||
+        *(uint64_t *)(uintptr_t)(unit+0x5a8)!=data || !war3_readable_span(data,0x70) ||
+        *(uint64_t *)(uintptr_t)(data+0x18)!=op->arg0 ||
+        *(uint64_t *)(uintptr_t)(data+0x68)!=unit) return ERROR_INVALID_HANDLE;
+    wrapper=((War3AgentResolveFn)(uintptr_t)g_persistent_agent_resolver)((uint32_t)op->arg0,(uint32_t)(op->arg0>>32));
+    if(!war3_readable_span(wrapper,0x98) || *(uint64_t *)(uintptr_t)(wrapper+0x18)!=0x414865722b61676cULL ||
+        *(uint64_t *)(uintptr_t)(wrapper+0x20)!=op->arg0 ||
+        *(uint64_t *)(uintptr_t)(wrapper+0x50)!=cmd->ops[0].arg1 ||
+        *(uint64_t *)(uintptr_t)(wrapper+0x90)!=data) return ERROR_INVALID_HANDLE;
+    return ERROR_SUCCESS;
+}
+
+static DWORD war3_set_bound_hero_int(NativeCommand *cmd,NativeOp *op) {
+    JassGetHeroStatFn get=(JassGetHeroStatFn)(uintptr_t)war3_persistent_native_handler("GetHeroInt");
+    JassSetHeroStatFn set=(JassSetHeroStatFn)(uintptr_t)war3_persistent_native_handler("SetHeroInt");
+    JassUnitIntQueryFn level=(JassUnitIntQueryFn)(uintptr_t)war3_persistent_native_handler("GetHeroLevel");
+    int32_t base,total;
+    DWORD error=ERROR_SUCCESS;
+    if(cmd->op_count!=2 || cmd->ops[0].kind!=WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY || op->rawcode>1000000u)
+        return ERROR_INVALID_PARAMETER;
+    if(!war3_executable_pointer((uint64_t)(uintptr_t)get) || !war3_executable_pointer((uint64_t)(uintptr_t)set) ||
+        !war3_executable_pointer((uint64_t)(uintptr_t)level)) return ERROR_PROC_NOT_FOUND;
+    __try {
+        error=war3_validate_hero_component(cmd,op);if(error) __leave;
+        if(level(cmd->unit_handle)<=0) { error=ERROR_INVALID_PARAMETER;__leave; }
+        error=war3_validate_hero_component(cmd,op);if(error) __leave;
+        base=get(cmd->unit_handle,0);
+        error=war3_validate_hero_component(cmd,op);if(error) __leave;
+        total=get(cmd->unit_handle,1);
+        error=war3_validate_hero_component(cmd,op);if(error) __leave;
+        /* At most one correction, using the latest base/total pair, always
+           on the same unit and hero component. No delayed external retry. */
+        for(unsigned attempt=0;attempt<2;++attempt) {
+            int64_t target_base=(int64_t)base+(int64_t)op->rawcode-(int64_t)total;
+            if(target_base<0 || target_base>INT32_MAX) { error=ERROR_INVALID_PARAMETER;__leave; }
+            set(cmd->unit_handle,(int32_t)target_base,1);
+            error=war3_validate_hero_component(cmd,op);if(error) __leave;
+            base=get(cmd->unit_handle,0);
+            error=war3_validate_hero_component(cmd,op);if(error) __leave;
+            total=get(cmd->unit_handle,1);
+            error=war3_validate_hero_component(cmd,op);if(error) __leave;
+            if(total==(int32_t)op->rawcode) { op->result=(uint32_t)total;op->arg1=(uint32_t)base;__leave; }
+        }
+        if(!error && total!=(int32_t)op->rawcode) error=ERROR_CAN_NOT_COMPLETE;
     } __except(EXCEPTION_EXECUTE_HANDLER) { error=GetExceptionCode(); }
     return error;
 }
@@ -3295,6 +3349,7 @@ static void run_command(void) {
                 op->kind != WAR3_NATIVE_OP_BOUND_INVENTORY &&
                 op->kind != WAR3_NATIVE_OP_REPLACE_INVENTORY_ITEM &&
                 op->kind != WAR3_NATIVE_OP_WRITE_COMPONENT_FIELDS &&
+                op->kind != WAR3_NATIVE_OP_SET_BOUND_HERO_INT &&
                 op->kind != WAR3_NATIVE_OP_BOUND_ABILITY_IDENTITY &&
                 op->kind != WAR3_NATIVE_OP_BOUND_INVENTORY_ITEM &&
                 !war3_is_internal_ability_op(op->kind) &&
@@ -3344,6 +3399,11 @@ static void run_command(void) {
             goto finish;
         }
         switch (op->kind) {
+            case WAR3_NATIVE_OP_SET_BOUND_HERO_INT: {
+                last_error=i==1?war3_set_bound_hero_int(&cmd,op):ERROR_INVALID_PARAMETER;
+                if(last_error) { op->last_error=last_error;goto finish; }
+                break;
+            }
             case WAR3_NATIVE_OP_WRITE_COMPONENT_FIELDS: {
                 last_error=i==1?war3_write_component_fields(&cmd):ERROR_INVALID_PARAMETER;
                 if(last_error) { op->last_error=last_error;goto finish; }

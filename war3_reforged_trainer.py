@@ -2618,7 +2618,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 44
+    NATIVE_HELPER_VERSION = 45
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -2715,6 +2715,7 @@ class War3Trainer:
     NATIVE_HELPER_OP_REPLACE_INVENTORY_ITEM = 150
     NATIVE_HELPER_OP_REPLACE_INVENTORY_CONTEXT = 151
     NATIVE_HELPER_OP_WRITE_COMPONENT_FIELDS = 152
+    NATIVE_HELPER_OP_SET_BOUND_HERO_INT = 153
     PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 153
     NATIVE_BASIC_FIELD_ARGUMENTS = {
         "hp_current": ("target_hp", "hp"),
@@ -2747,6 +2748,7 @@ class War3Trainer:
         "GetHeroStr",
         "GetHeroAgi",
         "GetHeroInt",
+        "SetHeroInt",
         "UnitItemInSlot",
         "UnitInventorySize",
         "CreateItem",
@@ -4574,6 +4576,7 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_REPLACE_INVENTORY_ITEM,
             self.NATIVE_HELPER_OP_REPLACE_INVENTORY_CONTEXT,
             self.NATIVE_HELPER_OP_WRITE_COMPONENT_FIELDS,
+            self.NATIVE_HELPER_OP_SET_BOUND_HERO_INT,
             self.NATIVE_HELPER_OP_BOUND_INVENTORY_ITEM,
             self.NATIVE_HELPER_OP_BOUND_ITEM_TYPE,
         }
@@ -8562,6 +8565,8 @@ class War3Trainer:
         fields: list[UnitMemoryField],
         diagnostics: Win10ReadLogger,
     ) -> list[UnitMemoryField]:
+        if self._native_snapshot_for_candidate(candidate) is not None:
+            return fields
         index = next(
             (index for index, field in enumerate(fields) if field.key == "intelligence_total"),
             None,
@@ -8604,6 +8609,8 @@ class War3Trainer:
         value: int | float | str,
         diagnostics: Win10ReadLogger,
     ) -> UnitMemoryField:
+        if self._native_snapshot_for_candidate(candidate) is not None:
+            return self._write_hero_intelligence_field(pm, candidate, field, value)
         target_total = self._coerce_hero_intelligence_target(value)
         unit_handle = self._current_jass_unit_handle_win10(pm, candidate, diagnostics)
         handlers = self._discover_native_handlers(pm, ("SetHeroInt", "GetHeroInt"))
@@ -8690,6 +8697,22 @@ class War3Trainer:
         field: UnitMemoryField,
         value: int | float | str,
     ) -> UnitMemoryField:
+        native = self._native_snapshot_for_candidate(candidate)
+        if native is not None:
+            target_total = self._coerce_hero_intelligence_target(value)
+            identity = field.native_component_identity
+            if not all(identity):
+                raise RuntimeError("Native intelligence write requires a bound hero component")
+            results = self._run_native_helper_ops(native.handle, (
+                (self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY, 0, candidate.unit_address,
+                 candidate.handle, candidate.owner_address),
+                (self.NATIVE_HELPER_OP_SET_BOUND_HERO_INT, target_total, *identity, 0),
+            ))
+            if (len(results) != 2 or any(result.last_error for result in results)
+                    or results[1].result != target_total):
+                raise RuntimeError("Native intelligence readback differs from request")
+            return replace(field, value_type="i32", value=target_total, native_write=True,
+                           write_address=0, write_type="", note="native hero intelligence verified in game callback")
         if not candidate.unit_address:
             raise RuntimeError("当前单位缺少运行时 unit 指针，不能调用内部 SetHeroInt")
         target_total = self._coerce_hero_intelligence_target(value)
@@ -13309,6 +13332,12 @@ class War3Trainer:
             )
         if native is not None and isinstance(pm, NativeUnitFieldMemory):
             for index, field in enumerate(fields):
+                if field.key == "intelligence_total":
+                    identity = pm.component_identities.get("hero")
+                    if identity is not None:
+                        fields[index] = replace(field, write_address=0, write_type="", native_write=True,
+                                                native_component_identity=identity)
+                    continue
                 spec = NATIVE_COMPONENT_FIELD_SPECS.get(field.key)
                 if spec is None or not field.writable:
                     continue
@@ -14734,7 +14763,7 @@ class War3Trainer:
             if not field.writable:
                 raise RuntimeError(f"字段不可写：{field.label}")
             resolved.append((field, spec))
-            if field.native_write and all(field.native_component_identity):
+            if field.key in NATIVE_COMPONENT_FIELD_SPECS and field.native_write and all(field.native_component_identity):
                 if field.key in component_keys:
                     raise ValueError("Duplicate native component field")
                 component_keys.add(field.key)
@@ -14835,7 +14864,8 @@ class War3Trainer:
                 unit,
             )
             if key in {"int", "intelligence", "intelligence_total"}:
-                if not {"SetHeroInt", "GetHeroInt"}.issubset(isolated._native_handlers):
+                if (isolated._native_snapshot_for_candidate(candidate) is None
+                        and not {"SetHeroInt", "GetHeroInt"}.issubset(isolated._native_handlers)):
                     isolated._recover_win10_native_handlers(isolated, pm, diagnostics)
                 fields = isolated._unit_fields_from_candidate(pm, candidate)
                 field = next(

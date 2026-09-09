@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 50u
+#define WAR3_NATIVE_VERSION 51u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -103,6 +103,9 @@
 #define WAR3_NATIVE_OP_IDENTITY_UNIT_SNAPSHOT 155u
 #define WAR3_NATIVE_OP_MANAGE_BOUND_ABILITY 156u
 #define WAR3_NATIVE_OP_BOUND_DIRECT_ABILITY 157u
+#define WAR3_NATIVE_OP_START_ABILITY_EFFECT 158u
+#define WAR3_NATIVE_OP_ABILITY_EFFECT_OPTIONS 159u
+#define WAR3_NATIVE_OP_FINISH_ABILITY_EFFECT 160u
 #define WAR3_BOUND_INVENTORY_QWORDS 49u
 #define WAR3_BOUND_UNIT_FIELD_QWORDS (15u + 36u + 121u + 121u + WAR3_BOUND_INVENTORY_QWORDS + 4u)
 #define WAR3_CLONE_FLAG_HERO 0x01u
@@ -429,6 +432,11 @@ static const char *g_persistent_native_names[] = {
     "SetUnitPosition",
     "SetUnitState",
     "SetItemCharges",
+    "BlzGetAbilityRealLevelField",
+    "BlzSetAbilityRealLevelField",
+    "BlzUnitHideAbility",
+    "IssueImmediateOrderById",
+    "GetUnitCurrentOrder",
 };
 
 static War3PersistentNative g_persistent_natives[
@@ -1023,6 +1031,8 @@ static DWORD war3_bound_direct_ability(NativeCommand *cmd, NativeOp *op) {
     op->reserved=cleanup;
     return error ? error : cleanup;
 }
+
+#include "war3_native_effect_lifecycle.h"
 
 /* Six slots plus the engine's usable slot count. Slot membership, item
    generation and object-table backlinks replace external inventory records. */
@@ -3543,6 +3553,8 @@ static void run_command(void) {
                 op->kind != WAR3_NATIVE_OP_REPLACE_HERO_SKILL &&
                 op->kind != WAR3_NATIVE_OP_MANAGE_BOUND_ABILITY &&
                 op->kind != WAR3_NATIVE_OP_BOUND_DIRECT_ABILITY &&
+                op->kind != WAR3_NATIVE_OP_START_ABILITY_EFFECT &&
+                op->kind != WAR3_NATIVE_OP_FINISH_ABILITY_EFFECT &&
                 op->kind != WAR3_NATIVE_OP_BOUND_ABILITY_IDENTITY &&
                 op->kind != WAR3_NATIVE_OP_BOUND_INVENTORY_ITEM &&
                 !war3_is_internal_ability_op(op->kind) &&
@@ -3599,6 +3611,17 @@ static void run_command(void) {
             }
             case WAR3_NATIVE_OP_BOUND_DIRECT_ABILITY: {
                 last_error=i==1?war3_bound_direct_ability(&cmd,op):ERROR_INVALID_PARAMETER;
+                if(last_error) {op->last_error=last_error;goto finish;}
+                break;
+            }
+            case WAR3_NATIVE_OP_START_ABILITY_EFFECT: {
+                last_error=i==1?war3_start_ability_effect(&cmd,op):ERROR_INVALID_PARAMETER;
+                if(last_error) {op->last_error=last_error;goto finish;}
+                ++i;
+                break;
+            }
+            case WAR3_NATIVE_OP_FINISH_ABILITY_EFFECT: {
+                last_error=i==1?war3_finish_ability_effect(&cmd,op):ERROR_INVALID_PARAMETER;
                 if(last_error) {op->last_error=last_error;goto finish;}
                 break;
             }

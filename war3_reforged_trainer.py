@@ -2619,7 +2619,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 50
+    NATIVE_HELPER_VERSION = 51
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -2721,6 +2721,9 @@ class War3Trainer:
     NATIVE_HELPER_OP_IDENTITY_UNIT_SNAPSHOT = 155
     NATIVE_HELPER_OP_MANAGE_BOUND_ABILITY = 156
     NATIVE_HELPER_OP_BOUND_DIRECT_ABILITY = 157
+    NATIVE_HELPER_OP_START_ABILITY_EFFECT = 158
+    NATIVE_HELPER_OP_ABILITY_EFFECT_OPTIONS = 159
+    NATIVE_HELPER_OP_FINISH_ABILITY_EFFECT = 160
     PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 154
     NATIVE_BASIC_FIELD_ARGUMENTS = {
         "hp_current": ("target_hp", "hp"),
@@ -2771,6 +2774,11 @@ class War3Trainer:
         "SetUnitPosition",
         "SetUnitState",
         "SetItemCharges",
+        "BlzGetAbilityRealLevelField",
+        "BlzSetAbilityRealLevelField",
+        "BlzUnitHideAbility",
+        "IssueImmediateOrderById",
+        "GetUnitCurrentOrder",
     )
 
     def __init__(self, pid: int | None = None):
@@ -4217,10 +4225,14 @@ class War3Trainer:
                     details = f" skill_phase={operation[5]} skill_cleanup_error={operation[7]}"
                 elif operation[0] == self.NATIVE_HELPER_OP_BOUND_DIRECT_ABILITY:
                     details = f" direct_effect_completed={operation[5]} direct_cleanup_error={operation[7]}"
+                elif operation[0] == self.NATIVE_HELPER_OP_FINISH_ABILITY_EFFECT:
+                    details = f" effect_token={operation[2]} effect_cleanup_error={operation[7]}"
             if actual_count == op_count == 3:
                 base, size = self.NATIVE_HELPER_HEADER_STRUCT.size, self.NATIVE_HELPER_OP_STRUCT.size
                 operation = self.NATIVE_HELPER_OP_STRUCT.unpack_from(data, base + size)
                 context = self.NATIVE_HELPER_OP_STRUCT.unpack_from(data, base + 2*size)
+                if operation[0] == self.NATIVE_HELPER_OP_START_ABILITY_EFFECT:
+                    details = f" effect_token={operation[5]} effect_executed={operation[3]} effect_cleanup_error={operation[7]}"
                 if (operation[0] == self.NATIVE_HELPER_OP_REPLACE_INVENTORY_ITEM
                         and context[0] == self.NATIVE_HELPER_OP_REPLACE_INVENTORY_CONTEXT):
                     details = f" item_recovery_error={context[5]} item_cleanup_error={context[4]}"
@@ -4607,6 +4619,9 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_IDENTITY_UNIT_SNAPSHOT,
             self.NATIVE_HELPER_OP_MANAGE_BOUND_ABILITY,
             self.NATIVE_HELPER_OP_BOUND_DIRECT_ABILITY,
+            self.NATIVE_HELPER_OP_START_ABILITY_EFFECT,
+            self.NATIVE_HELPER_OP_ABILITY_EFFECT_OPTIONS,
+            self.NATIVE_HELPER_OP_FINISH_ABILITY_EFFECT,
             self.NATIVE_HELPER_OP_BOUND_INVENTORY_ITEM,
             self.NATIVE_HELPER_OP_BOUND_ITEM_TYPE,
         }
@@ -5895,265 +5910,66 @@ class War3Trainer:
         point: tuple[float, float] | None = None,
     ) -> tuple[int, int]:
         ability_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
-        effect_kinds = {
-            "immediate": (self.NATIVE_HELPER_OP_DIRECT_ABILITY_IMMEDIATE, 0x998),
-            "point": (self.NATIVE_HELPER_OP_DIRECT_ABILITY_POINT, 0xA58),
-            "noarg": (self.NATIVE_HELPER_OP_DIRECT_ABILITY_NOARG_DERIVED, 0xA78),
-        }
-        if effect_kind not in effect_kinds:
-            raise ValueError(f"不支持的技能直接效果类型：{effect_kind}")
-        pass_count = int(passes)
-        if not 1 <= pass_count <= 255:
-            raise ValueError("技能执行次数必须在 1 到 255 之间")
-        effect_op, vtable_offset = effect_kinds[effect_kind]
-        hold_duration = float(hold_seconds)
-        if not 0.0 <= hold_duration <= 120.0:
-            raise ValueError("技能效果保持时间必须在 0 到 120 秒之间")
+        mode = {"immediate": 2, "point": 3, "noarg": 4}.get(effect_kind)
+        count = int(passes)
+        duration = float(hold_seconds)
+        if not ability_rawcode or mode is None or not 1 <= count <= 255:
+            raise ValueError("Invalid ability effect or pass count")
+        if not math.isfinite(duration) or not 0 <= duration <= 120:
+            raise ValueError("Invalid ability effect hold duration")
+        flags = 2 if duration else 0
+        area_bits = 0
         if area is not None:
             area = float(area)
-            if not math.isfinite(area) or not 1.0 <= area <= 1000000.0:
-                raise ValueError("技能作用范围无效")
-        if point is not None:
-            x, y = map(float, point)
-            if not math.isfinite(x) or not math.isfinite(y):
-                raise ValueError("技能目标坐标必须是有限数值")
-        elif effect_kind == "point":
-            x, y = self.get_selected_unit_position()
-        else:
-            x = y = 0.0
-
-        added = False
-        pending_key: tuple[int, int] | None = None
-        ability_handle = 0
-        original_area_bits: int | None = None
-        area_field = int.from_bytes(b"aare", "big")
-        area_level = 0
-        unit_handle = 0
-        remove_handler = 0
-        get_area_handler = 0
-        set_area_handler = 0
-        candidate: UnitCandidate | None = None
-        ability_data = 0
+            if not math.isfinite(area) or not 1 <= area <= 1000000:
+                raise ValueError("Invalid ability effect area")
+            flags |= 1
+            area_bits = self._float_bits(area)
+        packed_point = 0
+        if mode == 3:
+            if point is None:
+                flags |= 4
+            else:
+                x, y = map(float, point)
+                if not all(math.isfinite(v) and abs(v) <= 1000000 for v in (x, y)):
+                    raise ValueError("Invalid ability effect point")
+                packed_point = self._float_bits(x) | (self._float_bits(y) << 32)
+        elif point is not None:
+            raise ValueError("Only point effects accept coordinates")
+        candidate, handle = self._direct_selected_context()
+        native = self._native_snapshot_for_candidate(candidate)
+        if native is None or native.handle != handle:
+            raise RuntimeError("Ability effect requires a bound native unit identity")
+        guard = (self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY, 0,
+                 candidate.unit_address, candidate.handle, candidate.owner_address)
+        response = self._run_native_helper_ops(handle, (
+            guard,
+            (self.NATIVE_HELPER_OP_START_ABILITY_EFFECT, ability_rawcode, mode, count, packed_point),
+            (self.NATIVE_HELPER_OP_ABILITY_EFFECT_OPTIONS, flags, 0, area_bits, 0),
+        ))
+        token = response[1].result if len(response) >= 2 and response[1].kind == self.NATIVE_HELPER_OP_START_ABILITY_EFFECT else 0
         try:
-            candidate, unit_handle = self._direct_selected_context()
-            with self._process_memory() as pm:
-                handlers = self._elephant_handlers(
-                    pm,
-                    (
-                        "GetUnitAbilityLevel",
-                        "UnitRemoveAbility",
-                        "BlzGetUnitAbility",
-                        "BlzGetAbilityRealLevelField",
-                        "BlzSetAbilityRealLevelField",
-                        "BlzUnitHideAbility",
-                        "IssueImmediateOrderById",
-                    ),
-                )
-            if hold_duration:
-                pending_key = (unit_handle, ability_rawcode)
-                with self._pending_direct_effects_lock:
-                    if pending_key in self._pending_direct_effects:
-                        raise RuntimeError(
-                            f"{format_rawcode(ability_rawcode)} 的上一次效果仍在持续"
-                        )
-                    self._pending_direct_effects.add(pending_key)
-            level = int(self._run_native_helper_ops(
-                unit_handle,
-                ((
-                    self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE_LEVEL,
-                    ability_rawcode,
-                    handlers["GetUnitAbilityLevel"].handler_address,
-                    0,
-                    0,
-                ),),
-            )[0].result)
-            if not level:
-                with self._process_memory() as pm:
-                    created_instance, added = self._create_engine_ability_instance(
-                        pm,
-                        candidate,
-                        ability_rawcode,
-                        require_wrapper=False,
-                    )
-                    ability_data = created_instance.data_address
-                level = 1
-            area_level = max(0, level - 1)
-            remove_handler = handlers["UnitRemoveAbility"].handler_address
-            get_area_handler = handlers["BlzGetAbilityRealLevelField"].handler_address
-            set_area_handler = handlers["BlzSetAbilityRealLevelField"].handler_address
-            ability_handle = int(self._run_native_helper_ops(
-                unit_handle,
-                ((
-                    self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE,
-                    ability_rawcode,
-                    handlers["BlzGetUnitAbility"].handler_address,
-                    0,
-                    0,
-                ),),
-            )[0].result)
-            if not ability_handle:
-                raise RuntimeError(
-                    f"游戏未返回 {format_rawcode(ability_rawcode)} 的 ability handle"
-                )
-            if area is not None:
-                original_area_bits = int(self._run_native_helper_ops(
-                    ability_handle,
-                    ((
-                        self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE_LEVEL,
-                        area_field,
-                        handlers["BlzGetAbilityRealLevelField"].handler_address,
-                        area_level,
-                        0,
-                    ),),
-                )[0].result) & 0xFFFFFFFF
-                set_result = int(self._run_native_helper_ops(
-                    ability_handle,
-                    ((
-                        self.NATIVE_HELPER_OP_JASS_ABILITY_REAL_LEVEL_FIELD_SET,
-                        area_field,
-                        set_area_handler,
-                        area_level,
-                        self._float_bits(area),
-                    ),),
-                )[0].result)
-                if not set_result:
-                    raise RuntimeError("游戏拒绝临时放大技能作用范围")
-                actual_bits = int(self._run_native_helper_ops(
-                    ability_handle,
-                    ((
-                        self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE_LEVEL,
-                        area_field,
-                        handlers["BlzGetAbilityRealLevelField"].handler_address,
-                        area_level,
-                        0,
-                    ),),
-                )[0].result) & 0xFFFFFFFF
-                actual_area = self._float_from_bits(actual_bits)
-                if not math.isfinite(actual_area) or actual_area < area * 0.9:
-                    raise RuntimeError(f"技能作用范围写入未生效：{actual_area:g}")
-            if added and hold_duration:
-                self._run_native_helper_ops(
-                    unit_handle,
-                    ((
-                        self.NATIVE_HELPER_OP_JASS_UNIT_INT_BOOL,
-                        ability_rawcode,
-                        handlers["BlzUnitHideAbility"].handler_address,
-                        1,
-                        0,
-                    ),),
-                )
-            with self._process_memory() as pm:
-                assert candidate is not None
-                ability_data = ability_data or self._find_engine_ability_data(
-                    pm,
-                    candidate,
-                    ability_rawcode,
-                )
-                if not ability_data:
-                    raise RuntimeError(
-                        f"找不到 {format_rawcode(ability_rawcode)} 的运行时技能实例"
-                    )
-                ability_vtable = pm.read_u64(ability_data)
-                direct_handler = pm.read_u64(ability_vtable + vtable_offset)
-                if not self._is_executable_image_address(pm.regions(), direct_handler):
-                    raise RuntimeError("技能直接效果回调不在游戏可执行代码段")
-                target_unit = candidate.unit_address
-            arg1 = self._float_bits(x) | (self._float_bits(y) << 32) if effect_kind == "point" else 0
-            succeeded = 0
-            for _ in range(pass_count):
-                result = self._run_native_helper_ops(
-                    target_unit,
-                    ((
-                        effect_op,
-                        ability_rawcode,
-                        direct_handler,
-                        ability_data,
-                        arg1,
-                    ),),
-                )[0]
-                succeeded += 1 if result.result else 0
-            if hold_duration:
-                time.sleep(hold_duration)
-                stop_result = 0
-                for stop_attempt in range(3):
-                    stop_result = int(self._run_native_helper_ops(
-                        unit_handle,
-                        ((
-                            self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE,
-                            851972,
-                            handlers["IssueImmediateOrderById"].handler_address,
-                            0,
-                            0,
-                        ),),
-                        timeout_ms=10000,
-                    )[0].result)
-                    if stop_result:
-                        break
-                    if stop_attempt < 2:
-                        time.sleep(0.05 * (stop_attempt + 1))
-                if not stop_result:
-                    raise RuntimeError("游戏连续 3 次拒绝停止持续技能效果")
-            return pass_count, succeeded
+            if (len(response) != 3 or any(item.last_error for item in response)
+                    or response[0].kind != self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY or response[0].result != 1
+                    or response[1].kind != self.NATIVE_HELPER_OP_START_ABILITY_EFFECT
+                    or response[2].kind != self.NATIVE_HELPER_OP_ABILITY_EFFECT_OPTIONS
+                    or response[1].arg0 != count or bool(token) != bool(duration)):
+                raise RuntimeError("Incomplete native ability effect result")
+            if duration:
+                time.sleep(duration)
+            return count, int(response[1].arg0)
         finally:
-            active_error = sys.exc_info()[1]
-            cleanup_errors: list[str] = []
-            if (
-                original_area_bits is not None
-                and ability_handle
-                and get_area_handler
-                and set_area_handler
-            ):
+            if token:
+                active_error = sys.exc_info()[1]
                 try:
-                    restored = int(self._run_native_helper_ops(
-                        ability_handle,
-                        ((
-                            self.NATIVE_HELPER_OP_JASS_ABILITY_REAL_LEVEL_FIELD_SET,
-                            area_field,
-                            set_area_handler,
-                            area_level,
-                            original_area_bits,
-                        ),),
-                        timeout_ms=10000,
-                    )[0].result)
-                    if not restored:
-                        raise RuntimeError("游戏拒绝恢复原始作用范围")
-                    restored_bits = int(self._run_native_helper_ops(
-                        ability_handle,
-                        ((
-                            self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE_LEVEL,
-                            area_field,
-                            get_area_handler,
-                            area_level,
-                            0,
-                        ),),
-                        timeout_ms=10000,
-                    )[0].result) & 0xFFFFFFFF
-                    if restored_bits != original_area_bits:
-                        raise RuntimeError(
-                            "作用范围恢复校验失败："
-                            f"0x{restored_bits:08x}!=0x{original_area_bits:08x}"
-                        )
-                except Exception as exc:
-                    cleanup_errors.append(f"恢复作用范围失败：{exc}")
-            if added and candidate is not None and ability_data:
-                try:
-                    self._remove_captured_engine_ability_instance(
-                        candidate,
-                        unit_handle,
-                        ability_data,
-                    )
-                except Exception as exc:
-                    cleanup_errors.append(f"删除临时技能失败：{exc}")
-            if pending_key is not None:
-                with self._pending_direct_effects_lock:
-                    self._pending_direct_effects.discard(pending_key)
-            if cleanup_errors:
-                cleanup_message = "；".join(cleanup_errors)
-                if active_error is not None:
-                    raise RuntimeError(
-                        f"{active_error}；清理失败：{cleanup_message}"
-                    ) from active_error
-                raise RuntimeError(cleanup_message)
+                    finished = self._run_native_helper_ops(handle, (
+                        guard, (self.NATIVE_HELPER_OP_FINISH_ABILITY_EFFECT, 0, token, 0, 0),
+                    ))
+                    if (len(finished) != 2 or any(item.last_error for item in finished)
+                            or finished[1].kind != self.NATIVE_HELPER_OP_FINISH_ABILITY_EFFECT or finished[1].result != 1):
+                        raise RuntimeError("Incomplete native ability effect cleanup")
+                except Exception as cleanup_error:
+                    raise RuntimeError(f"Ability effect cleanup failed; token={token}; original={active_error}; cleanup={cleanup_error}") from cleanup_error
 
     def cast_ability_with_runtime_dummy(
         self,

@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 56u
+#define WAR3_NATIVE_VERSION 57u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -1586,6 +1586,24 @@ static DWORD war3_persistent_selected_snapshot(
             }
             snapshot = &((War3PersistentSnapshot *)buffer)[count];
             snapshot->handle = unit;
+            /* Pin the generation before any field native executes. Capturing
+               it after HP/position queries can label old values with the
+               identity of a replacement that reused the same JASS handle. */
+            snapshot->unit_address = resolve_unit(unit);
+            if (!war3_readable_span(snapshot->unit_address, 0x20)) {
+                error = ERROR_INVALID_HANDLE; __leave;
+            }
+            snapshot->full_handle = *(uint64_t *)(uintptr_t)(snapshot->unit_address + 0x18);
+            snapshot->owner_address = ((War3AgentResolveFn)(uintptr_t)g_persistent_agent_resolver)(
+                (uint32_t)snapshot->full_handle, (uint32_t)(snapshot->full_handle >> 32));
+            if (!snapshot->full_handle || !war3_readable_span(snapshot->owner_address, 0x98) ||
+                *(uint64_t *)(uintptr_t)(snapshot->owner_address + 0x18) != 0x2b7733752b61676cULL ||
+                *(uint64_t *)(uintptr_t)(snapshot->owner_address + 0x20) != snapshot->full_handle ||
+                *(uint64_t *)(uintptr_t)(snapshot->owner_address + 0x90) != snapshot->unit_address ||
+                (targeted && (snapshot->unit_address != op->handler ||
+                              snapshot->full_handle != op->arg0 || snapshot->owner_address != op->arg1))) {
+                error = ERROR_INVALID_HANDLE; __leave;
+            }
             snapshot->owner = get_owning_player(unit);
             snapshot->type_id = get_unit_type_id(unit);
             snapshot->hp_bits = get_unit_state(unit, 0);
@@ -1596,21 +1614,6 @@ static DWORD war3_persistent_selected_snapshot(
             snapshot->y_bits = get_unit_y(unit);
             if (get_move_speed) {
                 snapshot->move_speed_bits = get_move_speed(unit);
-            }
-            snapshot->unit_address = resolve_unit ? resolve_unit(unit) : 0;
-            if (snapshot->unit_address && g_persistent_agent_resolver) {
-                uint8_t *object = (uint8_t *)(uintptr_t)snapshot->unit_address;
-                uint64_t full = *(uint64_t *)(void *)(object + 0x18);
-                uint64_t owner = ((War3AgentResolveFn)(uintptr_t)g_persistent_agent_resolver)(
-                    (uint32_t)full, (uint32_t)(full >> 32)
-                );
-                if (owner &&
-                    *(uint64_t *)(uintptr_t)(owner + 0x18) == 0x2b7733752b61676cULL &&
-                    *(uint64_t *)(uintptr_t)(owner + 0x20) == full &&
-                    *(uint64_t *)(uintptr_t)(owner + 0x90) == snapshot->unit_address) {
-                    snapshot->full_handle = full;
-                    snapshot->owner_address = owner;
-                }
             }
             snapshot->hero_level = war3_persistent_native_handler("GetHeroLevel")
                 ? (uint64_t)(int64_t)((JassUnitIntQueryFn)(uintptr_t)war3_persistent_native_handler("GetHeroLevel"))(unit)
@@ -1691,16 +1694,17 @@ static DWORD war3_persistent_selected_snapshot(
             {
                 War3RegenProperties properties;
                 uint64_t object = snapshot->unit_address, owner = snapshot->owner_address, full = snapshot->full_handle;
-                error = war3_regen_properties(owner, &properties);
-                if (error) __leave;
                 if (!object || !owner || !full || resolve_unit(unit) != object ||
                     ((War3AgentResolveFn)(uintptr_t)g_persistent_agent_resolver)((uint32_t)full, (uint32_t)(full >> 32)) != owner ||
+                    !war3_readable_span(object, 0x20) || !war3_readable_span(owner, 0x98) ||
                     *(uint64_t *)(uintptr_t)(object + 0x18) != full ||
                     *(uint64_t *)(uintptr_t)(owner + 0x18) != 0x2b7733752b61676cULL ||
                     *(uint64_t *)(uintptr_t)(owner + 0x20) != full ||
                     *(uint64_t *)(uintptr_t)(owner + 0x90) != object) {
                     error = ERROR_INVALID_HANDLE; __leave;
                 }
+                error = war3_regen_properties(owner, &properties);
+                if (error) __leave;
                 snapshot->hp_property = properties.address[0]; snapshot->mp_property = properties.address[1];
                 snapshot->hp_regen_bits = properties.bits[0]; snapshot->mp_regen_bits = properties.bits[1];
                 error=war3_snapshot_component_mask(unit,object,owner,full,&snapshot->component_mask);

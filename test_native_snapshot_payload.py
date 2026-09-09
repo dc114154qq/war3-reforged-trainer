@@ -36,7 +36,14 @@ static BOOL test_free(HANDLE heap, DWORD flags, void *p) {
 #include "HELPER_SOURCE"
 static unsigned sizes[13], selected, cursor, destroyed, fail_index, holes;
 static unsigned target_unit, target_fault, enumerations, field_reads;
+static unsigned recycle_point, recycle_unit;
 static uint8_t objects[13][0x600], owners[13][0xc0], items[13][0x20];
+static void recycle(unsigned point, uint64_t unit) {
+    if (point != recycle_point || unit != recycle_unit) return;
+    recycle_point = 0;
+    *(uint64_t *)(objects[unit-1]+0x18) += 1ULL << 32;
+    *(uint64_t *)(owners[unit-1]+0x20) = *(uint64_t *)(objects[unit-1]+0x18);
+}
 static uint64_t fake_create(void) { return 1; }
 static uint64_t fake_player(void) { return 2; }
 static void fake_enum(uint64_t g, uint64_t p, uint64_t f) { cursor = 0; ++enumerations; }
@@ -45,20 +52,22 @@ static void fake_remove(uint64_t g, uint64_t u) { ++cursor; }
 static void fake_destroy(uint64_t g) { ++destroyed; }
 static uint64_t fake_owner(uint64_t u) { return 2; }
 static int32_t fake_player_id(uint64_t p) { return 1; }
-static uint32_t fake_type(uint64_t u) { ++field_reads; return 0x68666f6f; }
-static uint32_t fake_real(uint64_t u) { return 0x3f800000; }
-static uint32_t fake_state(uint64_t u, int32_t s) { return 0x40000000; }
+static uint32_t fake_type(uint64_t u) { ++field_reads; recycle(1,u); return 0x68666f6f; }
+static uint32_t fake_real(uint64_t u) { recycle(3,u); return 0x3f800000; }
+static uint32_t fake_state(uint64_t u, int32_t s) { recycle(2,u); return 0x40000000; }
 static int32_t fake_hero(uint64_t u) { return u == 1 ? 5 : 0; }
 static int32_t fake_stat(uint64_t u, uint32_t b) { return b ? 25 : 10; }
 static uint64_t fake_unit(uint64_t u) { return (uint64_t)(uintptr_t)objects[u-1]; }
 static uint64_t fake_agent(uint32_t slot, uint32_t serial) {
-    return slot && slot <= 13 && slot == serial ? (uint64_t)(uintptr_t)owners[slot-1] : 0;
+    return slot && slot <= 13 && *(uint64_t *)(owners[slot-1]+0x20) == (((uint64_t)serial<<32)|slot)
+        ? (uint64_t)(uintptr_t)owners[slot-1] : 0;
 }
 static uint64_t fake_slot(uint64_t u, int32_t s) { return s == 0 ? u + 1000 : 0; }
 static uint64_t fake_item(uint64_t u) { return (uint64_t)(uintptr_t)items[u-1001]; }
 static uint32_t fake_item_type(uint64_t u) { return 0x49303031; }
 static int32_t fake_charges(uint64_t u) { return (int32_t)(u - 1000); }
 static uint64_t fake_ability(uint64_t u, int32_t i) {
+    recycle(4,u);
     if ((unsigned)i == fail_index) RaiseException(0xe0000001u, 0, 0, NULL);
     if ((unsigned)i >= sizes[u-1] || (holes && i == 3)) return 0;
     return (u << 32) | (uint32_t)(i + 1);
@@ -140,6 +149,7 @@ __declspec(dllexport) unsigned live_allocations(void) { return allocations; }
 __declspec(dllexport) unsigned alloc_calls(void) { return allocation_calls; }
 __declspec(dllexport) void set_fail_allocation(unsigned n) { fail_allocation = n; }
 __declspec(dllexport) void set_target(unsigned n, unsigned fault) { target_unit = n; target_fault = fault; }
+__declspec(dllexport) void set_recycle(unsigned point,unsigned unit) { recycle_point=point; recycle_unit=unit; }
 __declspec(dllexport) unsigned enumeration_count(void) { return enumerations; }
 __declspec(dllexport) unsigned field_read_count(void) { return field_reads; }
 '''
@@ -284,3 +294,18 @@ class NativeSnapshotPayloadTests(unittest.TestCase):
                     self.assertEqual(self.native.enumeration_count(), 0)
         finally:
             self.native.set_target(0, 0)
+
+    def test_generation_change_during_fields_discards_whole_snapshot(self):
+        try:
+            for targeted in (False, True):
+                for point in range(1, 5):
+                    with self.subTest(targeted=targeted, point=point):
+                        self.native.set_target(2 if targeted else 0, 0)
+                        self.native.set_recycle(point, 2)
+                        # In group mode, unit 1 has already produced an extended
+                        # ability payload. Failure must discard that too.
+                        self.assertEqual(self.collect((300, 10)), (6, 0, ()))
+                        self.assertEqual(self.native.destroyed_count(), 0 if targeted else 1)
+        finally:
+            self.native.set_target(0, 0)
+            self.native.set_recycle(0, 0)

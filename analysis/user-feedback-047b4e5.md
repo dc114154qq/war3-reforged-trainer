@@ -19,3 +19,11 @@
 
 已有相关测试运行结果：53 passed in 3.85s。此次为备注调整，不新增镜像测试，
 也不重复运行与备注无关的完整套件。应用版本仍为 1.0.19。
+
+备注更新包已独立交付至
+`C:/Users/14186/Desktop/xiugai/releases/1.0.19-b93ee58/War3ReforgedTrainer-v1.0.19-b93ee58.exe`。
+包内控制器字节码与 b93ee58 源码一致，DLL 与已测试版本逐字节一致；
+版本资源 1.0.19.0。实际 EXE 离线自检通过，包内依赖加载与哈希验证通过。
+EXE SHA256：`55c9b2c9f14e0b03e6b9b766dceb622b4c4c4290e15b00ce9a14e74adfd270e3`。
+构建和核对证据：`analysis/package-b93ee58.log`、
+`analysis/package-b93ee58-verification.json`。旧包未覆盖。

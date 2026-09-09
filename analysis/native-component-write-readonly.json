@@ -1,0 +1,62 @@
+{
+  "pid": 15028,
+  "protocol": 44,
+  "mutation": false,
+  "units": [
+    {
+      "handle": 1058016,
+      "hero": true,
+      "fields": 123,
+      "guarded_component_fields": 37
+    },
+    {
+      "handle": 1058028,
+      "hero": true,
+      "fields": 131,
+      "guarded_component_fields": 37
+    },
+    {
+      "handle": 1052980,
+      "hero": false,
+      "fields": 79,
+      "guarded_component_fields": 37
+    },
+    {
+      "handle": 1052981,
+      "hero": false,
+      "fields": 77,
+      "guarded_component_fields": 37
+    },
+    {
+      "handle": 1052982,
+      "hero": false,
+      "fields": 77,
+      "guarded_component_fields": 37
+    },
+    {
+      "handle": 1052983,
+      "hero": false,
+      "fields": 79,
+      "guarded_component_fields": 37
+    },
+    {
+      "handle": 1052984,
+      "hero": false,
+      "fields": 61,
+      "guarded_component_fields": 20
+    },
+    {
+      "handle": 1052989,
+      "hero": false,
+      "fields": 77,
+      "guarded_component_fields": 37
+    },
+    {
+      "handle": 1052990,
+      "hero": false,
+      "fields": 77,
+      "guarded_component_fields": 37
+    }
+  ],
+  "ok": true
+}

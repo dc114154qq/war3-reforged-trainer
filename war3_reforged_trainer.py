@@ -639,6 +639,7 @@ class UnitMemoryField:
     note: str = ""
     extra_writes: tuple[tuple[int, str], ...] = ()
     native_write: bool = False
+    native_component_identity: tuple[int, int] = (0, 0)
 
     @property
     def writable(self) -> bool:
@@ -799,6 +800,26 @@ class PersistentNativeUnitSnapshot:
     hp_regen: float | None = None
     mp_regen: float | None = None
 
+NATIVE_COMPONENT_FIELD_SPECS = {
+    key: (index, component, kind) for index, (key, component, kind) in enumerate((
+        ("armor", "unit", "f32"), ("armor_type", "unit", "i32"),
+        ("skill_points", "hero", "i32"), ("strength_growth", "hero", "f32"),
+        ("intelligence_growth", "hero", "f32"), ("agility_growth", "hero", "f32"),
+        ("xp", "hero", "i32"), ("base_strength", "hero", "i32"),
+        ("base_agility", "hero", "i32"), ("move_speed", "move", "f32"),
+    ))
+}
+for _attack_number in (1, 2):
+    for _index, _name in enumerate(("multiplier", "multiplier_cache", "dice", "base1", "base2",
+            "dice_cache", "internal_bonus1", "internal_bonus2", "sound", "type", "max_targets",
+            "interval", "first_delay", "acquire_range", "projectile_speed", "range", "range_buffer")):
+        NATIVE_COMPONENT_FIELD_SPECS[f"attack{_attack_number}_{_name}"] = (
+            (16 if _attack_number == 1 else 48) + _index, "attack", "f32" if _index >= 11 else "i32")
+for _index in range(5):
+    NATIVE_COMPONENT_FIELD_SPECS[f"skill{_index+1}_learnable"] = (80+_index, "hero", "i32")
+    NATIVE_COMPONENT_FIELD_SPECS[f"skill{_index+1}_requirement"] = (85+_index, "hero", "i32")
+
+
 class NativeUnitFieldMemory:
     """One game-thread field response; missing bytes never trigger process reads."""
 
@@ -808,6 +829,8 @@ class NativeUnitFieldMemory:
                 or values[3] & ~15 or values[14] not in (0, 1)):
             raise RuntimeError("DLL 单位字段快照长度或身份异常")
         self.components: dict[str, tuple[int, int]] = {}
+        self.component_identities: dict[str, tuple[int, int]] = {
+            "unit": (candidate.unit_address, candidate.handle)}
         self.inventory_items: list[InventoryItem] = []
         self.attack2 = bool(values[14])
         self._blocks: dict[int, bytes] = {}
@@ -2595,7 +2618,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 43
+    NATIVE_HELPER_VERSION = 44
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -2691,6 +2714,7 @@ class War3Trainer:
     NATIVE_HELPER_OP_BOUND_INVENTORY = 149
     NATIVE_HELPER_OP_REPLACE_INVENTORY_ITEM = 150
     NATIVE_HELPER_OP_REPLACE_INVENTORY_CONTEXT = 151
+    NATIVE_HELPER_OP_WRITE_COMPONENT_FIELDS = 152
     PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 153
     NATIVE_BASIC_FIELD_ARGUMENTS = {
         "hp_current": ("target_hp", "hp"),
@@ -4549,6 +4573,7 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_BOUND_INVENTORY,
             self.NATIVE_HELPER_OP_REPLACE_INVENTORY_ITEM,
             self.NATIVE_HELPER_OP_REPLACE_INVENTORY_CONTEXT,
+            self.NATIVE_HELPER_OP_WRITE_COMPONENT_FIELDS,
             self.NATIVE_HELPER_OP_BOUND_INVENTORY_ITEM,
             self.NATIVE_HELPER_OP_BOUND_ITEM_TYPE,
         }
@@ -12815,11 +12840,17 @@ class War3Trainer:
             (self.NATIVE_HELPER_OP_BOUND_UNIT_FIELDS, 0, 0, 0, 0),
         ))
         if (len(results) != 2 or any(result.last_error for result in results)
-                or results[1].result != 342 or len(results[0].extra_results) != 342):
+                or results[1].result != 346 or len(results[0].extra_results) != 346):
             raise RuntimeError("DLL 单位字段返回不完整")
         values = tuple(results[0].extra_results)
         memory = NativeUnitFieldMemory(candidate, values[:293])
-        memory.inventory_items = self._parse_native_inventory_items(values[293:])
+        memory.inventory_items = self._parse_native_inventory_items(values[293:342])
+        for index, name in enumerate(("inventory", "hero", "move", "attack")):
+            full = values[342+index]
+            if bool(full) != (name in memory.components):
+                raise RuntimeError("Incomplete native component generation")
+            if full:
+                memory.component_identities[name] = (memory.components[name][1], full)
         return memory
 
     def _unit_fields_from_candidate(
@@ -13276,6 +13307,16 @@ class War3Trainer:
                     ),
                 )
             )
+        if native is not None and isinstance(pm, NativeUnitFieldMemory):
+            for index, field in enumerate(fields):
+                spec = NATIVE_COMPONENT_FIELD_SPECS.get(field.key)
+                if spec is None or not field.writable:
+                    continue
+                identity = pm.component_identities.get(spec[1])
+                if identity is None:
+                    raise RuntimeError("Incomplete native component generation")
+                fields[index] = replace(field, write_address=0, write_type="", extra_writes=(),
+                                        native_write=True, native_component_identity=identity)
         return fields
 
     def read_selected_unit_fields(self) -> tuple[VisibleUnitPanel, UnitCandidate, list[UnitMemoryField]]:
@@ -14628,6 +14669,36 @@ class War3Trainer:
             extra_writes=field.extra_writes,
         )
 
+    def _component_field_write_op(self, field: UnitMemoryField, value: int | float | str) -> tuple[int, int, int, int, int]:
+        code, _component, kind = NATIVE_COMPONENT_FIELD_SPECS[field.key]
+        if not all(field.native_component_identity) or field.value_type != kind:
+            raise RuntimeError("Incomplete native component field identity")
+        coerced = self._coerce_memory_value(kind, value)
+        if kind == "i32" and not -(1 << 31) <= coerced < (1 << 31):
+            raise ValueError("Native component integer is outside int32 range")
+        bits = self._float_bits(coerced) if kind == "f32" else int(coerced) & 0xFFFFFFFF
+        return (self.NATIVE_HELPER_OP_WRITE_COMPONENT_FIELDS, code, *field.native_component_identity, bits)
+
+    def _write_native_component_fields(self, candidate: UnitCandidate,
+                                      requests: list[tuple[int, UnitMemoryField, tuple[int, int, int, int, int]]]) -> dict[int, UnitMemoryField]:
+        native = self._native_snapshot_for_candidate(candidate)
+        if native is None:
+            raise RuntimeError("Native component write requires a bound unit")
+        written = {}
+        for start in range(0, len(requests), self.NATIVE_HELPER_MAX_OPS - 1):
+            batch = requests[start:start + self.NATIVE_HELPER_MAX_OPS - 1]
+            results = self._run_native_helper_ops(native.handle, (
+                (self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY, 0, candidate.unit_address,
+                 candidate.handle, candidate.owner_address), *(entry[2] for entry in batch)))
+            if len(results) != len(batch) + 1 or any(result.last_error for result in results):
+                raise RuntimeError("Incomplete native component write result")
+            for (index, field, op), result in zip(batch, results[1:]):
+                if result.kind != self.NATIVE_HELPER_OP_WRITE_COMPONENT_FIELDS or result.result != op[4]:
+                    raise RuntimeError("Native component readback differs from request")
+                value = self._float_from_bits(result.result) if field.value_type == "f32" else ctypes.c_int32(result.result).value
+                written[index] = replace(field, value=value)
+        return written
+
     def _write_unit_fields_to_candidate(
         self,
         pm: ProcessMemory,
@@ -14648,6 +14719,8 @@ class War3Trainer:
         resolved = []
         basic_values = {"target_hp": None, "target_mp": None}
         basic_indices = []
+        component_requests = []
+        component_keys = set()
         seen_basic = set()
         for index, spec in enumerate(specs):
             direct_key = self.FIELD_KEY_ALIASES.get(spec.label, spec.label)
@@ -14661,6 +14734,11 @@ class War3Trainer:
             if not field.writable:
                 raise RuntimeError(f"字段不可写：{field.label}")
             resolved.append((field, spec))
+            if field.native_write and all(field.native_component_identity):
+                if field.key in component_keys:
+                    raise ValueError("Duplicate native component field")
+                component_keys.add(field.key)
+                component_requests.append((index, field, self._component_field_write_op(field, spec.value)))
             if field.key in self.NATIVE_BASIC_FIELD_ARGUMENTS:
                 if field.key in seen_basic:
                     raise ValueError("Duplicate native field in one write request")
@@ -14680,6 +14758,8 @@ class War3Trainer:
                 _argument, attribute = self.NATIVE_BASIC_FIELD_ARGUMENTS[field.key]
                 written[index] = replace(field, value=getattr(snapshot, attribute),
                                          write_address=0, write_type="", native_write=True)
+        if component_requests:
+            written.update(self._write_native_component_fields(candidate, component_requests))
         for index, (field, spec) in enumerate(resolved):
             if index in written:
                 continue

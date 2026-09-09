@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 43u
+#define WAR3_NATIVE_VERSION 44u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -97,8 +97,9 @@
 #define WAR3_NATIVE_OP_BOUND_INVENTORY 149u
 #define WAR3_NATIVE_OP_REPLACE_INVENTORY_ITEM 150u
 #define WAR3_NATIVE_OP_REPLACE_INVENTORY_CONTEXT 151u
+#define WAR3_NATIVE_OP_WRITE_COMPONENT_FIELDS 152u
 #define WAR3_BOUND_INVENTORY_QWORDS 49u
-#define WAR3_BOUND_UNIT_FIELD_QWORDS (15u + 36u + 121u + 121u + WAR3_BOUND_INVENTORY_QWORDS)
+#define WAR3_BOUND_UNIT_FIELD_QWORDS (15u + 36u + 121u + 121u + WAR3_BOUND_INVENTORY_QWORDS + 4u)
 #define WAR3_CLONE_FLAG_HERO 0x01u
 #define WAR3_CLONE_FLAG_INVENTORY 0x02u
 #define WAR3_CLONE_FLAG_PRESERVE_OWNER 0x04u
@@ -754,6 +755,7 @@ static DWORD war3_bound_unit_fields(const NativeCommand *cmd, uint64_t *values) 
             }
             values[3] |= 1u << k;
             values[6 + k*2] = data[k]; values[7 + k*2] = wrappers[k];
+            values[342+k] = identities[k];
         }
         if (data[1]) memcpy(values + 15, (void *)(uintptr_t)(data[1] + 0x100), 0x120);
         if (data[3]) {
@@ -1018,6 +1020,94 @@ static DWORD war3_replace_inventory_item(NativeCommand *cmd) {
         }
     } __except(EXCEPTION_EXECUTE_HANDLER) { recovery=GetExceptionCode(); }
     context->result=recovery; /* original failure remains cmd.last_error */
+    return error;
+}
+
+/* Fixed field IDs for this build. Client addresses only pin identity; they
+   never select an arbitrary offset. component: 0 unit, 1 hero, 2 move, 3/4 attacks. */
+static DWORD war3_component_field_address(const NativeCommand *cmd,const NativeOp *op,uint64_t *address) {
+    static const uint32_t attack_offsets[17]={0xf8,0xfc,0x100,0x104,0x108,0x10c,0x110,0x114,
+        0x118,0x16c,0x178,0x200,0x228,0x370,0x398,0x3a8,0x3c0};
+    static const uint32_t base_offsets[10]={0x2e8,0x2f0,0x104,0x188,0x198,0x1a8,0x100,0x108,0x130,0xd8};
+    uint32_t id=op->rawcode,component,offset,real;
+    uint64_t unit=cmd->ops[0].handler,data=unit,wrapper=0,tag=0;
+    if(op->kind!=WAR3_NATIVE_OP_WRITE_COMPONENT_FIELDS || op->arg1>UINT32_MAX) return ERROR_INVALID_PARAMETER;
+    if(id<10) {
+        component=id<2?0:id==9?2:1;offset=base_offsets[id];
+        real=id==0 || (id>=3 && id<=5) || id==9;
+    } else if((id>=16 && id<33) || (id>=48 && id<65)) {
+        unsigned index=id>=48?id-48:id-16;
+        component=id>=48?4:3;offset=attack_offsets[index];real=index>=11;
+    } else if(id>=80 && id<90) {
+        component=1;offset=id<85?0x1d4+(id-80)*4:0x1ec+(id-85)*4;real=0;
+    } else return ERROR_INVALID_PARAMETER;
+    if(real && ((uint32_t)op->arg1&0x7f800000u)==0x7f800000u) return ERROR_INVALID_PARAMETER;
+    if(component) {
+        uint32_t slot=component==1?0x5a8:component==2?0x5b0:0x5c0;
+        tag=component==1?0x414865722b61676cULL:component==2?0x416d6f762b61676cULL:0x4161746b2b61676cULL;
+        if(!war3_readable_span(unit+slot,8)) return ERROR_INVALID_ADDRESS;
+        data=*(uint64_t *)(uintptr_t)(unit+slot);
+        if(data!=op->handler || !op->arg0 || !war3_readable_span(data,0x70) ||
+            *(uint64_t *)(uintptr_t)(data+0x18)!=op->arg0 ||
+            *(uint64_t *)(uintptr_t)(data+0x68)!=unit) return ERROR_INVALID_HANDLE;
+        wrapper=((War3AgentResolveFn)(uintptr_t)g_persistent_agent_resolver)((uint32_t)op->arg0,(uint32_t)(op->arg0>>32));
+        if(!war3_readable_span(wrapper,0x98) || *(uint64_t *)(uintptr_t)(wrapper+0x18)!=tag ||
+            *(uint64_t *)(uintptr_t)(wrapper+0x20)!=op->arg0 ||
+            *(uint64_t *)(uintptr_t)(wrapper+0x50)!=cmd->ops[0].arg1 ||
+            *(uint64_t *)(uintptr_t)(wrapper+0x90)!=data) return ERROR_INVALID_HANDLE;
+        if(component==4) {
+            uint64_t second=data+0x638,vtable;
+            if(!war3_readable_span(second,12)) return ERROR_INVALID_ADDRESS;
+            vtable=*(uint64_t *)(uintptr_t)second;
+            if(!war3_readable_span(vtable,8) || !war3_executable_pointer(*(uint64_t *)(uintptr_t)vtable) ||
+                *(uint32_t *)(uintptr_t)(second+8)!=*(uint32_t *)(uintptr_t)(data+8)) return ERROR_INVALID_DATA;
+            offset+=0x638;
+        }
+    } else if(op->handler!=unit || op->arg0!=cmd->ops[0].arg0) return ERROR_INVALID_HANDLE;
+    *address=data+offset;
+    if(!war3_readable_span(*address,4)) return ERROR_INVALID_ADDRESS;
+    MEMORY_BASIC_INFORMATION region;
+    if(VirtualQuery((void *)(uintptr_t)*address,&region,sizeof(region))!=sizeof(region) ||
+        !(region.Protect&(PAGE_READWRITE|PAGE_WRITECOPY|PAGE_EXECUTE_READWRITE|PAGE_EXECUTE_WRITECOPY)))
+        return ERROR_ACCESS_DENIED;
+    return ERROR_SUCCESS;
+}
+
+static DWORD war3_write_component_fields(NativeCommand *cmd) {
+    uint64_t addresses[WAR3_NATIVE_MAX_OPS]={0};
+    DWORD error=ERROR_SUCCESS;
+    if(cmd->op_count<2 || cmd->op_count>WAR3_NATIVE_MAX_OPS || cmd->ops[0].kind!=WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY)
+        return ERROR_INVALID_PARAMETER;
+    __try {
+        error=war3_validate_unit_identity(cmd,&cmd->ops[0]);if(error) __leave;
+        for(unsigned n=1;n<cmd->op_count;++n) {
+            error=war3_component_field_address(cmd,&cmd->ops[n],&addresses[n]);
+            if(error) { cmd->ops[n].last_error=error;__leave; }
+            for(unsigned prior=1;prior<n;++prior) if(addresses[prior]==addresses[n]) {
+                error=ERROR_INVALID_PARAMETER;__leave;
+            }
+            if(error) __leave;
+        }
+        if(error) __leave;
+        error=war3_validate_unit_identity(cmd,&cmd->ops[0]);if(error) __leave;
+        /* All requested locations and values are valid before the first store.
+           No engine callbacks run between these stores and their readback. */
+        for(unsigned n=1;n<cmd->op_count;++n) {
+            uint64_t address=0;
+            error=war3_component_field_address(cmd,&cmd->ops[n],&address);
+            if(error || address!=addresses[n]) { if(!error) error=ERROR_INVALID_HANDLE;__leave; }
+        }
+        if(error) __leave;
+        if(*(uint64_t *)(uintptr_t)(cmd->ops[0].handler+0x18)!=cmd->ops[0].arg0 ||
+           *(uint64_t *)(uintptr_t)(cmd->ops[0].arg1+0x20)!=cmd->ops[0].arg0 ||
+           *(uint64_t *)(uintptr_t)(cmd->ops[0].arg1+0x90)!=cmd->ops[0].handler) {
+            error=ERROR_INVALID_HANDLE;__leave;
+        }
+        for(unsigned n=1;n<cmd->op_count;++n)
+            *(uint32_t *)(uintptr_t)addresses[n]=(uint32_t)cmd->ops[n].arg1;
+        for(unsigned n=1;n<cmd->op_count;++n)
+            cmd->ops[n].result=*(uint32_t *)(uintptr_t)addresses[n];
+    } __except(EXCEPTION_EXECUTE_HANDLER) { error=GetExceptionCode(); }
     return error;
 }
 
@@ -3204,6 +3294,7 @@ static void run_command(void) {
                 op->kind != WAR3_NATIVE_OP_SET_UNIT_REGEN &&
                 op->kind != WAR3_NATIVE_OP_BOUND_INVENTORY &&
                 op->kind != WAR3_NATIVE_OP_REPLACE_INVENTORY_ITEM &&
+                op->kind != WAR3_NATIVE_OP_WRITE_COMPONENT_FIELDS &&
                 op->kind != WAR3_NATIVE_OP_BOUND_ABILITY_IDENTITY &&
                 op->kind != WAR3_NATIVE_OP_BOUND_INVENTORY_ITEM &&
                 !war3_is_internal_ability_op(op->kind) &&
@@ -3253,6 +3344,12 @@ static void run_command(void) {
             goto finish;
         }
         switch (op->kind) {
+            case WAR3_NATIVE_OP_WRITE_COMPONENT_FIELDS: {
+                last_error=i==1?war3_write_component_fields(&cmd):ERROR_INVALID_PARAMETER;
+                if(last_error) { op->last_error=last_error;goto finish; }
+                i=cmd.op_count-1;
+                break;
+            }
             case WAR3_NATIVE_OP_REPLACE_INVENTORY_ITEM: {
                 last_error=(i==1 && cmd.op_count==3) ? war3_replace_inventory_item(&cmd) : ERROR_INVALID_DATA;
                 if(last_error) { op->last_error=last_error;goto finish; }

@@ -32,7 +32,8 @@ Validation:
 
 Protocol 41 subsequently moved candidate construction/property metadata and
 HP/MP regeneration into the native chain (see `native-regeneration.md`).
-Inventory write metadata and generic field writes still retain external-memory
-work. In particular, reading a component snapshot does not
-establish that later writes validate the same component generation. The full
-DLL-only goal remains unfinished. The validated 1.0.19 EXE is preserved.
+Inventory metadata followed in protocol 42, and protocol 44 now binds the
+generic component writes to their full generation (see
+`native-component-writes.md`). Special hero/skill and legacy routes still need
+audit. The full DLL-only goal remains unfinished. The validated 1.0.19 EXE is
+preserved.

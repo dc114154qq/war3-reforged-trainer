@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 57u
+#define WAR3_NATIVE_VERSION 58u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -108,6 +108,7 @@
 #define WAR3_NATIVE_OP_FINISH_ABILITY_EFFECT 160u
 #define WAR3_NATIVE_OP_ENABLE_BOUND_TOGGLE 161u
 #define WAR3_NATIVE_OP_BOUND_WORLD_EFFECT 162u
+#define WAR3_NATIVE_OP_SET_BOUND_HERO_BASE 163u
 #define WAR3_BOUND_INVENTORY_QWORDS 49u
 #define WAR3_BOUND_UNIT_FIELD_QWORDS (15u + 36u + 121u + 121u + WAR3_BOUND_INVENTORY_QWORDS + 4u)
 #define WAR3_CLONE_FLAG_HERO 0x01u
@@ -420,6 +421,8 @@ static const char *g_persistent_native_names[] = {
     "GetHeroAgi",
     "GetHeroInt",
     "SetHeroInt",
+    "SetHeroStr",
+    "SetHeroAgi",
     "UnitItemInSlot",
     "UnitInventorySize",
     "CreateItem",
@@ -1247,6 +1250,7 @@ static DWORD war3_component_field_address(const NativeCommand *cmd,const NativeO
     uint64_t unit=cmd->ops[0].handler,data=unit,wrapper=0,tag=0;
     if(op->kind!=WAR3_NATIVE_OP_WRITE_COMPONENT_FIELDS || op->arg1>UINT32_MAX) return ERROR_INVALID_PARAMETER;
     if(id<10) {
+        if(id==7 || id==8) return ERROR_INVALID_PARAMETER; /* use bound stat setters */
         component=id<2?0:id==9?2:1;offset=base_offsets[id];
         real=id==0 || (id>=3 && id<=5) || id==9;
     } else if((id>=16 && id<33) || (id>=48 && id<65)) {
@@ -1378,6 +1382,7 @@ static DWORD war3_set_bound_hero_int(NativeCommand *cmd,NativeOp *op) {
 }
 
 #include "war3_native_hero_skill.h"
+#include "war3_native_hero_base.h"
 
 static int war3_is_ability_field_op(uint32_t kind) {
     return kind == WAR3_NATIVE_OP_JASS_ABILITY_FIELD_GET ||
@@ -3578,6 +3583,7 @@ static void run_command(void) {
                 op->kind != WAR3_NATIVE_OP_FINISH_ABILITY_EFFECT &&
                 op->kind != WAR3_NATIVE_OP_ENABLE_BOUND_TOGGLE &&
                 op->kind != WAR3_NATIVE_OP_BOUND_WORLD_EFFECT &&
+                op->kind != WAR3_NATIVE_OP_SET_BOUND_HERO_BASE &&
                 op->kind != WAR3_NATIVE_OP_BOUND_ABILITY_IDENTITY &&
                 op->kind != WAR3_NATIVE_OP_BOUND_INVENTORY_ITEM &&
                 !war3_is_internal_ability_op(op->kind) &&
@@ -3666,6 +3672,12 @@ static void run_command(void) {
             case WAR3_NATIVE_OP_SET_BOUND_HERO_INT: {
                 last_error=i==1?war3_set_bound_hero_int(&cmd,op):ERROR_INVALID_PARAMETER;
                 if(last_error) { op->last_error=last_error;goto finish; }
+                break;
+            }
+            case WAR3_NATIVE_OP_SET_BOUND_HERO_BASE: {
+                last_error=i==1?war3_set_bound_hero_base(&cmd):ERROR_INVALID_PARAMETER;
+                if(last_error) {op->last_error=last_error;goto finish;}
+                i=cmd.op_count-1;
                 break;
             }
             case WAR3_NATIVE_OP_WRITE_COMPONENT_FIELDS: {

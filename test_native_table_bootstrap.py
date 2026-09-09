@@ -225,9 +225,9 @@ def test_additional_natives_use_profile_indexes_and_atomic_result_publication():
     trainer.persistent_native_init()
     trainer._run_native_helper_ops.reset_mock()
     trainer._run_native_helper_ops.return_value = (module.NativeHelperOpResult(140, 0x200000),)
-    result = trainer._discover_native_handlers_near_table(Mock(), ['SetHeroStr'])
-    assert result['SetHeroStr'].handler_address == 0x200000
-    trainer._run_native_helper_ops.assert_called_once_with(0, ((140, NATIVE_INDEX['SetHeroStr'], 0, PROFILE_ID, 0),))
+    result = trainer._discover_native_handlers_near_table(Mock(), ['SetHeroLevel'])
+    assert result['SetHeroLevel'].handler_address == 0x200000
+    trainer._run_native_helper_ops.assert_called_once_with(0, ((140, NATIVE_INDEX['SetHeroLevel'], 0, PROFILE_ID, 0),))
     trainer._run_native_helper_ops.return_value = (module.NativeHelperOpResult(140, 0),)
-    with pytest.raises(RuntimeError): trainer._discover_native_handlers(Mock(), ['SetHeroAgi'])
-    assert 'SetHeroAgi' not in trainer._native_handlers
+    with pytest.raises(RuntimeError): trainer._discover_native_handlers(Mock(), ['SetHeroXP'])
+    assert 'SetHeroXP' not in trainer._native_handlers

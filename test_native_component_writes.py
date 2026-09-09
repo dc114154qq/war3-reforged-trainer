@@ -85,7 +85,7 @@ def dispatch(native,tmp_path,ids,bits,offsets,failure=0):
 OFFSETS=[0x2e8,0x2f0,0x104,0x188,0x198,0x1a8,0x100,0x108,0x130,0xd8]
 ATTACK=[0xf8,0xfc,0x100,0x104,0x108,0x10c,0x110,0x114,0x118,0x16c,0x178,
         0x200,0x228,0x370,0x398,0x3a8,0x3c0]
-CASES=list(enumerate(OFFSETS))+[(16+n,offset) for n,offset in enumerate(ATTACK)]+[
+CASES=[(n,offset) for n,offset in enumerate(OFFSETS) if n not in (7,8)]+[(16+n,offset) for n,offset in enumerate(ATTACK)]+[
     (48+n,offset+0x638) for n,offset in enumerate(ATTACK)]+[(80+n,0x1d4+n*4) for n in range(5)]+[
     (85+n,0x1ec+n*4) for n in range(5)]
 
@@ -108,6 +108,13 @@ def test_invalid_second_field_prevents_first_write(native,tmp_path,failure):
 def test_duplicate_address_batch_rejected(native,tmp_path):
     before,after,payload=dispatch(native,tmp_path,[0,0],[0x41000000,0x40000000],[0x2e8,0x2e8])
     with pytest.raises(RuntimeError):module.War3Trainer.__new__(module.War3Trainer)._parse_native_helper_results(payload,3)
+    assert after==before
+
+
+@pytest.mark.parametrize('id,offset',[(7,0x108),(8,0x130)])
+def test_hero_stats_cannot_use_raw_component_setter(native,tmp_path,id,offset):
+    before,after,payload=dispatch(native,tmp_path,[id],[100],[offset])
+    with pytest.raises(RuntimeError):module.War3Trainer.__new__(module.War3Trainer)._parse_native_helper_results(payload,2)
     assert after==before
 
 

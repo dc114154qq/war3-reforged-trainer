@@ -2619,7 +2619,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 57
+    NATIVE_HELPER_VERSION = 58
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -2726,6 +2726,7 @@ class War3Trainer:
     NATIVE_HELPER_OP_FINISH_ABILITY_EFFECT = 160
     NATIVE_HELPER_OP_ENABLE_BOUND_TOGGLE = 161
     NATIVE_HELPER_OP_BOUND_WORLD_EFFECT = 162
+    NATIVE_HELPER_OP_SET_BOUND_HERO_BASE = 163
     PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 154
     NATIVE_BASIC_FIELD_ARGUMENTS = {
         "hp_current": ("target_hp", "hp"),
@@ -2762,6 +2763,8 @@ class War3Trainer:
         "GetHeroAgi",
         "GetHeroInt",
         "SetHeroInt",
+        "SetHeroStr",
+        "SetHeroAgi",
         "UnitItemInSlot",
         "UnitInventorySize",
         "CreateItem",
@@ -4632,6 +4635,7 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_FINISH_ABILITY_EFFECT,
             self.NATIVE_HELPER_OP_ENABLE_BOUND_TOGGLE,
             self.NATIVE_HELPER_OP_BOUND_WORLD_EFFECT,
+            self.NATIVE_HELPER_OP_SET_BOUND_HERO_BASE,
             self.NATIVE_HELPER_OP_BOUND_INVENTORY_ITEM,
             self.NATIVE_HELPER_OP_BOUND_ITEM_TYPE,
         }
@@ -12860,8 +12864,8 @@ class War3Trainer:
                                         native_write=True, native_component_identity=identity)
         if native is not None:
             hero_stat_notes = {
-                "base_strength": "显示游戏返回的基础力量；写入英雄组件数值，不是设置总力量。实测重新读取可能略低于输入值，差值原因待核实，以重新读取和游戏面板为准。",
-                "base_agility": "显示游戏返回的基础敏捷；写入英雄组件数值，不是设置总敏捷。实测重新读取可能略低于输入值，差值原因待核实，以重新读取和游戏面板为准。",
+                "base_strength": "输入目标基础力量（0～1000000 的整数）；通过游戏属性接口设置，并按本栏的读取方式确认。不是设置总力量；读回不等于目标时会报错。",
+                "base_agility": "输入目标基础敏捷（0～1000000 的整数）；通过游戏属性接口设置，并按本栏的读取方式确认。不是设置总敏捷；读回不等于目标时会报错。",
                 "base_intelligence": "显示游戏返回的基础智力；当前未提供基础智力直接写入，请修改“智力(当前总值)”。",
                 "strength_total": "显示包含当前加成的总力量，不能直接写入；如需调整，请修改“力量(基础)”，其输入值不等于目标总力量。",
                 "agility_total": "显示包含当前加成的总敏捷，不能直接写入；如需调整，请修改“敏捷(基础)”，其输入值不等于目标总敏捷。",
@@ -13983,6 +13987,15 @@ class War3Trainer:
         code, _component, kind = NATIVE_COMPONENT_FIELD_SPECS[field.key]
         if not all(field.native_component_identity) or field.value_type != kind:
             raise RuntimeError("Incomplete native component field identity")
+        if field.key in {"base_strength", "base_agility"}:
+            try:
+                target = int(str(value).strip())
+            except (ValueError, TypeError) as exc:
+                raise ValueError("基础力量、敏捷必须是 0～1000000 的整数") from exc
+            if not 0 <= target <= 1_000_000:
+                raise ValueError("基础力量、敏捷必须是 0～1000000 的整数")
+            return (self.NATIVE_HELPER_OP_SET_BOUND_HERO_BASE, int(field.key == "base_agility"),
+                    *field.native_component_identity, target)
         coerced = self._coerce_memory_value(kind, value)
         if kind == "i32" and not -(1 << 31) <= coerced < (1 << 31):
             raise ValueError("Native component integer is outside int32 range")
@@ -13995,15 +14008,19 @@ class War3Trainer:
         if native is None:
             raise RuntimeError("Native component write requires a bound unit")
         written = {}
-        for start in range(0, len(requests), self.NATIVE_HELPER_MAX_OPS - 1):
-            batch = requests[start:start + self.NATIVE_HELPER_MAX_OPS - 1]
+        groups = {}
+        for entry in requests:
+            groups.setdefault(entry[2][0], []).append(entry)
+        batches = [group[start:start + self.NATIVE_HELPER_MAX_OPS - 1]
+                   for group in groups.values() for start in range(0, len(group), self.NATIVE_HELPER_MAX_OPS - 1)]
+        for batch in batches:
             results = self._run_native_helper_ops(native.handle, (
                 (self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY, 0, candidate.unit_address,
                  candidate.handle, candidate.owner_address), *(entry[2] for entry in batch)))
             if len(results) != len(batch) + 1 or any(result.last_error for result in results):
                 raise RuntimeError("Incomplete native component write result")
             for (index, field, op), result in zip(batch, results[1:]):
-                if result.kind != self.NATIVE_HELPER_OP_WRITE_COMPONENT_FIELDS or result.result != op[4]:
+                if result.kind != op[0] or result.result != op[4]:
                     raise RuntimeError("Native component readback differs from request")
                 value = self._float_from_bits(result.result) if field.value_type == "f32" else ctypes.c_int32(result.result).value
                 written[index] = replace(field, value=value)

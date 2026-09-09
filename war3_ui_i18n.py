@@ -35,6 +35,15 @@ def detect_ui_language(locale_name: str | None = None) -> str:
 
 
 _EN_TRANSLATIONS = {
+    "基础力量、敏捷必须是 0～1000000 的整数": "Base strength/agility must be an integer from 0 to 1000000",
+    "输入目标基础力量（0～1000000 的整数）；通过游戏属性接口设置，并按本栏的读取方式确认。不是设置总力量；读回不等于目标时会报错。": "Enter target base strength (integer 0-1000000). Uses the game stat setter and this field's getter to verify. Does not set total strength; a readback mismatch is an error.",
+    "输入目标基础敏捷（0～1000000 的整数）；通过游戏属性接口设置，并按本栏的读取方式确认。不是设置总敏捷；读回不等于目标时会报错。": "Enter target base agility (integer 0-1000000). Uses the game stat setter and this field's getter to verify. Does not set total agility; a readback mismatch is an error.",
+    "显示游戏返回的基础智力；当前未提供基础智力直接写入，请修改“智力(当前总值)”。": "Displays base intelligence from the game. Direct base intelligence editing is unavailable; edit Intelligence (Total) instead.",
+    "显示包含当前加成的总力量，不能直接写入；如需调整，请修改“力量(基础)”，其输入值不等于目标总力量。": "Displays total strength including current bonuses; read-only. Edit Strength (Base) to adjust it; that input is not a target total.",
+    "显示包含当前加成的总敏捷，不能直接写入；如需调整，请修改“敏捷(基础)”，其输入值不等于目标总敏捷。": "Displays total agility including current bonuses; read-only. Edit Agility (Base) to adjust it; that input is not a target total.",
+    "输入目标总智力；通过游戏接口调整基础智力并保留当前加成，读回确认总值。仅接受 0～1000000 的整数；低于当前加成、无法保留加成时会拒绝写入。": "Enter target total intelligence. Adjusts base intelligence through the game interface, preserving current bonuses and verifying the total. Accepts integers 0-1000000; rejects targets that cannot preserve current bonuses.",
+    "；当前未取得可写的英雄组件": "; no writable hero component is currently bound",
+    "；本次总智力写入已由游戏接口读回确认": "; this total intelligence write was verified through the game getter",
     "DLL 单位字段快照长度或身份异常": "Invalid DLL unit field snapshot length or identity",
     "DLL 单位组件身份不完整": "Incomplete DLL unit component identity",
     "DLL 第二攻击快照缺少所属组件": "DLL second attack snapshot has no owning component",

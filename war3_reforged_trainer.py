@@ -2619,7 +2619,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 54
+    NATIVE_HELPER_VERSION = 55
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -2724,6 +2724,7 @@ class War3Trainer:
     NATIVE_HELPER_OP_START_ABILITY_EFFECT = 158
     NATIVE_HELPER_OP_ABILITY_EFFECT_OPTIONS = 159
     NATIVE_HELPER_OP_FINISH_ABILITY_EFFECT = 160
+    NATIVE_HELPER_OP_ENABLE_BOUND_TOGGLE = 161
     PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 154
     NATIVE_BASIC_FIELD_ARGUMENTS = {
         "hp_current": ("target_hp", "hp"),
@@ -2799,7 +2800,6 @@ class War3Trainer:
         self._jass_unit_resolver_address = 0
         self._buff_data_constructor_address = 0
         self._pending_direct_effects: set[tuple[int, int]] = set()
-        self._hidden_toggle_abilities: set[tuple[int, int]] = set()
         self._pending_direct_effects_lock = threading.Lock()
         self._native_helper_lock = threading.RLock()
         self._persistent_bootstrap_lock = threading.RLock()
@@ -2889,7 +2889,6 @@ class War3Trainer:
             self._jass_unit_resolver_address = 0
             self._buff_data_constructor_address = 0
             self._pending_direct_effects = set()
-            self._hidden_toggle_abilities = set()
             self._ability_runtime_templates = {}
             self._ability_instance_by_data = {}
             self._selection_player_candidates = []
@@ -4227,6 +4226,8 @@ class War3Trainer:
                     details = f" direct_effect_completed={operation[5]} direct_cleanup_error={operation[7]}"
                 elif operation[0] == self.NATIVE_HELPER_OP_FINISH_ABILITY_EFFECT:
                     details = f" effect_token={operation[2]} effect_cleanup_error={operation[7]}"
+                elif operation[0] == self.NATIVE_HELPER_OP_ENABLE_BOUND_TOGGLE:
+                    details = f" toggle_order_accepted={operation[5]} toggle_cleanup_error={operation[7]}"
             if actual_count == op_count == 3:
                 base, size = self.NATIVE_HELPER_HEADER_STRUCT.size, self.NATIVE_HELPER_OP_STRUCT.size
                 operation = self.NATIVE_HELPER_OP_STRUCT.unpack_from(data, base + size)
@@ -4622,6 +4623,7 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_START_ABILITY_EFFECT,
             self.NATIVE_HELPER_OP_ABILITY_EFFECT_OPTIONS,
             self.NATIVE_HELPER_OP_FINISH_ABILITY_EFFECT,
+            self.NATIVE_HELPER_OP_ENABLE_BOUND_TOGGLE,
             self.NATIVE_HELPER_OP_BOUND_INVENTORY_ITEM,
             self.NATIVE_HELPER_OP_BOUND_ITEM_TYPE,
         }
@@ -5714,86 +5716,26 @@ class War3Trainer:
             return self._enable_selected_toggle_ability_locked(rawcode, order_id)
 
     def _enable_selected_toggle_ability_locked(
-        self,
-        rawcode: int | str,
-        order_id: int,
+        self, rawcode: int | str, order_id: int,
     ) -> int:
         ability_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
-        if not ability_rawcode:
-            raise ValueError("技能 ID 无效")
-        with self._process_memory() as pm:
-            unit_handle = self._elephant_selected_handle(pm)
-            handlers = self._elephant_handlers(
-                pm,
-                (
-                    "GetUnitAbilityLevel",
-                    "UnitAddAbility",
-                    "BlzUnitHideAbility",
-                    "IssueImmediateOrderById",
-                ),
-            )
-        level = int(self._run_native_helper_ops(
-            unit_handle,
-            ((
-                self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE_LEVEL,
-                ability_rawcode,
-                handlers["GetUnitAbilityLevel"].handler_address,
-                0,
-                0,
-            ),),
-        )[0].result)
-        toggle_key = (unit_handle, ability_rawcode)
-        if level and toggle_key in self._hidden_toggle_abilities:
-            return 1
-        added = not level
-        if added:
-            add_result = int(self._run_native_helper_ops(
-                unit_handle,
-                ((
-                    self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE,
-                    ability_rawcode,
-                    handlers["UnitAddAbility"].handler_address,
-                    0,
-                    0,
-                ),),
-            )[0].result)
-            if not add_result:
-                raise RuntimeError(f"游戏未能添加 {format_rawcode(ability_rawcode)}")
-        if added:
-            self._run_native_helper_ops(
-                unit_handle,
-                ((
-                    self.NATIVE_HELPER_OP_JASS_UNIT_INT_BOOL,
-                    ability_rawcode,
-                    handlers["BlzUnitHideAbility"].handler_address,
-                    0,
-                    0,
-                ),),
-            )
-        issued = int(self._run_native_helper_ops(
-            unit_handle,
-            ((
-                self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE,
-                int(order_id),
-                handlers["IssueImmediateOrderById"].handler_address,
-                0,
-                0,
-            ),),
-        )[0].result)
-        if added:
-            self._run_native_helper_ops(
-                unit_handle,
-                ((
-                    self.NATIVE_HELPER_OP_JASS_UNIT_INT_BOOL,
-                    ability_rawcode,
-                    handlers["BlzUnitHideAbility"].handler_address,
-                    1,
-                    0,
-                ),),
-            )
-            if issued:
-                self._hidden_toggle_abilities.add(toggle_key)
-        return issued
+        order = int(order_id)
+        if not ability_rawcode or not 0 < order <= 0x7FFFFFFF:
+            raise ValueError("Invalid ability or toggle order")
+        candidate, handle = self._direct_selected_context()
+        native = self._native_snapshot_for_candidate(candidate)
+        if native is None or native.handle != handle:
+            raise RuntimeError("Toggle requires a bound native unit identity")
+        response = self._run_native_helper_ops(handle, (
+            (self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY, 0,
+             candidate.unit_address, candidate.handle, candidate.owner_address),
+            (self.NATIVE_HELPER_OP_ENABLE_BOUND_TOGGLE, ability_rawcode, order, 0, 0),
+        ))
+        if (len(response) != 2 or any(item.last_error for item in response)
+                or response[0].kind != self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY or response[0].result != 1
+                or response[1].kind != self.NATIVE_HELPER_OP_ENABLE_BOUND_TOGGLE or not response[1].result):
+            raise RuntimeError("Incomplete native toggle result")
+        return int(response[1].result)
 
     def _run_selected_ability_effect(
         self,

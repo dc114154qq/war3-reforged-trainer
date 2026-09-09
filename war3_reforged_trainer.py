@@ -14044,8 +14044,11 @@ class War3Trainer:
 
         written = {}
         if basic_indices:
-            candidate = self._write_basic_unit_values_to_candidate(pm, candidate, **basic_values)
-            snapshot = self._native_snapshot_for_candidate(candidate)
+            # Read back basic values without rebinding the request's inventory
+            # identity. A trigger may replace an item during HP/position writes;
+            # subsequent item operations must still validate the original item.
+            basic_readback = self._write_basic_unit_values_to_candidate(pm, candidate, **basic_values)
+            snapshot = self._native_snapshot_for_candidate(basic_readback)
             if snapshot is None:
                 raise RuntimeError("No native snapshot after basic field write")
             for index in basic_indices:

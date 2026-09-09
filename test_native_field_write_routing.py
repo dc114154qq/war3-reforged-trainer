@@ -82,3 +82,61 @@ def test_duplicate_key_and_label_are_rejected_before_writing(fields_context):
         trainer._write_unit_fields_to_candidate(memory, candidate, [module.MemoryWriteSpec(key, 0, '', 150)
                                                                   for key in ('hp_current', 'HP-当前值')])
     trainer._run_native_helper_ops.assert_not_called()
+
+
+@pytest.mark.parametrize('attribute', ['item_handles', 'item_addresses', 'item_ids', 'item_full_handles'])
+@pytest.mark.parametrize('quantity_first', [False, True])
+@pytest.mark.parametrize('item_field,item_value', [('inventory_slot_1_charges', 7), ('inventory_slot_1', 'I002')])
+def test_basic_readback_cannot_rebind_following_item_write(fields_context, attribute, quantity_first, item_field, item_value):
+    trainer, memory, candidate, snapshot = fields_context
+    memory.inventory_items = [module.InventoryItem(
+        slot=1, handle=snapshot.item_full_handles[0], handle_address=0,
+        item_address=snapshot.item_addresses[0], rawcode=snapshot.item_ids[0], native_slot=True)]
+    values = list(getattr(snapshot, attribute))
+    values[0] += 1
+    changed = replace(snapshot, hp=150, **{attribute: tuple(values)})
+    reads = iter([snapshot, changed, changed])
+
+    def native_result(handle, ops):
+        if ops[0][0] == trainer.NATIVE_HELPER_OP_PERSISTENT_UNIT_SNAPSHOT:
+            return [snapshot_result(next(reads))]
+        if ops[1][0] == trainer.NATIVE_HELPER_OP_SET_BOUND_ITEM_CHARGES:
+            return [module.NativeHelperOpResult(136, 1), module.NativeHelperOpResult(137, 7),
+                    module.NativeHelperOpResult(trainer.NATIVE_HELPER_OP_BOUND_ITEM_IDENTITY, 1)]
+        return []
+
+    trainer._run_native_helper_ops.side_effect = native_result
+    specs = [module.MemoryWriteSpec('hp_current', 0, '', 150),
+             module.MemoryWriteSpec(item_field, 0, '', item_value)]
+    if quantity_first:
+        specs.reverse()
+    with pytest.raises(RuntimeError, match='item changed before writing'):
+        trainer._write_unit_fields_to_candidate(memory, candidate, specs)
+    assert not any(op[0] == trainer.NATIVE_HELPER_OP_SET_BOUND_ITEM_CHARGES
+                   for call in trainer._run_native_helper_ops.call_args_list for op in call.args[1])
+    assert candidate.native_snapshot == snapshot
+    trainer._inventory_items_from_candidate.assert_not_called()
+    memory.write_f32.assert_not_called()
+
+
+@pytest.mark.parametrize('quantity_first', [False, True])
+def test_basic_readback_and_quantity_write_succeed_for_unchanged_item(fields_context, quantity_first):
+    trainer, memory, candidate, snapshot = fields_context
+    fresh = replace(snapshot, hp=149)
+    trainer._run_native_helper_ops.side_effect = [
+        [snapshot_result(snapshot)], [], [snapshot_result(fresh)], [snapshot_result(fresh)],
+        [module.NativeHelperOpResult(136, 1), module.NativeHelperOpResult(137, 7),
+         module.NativeHelperOpResult(trainer.NATIVE_HELPER_OP_BOUND_ITEM_IDENTITY, 1)],
+    ]
+    specs = [module.MemoryWriteSpec('hp_current', 0, '', 150),
+             module.MemoryWriteSpec('inventory_slot_1_charges', 0, '', 7)]
+    if quantity_first:
+        specs.reverse()
+    fields = trainer._write_unit_fields_to_candidate(memory, candidate, specs)
+    assert [field.key for field in fields] == [spec.label for spec in specs]
+    assert {field.key: field.value for field in fields} == {'hp_current': 149, 'inventory_slot_1_charges': 7}
+    item_ops = trainer._run_native_helper_ops.call_args.args[1]
+    assert item_ops[1][2:4] == (snapshot.item_addresses[0], snapshot.item_handles[0])
+    assert item_ops[2][2] == snapshot.item_full_handles[0]
+    assert candidate.native_snapshot == snapshot
+    memory.write_f32.assert_not_called()

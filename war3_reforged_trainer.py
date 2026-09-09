@@ -8200,7 +8200,8 @@ class War3Trainer:
                     or results[1].result != target_total):
                 raise RuntimeError("Native intelligence readback differs from request")
             return replace(field, value_type="i32", value=target_total, native_write=True,
-                           write_address=0, write_type="", note="native hero intelligence verified in game callback")
+                           write_address=0, write_type="",
+                           note=field.note + "；本次总智力写入已由游戏接口读回确认")
         if not candidate.unit_address:
             raise RuntimeError("当前单位缺少运行时 unit 指针，不能调用内部 SetHeroInt")
         target_total = self._coerce_hero_intelligence_target(value)
@@ -12857,6 +12858,21 @@ class War3Trainer:
                     raise RuntimeError("Incomplete native component generation")
                 fields[index] = replace(field, write_address=0, write_type="", extra_writes=(),
                                         native_write=True, native_component_identity=identity)
+        if native is not None:
+            hero_stat_notes = {
+                "base_strength": "显示游戏返回的基础力量；写入英雄组件数值，不是设置总力量。实测重新读取可能略低于输入值，差值原因待核实，以重新读取和游戏面板为准。",
+                "base_agility": "显示游戏返回的基础敏捷；写入英雄组件数值，不是设置总敏捷。实测重新读取可能略低于输入值，差值原因待核实，以重新读取和游戏面板为准。",
+                "base_intelligence": "显示游戏返回的基础智力；当前未提供基础智力直接写入，请修改“智力(当前总值)”。",
+                "strength_total": "显示包含当前加成的总力量，不能直接写入；如需调整，请修改“力量(基础)”，其输入值不等于目标总力量。",
+                "agility_total": "显示包含当前加成的总敏捷，不能直接写入；如需调整，请修改“敏捷(基础)”，其输入值不等于目标总敏捷。",
+                "intelligence_total": "输入目标总智力；通过游戏接口调整基础智力并保留当前加成，读回确认总值。仅接受 0～1000000 的整数；低于当前加成、无法保留加成时会拒绝写入。",
+            }
+            for index, field in enumerate(fields):
+                if field.key in hero_stat_notes:
+                    access = "可写" if field.writable else "只读"
+                    unavailable = "；当前未取得可写的英雄组件" if (
+                        not field.writable and field.key in {"base_strength", "base_agility", "intelligence_total"}) else ""
+                    fields[index] = replace(field, note=f"{access}{unavailable}；{hero_stat_notes[field.key]}")
         return fields
 
     def read_selected_unit_fields(self) -> tuple[VisibleUnitPanel, UnitCandidate, list[UnitMemoryField]]:

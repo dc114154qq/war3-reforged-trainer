@@ -83,7 +83,7 @@ class ElephantSourceRoutingTests(unittest.TestCase):
         main._win10_session_identity = None
         self.assertIs(main.trainer_for_read_source((0x10, 0x20, 0x30), True), main)
 
-    def test_failed_backup_read_invalidates_previous_session(self):
+    def test_compatibility_read_propagates_native_failure_without_legacy_setup(self):
         main = object.__new__(trainer_module.War3Trainer)
         backup = object.__new__(trainer_module.BackupReadWar3Trainer)
         diagnostics = _Diagnostics()
@@ -92,17 +92,13 @@ class ElephantSourceRoutingTests(unittest.TestCase):
         main._win10_session_trainer = backup
         main._win10_session_identity = (0x10, 0x20, 0x30)
 
-        with patch.object(
-            trainer_module,
-            "Win10ReadLogger",
-            side_effect=RuntimeError("log unavailable"),
-        ):
-            with self.assertRaisesRegex(RuntimeError, "log unavailable"):
+        with patch.object(main, "read_selected_unit_fields", side_effect=RuntimeError("native unavailable")), patch.object(
+            trainer_module, "Win10ReadLogger", side_effect=AssertionError("Legacy log setup"),
+        ), patch.object(trainer_module, "Win10ProcessMemory", side_effect=AssertionError("Legacy memory scan")):
+            with self.assertRaisesRegex(RuntimeError, "native unavailable"):
                 main.read_selected_unit_fields_win10()
 
-        self.assertIsNone(main._win10_session_trainer)
-        self.assertIsNone(main._win10_session_identity)
-        self.assertEqual(diagnostics.close_calls, 1)
+        self.assertEqual(diagnostics.close_calls, 0)
 
     def test_backup_memory_factory_never_builds_normal_memory(self):
         backup = object.__new__(trainer_module.BackupReadWar3Trainer)
@@ -314,6 +310,9 @@ class ElephantSourceRoutingTests(unittest.TestCase):
                 for node in run_gui.body
                 if isinstance(node, ast.FunctionDef) and node.name == function_name
             )
+            if function_name == "read_unit_win10":
+                self.assertEqual(ast.unparse(function.body[0]), "return read_unit()")
+                continue
             attribute_calls = {
                 node.func.attr
                 for node in ast.walk(function)

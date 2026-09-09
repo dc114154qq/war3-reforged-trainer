@@ -19,7 +19,7 @@ class NativeReadFailureRoutingTests(unittest.TestCase):
         return namespace[name]
 
     def test_read_errors_do_not_scan_or_offer_old_candidates(self):
-        for callback in ("read_unit", "read_unit_fields", "read_unit_native_selection"):
+        for callback in ("read_unit", "read_unit_win10", "read_unit_fields", "read_unit_native_selection"):
             for attach_failure in (False, True):
                 with self.subTest(callback=callback, attach_failure=attach_failure):
                     error = RuntimeError("native selection unavailable")
@@ -36,6 +36,7 @@ class NativeReadFailureRoutingTests(unittest.TestCase):
                         "populate_selection_candidates": populate_candidates,
                         "populate_recovery_candidates": Mock(side_effect=AssertionError("Unexpected scan")),
                     }
+                    self.load_callback("read_unit", namespace)
                     with self.assertRaises(RuntimeError) as raised:
                         self.load_callback(callback, namespace)()
                     self.assertIs(raised.exception, error)

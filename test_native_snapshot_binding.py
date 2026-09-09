@@ -18,7 +18,7 @@ def make_snapshot():
         item_ids=(0x49303031, 0, 0, 0, 0, 0), item_charges=(3, 0, 0, 0, 0, 0),
         item_handles=(100, 0, 0, 0, 0, 0), item_addresses=(0x100005000, 0, 0, 0, 0, 0),
         item_full_handles=(0x123400000064, 0, 0, 0, 0, 0),
-        ability_ids=(0x41303031,), ability_levels=(2,),
+        ability_ids=(0x41303031,), ability_levels=(2,), component_mask=15,
     )
 
 
@@ -33,7 +33,8 @@ def make_candidate(snapshot):
 
 
 def snapshot_result(snapshot):
-    row = [0] * 153
+    row = [0] * 154
+    row[153] = snapshot.component_mask
     row[:5] = [snapshot.handle, snapshot.unit_address, snapshot.owner, snapshot.owner_id, snapshot.type_id]
     row[5:12] = [module.War3Trainer._float_bits(v) for v in
                  (snapshot.hp, snapshot.hp_max, snapshot.mp, snapshot.mp_max, snapshot.x, snapshot.y, snapshot.move_speed)]
@@ -309,7 +310,7 @@ class NativeSnapshotBindingTests(unittest.TestCase):
         trainer._run_native_helper_ops_locked(1, ops)
         payload = trainer._write_native_helper_command.call_args.args[1]
         header = trainer.NATIVE_HELPER_HEADER_STRUCT.unpack_from(payload)
-        self.assertEqual(header[1], 47)
+        self.assertEqual(header[1], 48)
         self.assertEqual(header[4], 1)
         operation = trainer.NATIVE_HELPER_OP_STRUCT.unpack_from(payload, trainer.NATIVE_HELPER_HEADER_STRUCT.size)
         self.assertEqual(operation[:5], ops[0])

@@ -799,6 +799,7 @@ class PersistentNativeUnitSnapshot:
     mp_property: int = 0
     hp_regen: float | None = None
     mp_regen: float | None = None
+    component_mask: int = 0
 
 NATIVE_COMPONENT_FIELD_SPECS = {
     key: (index, component, kind) for index, (key, component, kind) in enumerate((
@@ -2618,7 +2619,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 47
+    NATIVE_HELPER_VERSION = 48
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -2718,7 +2719,7 @@ class War3Trainer:
     NATIVE_HELPER_OP_SET_BOUND_HERO_INT = 153
     NATIVE_HELPER_OP_REPLACE_HERO_SKILL = 154
     NATIVE_HELPER_OP_IDENTITY_UNIT_SNAPSHOT = 155
-    PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 153
+    PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 154
     NATIVE_BASIC_FIELD_ARGUMENTS = {
         "hp_current": ("target_hp", "hp"),
         "hp_max": ("max_hp", "hp_max"),
@@ -4016,6 +4017,8 @@ class War3Trainer:
                 index * self.PERSISTENT_NATIVE_SNAPSHOT_QWORDS:
                 (index + 1) * self.PERSISTENT_NATIVE_SNAPSHOT_QWORDS
             ]
+            if not 0 <= row[153] <= 15:
+                raise RuntimeError("Native snapshot contains an invalid component mask")
             scalar = row[:17]
             (
                 handle,
@@ -4078,6 +4081,7 @@ class War3Trainer:
                     item_handles=item_handles,
                     item_addresses=item_addresses,
                     item_full_handles=tuple(row[143:149]),
+                    component_mask=int(row[153]),
                     ability_ids=ability_ids,
                     ability_levels=ability_levels,
                     full_handle=int(row[138]),
@@ -4873,13 +4877,10 @@ class War3Trainer:
                     for slot, rawcode in enumerate(item.item_ids, start=1)
                     if rawcode
                 )
-                components = {"attack"}
-                if item.move_speed > 0:
-                    components.add("move")
-                if item.hero_level > 0 or inventory:
-                    components.add("inventory")
-                if item.hero_level > 0:
-                    components.add("hero")
+                components = {
+                    name for bit, name in enumerate(("inventory", "hero", "move", "attack"))
+                    if item.component_mask & (1 << bit)
+                }
                 summaries.append(
                     UnitSelectionSummary(
                         candidate=candidate,
@@ -4892,7 +4893,7 @@ class War3Trainer:
                         components=tuple(sorted(components)),
                         inventory=inventory,
                         ability_count=len(item.ability_ids),
-                        hero=item.hero_level > 0,
+                        hero="hero" in components,
                     )
                 )
             return tuple(summaries)

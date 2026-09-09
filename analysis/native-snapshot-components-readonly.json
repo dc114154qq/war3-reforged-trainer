@@ -1,0 +1,99 @@
+{
+  "protocol": 48,
+  "pid": 15028,
+  "mutation": false,
+  "snapshot_qwords": 154,
+  "snapshot_ms": [
+    24.3,
+    19.21
+  ],
+  "summary_extra_ipc": 0,
+  "units": [
+    {
+      "handle": 1058016,
+      "component_mask": 15,
+      "components": [
+        "attack",
+        "hero",
+        "inventory",
+        "move"
+      ],
+      "hero": true
+    },
+    {
+      "handle": 1058028,
+      "component_mask": 15,
+      "components": [
+        "attack",
+        "hero",
+        "inventory",
+        "move"
+      ],
+      "hero": true
+    },
+    {
+      "handle": 1052980,
+      "component_mask": 12,
+      "components": [
+        "attack",
+        "move"
+      ],
+      "hero": false
+    },
+    {
+      "handle": 1052981,
+      "component_mask": 12,
+      "components": [
+        "attack",
+        "move"
+      ],
+      "hero": false
+    },
+    {
+      "handle": 1052982,
+      "component_mask": 12,
+      "components": [
+        "attack",
+        "move"
+      ],
+      "hero": false
+    },
+    {
+      "handle": 1052983,
+      "component_mask": 12,
+      "components": [
+        "attack",
+        "move"
+      ],
+      "hero": false
+    },
+    {
+      "handle": 1052984,
+      "component_mask": 13,
+      "components": [
+        "attack",
+        "inventory",
+        "move"
+      ],
+      "hero": false
+    },
+    {
+      "handle": 1052989,
+      "component_mask": 12,
+      "components": [
+        "attack",
+        "move"
+      ],
+      "hero": false
+    },
+    {
+      "handle": 1052990,
+      "component_mask": 12,
+      "components": [
+        "attack",
+        "move"
+      ],
+      "hero": false
+    }
+  ]
+}

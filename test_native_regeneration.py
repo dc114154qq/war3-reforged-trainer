@@ -79,11 +79,11 @@ static void prepare_regen(void) {
 __declspec(dllexport) unsigned read_regen(unsigned scenario,uint64_t *out,unsigned *length) {
     unsigned counts[1]={0},units;
     regen_scenario=scenario;
-    return collect(1,counts,UINT32_MAX,0,out,153,length,&units);
+    return collect(1,counts,UINT32_MAX,0,out,154,length,&units);
 }
 __declspec(dllexport) unsigned write_regen(const wchar_t *directory,unsigned scenario,unsigned mask,
                                          unsigned hp,unsigned mp,unsigned *after) {
-    uint64_t baseline[153];unsigned length;DWORD error=read_regen(0,baseline,&length),bytes;
+    uint64_t baseline[154];unsigned length;DWORD error=read_regen(0,baseline,&length),bytes;
     NativeCommand cmd={0};wchar_t path[MAX_PATH];HANDLE file;
     if(error) return error;
     if(wcslen(directory)>=MAX_PATH-1) return ERROR_INVALID_PARAMETER;
@@ -134,12 +134,12 @@ def native(tmp_path_factory):
 
 @pytest.mark.parametrize('scenario',range(13))
 def test_regeneration_in_production_unit_snapshot(native,scenario):
-    out=(ctypes.c_uint64*153)();length=ctypes.c_uint()
+    out=(ctypes.c_uint64*154)();length=ctypes.c_uint()
     error=native.read_regen(scenario,out,ctypes.byref(length))
     if scenario>2:
         assert error and length.value==0
         return
-    assert not error and length.value==153
+    assert not error and length.value==154
     trainer=module.War3Trainer.__new__(module.War3Trainer)
     result=module.NativeHelperOpResult(130,1,extra_results=tuple(out))
     snapshot=trainer._parse_persistent_native_snapshots(result)[0]

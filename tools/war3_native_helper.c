@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 47u
+#define WAR3_NATIVE_VERSION 48u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -481,6 +481,7 @@ typedef struct War3PersistentSnapshot {
     uint64_t mp_property;
     uint64_t hp_regen_bits;
     uint64_t mp_regen_bits;
+    uint64_t component_mask;
 } War3PersistentSnapshot;
 
 /* Protocol 26 keeps the fixed headers and appends pairs beyond the first
@@ -771,6 +772,45 @@ static DWORD war3_regen_properties(uint64_t owner, War3RegenProperties *out) {
 /* 2.0.4.23745 component fields, copied once on the game thread. The unit's
    fixed component slots are cross-checked against the engine object table;
    no wrapper search, address-range vtable guess, or cached membership. */
+/* A compact component identity read for a whole selection snapshot. No field
+   buffers, inventory calls, heap walks or additional IPC requests are needed. */
+static DWORD war3_snapshot_component_mask(uint64_t handle,uint64_t unit,uint64_t owner,
+                                           uint64_t full,uint64_t *mask) {
+    static const uint32_t offsets[4]={0x5a0,0x5a8,0x5b0,0x5c0};
+    static const uint64_t tags[4]={0x41496e762b61676cULL,0x414865722b61676cULL,
+                                  0x416d6f762b61676cULL,0x4161746b2b61676cULL};
+    uint64_t data[4]={0},wrappers[4]={0},ids[4]={0},result=0;
+    NativeCommand guard={0};DWORD error;
+    guard.unit_handle=handle;guard.ops[0].handler=unit;guard.ops[0].arg0=full;guard.ops[0].arg1=owner;
+    error=war3_validate_unit_identity(&guard,&guard.ops[0]);if(error) return error;
+    if(!war3_readable_span(unit,0x5c8)) return ERROR_INVALID_ADDRESS;
+    for(unsigned k=0;k<4;++k) {
+        data[k]=*(uint64_t *)(uintptr_t)(unit+offsets[k]);
+        if(!data[k]) continue;
+        if(!war3_readable_span(data[k],0x70)) return ERROR_INVALID_ADDRESS;
+        ids[k]=*(uint64_t *)(uintptr_t)(data[k]+0x18);
+        if(!ids[k]) return ERROR_INVALID_HANDLE;
+        wrappers[k]=((War3AgentResolveFn)(uintptr_t)g_persistent_agent_resolver)((uint32_t)ids[k],(uint32_t)(ids[k]>>32));
+        result|=1u<<k;
+    }
+    error=war3_validate_unit_identity(&guard,&guard.ops[0]);if(error) return error;
+    /* This final pass runs without callbacks, including checks for components
+       added to a previously empty slot while resolving a different component. */
+    if(!war3_readable_span(unit,0x5c8)) return ERROR_INVALID_ADDRESS;
+    for(unsigned k=0;k<4;++k) {
+        if(*(uint64_t *)(uintptr_t)(unit+offsets[k])!=data[k]) return ERROR_INVALID_HANDLE;
+        if(!data[k]) continue;
+        if(!war3_readable_span(data[k],0x70) || !war3_readable_span(wrappers[k],0x98)) return ERROR_INVALID_ADDRESS;
+        if(*(uint64_t *)(uintptr_t)(data[k]+0x18)!=ids[k] ||
+           *(uint64_t *)(uintptr_t)(data[k]+0x68)!=unit ||
+           *(uint64_t *)(uintptr_t)(wrappers[k]+0x18)!=tags[k] ||
+           *(uint64_t *)(uintptr_t)(wrappers[k]+0x20)!=ids[k] ||
+           *(uint64_t *)(uintptr_t)(wrappers[k]+0x50)!=owner ||
+           *(uint64_t *)(uintptr_t)(wrappers[k]+0x90)!=data[k]) return ERROR_INVALID_HANDLE;
+    }
+    *mask=result;return ERROR_SUCCESS;
+}
+
 static DWORD war3_bound_inventory(const NativeCommand *cmd, uint64_t *values);
 static DWORD war3_bound_unit_fields(const NativeCommand *cmd, uint64_t *values) {
     static const uint32_t offsets[4] = {0x5a0, 0x5a8, 0x5b0, 0x5c0};
@@ -1538,6 +1578,8 @@ static DWORD war3_persistent_selected_snapshot(
                 }
                 snapshot->hp_property = properties.address[0]; snapshot->mp_property = properties.address[1];
                 snapshot->hp_regen_bits = properties.bits[0]; snapshot->mp_regen_bits = properties.bits[1];
+                error=war3_snapshot_component_mask(unit,object,owner,full,&snapshot->component_mask);
+                if(error) __leave;
             }
             ++count;
         }

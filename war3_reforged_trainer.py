@@ -2618,7 +2618,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 45
+    NATIVE_HELPER_VERSION = 46
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -2716,6 +2716,7 @@ class War3Trainer:
     NATIVE_HELPER_OP_REPLACE_INVENTORY_CONTEXT = 151
     NATIVE_HELPER_OP_WRITE_COMPONENT_FIELDS = 152
     NATIVE_HELPER_OP_SET_BOUND_HERO_INT = 153
+    NATIVE_HELPER_OP_REPLACE_HERO_SKILL = 154
     PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 153
     NATIVE_BASIC_FIELD_ARGUMENTS = {
         "hp_current": ("target_hp", "hp"),
@@ -2729,6 +2730,9 @@ class War3Trainer:
     }
     PERSISTENT_NATIVE_NAMES = (
         "UnitAddAbility",
+        "UnitRemoveAbility",
+        "SetUnitAbilityLevel",
+        "BlzGetUnitAbility",
         "CreateGroup",
         "GetLocalPlayer",
         "GroupEnumUnitsSelected",
@@ -4191,6 +4195,11 @@ class War3Trainer:
             raise RuntimeError("native helper 返回协议不匹配")
         if status != self.NATIVE_HELPER_STATUS_OK:
             details = ""
+            if actual_count == op_count == 2:
+                operation = self.NATIVE_HELPER_OP_STRUCT.unpack_from(
+                    data, self.NATIVE_HELPER_HEADER_STRUCT.size + self.NATIVE_HELPER_OP_STRUCT.size)
+                if operation[0] == self.NATIVE_HELPER_OP_REPLACE_HERO_SKILL:
+                    details = f" skill_phase={operation[5]} skill_cleanup_error={operation[7]}"
             if actual_count == op_count == 3:
                 base, size = self.NATIVE_HELPER_HEADER_STRUCT.size, self.NATIVE_HELPER_OP_STRUCT.size
                 operation = self.NATIVE_HELPER_OP_STRUCT.unpack_from(data, base + size)
@@ -4577,6 +4586,7 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_REPLACE_INVENTORY_CONTEXT,
             self.NATIVE_HELPER_OP_WRITE_COMPONENT_FIELDS,
             self.NATIVE_HELPER_OP_SET_BOUND_HERO_INT,
+            self.NATIVE_HELPER_OP_REPLACE_HERO_SKILL,
             self.NATIVE_HELPER_OP_BOUND_INVENTORY_ITEM,
             self.NATIVE_HELPER_OP_BOUND_ITEM_TYPE,
         }
@@ -13026,7 +13036,7 @@ class War3Trainer:
             self._append_unit_field(pm, fields, "strength_growth", "力量成长/级", "f32", data + 0x188, "英雄", note=growth_note)
             self._append_unit_field(pm, fields, "intelligence_growth", "智力成长/级", "f32", data + 0x198, "英雄", note=growth_note)
             self._append_unit_field(pm, fields, "agility_growth", "敏捷成长/级", "f32", data + 0x1A8, "英雄", note=growth_note)
-            skill_name_note = "英雄技能栏 rawcode；写入已学技能时会使用现有运行时模板同步实例并刷新命令卡"
+            skill_name_note = "英雄技能栏 rawcode；替换时由引擎从地图资源创建技能"
             skill_cache_note = "旧版候选/运行时缓存；单改这里通常不改变已学技能效果"
             for index in range(self.HERO_SKILL_SLOT_COUNT):
                 config_address = data + 0x204 + index * 4
@@ -13332,10 +13342,10 @@ class War3Trainer:
             )
         if native is not None and isinstance(pm, NativeUnitFieldMemory):
             for index, field in enumerate(fields):
-                if field.key == "intelligence_total":
+                if field.key == "intelligence_total" or self._skill_index_from_field_key(field.key) is not None:
                     identity = pm.component_identities.get("hero")
                     if identity is not None:
-                        fields[index] = replace(field, write_address=0, write_type="", native_write=True,
+                        fields[index] = replace(field, write_address=0, write_type="", extra_writes=(), native_write=True,
                                                 native_component_identity=identity)
                     continue
                 spec = NATIVE_COMPONENT_FIELD_SPECS.get(field.key)
@@ -14251,6 +14261,26 @@ class War3Trainer:
         new_rawcode = int(self._coerce_memory_value("rawcode", value)) & 0xFFFFFFFF
         if not self._looks_like_rawcode(new_rawcode):
             raise ValueError(f"技能 rawcode 无效：{format_rawcode(new_rawcode)}")
+        native = self._native_snapshot_for_candidate(candidate)
+        if native is not None:
+            identity = field.native_component_identity
+            if not all(identity):
+                raise RuntimeError("技能栏缺少绑定的英雄组件身份，停止写入")
+            old_rawcode = int(field.value) & 0xFFFFFFFF
+            if not old_rawcode:
+                raise RuntimeError("当前英雄技能栏为空，没有可替换的技能")
+            results = self._run_native_helper_ops(native.handle, (
+                (self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY, 0, candidate.unit_address,
+                 candidate.handle, candidate.owner_address),
+                (self.NATIVE_HELPER_OP_REPLACE_HERO_SKILL, new_rawcode, *identity,
+                 (index << 32) | old_rawcode),
+            ))
+            if (len(results) != 2 or any(result.last_error for result in results)
+                    or results[1].result != new_rawcode):
+                raise RuntimeError("DLL 英雄技能替换读回不一致")
+            return replace(field, value=new_rawcode, write_address=0, write_type="", extra_writes=(),
+                           native_write=True,
+                           note=f"引擎从地图资源替换技能；当前等级={results[1].arg1}")
         components = self._selected_components(pm, candidate.owner_address)
         hero = components.get("hero")
         if hero is None:
@@ -14740,7 +14770,8 @@ class War3Trainer:
         # Resolve and validate all requested fields before any mutation. Native
         # basic fields are batched once; their writability does not depend on an
         # external property address being available.
-        needs_fields = any(self._skill_index_from_field_key(
+        native_bound = self._native_snapshot_for_candidate(candidate) is not None
+        needs_fields = native_bound or any(self._skill_index_from_field_key(
             self.FIELD_KEY_ALIASES.get(spec.label, spec.label)) is None for spec in specs)
         fields = self._unit_fields_from_candidate(pm, candidate) if needs_fields else []
         by_key = {field.key: field for field in fields}
@@ -14753,7 +14784,7 @@ class War3Trainer:
         seen_basic = set()
         for index, spec in enumerate(specs):
             direct_key = self.FIELD_KEY_ALIASES.get(spec.label, spec.label)
-            if self._skill_index_from_field_key(direct_key) is not None:
+            if not native_bound and self._skill_index_from_field_key(direct_key) is not None:
                 field = UnitMemoryField(key=direct_key, label=direct_key, value_type="rawcode",
                                         value=0, address=0, category="技能", write_address=1, write_type="rawcode")
             else:

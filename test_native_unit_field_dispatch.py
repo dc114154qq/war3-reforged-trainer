@@ -180,6 +180,9 @@ def test_dispatch_identity_membership_and_complete_fields(dispatcher,tmp_path,ma
         assert [fields[k+'_growth'].value for k in ('strength','intelligence','agility')]==[2.25,3.25,4.25]
         for n in range(1,6):
             assert fields[f'skill{n}_name'].value==0x41303030+n
+            skill=fields[f'skill{n}_name']
+            assert skill.native_write and skill.write_address==0 and not skill.extra_writes
+            assert skill.native_component_identity==(values[8],values[343])
             assert fields[f'skill{n}_cache_rawcode'].value==0x42303030+n
             assert fields[f'skill{n}_learnable'].value==n
             assert fields[f'skill{n}_requirement'].value==n+9

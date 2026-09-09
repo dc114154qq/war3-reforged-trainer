@@ -1,0 +1,62 @@
+{
+  "pid": 15028,
+  "protocol": 46,
+  "bound_natives": 38,
+  "mutation": false,
+  "units": [
+    {
+      "handle": 1058016,
+      "fields": 123,
+      "bound_skill_slots": 5,
+      "hero_component": true
+    },
+    {
+      "handle": 1058028,
+      "fields": 131,
+      "bound_skill_slots": 5,
+      "hero_component": true
+    },
+    {
+      "handle": 1052980,
+      "fields": 79,
+      "bound_skill_slots": 0,
+      "hero_component": false
+    },
+    {
+      "handle": 1052981,
+      "fields": 77,
+      "bound_skill_slots": 0,
+      "hero_component": false
+    },
+    {
+      "handle": 1052982,
+      "fields": 77,
+      "bound_skill_slots": 0,
+      "hero_component": false
+    },
+    {
+      "handle": 1052983,
+      "fields": 79,
+      "bound_skill_slots": 0,
+      "hero_component": false
+    },
+    {
+      "handle": 1052984,
+      "fields": 61,
+      "bound_skill_slots": 0,
+      "hero_component": false
+    },
+    {
+      "handle": 1052989,
+      "fields": 77,
+      "bound_skill_slots": 0,
+      "hero_component": false
+    },
+    {
+      "handle": 1052990,
+      "fields": 77,
+      "bound_skill_slots": 0,
+      "hero_component": false
+    }
+  ]
+}

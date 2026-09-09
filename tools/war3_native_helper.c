@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 45u
+#define WAR3_NATIVE_VERSION 46u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -99,6 +99,7 @@
 #define WAR3_NATIVE_OP_REPLACE_INVENTORY_CONTEXT 151u
 #define WAR3_NATIVE_OP_WRITE_COMPONENT_FIELDS 152u
 #define WAR3_NATIVE_OP_SET_BOUND_HERO_INT 153u
+#define WAR3_NATIVE_OP_REPLACE_HERO_SKILL 154u
 #define WAR3_BOUND_INVENTORY_QWORDS 49u
 #define WAR3_BOUND_UNIT_FIELD_QWORDS (15u + 36u + 121u + 121u + WAR3_BOUND_INVENTORY_QWORDS + 4u)
 #define WAR3_CLONE_FLAG_HERO 0x01u
@@ -388,6 +389,9 @@ typedef struct War3PersistentNative {
 
 static const char *g_persistent_native_names[] = {
     "UnitAddAbility",
+    "UnitRemoveAbility",
+    "SetUnitAbilityLevel",
+    "BlzGetUnitAbility",
     "CreateGroup",
     "GetLocalPlayer",
     "GroupEnumUnitsSelected",
@@ -1164,6 +1168,8 @@ static DWORD war3_set_bound_hero_int(NativeCommand *cmd,NativeOp *op) {
     } __except(EXCEPTION_EXECUTE_HANDLER) { error=GetExceptionCode(); }
     return error;
 }
+
+#include "war3_native_hero_skill.h"
 
 static int war3_is_ability_field_op(uint32_t kind) {
     return kind == WAR3_NATIVE_OP_JASS_ABILITY_FIELD_GET ||
@@ -3350,6 +3356,7 @@ static void run_command(void) {
                 op->kind != WAR3_NATIVE_OP_REPLACE_INVENTORY_ITEM &&
                 op->kind != WAR3_NATIVE_OP_WRITE_COMPONENT_FIELDS &&
                 op->kind != WAR3_NATIVE_OP_SET_BOUND_HERO_INT &&
+                op->kind != WAR3_NATIVE_OP_REPLACE_HERO_SKILL &&
                 op->kind != WAR3_NATIVE_OP_BOUND_ABILITY_IDENTITY &&
                 op->kind != WAR3_NATIVE_OP_BOUND_INVENTORY_ITEM &&
                 !war3_is_internal_ability_op(op->kind) &&
@@ -3399,6 +3406,11 @@ static void run_command(void) {
             goto finish;
         }
         switch (op->kind) {
+            case WAR3_NATIVE_OP_REPLACE_HERO_SKILL: {
+                last_error=i==1?war3_replace_hero_skill(&cmd,op):ERROR_INVALID_PARAMETER;
+                if(last_error) { op->last_error=last_error;goto finish; }
+                break;
+            }
             case WAR3_NATIVE_OP_SET_BOUND_HERO_INT: {
                 last_error=i==1?war3_set_bound_hero_int(&cmd,op):ERROR_INVALID_PARAMETER;
                 if(last_error) { op->last_error=last_error;goto finish; }

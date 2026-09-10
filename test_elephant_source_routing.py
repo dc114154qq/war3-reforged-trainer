@@ -175,51 +175,28 @@ class ElephantSourceRoutingTests(unittest.TestCase):
             source,
         )
 
-    def test_inherited_elephant_method_uses_virtual_memory_factory(self):
-        backup = object.__new__(trainer_module.BackupReadWar3Trainer)
-        memory = _BackupMemory(123)
-        handler = trainer_module.NativeHandler("GetHeroLevel", 0x1000, 0x2000)
-        backup._process_memory = unittest.mock.Mock(return_value=memory)
-        backup._elephant_selected_handle = unittest.mock.Mock(return_value=0x3000)
-        backup._elephant_handlers = unittest.mock.Mock(
-            return_value={"GetHeroLevel": handler}
-        )
-        backup._run_native_helper_ops = unittest.mock.Mock(
-            return_value=[trainer_module.NativeHelperOpResult(kind=0, result=17)]
-        )
-
-        level = backup.get_selected_hero_level()
-
-        self.assertEqual(level, 17)
-        backup._process_memory.assert_called_once_with()
-        self.assertTrue(memory.closed)
-
-    def test_normal_elephant_method_never_builds_backup_memory(self):
-        normal = object.__new__(trainer_module.War3Trainer)
-        normal.pid = 123
-        memory = _BackupMemory(123)
-        handler = trainer_module.NativeHandler("GetHeroLevel", 0x1000, 0x2000)
-        normal._elephant_selected_handle = unittest.mock.Mock(return_value=0x3000)
-        normal._elephant_handlers = unittest.mock.Mock(
-            return_value={"GetHeroLevel": handler}
-        )
-        normal._run_native_helper_ops = unittest.mock.Mock(
-            return_value=[trainer_module.NativeHelperOpResult(kind=0, result=23)]
-        )
-
-        with (
-            patch.object(trainer_module, "ProcessMemory", return_value=memory) as ordinary,
-            patch.object(
-                trainer_module,
-                "Win10ProcessMemory",
-                side_effect=AssertionError("backup memory used"),
-            ),
+    def check_hero_query_without_memory(self, trainer_class, value):
+        from test_native_snapshot_binding import make_candidate, make_snapshot
+        trainer = trainer_class.__new__(trainer_class)
+        candidate = make_candidate(make_snapshot())
+        trainer._process_memory = unittest.mock.Mock(side_effect=AssertionError("External memory used"))
+        trainer._direct_selected_context = unittest.mock.Mock(return_value=(candidate, candidate.native_snapshot.handle))
+        trainer._query_native_table_handlers = unittest.mock.Mock(return_value={
+            "GetHeroLevel": trainer_module.NativeHandler("GetHeroLevel", 0, 0x200000)})
+        trainer._run_native_helper_ops = unittest.mock.Mock(return_value=[
+            trainer_module.NativeHelperOpResult(136, 1), trainer_module.NativeHelperOpResult(77, value)])
+        with patch.object(trainer_module, "ProcessMemory", side_effect=AssertionError("Normal memory used")), patch.object(
+            trainer_module, "Win10ProcessMemory", side_effect=AssertionError("Backup memory used")
         ):
-            level = normal.get_selected_hero_level()
+            self.assertEqual(trainer.get_selected_hero_level(), value)
+        trainer._process_memory.assert_not_called()
+        trainer._query_native_table_handlers.assert_called_once_with(("GetHeroLevel",))
 
-        self.assertEqual(level, 23)
-        ordinary.assert_called_once_with(123, write=False)
-        self.assertTrue(memory.closed)
+    def test_inherited_hero_query_uses_native_context_without_memory_factory(self):
+        self.check_hero_query_without_memory(trainer_module.BackupReadWar3Trainer, 17)
+
+    def test_normal_hero_query_uses_native_context_without_memory_factory(self):
+        self.check_hero_query_without_memory(trainer_module.War3Trainer, 23)
 
     def test_cached_clone_does_not_reselect_unit(self):
         trainer = object.__new__(trainer_module.War3Trainer)

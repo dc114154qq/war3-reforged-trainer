@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 60u
+#define WAR3_NATIVE_VERSION 61u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -3568,6 +3568,7 @@ static void run_command(void) {
             if (op->kind != WAR3_NATIVE_OP_JASS_SET_UNIT_STATE &&
                 op->kind != WAR3_NATIVE_OP_JASS_UNIT_BOOL &&
                 op->kind != WAR3_NATIVE_OP_JASS_UNIT_VOID &&
+                op->kind != WAR3_NATIVE_OP_JASS_UNIT_INT_QUERY &&
                 op->kind != WAR3_NATIVE_OP_JASS_SET_UNIT_INT &&
                 op->kind != WAR3_NATIVE_OP_JASS_SET_UNIT_POSITION &&
                 op->kind != WAR3_NATIVE_OP_SET_BOUND_ITEM_CHARGES &&
@@ -3602,7 +3603,8 @@ static void run_command(void) {
                 op->last_error = last_error;
                 goto finish;
             }
-            if (op->kind == WAR3_NATIVE_OP_JASS_UNIT_BOOL || op->kind == WAR3_NATIVE_OP_JASS_UNIT_VOID) {
+            if (op->kind == WAR3_NATIVE_OP_JASS_UNIT_BOOL || op->kind == WAR3_NATIVE_OP_JASS_UNIT_VOID ||
+                op->kind == WAR3_NATIVE_OP_JASS_UNIT_INT_QUERY) {
                 if (op->arg0 || op->arg1 || op->rawcode > (op->kind == WAR3_NATIVE_OP_JASS_UNIT_BOOL ? 1u : 0u) ||
                     !war3_executable_pointer(op->handler)) {
                     last_error = op->last_error = ERROR_INVALID_PARAMETER;
@@ -4446,6 +4448,10 @@ static void run_command(void) {
                 }
                 __try {
                     op->result = (uint32_t)fn(cmd.unit_handle);
+                    if (cmd.ops[0].kind == WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY) {
+                        last_error = war3_validate_unit_identity(&cmd, &cmd.ops[0]);
+                        if (last_error) { op->last_error = last_error; goto finish; }
+                    }
                 } __except (EXCEPTION_EXECUTE_HANDLER) {
                     op->last_error = GetExceptionCode();
                     last_error = op->last_error;

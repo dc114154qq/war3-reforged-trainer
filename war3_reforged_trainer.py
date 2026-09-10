@@ -2619,7 +2619,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 60
+    NATIVE_HELPER_VERSION = 61
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -5107,20 +5107,7 @@ class War3Trainer:
         return max(len(handlers), persistent_count)
 
     def get_selected_hero_level(self) -> int:
-        with self._process_memory() as pm:
-            unit_handle = self._elephant_selected_handle(pm)
-            handlers = self._elephant_handlers(pm, ("GetHeroLevel",))
-        result = self._run_native_helper_ops(
-            unit_handle,
-            ((
-                self.NATIVE_HELPER_OP_JASS_UNIT_INT_QUERY,
-                0,
-                handlers["GetHeroLevel"].handler_address,
-                0,
-                0,
-            ),),
-        )[0].result
-        return int(result & 0xFFFFFFFF)
+        return self._query_elephant_unit_int("GetHeroLevel") & 0xFFFFFFFF
 
     def set_selected_hero_level(self, level: int) -> int:
         target = int(level)
@@ -5270,19 +5257,20 @@ class War3Trainer:
         return bool(self._query_elephant_unit_int("IsUnitPaused"))
 
     def _query_elephant_unit_int(self, native_name: str) -> int:
-        with self._process_memory() as pm:
-            unit_handle = self._elephant_selected_handle(pm)
-            handlers = self._elephant_handlers(pm, (native_name,))
-        return int(self._run_native_helper_ops(
-            unit_handle,
-            ((
-                self.NATIVE_HELPER_OP_JASS_UNIT_INT_QUERY,
-                0,
-                handlers[native_name].handler_address,
-                0,
-                0,
-            ),),
-        )[0].result)
+        return self._query_bound_unit_values((native_name,))[0]
+
+    def _query_bound_unit_values(self, names: tuple[str, ...]) -> tuple[int, ...]:
+        candidate, unit_handle = self._direct_selected_context()
+        handlers = self._query_native_table_handlers(names)
+        results = self._run_native_helper_ops(unit_handle, (
+            (self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY, 0, candidate.unit_address,
+             candidate.handle, candidate.owner_address),
+            *((self.NATIVE_HELPER_OP_JASS_UNIT_INT_QUERY, 0, handlers[name].handler_address, 0, 0)
+              for name in names)))
+        if (len(results) != len(names) + 1 or any(result.last_error for result in results)
+                or any(result.kind != self.NATIVE_HELPER_OP_JASS_UNIT_INT_QUERY for result in results[1:])):
+            raise RuntimeError("Incomplete native unit query result")
+        return tuple(int(result.result) for result in results[1:])
 
     def _run_elephant_unit_bool(self, native_name: str, enabled: bool) -> None:
         self._run_bound_simple_unit_actions(((native_name, bool(enabled)),))
@@ -5539,29 +5527,8 @@ class War3Trainer:
         return attempts, successes
 
     def get_selected_unit_position(self) -> tuple[float, float]:
-        with self._process_memory() as pm:
-            unit_handle = self._elephant_selected_handle(pm)
-            handlers = self._elephant_handlers(pm, ("GetUnitX", "GetUnitY"))
-        results = self._run_native_helper_ops(
-            unit_handle,
-            (
-                (
-                    self.NATIVE_HELPER_OP_JASS_UNIT_INT_QUERY,
-                    0,
-                    handlers["GetUnitX"].handler_address,
-                    0,
-                    0,
-                ),
-                (
-                    self.NATIVE_HELPER_OP_JASS_UNIT_INT_QUERY,
-                    0,
-                    handlers["GetUnitY"].handler_address,
-                    0,
-                    0,
-                ),
-            ),
-        )
-        return self._float_from_bits(results[0].result), self._float_from_bits(results[1].result)
+        x, y = self._query_bound_unit_values(("GetUnitX", "GetUnitY"))
+        return self._float_from_bits(x), self._float_from_bits(y)
 
     def apply_direct_point_ability(
         self,

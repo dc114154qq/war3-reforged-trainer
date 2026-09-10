@@ -89,9 +89,10 @@ def test_failed_batch_does_not_publish_partial_item_snapshot(setup):
 @pytest.mark.parametrize('compat', [False, True])
 def test_both_ui_editions_recover_bound_display_identity_without_legacy_recovery(setup, compat):
     trainer, context, _, _, memory = setup
-    trainer._process_memory = Mock(return_value=nullcontext(memory))
+    trainer._process_memory = Mock(side_effect=AssertionError('External memory context'))
     trainer._candidate_from_display_identity = Mock(return_value=context.candidate)
     trainer._recover_win10_native_handlers = Mock(side_effect=AssertionError('No legacy recovery'))
     result = module.War3Trainer._item_field_context_by_identity_locked(trainer, 1, context.unit_identity, compat)
     assert result.item_identity == context.item_identity
+    trainer._process_memory.assert_not_called()
     trainer._recover_win10_native_handlers.assert_not_called()

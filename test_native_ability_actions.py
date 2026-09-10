@@ -218,10 +218,11 @@ def test_ui_actions_and_bundles_pin_one_unit_without_scans_or_waits(trainer):
 
 
 def test_remove_all_pins_each_enumerated_ability_generation(trainer):
-    t,c=trainer;t._process_memory=Mock(return_value=nullcontext(Mock()))
+    t,c=trainer;t._process_memory=Mock(side_effect=AssertionError('External memory context'))
     t._ability_instances_from_candidate=Mock(return_value=[SimpleNamespace(rawcode=0x41303031,handle=0x123456789)])
     assert t.remove_all_selected_unit_abilities()==1
     assert t._run_native_helper_ops.call_args.args[1][1]==(156,0x41303031,2,0,0x123456789)
+    t._process_memory.assert_not_called()
 
 
 def test_bad_later_entry_and_failed_batch_do_not_start_more_work(trainer):

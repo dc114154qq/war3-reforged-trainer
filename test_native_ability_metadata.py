@@ -82,12 +82,13 @@ def test_mismatched_unit_handle_cannot_query_another_units_ability(setup):
 def test_display_identity_enters_same_native_path_in_both_ui_editions(setup, compat):
     from contextlib import nullcontext
     trainer, candidate, handlers, _, memory = setup
-    trainer._process_memory = Mock(return_value=nullcontext(memory))
+    trainer._process_memory = Mock(side_effect=AssertionError('External memory context'))
     trainer._candidate_from_display_identity = Mock(return_value=candidate)
     trainer._discover_native_handlers_near_table = Mock(return_value=handlers)
     trainer._recover_win10_native_handlers = Mock(side_effect=AssertionError('No compatibility recovery'))
     identity = (candidate.handle, candidate.owner_address, candidate.unit_address)
     context = trainer._ability_field_context_by_identity_locked('A001', 1, identity, compat)
     assert context.unit_identity == identity and context.effect_class_verified
+    trainer._process_memory.assert_not_called()
     assert trainer._run_native_helper_ops.call_count == 1
     trainer._recover_win10_native_handlers.assert_not_called()

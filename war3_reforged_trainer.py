@@ -6254,15 +6254,9 @@ class War3Trainer:
             raise ValueError("物品槽位或物品 ID 无效")
         if len({slot for slot, _rawcode in replacements}) != len(replacements):
             raise ValueError("物品组合包含重复槽位")
-        with self._process_memory() as pm:
-            candidate = self._elephant_selected_candidate(pm)
-            for slot, rawcode in replacements:
-                self._set_inventory_slot_item_via_native_handler(
-                    pm,
-                    candidate,
-                    slot,
-                    rawcode,
-                )
+        candidate, _unit_handle = self._direct_selected_context()
+        for slot, rawcode in replacements:
+            self._set_inventory_slot_item_via_native_handler(None, candidate, slot, rawcode)
         return len(replacements)
 
     def reset_selected_unit_ability(self, rawcode: int | str) -> None:
@@ -6277,8 +6271,7 @@ class War3Trainer:
         native = self._native_snapshot_for_candidate(candidate)
         if native is None or native.handle != unit_handle:
             raise RuntimeError("Ability removal requires a bound native unit identity")
-        with self._process_memory() as pm:
-            abilities = self._ability_instances_from_candidate(pm, candidate)
+        abilities = self._ability_instances_from_candidate(None, candidate)
         results = self._run_bound_ability_actions(
             ((2, item.rawcode, 0, item.handle) for item in abilities), candidate)
         return sum(bool(item.result) for item in results)
@@ -6462,14 +6455,7 @@ class War3Trainer:
         level: int,
     ) -> SelectedAbilityFieldContext:
         candidate, unit_handle = War3Trainer._direct_selected_context(self)
-        with self._process_memory() as pm:
-            return self._ability_field_context_from_candidate_locked(
-                pm,
-                candidate,
-                unit_handle,
-                rawcode,
-                level,
-            )
+        return self._ability_field_context_from_candidate_locked(None, candidate, unit_handle, rawcode, level)
 
     def _ability_field_context_by_identity_locked(
         self,
@@ -6480,18 +6466,15 @@ class War3Trainer:
     ) -> SelectedAbilityFieldContext:
         handle, owner, unit = (int(value) for value in unit_identity)
         # Both UI editions bind the same native identity; no compatibility recovery.
-        with self._process_memory() as pm:
-            candidate = self._candidate_from_display_identity(
-                pm, handle, owner, unit, "ability_field_candidate", 900,
-            )
-            if candidate is None:
-                raise RuntimeError("当前选中单位已变化，请重新读取字段")
-            native = self._native_snapshot_for_candidate(candidate)
-            if native is None:
-                raise RuntimeError("技能查询缺少绑定单位快照")
-            return self._ability_field_context_from_candidate_locked(
-                pm, candidate, native.handle, rawcode, level,
-            )
+        candidate = self._candidate_from_display_identity(
+            None, handle, owner, unit, "ability_field_candidate", 900)
+        if candidate is None:
+            raise RuntimeError("当前选中单位已变化，请重新读取字段")
+        native = self._native_snapshot_for_candidate(candidate)
+        if native is None:
+            raise RuntimeError("技能查询缺少绑定单位快照")
+        return self._ability_field_context_from_candidate_locked(
+            None, candidate, native.handle, rawcode, level)
 
     def _ability_field_get_op(
         self,
@@ -6884,14 +6867,13 @@ class War3Trainer:
         win10_compat: bool,
     ) -> ItemFieldContext:
         handle, owner, unit = (int(value) for value in unit_identity)
-        with self._process_memory() as pm:
-            candidate = self._candidate_from_display_identity(pm, handle, owner, unit, "item_field_candidate", 900)
-            if candidate is None:
-                raise RuntimeError("当前选中单位已变化，请重新读取字段")
-            native = self._native_snapshot_for_candidate(candidate)
-            if native is None:
-                raise RuntimeError("物品查询缺少绑定单位快照")
-            return self._item_field_context_from_candidate_locked(pm, candidate, native.handle, slot)
+        candidate = self._candidate_from_display_identity(None, handle, owner, unit, "item_field_candidate", 900)
+        if candidate is None:
+            raise RuntimeError("当前选中单位已变化，请重新读取字段")
+        native = self._native_snapshot_for_candidate(candidate)
+        if native is None:
+            raise RuntimeError("物品查询缺少绑定单位快照")
+        return self._item_field_context_from_candidate_locked(None, candidate, native.handle, slot)
 
     def _item_field_get_op(
         self,

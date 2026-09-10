@@ -2619,7 +2619,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 62
+    NATIVE_HELPER_VERSION = 63
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -2730,6 +2730,7 @@ class War3Trainer:
     NATIVE_HELPER_OP_SET_BOUND_HERO_ATTRIBUTES = 164
     NATIVE_HELPER_OP_SET_BOUND_HERO_LEVEL = 165
     NATIVE_HELPER_OP_ADD_BOUND_HERO_SKILL_POINTS = 166
+    NATIVE_HELPER_OP_BOUND_INVENTORY_BATCH = 167
     PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 154
     NATIVE_BASIC_FIELD_ARGUMENTS = {
         "hp_current": ("target_hp", "hp"),
@@ -4248,6 +4249,8 @@ class War3Trainer:
                     details = f" world_attempts={operation[5] >> 32} world_callbacks={operation[5] & 0xFFFFFFFF} world_cleanup_error={operation[7]}"
                 elif operation[0] == self.NATIVE_HELPER_OP_SET_BOUND_HERO_LEVEL:
                     details = f" xp_restore_error={operation[4]}"
+                elif operation[0] == self.NATIVE_HELPER_OP_BOUND_INVENTORY_BATCH:
+                    details = f" inventory_verified={operation[5]}"
             if actual_count == op_count == 3:
                 base, size = self.NATIVE_HELPER_HEADER_STRUCT.size, self.NATIVE_HELPER_OP_STRUCT.size
                 operation = self.NATIVE_HELPER_OP_STRUCT.unpack_from(data, base + size)
@@ -4649,6 +4652,7 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_SET_BOUND_HERO_ATTRIBUTES,
             self.NATIVE_HELPER_OP_SET_BOUND_HERO_LEVEL,
             self.NATIVE_HELPER_OP_ADD_BOUND_HERO_SKILL_POINTS,
+            self.NATIVE_HELPER_OP_BOUND_INVENTORY_BATCH,
             self.NATIVE_HELPER_OP_BOUND_INVENTORY_ITEM,
             self.NATIVE_HELPER_OP_BOUND_ITEM_TYPE,
         }
@@ -6143,38 +6147,26 @@ class War3Trainer:
             raise RuntimeError(f"游戏未能添加物品 {format_rawcode(item_rawcode)}")
         return result
 
+    def _run_bound_inventory_batch(self, mode: int, quantity: int = 0) -> int:
+        candidate, unit_handle = self._direct_selected_context()
+        results = self._run_native_helper_ops(unit_handle, (
+            (self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY, 0, candidate.unit_address,
+             candidate.handle, candidate.owner_address),
+            (self.NATIVE_HELPER_OP_BOUND_INVENTORY_BATCH, mode, 0, quantity, 0)))
+        if (len(results) != 2 or any(result.last_error for result in results)
+                or results[1].kind != self.NATIVE_HELPER_OP_BOUND_INVENTORY_BATCH
+                or not 0 <= results[1].result <= 6):
+            raise RuntimeError("Incomplete native inventory batch result")
+        return int(results[1].result)
+
     def clear_selected_unit_inventory(self) -> int:
-        with self._process_memory() as pm:
-            unit_handle = self._elephant_selected_handle(pm)
-            handlers = self._elephant_handlers(pm, ("UnitItemInSlot", "RemoveItem"))
-        return int(self._run_native_helper_ops(
-            unit_handle,
-            ((
-                self.NATIVE_HELPER_OP_JASS_CLEAR_INVENTORY,
-                0,
-                handlers["UnitItemInSlot"].handler_address,
-                handlers["RemoveItem"].handler_address,
-                0,
-            ),),
-        )[0].result)
+        return self._run_bound_inventory_batch(0)
 
     def set_selected_inventory_charges(self, charges: int) -> int:
         target = int(charges)
         if not 1 <= target <= 1_000_000_000:
             raise ValueError("物品数量必须在 1 到 1000000000 之间")
-        with self._process_memory() as pm:
-            unit_handle = self._elephant_selected_handle(pm)
-            handlers = self._elephant_handlers(pm, ("UnitItemInSlot", "SetItemCharges"))
-        return int(self._run_native_helper_ops(
-            unit_handle,
-            ((
-                self.NATIVE_HELPER_OP_JASS_SET_INVENTORY_CHARGES,
-                target,
-                handlers["UnitItemInSlot"].handler_address,
-                handlers["SetItemCharges"].handler_address,
-                0,
-            ),),
-        )[0].result)
+        return self._run_bound_inventory_batch(1, target)
 
     def duplicate_selected_inventory_items(self) -> int:
         with self._process_memory() as pm:
@@ -6195,19 +6187,7 @@ class War3Trainer:
         )[0].result)
 
     def drop_selected_inventory_items(self) -> int:
-        with self._process_memory() as pm:
-            unit_handle = self._elephant_selected_handle(pm)
-            handlers = self._elephant_handlers(pm, ("UnitItemInSlot", "UnitRemoveItem"))
-        return int(self._run_native_helper_ops(
-            unit_handle,
-            ((
-                self.NATIVE_HELPER_OP_JASS_DROP_INVENTORY,
-                0,
-                handlers["UnitItemInSlot"].handler_address,
-                handlers["UnitRemoveItem"].handler_address,
-                0,
-            ),),
-        )[0].result)
+        return self._run_bound_inventory_batch(2)
 
     def _run_bound_ability_actions(
         self, entries: Iterable[tuple[int, int, int, int]], candidate: UnitCandidate | None = None,

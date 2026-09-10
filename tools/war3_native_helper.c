@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 62u
+#define WAR3_NATIVE_VERSION 63u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -112,6 +112,7 @@
 #define WAR3_NATIVE_OP_SET_BOUND_HERO_ATTRIBUTES 164u
 #define WAR3_NATIVE_OP_SET_BOUND_HERO_LEVEL 165u
 #define WAR3_NATIVE_OP_ADD_BOUND_HERO_SKILL_POINTS 166u
+#define WAR3_NATIVE_OP_BOUND_INVENTORY_BATCH 167u
 #define WAR3_BOUND_INVENTORY_QWORDS 49u
 #define WAR3_BOUND_UNIT_FIELD_QWORDS (15u + 36u + 121u + 121u + WAR3_BOUND_INVENTORY_QWORDS + 4u)
 #define WAR3_CLONE_FLAG_HERO 0x01u
@@ -1121,6 +1122,8 @@ static DWORD war3_bound_inventory(const NativeCommand *cmd, uint64_t *values) {
     }
     return war3_validate_unit_identity(cmd, &cmd->ops[0]);
 }
+
+#include "war3_native_inventory_batch.h"
 
 typedef struct War3ItemIdentity {
     uint64_t handle, object, full;
@@ -3599,6 +3602,7 @@ static void run_command(void) {
                 op->kind != WAR3_NATIVE_OP_SET_BOUND_HERO_ATTRIBUTES &&
                 op->kind != WAR3_NATIVE_OP_SET_BOUND_HERO_LEVEL &&
                 op->kind != WAR3_NATIVE_OP_ADD_BOUND_HERO_SKILL_POINTS &&
+                op->kind != WAR3_NATIVE_OP_BOUND_INVENTORY_BATCH &&
                 op->kind != WAR3_NATIVE_OP_BOUND_ABILITY_IDENTITY &&
                 op->kind != WAR3_NATIVE_OP_BOUND_INVENTORY_ITEM &&
                 !war3_is_internal_ability_op(op->kind) &&
@@ -3652,6 +3656,7 @@ static void run_command(void) {
             op->kind != WAR3_NATIVE_OP_SET_BOUND_HERO_ATTRIBUTES &&
             op->kind != WAR3_NATIVE_OP_SET_BOUND_HERO_LEVEL &&
             op->kind != WAR3_NATIVE_OP_ADD_BOUND_HERO_SKILL_POINTS &&
+            op->kind != WAR3_NATIVE_OP_BOUND_INVENTORY_BATCH &&
             op->kind != WAR3_NATIVE_OP_PERSISTENT_SELECTED_SNAPSHOT
         ) {
             op->last_error = ERROR_INVALID_DATA;
@@ -3718,6 +3723,11 @@ static void run_command(void) {
             }
             case WAR3_NATIVE_OP_ADD_BOUND_HERO_SKILL_POINTS: {
                 last_error=i==1?war3_add_bound_hero_skill_points(&cmd,op):ERROR_INVALID_PARAMETER;
+                if(last_error) {op->last_error=last_error;goto finish;}
+                break;
+            }
+            case WAR3_NATIVE_OP_BOUND_INVENTORY_BATCH: {
+                last_error=i==1?war3_bound_inventory_batch(&cmd,op):ERROR_INVALID_PARAMETER;
                 if(last_error) {op->last_error=last_error;goto finish;}
                 break;
             }

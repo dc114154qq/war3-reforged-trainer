@@ -15,12 +15,22 @@ static unsigned clone_calls,clone_at,clone_fault,clone_created,clone_removed,clo
 static int32_t clone_level,clone_xp,clone_stats[3],clone_points,clone_hp,clone_mana;
 static float clone_life,clone_mp;
 static unsigned clone_features;
-static int32_t clone_item_charges,clone_ability_rank;
-static uint32_t clone_item_values[256];
+static int32_t clone_item_charges[6],clone_ability_rank;
+static uint32_t clone_item_values[6][256];
+static uint8_t clone_item_storage[12][0x78],clone_item_wrappers[12][0x98];
+static uint8_t *clone_item_objects[12];
+static unsigned clone_item_present[12],clone_item_ready,clone_fault_applied,clone_creating,clone_item_call,clone_reverse_slots;
+static uint64_t clone_item_full[12];
 static const uint64_t clone_full=0xabcde00000008ULL;
 static uint64_t clone_resolve(uint64_t h) {return h==8?(clone_present?(uint64_t)(uintptr_t)other:0):fake_unit(h);}
+static uint64_t clone_resolve_item(uint64_t h) {
+    return h>=70 && h<76?(uint64_t)(uintptr_t)clone_item_objects[h-70]:
+           h>=80 && h<86?(uint64_t)(uintptr_t)clone_item_objects[h-80+6]:0;
+}
 static uint64_t clone_agent(uint32_t lo,uint32_t hi) {
     uint64_t id=((uint64_t)hi<<32)|lo;
+    for(unsigned n=0;n<12;++n)
+        if(id==*(uint64_t *)(clone_item_wrappers[n]+0x20)) return (uint64_t)(uintptr_t)clone_item_wrappers[n];
     if(id==*(uint64_t *)(clone_owner+0x20)) return (uint64_t)(uintptr_t)clone_owner;
     return fake_agent(lo,hi);
 }
@@ -29,8 +39,31 @@ static void clone_step(uint64_t h) {
     if(h==8 && (!clone_present || *(uint64_t *)(other+0x18)!=clone_full)) ++bad_arguments;
     ++clone_calls;
     if(clone_calls!=clone_at) return;
-    if(clone_fault==1) {*(uint64_t *)(object+0x18)+=1;*(uint64_t *)(owner+0x20)+=1;}
-    if(clone_fault==2 && clone_present) {*(uint64_t *)(other+0x18)+=1;*(uint64_t *)(clone_owner+0x20)+=1;}
+    if(clone_fault==1) {clone_fault_applied=1;*(uint64_t *)(object+0x18)+=1;*(uint64_t *)(owner+0x20)+=1;}
+    if(clone_fault==2 && clone_present && !clone_creating) {clone_fault_applied=1;*(uint64_t *)(other+0x18)+=1;*(uint64_t *)(clone_owner+0x20)+=1;}
+    if(clone_fault>=9 && clone_fault<=14) {
+        unsigned n=((clone_fault-9)&1)?6:0;
+        if((n && !clone_item_ready) || (!n && !clone_created)) return;
+        /* UnitItemInSlot itself cannot execute map triggers. Membership
+           changes are injected in copying/creation callbacks, not guard reads. */
+        if((clone_fault==11 || clone_fault==12) && !clone_item_call && !clone_creating) return;
+        clone_fault_applied=1;
+        if(clone_fault<=10) {*(uint64_t *)(clone_item_objects[n]+0x18)+=1;*(uint64_t *)(clone_item_wrappers[n]+0x20)+=1;}
+        else if(clone_fault<=12) clone_item_present[n]=0;
+        else *(uint64_t *)(clone_item_wrappers[n]+0x18)=0;
+    }
+}
+static void clone_item_step(uint64_t h) {
+    unsigned n=h>=80?(unsigned)(h-80+6):(unsigned)(h-70);
+    if(n>=12 || !clone_item_present[n] ||
+       *(uint64_t *)(clone_item_objects[n]+0x18)!=clone_item_full[n] ||
+       *(uint64_t *)(clone_item_wrappers[n]+0x18)!=0x6974656d2b61676cULL) ++bad_arguments;
+    clone_item_call=1;clone_step(n>=6?8:7);clone_item_call=0;
+    if((clone_fault==23 || clone_fault==24) && clone_item_ready && !clone_fault_applied) {
+        DWORD old;unsigned target=clone_fault==24?6:0;
+        if(!VirtualProtect(clone_item_objects[target],0x1000,PAGE_NOACCESS,&old)) ++bad_arguments;
+        clone_fault_applied=1;
+    }
 }
 static uint32_t clone_type(uint64_t h) {clone_step(h);return clone_fault==5?0x6870616c:0x68666f6f;}
 static uint64_t clone_player(void) {clone_step(7);return 2;}
@@ -44,7 +77,7 @@ static uint64_t clone_create(uint64_t p,uint32_t id,float *x,float *y,float *f) 
     *(uint64_t *)(clone_owner+0x18)=0x2b7733752b61676cULL;
     *(uint64_t *)(clone_owner+0x90)=(uint64_t)(uintptr_t)other;
     if(clone_fault==7) *(uint64_t *)(clone_owner+0x90)=0;
-    clone_step(7);return 8;
+    clone_creating=1;clone_step(7);clone_creating=0;return 8;
 }
 static int32_t clone_get_level(uint64_t h) {clone_step(h);return h==7?5:clone_level;}
 static int32_t clone_get_xp(uint64_t h) {clone_step(h);return h==7?500:clone_xp;}
@@ -70,18 +103,36 @@ static uint64_t clone_ability(uint64_t h,int32_t n) {clone_step(h);return clone_
 static uint32_t clone_ability_id(uint64_t h) {if(h!=71) ++bad_arguments;clone_step(7);return 0x41303031;}
 static int32_t clone_ability_level(uint64_t h,uint32_t id) {if(id!=0x41303031) ++bad_arguments;clone_step(h);return h==7?3:clone_ability_rank;}
 static uint32_t clone_add_ability(uint64_t h,uint32_t id) {clone_ability_rank=1;clone_step(h);return 1;}
-static int32_t clone_set_ability(uint64_t h,uint32_t id,int32_t n) {clone_ability_rank=clone_fault==8?1:n;clone_step(h);return clone_ability_rank;}
-static uint64_t clone_slot(uint64_t h,int32_t n) {clone_step(h);return n==0?70:0;}
-static uint32_t clone_item_type(uint64_t h) {if(h!=70) ++bad_arguments;clone_step(7);return 0x49303031;}
-static uint64_t clone_item_add(uint64_t h,uint32_t id) {if(id!=0x49303031) ++bad_arguments;clone_step(h);return 80;}
-static int32_t clone_charges(uint64_t h) {clone_step(h==70?7:8);return h==70?4:clone_item_charges;}
-static void clone_charges_set(uint64_t h,int32_t n) {clone_item_charges=n;clone_step(8);}
-static uint64_t clone_item_get(uint64_t h,uint32_t field) {
-    clone_step(h==70?7:8);
-    return h==70?(field==0x69736361?0x3fc00000u:1):clone_item_values[field&255];
+static int32_t clone_set_ability(uint64_t h,uint32_t id,int32_t n) {
+    clone_ability_rank=clone_fault==8?1:n;
+    if(clone_fault==22) clone_item_present[6]=0;
+    clone_step(h);return clone_ability_rank;
 }
-static uint64_t clone_item_set(uint64_t h,uint32_t field,uint32_t n) {clone_item_values[field&255]=n;clone_step(8);return 1;}
-static uint64_t clone_item_real_set(uint64_t h,uint32_t field,float *n) {memcpy(&clone_item_values[field&255],n,4);clone_step(8);return 1;}
+static uint64_t clone_slot(uint64_t h,int32_t n) {
+    clone_step(h);
+    if(clone_fault==19 && h==7 && n==1) return 70;
+    if(clone_fault==20 && h==8 && n==1 && clone_item_present[6]) return 80;
+    return clone_item_present[(h==8?6:0)+n]?(h==8?80:70)+n:0;
+}
+static uint32_t clone_item_type(uint64_t h) {clone_item_step(h);return 0x49303031;}
+static uint64_t clone_item_add(uint64_t h,uint32_t id) {
+    if(id!=0x49303031) ++bad_arguments;
+    unsigned slot=6;
+    for(unsigned n=0;n<6;++n) {unsigned candidate=clone_reverse_slots?5-n:n;if(!clone_item_present[6+candidate]) {slot=candidate;break;}}
+    if(slot==6) {++bad_arguments;return 0;}
+    clone_item_present[6+slot]=clone_fault==16?0:1;
+    if(clone_fault==17) *(uint32_t *)(clone_item_objects[6+slot]+0x70)=0x49303032;
+    if(clone_fault==21) clone_item_present[1]=1;
+    clone_step(h);return clone_fault==15?70:80+slot;
+}
+static int32_t clone_charges(uint64_t h) {clone_item_step(h);return h<80?4:clone_item_charges[h-80];}
+static void clone_charges_set(uint64_t h,int32_t n) {clone_item_charges[h-80]=n;clone_item_step(h);}
+static uint64_t clone_item_get(uint64_t h,uint32_t field) {
+    clone_item_ready=1;clone_item_step(h);
+    return h<80?(field==0x69736361?0x3fc00000u:1):clone_item_values[h-80][field&255];
+}
+static uint64_t clone_item_set(uint64_t h,uint32_t field,uint32_t n) {clone_item_values[h-80][field&255]=n;clone_item_step(h);return 1;}
+static uint64_t clone_item_real_set(uint64_t h,uint32_t field,float *n) {memcpy(&clone_item_values[h-80][field&255],n,4);clone_item_step(h);return 1;}
 static void clone_remove(uint64_t h) {
     if(h!=8 || !clone_present || *(uint64_t *)(other+0x18)!=clone_full) ++bad_arguments;
     ++clone_removed;clone_present=0;
@@ -94,10 +145,30 @@ __declspec(dllexport) DWORD clone_test(const wchar_t *directory,unsigned hero,un
     *(uint64_t *)(object+0x18)=full;*(uint64_t *)(owner+0x18)=0x2b7733752b61676cULL;
     *(uint64_t *)(owner+0x20)=full;*(uint64_t *)(owner+0x90)=(uint64_t)(uintptr_t)object;
     fault=bad_arguments=clone_calls=clone_created=clone_removed=clone_present=0;clone_at=at;clone_fault=failure;
-    clone_features=hero&2;clone_item_charges=clone_ability_rank=0;ZeroMemory(clone_item_values,sizeof(clone_item_values));
+    clone_features=hero&2;clone_ability_rank=0;ZeroMemory(clone_item_values,sizeof(clone_item_values));ZeroMemory(clone_item_charges,sizeof(clone_item_charges));
+    ZeroMemory(clone_item_present,sizeof(clone_item_present));
+    unsigned source_mask=hero&8?63:hero&16?0x22:1;
+    for(unsigned n=0;n<6;++n) clone_item_present[n]=clone_features && (source_mask&(1u<<n));
+    clone_reverse_slots=(hero&32)!=0;clone_item_ready=clone_fault_applied=clone_creating=clone_item_call=0;
+    ZeroMemory(clone_item_storage,sizeof(clone_item_storage));ZeroMemory(clone_item_wrappers,sizeof(clone_item_wrappers));
+    for(unsigned n=0;n<12;++n) clone_item_objects[n]=clone_item_storage[n];
+    if(failure==23 || failure==24) {
+        unsigned n=failure==24?6:0;
+        clone_item_objects[n]=VirtualAlloc(NULL,0x1000,MEM_RESERVE|MEM_COMMIT,PAGE_READWRITE);
+        if(!clone_item_objects[n]) return GetLastError();
+    }
+    for(unsigned n=0;n<12;++n) {
+        clone_item_full[n]=0xaaa000000070ULL+n;
+        *(uint64_t *)(clone_item_objects[n]+0x18)=*(uint64_t *)(clone_item_wrappers[n]+0x20)=clone_item_full[n];
+        *(uint32_t *)(clone_item_objects[n]+0x70)=0x49303031;
+        *(uint64_t *)(clone_item_wrappers[n]+0x18)=0x6974656d2b61676cULL;
+        *(uint64_t *)(clone_item_wrappers[n]+0x90)=(uint64_t)(uintptr_t)clone_item_objects[n];
+    }
     clone_level=1;clone_xp=clone_points=clone_stats[0]=clone_stats[1]=clone_stats[2]=0;
     clone_hp=100;clone_mana=50;clone_life=100;clone_mp=50;
     g_persistent_unit_resolver=(uint64_t)(uintptr_t)clone_resolve;g_persistent_agent_resolver=(uint64_t)(uintptr_t)clone_agent;
+    g_persistent_item_resolver=(uint64_t)(uintptr_t)clone_resolve_item;
+    if(failure==18) g_persistent_item_resolver=0;
     cmd.magic=WAR3_NATIVE_MAGIC;cmd.version=WAR3_NATIVE_VERSION;cmd.status=WAR3_NATIVE_STATUS_PENDING;
     cmd.op_count=15;cmd.unit_handle=7;cmd.ops[0].kind=WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY;
     cmd.ops[0].handler=(uint64_t)(uintptr_t)object;cmd.ops[0].arg0=full;cmd.ops[0].arg1=(uint64_t)(uintptr_t)owner;
@@ -119,8 +190,12 @@ __declspec(dllexport) DWORD clone_test(const wchar_t *directory,unsigned hero,un
     command_path(path,MAX_PATH);HANDLE file=CreateFileW(path,GENERIC_WRITE,0,NULL,CREATE_NEW,0,NULL);
     if(file==INVALID_HANDLE_VALUE) return GetLastError();BOOL ok=WriteFile(file,&cmd,sizeof(cmd),&bytes,NULL);CloseHandle(file);
     if(!ok || bytes!=sizeof(cmd)) return ERROR_WRITE_FAULT;
-    run_command();out[0]=bad_arguments;out[1]=clone_calls;out[2]=clone_created;out[3]=clone_removed;out[4]=clone_present;
-    out[5]=clone_level;out[6]=clone_xp;out[7]=clone_points;out[8]=clone_item_charges;out[9]=clone_ability_rank;return 0;
+    run_command();
+    if(failure==23 || failure==24) VirtualFree(clone_item_objects[failure==24?6:0],0,MEM_RELEASE);
+    out[0]=bad_arguments;out[1]=clone_calls;out[2]=clone_created;out[3]=clone_removed;out[4]=clone_present;
+    out[5]=clone_level;out[6]=clone_xp;out[7]=clone_points;out[8]=0;out[11]=0;
+    for(unsigned n=0;n<6;++n) {out[8]+=clone_item_charges[n];if(clone_item_present[n+6]) out[11]|=1u<<n;}
+    out[9]=clone_ability_rank;out[10]=clone_fault_applied;return 0;
 }
 '''
 
@@ -138,7 +213,7 @@ def native(tmp_path_factory):
     _ctypes.FreeLibrary(lib._handle)
 
 def dispatch(native,path,hero=0,at=0,failure=0):
-    path.mkdir(exist_ok=True);out=(ctypes.c_uint*10)();enabled=faulthandler.is_enabled()
+    path.mkdir(exist_ok=True);out=(ctypes.c_uint*12)();enabled=faulthandler.is_enabled()
     if enabled:faulthandler.disable()
     try:assert native.clone_test(str(path)+'\\',hero,at,failure,out)==0
     finally:
@@ -160,8 +235,11 @@ def test_clone_completes_one_bound_command_with_hero_and_vital_values(native,tmp
 def test_every_callback_stops_before_followup_on_recycled_unit(native,tmp_path,hero,failure):
     baseline,payload=dispatch(native,tmp_path/'base',hero)
     parse(payload)
-    for at in range(1 if failure==1 else 5,baseline[1]+1):
+    for at in range(1,baseline[1]+1):
         out,payload=dispatch(native,tmp_path/str(at),hero,at,failure)
+        if not out[10]:
+            parse(payload)
+            continue
         with pytest.raises(RuntimeError):parse(payload)
         assert out[1]==at
         if failure==1:assert out[3]==out[2] # valid created target removed even if source lost

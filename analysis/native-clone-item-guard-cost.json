@@ -1,0 +1,29 @@
+{
+  "scope": "Production C guard only, synthetic native callbacks/object tables; excludes IPC, game engine work and live latency.",
+  "unit_pair": {
+    "median_microseconds": 9.1974,
+    "samples_microseconds": [
+      9.006,
+      9.1974,
+      9.111050000000002,
+      9.29045,
+      9.35925,
+      9.5028,
+      9.16845
+    ],
+    "slot_queries_per_check": 0
+  },
+  "unit_and_item_pair": {
+    "median_microseconds": 39.472550000000005,
+    "samples_microseconds": [
+      39.3975,
+      39.5164,
+      39.472550000000005,
+      39.3788,
+      38.9785,
+      39.843450000000004,
+      40.080499999999994
+    ],
+    "slot_queries_per_check": 2
+  }
+}

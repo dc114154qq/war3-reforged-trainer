@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 67u
+#define WAR3_NATIVE_VERSION 68u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -4872,6 +4872,8 @@ static void run_command(void) {
                         clone_error = ERROR_NOT_FOUND;
                         __leave;
                     }
+                    if(clone_flags & WAR3_CLONE_FLAG_INVENTORY)
+                        war3_clone_prepare_items(&clone_guard,unit_item_in_slot);
                     target = create_unit(
                         player,
                         op->rawcode,
@@ -4887,6 +4889,7 @@ static void run_command(void) {
                     clone_error=war3_clone_capture_target(&clone_guard,target);
                     if(clone_error) __leave;
                     war3_clone_check(&clone_guard);
+                    war3_clone_check_saved_items(&clone_guard);
 
                     source_level = (clone_flags & WAR3_CLONE_FLAG_HERO)
                         ? WAR3_CLONE_VALUE(&clone_guard, get_hero_level(cmd.unit_handle))
@@ -4937,6 +4940,7 @@ static void run_command(void) {
 
                     if (clone_flags & WAR3_CLONE_FLAG_INVENTORY) {
                     for (int32_t slot = 0; slot < 6; ++slot) {
+                        war3_clone_begin_item(&clone_guard,(unsigned)slot);
                         uint64_t source_item = WAR3_CLONE_VALUE(&clone_guard, unit_item_in_slot(cmd.unit_handle, slot));
                         uint32_t item_id;
                         uint64_t target_item;
@@ -4944,6 +4948,8 @@ static void run_command(void) {
                             continue;
                         }
                         item_id = WAR3_CLONE_VALUE(&clone_guard, get_item_type_id(source_item));
+                        if(clone_guard.inventory_captured && item_id!=clone_guard.source_items[slot].rawcode)
+                            RaiseException(ERROR_INVALID_DATA,0,0,NULL);
                         if (!item_id) {
                             continue;
                         }
@@ -4952,6 +4958,7 @@ static void run_command(void) {
                             clone_error = ERROR_NOT_FOUND;
                             __leave;
                         }
+                        war3_clone_track_item(&clone_guard,(unsigned)slot,target_item,item_id);
                         if (!war3_copy_item_instance_fields(
                             &clone_guard,
                             source_item,
@@ -4976,6 +4983,7 @@ static void run_command(void) {
                         }
                         ++copied_items;
                     }
+                    clone_guard.active_items[0]=clone_guard.active_items[1]=NULL;
                     }
 
                     for (int32_t index = 0; index < 256; ++index) {
@@ -5068,6 +5076,7 @@ static void run_command(void) {
                             }
                         }
                     }
+                    war3_clone_check_saved_items(&clone_guard);
                     op->result = target;
                     d8->result = copied_items;
                     d12->result = copied_abilities;

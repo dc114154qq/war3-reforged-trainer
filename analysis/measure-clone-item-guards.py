@@ -10,8 +10,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from test_native_identity_guard import HARNESS
-from test_native_clone_unit_guard import CLONE
+from test_native_clone_unit_guard import CLONE, HARNESS
 
 BENCH = r'''
 __declspec(dllexport) DWORD clone_guard_cost(unsigned iterations,unsigned items,double *out) {
@@ -51,7 +50,7 @@ with tempfile.TemporaryDirectory(prefix='war3-clone-cost-') as temporary:
         native.clone_test.restype = ctypes.c_uint
         native.clone_guard_cost.argtypes = [ctypes.c_uint, ctypes.c_uint, ctypes.POINTER(ctypes.c_double)]
         native.clone_guard_cost.restype = ctypes.c_uint
-        state = (ctypes.c_uint*12)()
+        state = (ctypes.c_uint*14)()
         assert native.clone_test(str(folder)+'\\', 3, 0, 0, state) == 0
         assert list(state[2:5]) == [1, 0, 1] and state[0] == 0
         report = {'scope': 'Production C guard only, synthetic native callbacks/object tables; excludes IPC, game engine work and live latency.'}

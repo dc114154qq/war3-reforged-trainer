@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 68u
+#define WAR3_NATIVE_VERSION 69u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -4874,6 +4874,7 @@ static void run_command(void) {
                     }
                     if(clone_flags & WAR3_CLONE_FLAG_INVENTORY)
                         war3_clone_prepare_items(&clone_guard,unit_item_in_slot);
+                    war3_clone_prepare_abilities(&clone_guard,get_ability_by_index,get_ability_id);
                     target = create_unit(
                         player,
                         op->rawcode,
@@ -4890,6 +4891,8 @@ static void run_command(void) {
                     if(clone_error) __leave;
                     war3_clone_check(&clone_guard);
                     war3_clone_check_saved_items(&clone_guard);
+
+                    war3_clone_check_saved_abilities(&clone_guard);
 
                     source_level = (clone_flags & WAR3_CLONE_FLAG_HERO)
                         ? WAR3_CLONE_VALUE(&clone_guard, get_hero_level(cmd.unit_handle))
@@ -4986,7 +4989,9 @@ static void run_command(void) {
                     clone_guard.active_items[0]=clone_guard.active_items[1]=NULL;
                     }
 
-                    for (int32_t index = 0; index < 256; ++index) {
+                    if(clone_guard.source) {
+                        copied_abilities=war3_clone_copy_abilities(&clone_guard,get_ability_level,add_ability,set_ability_level);
+                    } else for (int32_t index = 0; index < 256; ++index) {
                         __try {
                         uint64_t source_ability =
                             WAR3_CLONE_VALUE(&clone_guard, get_ability_by_index(cmd.unit_handle, index));
@@ -5077,11 +5082,17 @@ static void run_command(void) {
                         }
                     }
                     war3_clone_check_saved_items(&clone_guard);
+                    war3_clone_check_saved_abilities(&clone_guard);
+                    war3_clone_final_state(&clone_guard);
                     op->result = target;
                     d8->result = copied_items;
                     d12->result = copied_abilities;
                 } __except (EXCEPTION_EXECUTE_HANDLER) {
                     clone_error = GetExceptionCode();
+                }
+                if(clone_guard.abilities) {
+                    HeapFree(GetProcessHeap(),0,clone_guard.abilities);
+                    clone_guard.abilities=NULL;
                 }
                 if (clone_error != ERROR_SUCCESS) {
                     DWORD rollback_error = ERROR_SUCCESS;

@@ -12,7 +12,11 @@ typedef struct War3CloneGuard {
     War3CloneItem source_items[6], target_items[6];
     War3CloneItem *active_items[2];
     int inventory_captured;
+    struct War3CloneAbilities *abilities;
 } War3CloneGuard;
+
+static void war3_clone_ability_state(War3CloneGuard *guard);
+static void war3_clone_ability_membership(War3CloneGuard *guard);
 
 static void war3_clone_item_object(const War3CloneItem *item) {
     if(!item || !item->handle) return;
@@ -55,6 +59,7 @@ static void war3_clone_check_state(War3CloneGuard *guard) {
     if(guard->target_captured) war3_clone_unit_object(&guard->target);
     war3_clone_item_object(guard->active_items[0]);
     war3_clone_item_object(guard->active_items[1]);
+    war3_clone_ability_state(guard);
 }
 
 static void war3_clone_check(War3CloneGuard *guard) {
@@ -69,6 +74,7 @@ static void war3_clone_check(War3CloneGuard *guard) {
         war3_clone_check_state(guard);
         if(current!=item->handle) RaiseException(ERROR_INVALID_HANDLE,0,0,NULL);
     }
+    war3_clone_ability_membership(guard);
 }
 
 static void war3_clone_capture_item(War3CloneGuard *guard,uint64_t handle,War3CloneItem *item) {
@@ -91,6 +97,14 @@ static int war3_clone_same_item(const War3CloneItem *a,const War3CloneItem *b) {
         (a->handle==b->handle || a->full==b->full || a->object==b->object);
 }
 
+static void war3_clone_saved_item_objects(War3CloneGuard *guard) {
+    if(!guard->inventory_captured) return;
+    for(unsigned slot=0;slot<6;++slot) {
+        war3_clone_item_object(&guard->source_items[slot]);
+        war3_clone_item_object(&guard->target_items[slot]);
+    }
+}
+
 static void war3_clone_check_saved_items(War3CloneGuard *guard) {
     if(!guard->inventory_captured) return;
     for(unsigned slot=0;slot<6;++slot) {
@@ -99,10 +113,7 @@ static void war3_clone_check_saved_items(War3CloneGuard *guard) {
         war3_clone_check(guard);
     }
     /* Later slot queries must not invalidate an already visited object. */
-    for(unsigned slot=0;slot<6;++slot) {
-        war3_clone_item_object(&guard->source_items[slot]);
-        war3_clone_item_object(&guard->target_items[slot]);
-    }
+    war3_clone_saved_item_objects(guard);
     guard->active_items[0]=guard->active_items[1]=NULL;
 }
 
@@ -172,3 +183,15 @@ static DWORD war3_clone_capture_target(War3CloneGuard *guard,uint64_t handle) {
    calls before a surrounding setter can execute. Evaluate every callback once. */
 #define WAR3_CLONE_VALUE(guard,call) ({ __auto_type clone_value=(call); war3_clone_check(guard); clone_value; })
 #define WAR3_CLONE_VOID(guard,call) do { (call); war3_clone_check(guard); } while(0)
+
+#include "war3_native_clone_abilities.h"
+
+/* Finish after all callback-based membership queries. A later ability query
+   must not hide an item generation change (or vice versa). These resolvers and
+   identity reads perform no map mutations and add no membership callbacks. */
+static void war3_clone_final_state(War3CloneGuard *guard) {
+    if(!guard->source) return;
+    war3_clone_check_state(guard);
+    war3_clone_saved_item_objects(guard);
+    war3_clone_saved_ability_objects(guard);
+}

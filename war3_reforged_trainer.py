@@ -5803,70 +5803,62 @@ class War3Trainer:
             unit_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
         if not unit_rawcode:
             raise ValueError("没有可用于创建单位的有效 ID")
-        with self._process_memory() as pm:
-            handler_names = ["GetLocalPlayer", "CreateUnit"]
-            source_is_hero = False
-            source_has_inventory = False
-            if rawcode is None:
-                try:
-                    components = self._selected_components(
-                        pm,
-                        candidate.owner_address,
-                    )
-                    source_is_hero = "hero" in components
-                    source_has_inventory = "inventory" in components
-                except (AttributeError, OSError, RuntimeError):
-                    # A partial/test memory backend may not expose component
-                    # metadata. In that case skip hero-only calls safely.
-                    source_is_hero = False
-                    source_has_inventory = False
-                if preserve_owner:
-                    handler_names[0] = "GetOwningPlayer"
+        handler_names = ["GetLocalPlayer", "CreateUnit"]
+        source_is_hero = False
+        source_has_inventory = False
+        if rawcode is None:
+            native = self._native_snapshot_for_candidate(candidate)
+            if native is None or native.handle != unit_handle:
+                raise RuntimeError("Cloning requires the original native unit snapshot")
+            source_is_hero = bool(native.component_mask & 2)
+            source_has_inventory = bool(native.component_mask & 1)
+            if preserve_owner:
+                handler_names[0] = "GetOwningPlayer"
+            handler_names.extend((
+                "GetUnitTypeId",
+                "RemoveUnit",
+                "GetUnitFacing",
+                "GetHeroLevel",
+                "SetHeroLevel",
+                "GetHeroXP",
+                "SetHeroXP",
+                "GetHeroStr",
+                "SetHeroStr",
+                "GetHeroAgi",
+                "SetHeroAgi",
+                "GetHeroInt",
+                "SetHeroInt",
+                "GetHeroSkillPoints",
+                "UnitModifySkillPoints",
+                "BlzGetUnitMaxHP",
+                "BlzSetUnitMaxHP",
+                "GetWidgetLife",
+                "SetWidgetLife",
+                "BlzGetUnitMaxMana",
+                "BlzSetUnitMaxMana",
+                "GetUnitState",
+                "SetUnitState",
+                "BlzGetUnitAbilityByIndex",
+                "BlzGetAbilityId",
+                "GetUnitAbilityLevel",
+                "UnitAddAbility",
+                "SetUnitAbilityLevel",
+            ))
+            if source_has_inventory:
                 handler_names.extend((
-                    "GetUnitTypeId",
-                    "RemoveUnit",
-                    "GetUnitFacing",
-                    "GetHeroLevel",
-                    "SetHeroLevel",
-                    "GetHeroXP",
-                    "SetHeroXP",
-                    "GetHeroStr",
-                    "SetHeroStr",
-                    "GetHeroAgi",
-                    "SetHeroAgi",
-                    "GetHeroInt",
-                    "SetHeroInt",
-                    "GetHeroSkillPoints",
-                    "UnitModifySkillPoints",
-                    "BlzGetUnitMaxHP",
-                    "BlzSetUnitMaxHP",
-                    "GetWidgetLife",
-                    "SetWidgetLife",
-                    "BlzGetUnitMaxMana",
-                    "BlzSetUnitMaxMana",
-                    "GetUnitState",
-                    "SetUnitState",
-                    "BlzGetUnitAbilityByIndex",
-                    "BlzGetAbilityId",
-                    "GetUnitAbilityLevel",
-                    "UnitAddAbility",
-                    "SetUnitAbilityLevel",
+                    "UnitItemInSlot",
+                    "GetItemTypeId",
+                    "UnitAddItemById",
+                    "GetItemCharges",
+                    "SetItemCharges",
+                    "BlzGetItemIntegerField",
+                    "BlzSetItemIntegerField",
+                    "BlzGetItemRealField",
+                    "BlzSetItemRealField",
+                    "BlzGetItemBooleanField",
+                    "BlzSetItemBooleanField",
                 ))
-                if source_has_inventory:
-                    handler_names.extend((
-                        "UnitItemInSlot",
-                        "GetItemTypeId",
-                        "UnitAddItemById",
-                        "GetItemCharges",
-                        "SetItemCharges",
-                        "BlzGetItemIntegerField",
-                        "BlzSetItemIntegerField",
-                        "BlzGetItemRealField",
-                        "BlzSetItemRealField",
-                        "BlzGetItemBooleanField",
-                        "BlzSetItemBooleanField",
-                    ))
-            handlers = self._elephant_handlers(pm, tuple(handler_names))
+        handlers = self._query_native_table_handlers(tuple(handler_names))
         coordinates = struct.unpack("<Q", struct.pack("<ff", float(x), float(y)))[0]
         if rawcode is None:
             clone_flags = (

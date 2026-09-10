@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import war3_reforged_trainer as trainer_module
+from test_native_snapshot_binding import make_snapshot, make_candidate
 
 
 class _Memory:
@@ -263,13 +264,16 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
                 for index, name in enumerate(names)
             }
         )
+        trainer._query_native_table_handlers = Mock(side_effect=lambda names: {
+            name: trainer_module.NativeHandler(name, 0, 0x2000 + index)
+            for index, name in enumerate(names)})
         return trainer
 
     def test_selected_clone_uses_single_runtime_clone_transaction(self):
         trainer = self.make_trainer()
-        candidate = Mock(handle=0x4455, unit_type_id=0x48666F6F)
+        candidate = make_candidate(replace(make_snapshot(), component_mask=4))
         trainer._direct_selected_context = Mock(
-            return_value=(candidate, candidate.handle)
+            return_value=(candidate, candidate.native_snapshot.handle)
         )
         trainer._run_native_helper_ops = Mock(
             return_value=[
@@ -284,7 +288,7 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
 
         self.assertEqual((rawcode, handle), (candidate.unit_type_id, 0x7788))
         unit_handle, ops = trainer._run_native_helper_ops.call_args.args[:2]
-        self.assertEqual(unit_handle, candidate.handle)
+        self.assertEqual(unit_handle, candidate.native_snapshot.handle)
         self.assertEqual(len(ops), 14)
         self.assertEqual(
             ops[0][0],
@@ -299,13 +303,9 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
 
     def test_selected_clone_without_inventory_skips_item_natives(self):
         trainer = self.make_trainer()
-        candidate = Mock(
-            handle=0x4455,
-            owner_address=0x5566,
-            unit_type_id=0x48666F6F,
-        )
+        candidate = make_candidate(replace(make_snapshot(), component_mask=4))
         trainer._direct_selected_context = Mock(
-            return_value=(candidate, candidate.handle)
+            return_value=(candidate, candidate.native_snapshot.handle)
         )
         trainer._selected_components = Mock(return_value={"move": (1, 2)})
         trainer._run_native_helper_ops = Mock(
@@ -319,7 +319,7 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
 
         trainer.create_local_unit(None)
 
-        requested = set(trainer._elephant_handlers.call_args.args[1])
+        requested = set(trainer._query_native_table_handlers.call_args.args[0])
         self.assertFalse(
             requested.intersection(trainer.ITEM_FIELD_NATIVE_NAMES)
         )
@@ -333,13 +333,9 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
 
     def test_selected_clone_with_inventory_requests_item_natives(self):
         trainer = self.make_trainer()
-        candidate = Mock(
-            handle=0x4455,
-            owner_address=0x5566,
-            unit_type_id=0x48666F6F,
-        )
+        candidate = make_candidate(replace(make_snapshot(), component_mask=5))
         trainer._direct_selected_context = Mock(
-            return_value=(candidate, candidate.handle)
+            return_value=(candidate, candidate.native_snapshot.handle)
         )
         trainer._selected_components = Mock(
             return_value={"inventory": (1, 2)}
@@ -355,7 +351,7 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
 
         trainer.create_local_unit(None)
 
-        requested = set(trainer._elephant_handlers.call_args.args[1])
+        requested = set(trainer._query_native_table_handlers.call_args.args[0])
         self.assertTrue(
             set(trainer.ITEM_FIELD_NATIVE_NAMES).issubset(requested)
         )
@@ -366,13 +362,9 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
 
     def test_selected_clone_can_preserve_source_owner(self):
         trainer = self.make_trainer()
-        candidate = Mock(
-            handle=0x4455,
-            owner_address=0x5566,
-            unit_type_id=0x48666F6F,
-        )
+        candidate = make_candidate(replace(make_snapshot(), component_mask=4))
         trainer._direct_selected_context = Mock(
-            return_value=(candidate, candidate.handle)
+            return_value=(candidate, candidate.native_snapshot.handle)
         )
         trainer._selected_components = Mock(return_value={})
         trainer._run_native_helper_ops = Mock(
@@ -386,7 +378,7 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
 
         trainer.create_local_unit(None, preserve_owner=True)
 
-        requested = set(trainer._elephant_handlers.call_args.args[1])
+        requested = set(trainer._query_native_table_handlers.call_args.args[0])
         self.assertIn("GetOwningPlayer", requested)
         self.assertNotIn("GetLocalPlayer", requested)
         _unit_handle, ops = trainer._run_native_helper_ops.call_args.args[:2]

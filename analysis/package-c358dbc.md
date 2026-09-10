@@ -35,3 +35,10 @@ gameplay checks are documented beside the EXE; no current gameplay acceptance
 is inferred. Per the user's instruction, stop changes after delivery and wait
 for feedback. The full objective is not yet proven complete; remaining inventory
 and other candidate paths still require their reachability/identity audits.
+
+## Subsequent user feedback
+
+On 2026-09-10 the user replied “测试没问题，继续吧” immediately after this
+package handoff. Record this as acceptance of the requested c358dbc gameplay
+checks and authorization to continue development. Do not reuse this feedback
+as acceptance of later inventory or other changes. The delivered EXE is retained.

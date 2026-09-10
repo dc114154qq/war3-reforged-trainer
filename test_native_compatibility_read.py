@@ -1,5 +1,4 @@
 """Exercise both public reads through real selection mapping, without Warcraft."""
-from contextlib import nullcontext
 from dataclasses import replace
 from unittest.mock import Mock, patch
 
@@ -17,7 +16,7 @@ def reader(request):
     pm = Mock()
     pm.regions.side_effect = AssertionError("No process-wide region enumeration")
     pm.read_f32.side_effect = AssertionError("No external panel read")
-    t._process_memory = Mock(side_effect=lambda: nullcontext(pm))
+    t._process_memory = Mock(side_effect=AssertionError("No external memory context"))
     t._candidate_from_identity = Mock(side_effect=AssertionError("No legacy identity lookup"))
     t._recover_win10_native_handlers = Mock(side_effect=AssertionError("No legacy discovery"))
     t._selected_components = Mock(side_effect=AssertionError("No legacy components"))
@@ -50,6 +49,7 @@ def test_read_mixed_selection_then_reused_address_tracks_new_generation(reader):
     assert len(t.selected_unit_summaries()) == 1
     assert t._unit_fields_from_candidate.call_args.args[1].native_snapshot == new_unit
     assert t.persistent_native_selected_snapshots.call_count == 2
+    t._process_memory.assert_not_called()
 
 
 @pytest.mark.parametrize("failure", [(), "native failure", "incomplete", "duplicate"])

@@ -3027,9 +3027,8 @@ class War3Trainer:
             return False
 
     def read_selected_panel(self) -> VisibleUnitPanel:
-        with self._process_memory() as pm:
-            candidate = self._selected_candidates_snapshot(pm)[0][0]
-            return self._panel_from_candidate(pm, candidate)
+        candidate = self._selected_candidates_snapshot(None)[0][0]
+        return self._panel_from_candidate(None, candidate)
 
     @staticmethod
     def _region_for_address(regions: list[Region], address: int) -> Region | None:
@@ -10258,10 +10257,9 @@ class War3Trainer:
             )
 
     def prewarm_selected_unit_cache(self) -> UnitCandidate:
-        with self._process_memory() as pm:
-            candidate = self.locate_selected_unit_by_handle(pm)
-            self._unit_fields_from_candidate(pm, candidate)
-            return candidate
+        candidate = self.locate_selected_unit_by_handle()
+        self._unit_fields_from_candidate(None, candidate)
+        return candidate
 
     def _locate_selected_unit_by_panel(self, pm: ProcessMemory) -> UnitCandidate:
         raise RuntimeError("OCR/面板数值定位已禁用；当前选中单位只能通过内存 selected-handle 定位")
@@ -11084,7 +11082,7 @@ class War3Trainer:
     def _sane_heap_ptr(value: int) -> bool:
         return 0x100000000 <= value <= 0x7FFFFFFFFFFF
 
-    def _panel_from_candidate(self, pm: ProcessMemory, candidate: UnitCandidate) -> VisibleUnitPanel:
+    def _panel_from_candidate(self, pm: ProcessMemory | None, candidate: UnitCandidate) -> VisibleUnitPanel:
         native = self._native_snapshot_for_candidate(candidate)
         actual_hp = int(round(native.hp if native is not None else pm.read_f32(candidate.hp_current_address)))
         actual_hp_max = int(round(native.hp_max if native is not None else pm.read_f32(candidate.hp_max_address)))
@@ -12181,7 +12179,7 @@ class War3Trainer:
 
     def _unit_fields_from_candidate(
         self,
-        pm: ProcessMemory,
+        pm: ProcessMemory | None,
         candidate: UnitCandidate,
     ) -> list[UnitMemoryField]:
         fields: list[UnitMemoryField] = []
@@ -12667,15 +12665,13 @@ class War3Trainer:
         return fields
 
     def read_selected_unit_fields(self) -> tuple[VisibleUnitPanel, UnitCandidate, list[UnitMemoryField]]:
-        with self._process_memory() as pm:
-            snapshot = self._selected_candidates_snapshot(pm)
-            candidate = snapshot[0][0]
-            panel = self._panel_from_candidate(pm, candidate)
-            self._last_selected_summaries = self._selected_summaries_from_snapshot(
-                pm,
-                snapshot,
-            )
-            return panel, candidate, self._unit_fields_from_candidate(pm, candidate)
+        snapshot = self._selected_candidates_snapshot(None)
+        candidate = snapshot[0][0]
+        panel = self._panel_from_candidate(None, candidate)
+        summaries = self._selected_summaries_from_snapshot(None, snapshot)
+        fields = self._unit_fields_from_candidate(None, candidate)
+        self._last_selected_summaries = summaries
+        return panel, candidate, fields
 
     def _recover_win10_native_handlers(
         self,
@@ -12885,20 +12881,13 @@ class War3Trainer:
         owner: int,
         unit: int,
     ) -> tuple[VisibleUnitPanel, UnitCandidate, list[UnitMemoryField]]:
-        with self._process_memory() as pm:
-            candidate = self._candidate_from_display_identity(
-                pm,
-                handle,
-                owner,
-                unit,
-                f"manual_candidate handle=0x{handle:x} owner=0x{owner:x} unit=0x{unit:x}",
-                850,
-            )
-            if candidate is None:
-                raise RuntimeError("候选单位已经失效，请重新读取候选列表")
-            candidate = self._candidate_with_selected_unit_type_id(pm, candidate)
-            panel = self._panel_from_candidate(pm, candidate)
-            return panel, candidate, self._unit_fields_from_candidate(pm, candidate)
+        candidate = self._candidate_from_display_identity(
+            None, handle, owner, unit,
+            f"manual_candidate handle=0x{handle:x} owner=0x{owner:x} unit=0x{unit:x}", 850)
+        if candidate is None:
+            raise RuntimeError("候选单位已经失效，请重新读取候选列表")
+        panel = self._panel_from_candidate(None, candidate)
+        return panel, candidate, self._unit_fields_from_candidate(None, candidate)
 
     def read_unit_fields_by_identity_win10(
         self,
@@ -13944,10 +13933,8 @@ class War3Trainer:
         return self.write_unit_field_by_identity(handle, owner, unit, key, value)
 
     def locate_current_selected_unit(self) -> tuple[VisibleUnitPanel, UnitCandidate]:
-        with self._process_memory() as pm:
-            candidate = self.locate_selected_unit_by_handle(pm, allow_deep_scan=True)
-            candidate = self._candidate_with_selected_unit_type_id(pm, candidate)
-            return self._panel_from_candidate(pm, candidate), candidate
+        candidate = self.locate_selected_unit_by_handle()
+        return self._panel_from_candidate(None, candidate), candidate
 
     def _write_basic_unit_values_to_candidate(
         self,

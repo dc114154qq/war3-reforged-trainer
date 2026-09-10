@@ -1,0 +1,19 @@
+{
+  "native_count": 55,
+  "iterations_per_sample": 1000,
+  "samples_us_per_refresh": [
+    90.9321,
+    96.6377,
+    99.05539999999999,
+    96.0976,
+    93.6797
+  ],
+  "median_us_per_refresh": 96.0976,
+  "min_us": 90.9321,
+  "max_us": 99.05539999999999,
+  "scope": "Synthetic 55-bucket table, real captured native fingerprints; stub context getter and name hash. Not game latency.",
+  "date": "2026-09-10",
+  "source_commit": "3bb9e63",
+  "tests": "42 passed in 5.46s",
+  "captured_text_sha256": "0b62fa80e351e996e70addb66c5d3c8a818304ec6aa8dcf5fe6c0886cca4127c"
+}

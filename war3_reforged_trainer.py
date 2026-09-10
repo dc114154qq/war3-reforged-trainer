@@ -2619,7 +2619,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 64
+    NATIVE_HELPER_VERSION = 65
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -2732,6 +2732,7 @@ class War3Trainer:
     NATIVE_HELPER_OP_ADD_BOUND_HERO_SKILL_POINTS = 166
     NATIVE_HELPER_OP_BOUND_INVENTORY_BATCH = 167
     NATIVE_HELPER_OP_BOUND_ITEM_CREATE = 168
+    NATIVE_HELPER_OP_BOUND_OWNER_KILL = 169
     PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 154
     NATIVE_BASIC_FIELD_ARGUMENTS = {
         "hp_current": ("target_hp", "hp"),
@@ -4255,6 +4256,8 @@ class War3Trainer:
                     details = f" inventory_verified={operation[5]}"
                 elif operation[0] == self.NATIVE_HELPER_OP_BOUND_ITEM_CREATE:
                     details = f" item_creations_acknowledged={operation[5]} last_created_handle={operation[3]}"
+                elif operation[0] == self.NATIVE_HELPER_OP_BOUND_OWNER_KILL:
+                    details = f" owner_kill_callbacks={operation[5]} owner_kill_skipped={operation[3]} owner_kill_cleanup_error={operation[7]}"
             if actual_count == op_count == 3:
                 base, size = self.NATIVE_HELPER_HEADER_STRUCT.size, self.NATIVE_HELPER_OP_STRUCT.size
                 operation = self.NATIVE_HELPER_OP_STRUCT.unpack_from(data, base + size)
@@ -4658,6 +4661,7 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_ADD_BOUND_HERO_SKILL_POINTS,
             self.NATIVE_HELPER_OP_BOUND_INVENTORY_BATCH,
             self.NATIVE_HELPER_OP_BOUND_ITEM_CREATE,
+            self.NATIVE_HELPER_OP_BOUND_OWNER_KILL,
             self.NATIVE_HELPER_OP_BOUND_INVENTORY_ITEM,
             self.NATIVE_HELPER_OP_BOUND_ITEM_TYPE,
         }
@@ -5237,20 +5241,27 @@ class War3Trainer:
         target = float(scale)
         if not 0.01 <= target <= 100.0:
             raise ValueError("单位大小必须在 0.01 到 100 之间")
-        with self._process_memory() as pm:
-            unit_handle = self._elephant_selected_handle(pm)
-            handlers = self._elephant_handlers(pm, ("SetUnitScale",))
-        self._run_native_helper_ops(
-            unit_handle,
-            ((
-                self.NATIVE_HELPER_OP_JASS_UNIT_SCALE,
-                self._float_bits(target),
-                handlers["SetUnitScale"].handler_address,
-                0,
-                0,
-            ),),
-        )
+        expected = self._float_bits(target)
+        result = self._run_bound_unit_value_action("SetUnitScale", self.NATIVE_HELPER_OP_JASS_UNIT_SCALE, expected)
+        if result != expected:
+            raise RuntimeError("Native scale acknowledgment differs from request")
         return target
+
+    def _run_bound_unit_value_action(self, name: str, kind: int, rawcode: int, arg0: int = 0) -> int:
+        candidate, unit_handle = self._direct_selected_context()
+        handler = self._query_native_table_handlers((name,))[name].handler_address
+        return self._run_bound_unit_action_result(candidate, unit_handle, (kind, rawcode, handler, arg0, 0))
+
+    def _run_bound_unit_action_result(
+        self, candidate: UnitCandidate, unit_handle: int, operation: tuple[int, int, int, int, int],
+    ) -> int:
+        results = self._run_native_helper_ops(unit_handle, (
+            (self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY, 0, candidate.unit_address,
+             candidate.handle, candidate.owner_address), operation))
+        if (len(results) != 2 or any(result.last_error for result in results)
+                or results[1].kind != operation[0]):
+            raise RuntimeError("Incomplete native bound unit action result")
+        return int(results[1].result)
 
     def query_mouse_world_position(self) -> tuple[float, float]:
         packed = int(self._run_native_helper_ops(
@@ -5278,21 +5289,11 @@ class War3Trainer:
             raise ValueError("单位坐标必须是有限数值")
         if abs(target_x) > 1_000_000.0 or abs(target_y) > 1_000_000.0:
             raise ValueError("单位坐标超出允许范围")
-        with self._process_memory() as pm:
-            unit_handle = self._elephant_selected_handle(pm)
-            handler = self._elephant_handlers(pm, ("SetUnitPosition",))[
-                "SetUnitPosition"
-            ].handler_address
-        self._run_native_helper_ops(
-            unit_handle,
-            ((
-                self.NATIVE_HELPER_OP_JASS_SET_UNIT_POSITION,
-                self._float_bits(target_x),
-                handler,
-                self._float_bits(target_y),
-                0,
-            ),),
-        )
+        x_bits, y_bits = self._float_bits(target_x), self._float_bits(target_y)
+        result = self._run_bound_unit_value_action("SetUnitPosition", self.NATIVE_HELPER_OP_JASS_SET_UNIT_POSITION,
+                                                   x_bits, y_bits)
+        if result != x_bits | (y_bits << 32):
+            raise RuntimeError("Native position acknowledgment differs from request")
         return target_x, target_y
 
     def move_selected_unit_to_mouse(self) -> tuple[float, float]:
@@ -5781,19 +5782,14 @@ class War3Trainer:
         return removed
 
     def take_selected_unit_control(self) -> int:
-        with self._process_memory() as pm:
-            unit_handle = self._elephant_selected_handle(pm)
-            handlers = self._elephant_handlers(pm, ("GetLocalPlayer", "SetUnitOwner"))
-        return self._run_native_helper_ops(
-            unit_handle,
-            ((
-                self.NATIVE_HELPER_OP_JASS_TAKE_OWNERSHIP,
-                0,
-                handlers["GetLocalPlayer"].handler_address,
-                handlers["SetUnitOwner"].handler_address,
-                0,
-            ),),
-        )[0].result
+        candidate, unit_handle = self._direct_selected_context()
+        handlers = self._query_native_table_handlers(("GetLocalPlayer", "SetUnitOwner", "GetOwningPlayer"))
+        result = self._run_bound_unit_action_result(candidate, unit_handle, (
+            self.NATIVE_HELPER_OP_JASS_TAKE_OWNERSHIP, 0, handlers["GetLocalPlayer"].handler_address,
+            handlers["SetUnitOwner"].handler_address, handlers["GetOwningPlayer"].handler_address))
+        if not result:
+            raise RuntimeError("Native ownership acknowledgment is empty")
+        return result
 
     def create_local_unit(
         self,
@@ -7241,47 +7237,17 @@ class War3Trainer:
         )[0].result)
 
     def kill_selected_owner_units(self) -> int:
-        with self._process_memory() as pm:
-            unit_handle = self._elephant_selected_handle(pm)
-            handlers = self._elephant_handlers(
-                pm,
-                (
-                    "GetOwningPlayer",
-                    "CreateGroup",
-                    "GroupEnumUnitsOfPlayer",
-                    "FirstOfGroup",
-                    "GroupRemoveUnit",
-                    "KillUnit",
-                    "DestroyGroup",
-                ),
-            )
-        return int(self._run_native_helper_ops(
-            unit_handle,
-            (
-                (
-                    self.NATIVE_HELPER_OP_JASS_KILL_OWNER_UNITS,
-                    0,
-                    handlers["GetOwningPlayer"].handler_address,
-                    handlers["CreateGroup"].handler_address,
-                    handlers["GroupEnumUnitsOfPlayer"].handler_address,
-                ),
-                (
-                    self.NATIVE_HELPER_OP_JASS_MULTI_ARG,
-                    0,
-                    handlers["FirstOfGroup"].handler_address,
-                    handlers["GroupRemoveUnit"].handler_address,
-                    handlers["KillUnit"].handler_address,
-                ),
-                (
-                    self.NATIVE_HELPER_OP_JASS_MULTI_ARG,
-                    0,
-                    handlers["DestroyGroup"].handler_address,
-                    0,
-                    0,
-                ),
-            ),
-            timeout_ms=3000,
-        )[0].result)
+        candidate, unit_handle = self._direct_selected_context()
+        handler = self._query_native_table_handlers(("KillUnit",))["KillUnit"].handler_address
+        results = self._run_native_helper_ops(unit_handle, (
+            (self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY, 0, candidate.unit_address,
+             candidate.handle, candidate.owner_address),
+            (self.NATIVE_HELPER_OP_BOUND_OWNER_KILL, 0, handler, 0, 0)), timeout_ms=120000)
+        if (len(results) != 2 or any(result.last_error for result in results)
+                or results[1].kind != self.NATIVE_HELPER_OP_BOUND_OWNER_KILL
+                or not 0 <= results[1].result <= 100000):
+            raise RuntimeError("Incomplete native owner group result")
+        return int(results[1].result)
 
     @staticmethod
     def _scan_bytes_private_between(

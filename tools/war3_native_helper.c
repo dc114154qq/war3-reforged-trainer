@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 64u
+#define WAR3_NATIVE_VERSION 65u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -114,6 +114,7 @@
 #define WAR3_NATIVE_OP_ADD_BOUND_HERO_SKILL_POINTS 166u
 #define WAR3_NATIVE_OP_BOUND_INVENTORY_BATCH 167u
 #define WAR3_NATIVE_OP_BOUND_ITEM_CREATE 168u
+#define WAR3_NATIVE_OP_BOUND_OWNER_KILL 169u
 #define WAR3_BOUND_INVENTORY_QWORDS 49u
 #define WAR3_BOUND_UNIT_FIELD_QWORDS (15u + 36u + 121u + 121u + WAR3_BOUND_INVENTORY_QWORDS + 4u)
 #define WAR3_CLONE_FLAG_HERO 0x01u
@@ -1064,6 +1065,7 @@ static DWORD war3_bound_direct_ability(NativeCommand *cmd, NativeOp *op) {
 #include "war3_native_effect_lifecycle.h"
 #include "war3_native_toggle.h"
 #include "war3_native_world_effect.h"
+#include "war3_native_owner_kill.h"
 
 /* Six slots plus the engine's usable slot count. Slot membership, item
    generation and object-table backlinks replace external inventory records. */
@@ -3584,6 +3586,8 @@ static void run_command(void) {
                 op->kind != WAR3_NATIVE_OP_JASS_UNIT_BOOL &&
                 op->kind != WAR3_NATIVE_OP_JASS_UNIT_VOID &&
                 op->kind != WAR3_NATIVE_OP_JASS_UNIT_INT_QUERY &&
+                op->kind != WAR3_NATIVE_OP_JASS_UNIT_SCALE &&
+                op->kind != WAR3_NATIVE_OP_JASS_TAKE_OWNERSHIP &&
                 op->kind != WAR3_NATIVE_OP_JASS_SET_UNIT_INT &&
                 op->kind != WAR3_NATIVE_OP_JASS_SET_UNIT_POSITION &&
                 op->kind != WAR3_NATIVE_OP_SET_BOUND_ITEM_CHARGES &&
@@ -3608,6 +3612,7 @@ static void run_command(void) {
                 op->kind != WAR3_NATIVE_OP_ADD_BOUND_HERO_SKILL_POINTS &&
                 op->kind != WAR3_NATIVE_OP_BOUND_INVENTORY_BATCH &&
                 op->kind != WAR3_NATIVE_OP_BOUND_ITEM_CREATE &&
+                op->kind != WAR3_NATIVE_OP_BOUND_OWNER_KILL &&
                 op->kind != WAR3_NATIVE_OP_BOUND_ABILITY_IDENTITY &&
                 op->kind != WAR3_NATIVE_OP_BOUND_INVENTORY_ITEM &&
                 !war3_is_internal_ability_op(op->kind) &&
@@ -3629,6 +3634,14 @@ static void run_command(void) {
                     last_error = op->last_error = ERROR_INVALID_PARAMETER;
                     goto finish;
                 }
+            }
+            if (op->kind == WAR3_NATIVE_OP_JASS_UNIT_SCALE || op->kind == WAR3_NATIVE_OP_JASS_SET_UNIT_POSITION ||
+                op->kind == WAR3_NATIVE_OP_JASS_TAKE_OWNERSHIP) {
+                int bad=!war3_executable_pointer(op->handler);
+                if(op->kind==WAR3_NATIVE_OP_JASS_TAKE_OWNERSHIP)
+                    bad|=op->rawcode!=0 || !war3_executable_pointer(op->arg0) || !war3_executable_pointer(op->arg1);
+                else bad|=op->arg1!=0 || (op->kind==WAR3_NATIVE_OP_JASS_UNIT_SCALE?op->arg0!=0:op->arg0>UINT32_MAX);
+                if(bad) {last_error=op->last_error=ERROR_INVALID_PARAMETER;goto finish;}
             }
         }
         if (war3_is_ability_field_op(op->kind)) {
@@ -3739,6 +3752,11 @@ static void run_command(void) {
             }
             case WAR3_NATIVE_OP_BOUND_ITEM_CREATE: {
                 last_error=i==1?war3_bound_item_create(&cmd,op):ERROR_INVALID_PARAMETER;
+                if(last_error) {op->last_error=last_error;goto finish;}
+                break;
+            }
+            case WAR3_NATIVE_OP_BOUND_OWNER_KILL: {
+                last_error=i==1?war3_bound_owner_kill(&cmd,op):ERROR_INVALID_PARAMETER;
                 if(last_error) {op->last_error=last_error;goto finish;}
                 break;
             }
@@ -4452,7 +4470,8 @@ static void run_command(void) {
                 JassUnitScaleFn fn = (JassUnitScaleFn)(uintptr_t)op->handler;
                 float scale = 0.0f;
                 memcpy(&scale, &op->rawcode, sizeof(scale));
-                if (!cmd.unit_handle || !(scale > 0.0f) || scale > 100.0f) {
+                if (!cmd.unit_handle || !(scale > 0.0f) || scale > 100.0f ||
+                    (cmd.ops[0].kind==WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY && scale<0.01f)) {
                     op->last_error = ERROR_INVALID_PARAMETER;
                     last_error = ERROR_INVALID_PARAMETER;
                     goto finish;
@@ -4462,6 +4481,10 @@ static void run_command(void) {
                     float y = scale;
                     float z = scale;
                     fn(cmd.unit_handle, &x, &y, &z);
+                    if(cmd.ops[0].kind==WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY) {
+                        last_error=war3_validate_unit_identity(&cmd,&cmd.ops[0]);
+                        if(last_error) {op->last_error=last_error;goto finish;}
+                    }
                     op->result = op->rawcode;
                 } __except (EXCEPTION_EXECUTE_HANDLER) {
                     op->last_error = GetExceptionCode();
@@ -4532,12 +4555,24 @@ static void run_command(void) {
                 }
                 __try {
                     player = get_local_player();
+                    if(cmd.ops[0].kind==WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY) {
+                        last_error=war3_validate_unit_identity(&cmd,&cmd.ops[0]);
+                        if(last_error) {op->last_error=last_error;goto finish;}
+                    }
                     if (!player) {
                         op->last_error = ERROR_NOT_FOUND;
                         last_error = ERROR_NOT_FOUND;
                         goto finish;
                     }
                     set_unit_owner(cmd.unit_handle, player, 1u);
+                    if(cmd.ops[0].kind==WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY) {
+                        last_error=war3_validate_unit_identity(&cmd,&cmd.ops[0]);
+                        if(last_error) {op->last_error=last_error;goto finish;}
+                        uint64_t actual=((JassGetOwningPlayerFn)(uintptr_t)op->arg1)(cmd.unit_handle);
+                        last_error=war3_validate_unit_identity(&cmd,&cmd.ops[0]);
+                        if(!last_error && actual!=player) last_error=ERROR_CAN_NOT_COMPLETE;
+                        if(last_error) {op->last_error=last_error;goto finish;}
+                    }
                     op->result = player;
                 } __except (EXCEPTION_EXECUTE_HANDLER) {
                     op->last_error = GetExceptionCode();
@@ -5264,6 +5299,10 @@ static void run_command(void) {
                 }
                 __try {
                     set_unit_position(cmd.unit_handle, &x, &y);
+                    if(cmd.ops[0].kind==WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY) {
+                        last_error=war3_validate_unit_identity(&cmd,&cmd.ops[0]);
+                        if(last_error) {op->last_error=last_error;goto finish;}
+                    }
                     op->result = (uint64_t)x_bits | ((uint64_t)y_bits << 32);
                 } __except (EXCEPTION_EXECUTE_HANDLER) {
                     op->last_error = GetExceptionCode();

@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 63u
+#define WAR3_NATIVE_VERSION 64u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -113,6 +113,7 @@
 #define WAR3_NATIVE_OP_SET_BOUND_HERO_LEVEL 165u
 #define WAR3_NATIVE_OP_ADD_BOUND_HERO_SKILL_POINTS 166u
 #define WAR3_NATIVE_OP_BOUND_INVENTORY_BATCH 167u
+#define WAR3_NATIVE_OP_BOUND_ITEM_CREATE 168u
 #define WAR3_BOUND_INVENTORY_QWORDS 49u
 #define WAR3_BOUND_UNIT_FIELD_QWORDS (15u + 36u + 121u + 121u + WAR3_BOUND_INVENTORY_QWORDS + 4u)
 #define WAR3_CLONE_FLAG_HERO 0x01u
@@ -435,6 +436,7 @@ static const char *g_persistent_native_names[] = {
     "UnitItemInSlot",
     "UnitInventorySize",
     "CreateItem",
+    "UnitAddItemById",
     "RemoveItem",
     "UnitRemoveItem",
     "IsItemOwned",
@@ -1146,6 +1148,8 @@ static DWORD war3_item_identity(const War3ItemIdentity *item) {
         *(uint64_t *)(uintptr_t)(wrapper+0x90)!=item->object) return ERROR_INVALID_HANDLE;
     return ERROR_SUCCESS;
 }
+
+#include "war3_native_item_create.h"
 
 static DWORD war3_same_inventory(const NativeCommand *cmd,const uint64_t *before,unsigned slot,
                                   const War3ItemIdentity *expected) {
@@ -3603,6 +3607,7 @@ static void run_command(void) {
                 op->kind != WAR3_NATIVE_OP_SET_BOUND_HERO_LEVEL &&
                 op->kind != WAR3_NATIVE_OP_ADD_BOUND_HERO_SKILL_POINTS &&
                 op->kind != WAR3_NATIVE_OP_BOUND_INVENTORY_BATCH &&
+                op->kind != WAR3_NATIVE_OP_BOUND_ITEM_CREATE &&
                 op->kind != WAR3_NATIVE_OP_BOUND_ABILITY_IDENTITY &&
                 op->kind != WAR3_NATIVE_OP_BOUND_INVENTORY_ITEM &&
                 !war3_is_internal_ability_op(op->kind) &&
@@ -3657,6 +3662,7 @@ static void run_command(void) {
             op->kind != WAR3_NATIVE_OP_SET_BOUND_HERO_LEVEL &&
             op->kind != WAR3_NATIVE_OP_ADD_BOUND_HERO_SKILL_POINTS &&
             op->kind != WAR3_NATIVE_OP_BOUND_INVENTORY_BATCH &&
+            op->kind != WAR3_NATIVE_OP_BOUND_ITEM_CREATE &&
             op->kind != WAR3_NATIVE_OP_PERSISTENT_SELECTED_SNAPSHOT
         ) {
             op->last_error = ERROR_INVALID_DATA;
@@ -3728,6 +3734,11 @@ static void run_command(void) {
             }
             case WAR3_NATIVE_OP_BOUND_INVENTORY_BATCH: {
                 last_error=i==1?war3_bound_inventory_batch(&cmd,op):ERROR_INVALID_PARAMETER;
+                if(last_error) {op->last_error=last_error;goto finish;}
+                break;
+            }
+            case WAR3_NATIVE_OP_BOUND_ITEM_CREATE: {
+                last_error=i==1?war3_bound_item_create(&cmd,op):ERROR_INVALID_PARAMETER;
                 if(last_error) {op->last_error=last_error;goto finish;}
                 break;
             }

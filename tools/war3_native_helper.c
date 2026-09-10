@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 59u
+#define WAR3_NATIVE_VERSION 60u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -3566,6 +3566,8 @@ static void run_command(void) {
             /* A setter can run triggers which destroy/recycle the unit. Check
                again before each subsequent setter, not only once per batch. */
             if (op->kind != WAR3_NATIVE_OP_JASS_SET_UNIT_STATE &&
+                op->kind != WAR3_NATIVE_OP_JASS_UNIT_BOOL &&
+                op->kind != WAR3_NATIVE_OP_JASS_UNIT_VOID &&
                 op->kind != WAR3_NATIVE_OP_JASS_SET_UNIT_INT &&
                 op->kind != WAR3_NATIVE_OP_JASS_SET_UNIT_POSITION &&
                 op->kind != WAR3_NATIVE_OP_SET_BOUND_ITEM_CHARGES &&
@@ -3599,6 +3601,13 @@ static void run_command(void) {
             if (last_error) {
                 op->last_error = last_error;
                 goto finish;
+            }
+            if (op->kind == WAR3_NATIVE_OP_JASS_UNIT_BOOL || op->kind == WAR3_NATIVE_OP_JASS_UNIT_VOID) {
+                if (op->arg0 || op->arg1 || op->rawcode > (op->kind == WAR3_NATIVE_OP_JASS_UNIT_BOOL ? 1u : 0u) ||
+                    !war3_executable_pointer(op->handler)) {
+                    last_error = op->last_error = ERROR_INVALID_PARAMETER;
+                    goto finish;
+                }
             }
         }
         if (war3_is_ability_field_op(op->kind)) {

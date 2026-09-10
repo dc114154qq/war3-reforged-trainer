@@ -2619,7 +2619,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 59
+    NATIVE_HELPER_VERSION = 60
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -5285,34 +5285,26 @@ class War3Trainer:
         )[0].result)
 
     def _run_elephant_unit_bool(self, native_name: str, enabled: bool) -> None:
-        with self._process_memory() as pm:
-            unit_handle = self._elephant_selected_handle(pm)
-            handlers = self._elephant_handlers(pm, (native_name,))
-        self._run_native_helper_ops(
-            unit_handle,
-            ((
-                self.NATIVE_HELPER_OP_JASS_UNIT_BOOL,
-                1 if enabled else 0,
-                handlers[native_name].handler_address,
-                0,
-                0,
-            ),),
-        )
+        self._run_bound_simple_unit_actions(((native_name, bool(enabled)),))
 
     def _run_elephant_unit_void(self, native_name: str) -> None:
-        with self._process_memory() as pm:
-            unit_handle = self._elephant_selected_handle(pm)
-            handlers = self._elephant_handlers(pm, (native_name,))
-        self._run_native_helper_ops(
-            unit_handle,
-            ((
-                self.NATIVE_HELPER_OP_JASS_UNIT_VOID,
-                0,
-                handlers[native_name].handler_address,
-                0,
-                0,
-            ),),
-        )
+        self._run_bound_simple_unit_actions(((native_name, None),))
+
+    def _run_bound_simple_unit_actions(self, actions: tuple[tuple[str, bool | None], ...]) -> None:
+        candidate, unit_handle = self._direct_selected_context()
+        handlers = self._query_native_table_handlers(name for name, _value in actions)
+        ops = tuple((self.NATIVE_HELPER_OP_JASS_UNIT_VOID if value is None else self.NATIVE_HELPER_OP_JASS_UNIT_BOOL,
+                     0 if value is None else int(value), handlers[name].handler_address, 0, 0)
+                    for name, value in actions)
+        results = self._run_native_helper_ops(unit_handle, (
+            (self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY, 0, candidate.unit_address,
+             candidate.handle, candidate.owner_address), *ops))
+        if len(results) != len(ops) + 1 or any(result.last_error for result in results):
+            raise RuntimeError("Incomplete native unit action result")
+        for op, result in zip(ops, results[1:]):
+            expected = 1 if op[0] == self.NATIVE_HELPER_OP_JASS_UNIT_VOID else op[1]
+            if result.kind != op[0] or result.result != expected:
+                raise RuntimeError("Native unit action result differs from request")
 
     def reset_selected_unit_cooldown(self) -> None:
         self._run_elephant_unit_void("UnitResetCooldown")
@@ -5324,19 +5316,7 @@ class War3Trainer:
         self._run_elephant_unit_void("RemoveUnit")
 
     def explode_selected_unit(self) -> None:
-        with self._process_memory() as pm:
-            unit_handle = self._elephant_selected_handle(pm)
-            handlers = self._elephant_handlers(pm, ("SetUnitExploded", "KillUnit"))
-        self._run_native_helper_ops(
-            unit_handle,
-            ((
-                self.NATIVE_HELPER_OP_JASS_EXPLODE_UNIT,
-                0,
-                handlers["SetUnitExploded"].handler_address,
-                handlers["KillUnit"].handler_address,
-                0,
-            ),),
-        )
+        self._run_bound_simple_unit_actions((("SetUnitExploded", True), ("KillUnit", None)))
 
     def set_selected_unit_scale(self, scale: float) -> float:
         target = float(scale)

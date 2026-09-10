@@ -2619,7 +2619,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 58
+    NATIVE_HELPER_VERSION = 59
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -2727,6 +2727,7 @@ class War3Trainer:
     NATIVE_HELPER_OP_ENABLE_BOUND_TOGGLE = 161
     NATIVE_HELPER_OP_BOUND_WORLD_EFFECT = 162
     NATIVE_HELPER_OP_SET_BOUND_HERO_BASE = 163
+    NATIVE_HELPER_OP_SET_BOUND_HERO_ATTRIBUTES = 164
     PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 154
     NATIVE_BASIC_FIELD_ARGUMENTS = {
         "hp_current": ("target_hp", "hp"),
@@ -4636,6 +4637,7 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_ENABLE_BOUND_TOGGLE,
             self.NATIVE_HELPER_OP_BOUND_WORLD_EFFECT,
             self.NATIVE_HELPER_OP_SET_BOUND_HERO_BASE,
+            self.NATIVE_HELPER_OP_SET_BOUND_HERO_ATTRIBUTES,
             self.NATIVE_HELPER_OP_BOUND_INVENTORY_ITEM,
             self.NATIVE_HELPER_OP_BOUND_ITEM_TYPE,
         }
@@ -5225,22 +5227,16 @@ class War3Trainer:
         target = int(value)
         if not 0 <= target <= 1_000_000_000:
             raise ValueError("英雄属性必须在 0 到 1000000000 之间")
-        with self._process_memory() as pm:
-            unit_handle = self._elephant_selected_handle(pm)
-            handlers = self._elephant_handlers(pm, ("SetHeroStr", "SetHeroAgi", "SetHeroInt"))
-        self._run_native_helper_ops(
-            unit_handle,
-            tuple(
-                (
-                    self.NATIVE_HELPER_OP_JASS_UNIT_INT_BOOL,
-                    target,
-                    handlers[name].handler_address,
-                    1,
-                    0,
-                )
-                for name in ("SetHeroStr", "SetHeroAgi", "SetHeroInt")
-            ),
-        )
+        candidate, unit_handle = self._direct_selected_context()
+        results = self._run_native_helper_ops(unit_handle, (
+            (self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY, 0, candidate.unit_address,
+             candidate.handle, candidate.owner_address),
+            (self.NATIVE_HELPER_OP_SET_BOUND_HERO_ATTRIBUTES, target, 0, 0, 0),
+        ))
+        if (len(results) != 2 or any(result.last_error for result in results)
+                or results[1].kind != self.NATIVE_HELPER_OP_SET_BOUND_HERO_ATTRIBUTES
+                or results[1].result != target):
+            raise RuntimeError("Native hero attributes readback differs from request")
         return target
 
     def add_selected_hero_skill_points(self, amount: int = 1) -> int:

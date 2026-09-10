@@ -196,15 +196,14 @@ class ElephantSourceRoutingTests(unittest.TestCase):
 
     def test_cached_clone_does_not_reselect_unit(self):
         trainer = object.__new__(trainer_module.War3Trainer)
-        memory = _BackupMemory(123)
         handler = trainer_module.NativeHandler("CreateUnit", 0x1000, 0x2000)
-        trainer._process_memory = unittest.mock.Mock(return_value=memory)
+        trainer._process_memory = unittest.mock.Mock(side_effect=AssertionError("External memory used"))
         trainer.query_mouse_world_position = unittest.mock.Mock(return_value=(1.0, 2.0))
         trainer._coerce_memory_value = unittest.mock.Mock(return_value=0x68666F6F)
         trainer._elephant_selected_candidate = unittest.mock.Mock(
             side_effect=AssertionError("selected unit was read again")
         )
-        trainer._elephant_handlers = unittest.mock.Mock(
+        trainer._query_native_table_handlers = unittest.mock.Mock(
             return_value={"GetLocalPlayer": handler, "CreateUnit": handler}
         )
         trainer._run_native_helper_ops = unittest.mock.Mock(
@@ -218,6 +217,8 @@ class ElephantSourceRoutingTests(unittest.TestCase):
 
         self.assertEqual((rawcode, handle), (0x68666F6F, 0x4444))
         trainer._elephant_selected_candidate.assert_not_called()
+        trainer._query_native_table_handlers.assert_called_once_with(("GetLocalPlayer", "CreateUnit"))
+        trainer._process_memory.assert_not_called()
 
     def test_unit_bound_elephant_gui_functions_do_not_call_main_trainer_directly(self):
         tree = ast.parse(SOURCE_PATH.read_text(encoding="utf-8"))

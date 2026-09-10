@@ -2619,7 +2619,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 66
+    NATIVE_HELPER_VERSION = 67
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -5982,11 +5982,16 @@ class War3Trainer:
                     handlers["RemoveUnit"].handler_address,
                 ),
             )
-            result = self._run_native_helper_ops(
+            response = self._run_native_helper_ops(
                 unit_handle,
-                clone_ops,
+                ((self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY, 0, candidate.unit_address,
+                  candidate.handle, candidate.owner_address), *clone_ops),
                 timeout_ms=10000,
-            )[0].result
+            )
+            if (len(response) != 15 or any(item.last_error for item in response)
+                    or response[1].kind != self.NATIVE_HELPER_OP_JASS_CLONE_SELECTED_UNIT):
+                raise RuntimeError("Incomplete bound native clone result")
+            result = response[1].result
             if not result:
                 raise RuntimeError(f"游戏未能复制单位 {format_rawcode(unit_rawcode)}")
             return unit_rawcode, result

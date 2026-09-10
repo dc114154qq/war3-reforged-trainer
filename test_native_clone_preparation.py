@@ -22,12 +22,13 @@ def test_clone_uses_bound_component_mask_and_one_transaction(trainer,mask,preser
         trainer.persistent_native_selected_snapshots.return_value=(replace(initial,handle=17,component_mask=15-mask),)
         return {name:module.NativeHandler(name,0,0x200000+n*0x100) for n,name in enumerate(names)}
     trainer._query_native_table_handlers=Mock(side_effect=query)
-    trainer._run_native_helper_ops=Mock(return_value=[module.NativeHelperOpResult(118,0x9900)])
+    trainer._run_native_helper_ops=Mock(return_value=[module.NativeHelperOpResult(136,1),module.NativeHelperOpResult(118,0x9900)]+[module.NativeHelperOpResult(trainer.NATIVE_HELPER_OP_JASS_MULTI_ARG,0)]*13)
     assert trainer.create_local_unit(None,(12,-4),preserve_owner=preserve)==(original.type_id,0x9900)
     handle,ops=trainer._run_native_helper_ops.call_args.args
-    assert handle==original.handle and len(ops)==14 and ops[0][0]==118
+    assert handle==original.handle and len(ops)==15 and ops[1][0]==118
     flags=(1 if mask&2 else 0)|(2 if mask&1 else 0)|(4 if preserve else 0)
-    assert ops[1][1]==flags
+    assert ops[2][1]==flags
+    assert ops[0]==(136,0,original.unit_address,original.full_handle,original.owner_address)
     names=trainer._query_native_table_handlers.call_args.args[0]
     assert ('GetOwningPlayer' in names)==preserve and ('GetLocalPlayer' in names)!=preserve
     assert ('UnitAddItemById' in names)==bool(mask&1)
@@ -39,7 +40,7 @@ def test_clone_uses_bound_component_mask_and_one_transaction(trainer,mask,preser
     trainer._run_native_helper_ops_locked(handle,ops)
     payload=trainer._write_native_helper_command.call_args.args[1]
     base=trainer.NATIVE_HELPER_HEADER_STRUCT.size;size=trainer.NATIVE_HELPER_OP_STRUCT.size
-    assert [trainer.NATIVE_HELPER_OP_STRUCT.unpack_from(payload,base+i*size)[:5] for i in range(14)]==list(ops)
+    assert [trainer.NATIVE_HELPER_OP_STRUCT.unpack_from(payload,base+i*size)[:5] for i in range(15)]==list(ops)
 
 
 @pytest.mark.parametrize('mismatch',[False,True])
@@ -63,3 +64,17 @@ def test_explicit_creation_needs_no_selection_or_external_context(trainer):
     trainer._query_native_table_handlers.assert_called_once_with(('GetLocalPlayer','CreateUnit'))
     assert trainer._run_native_helper_ops.call_args.args[0]==0
     trainer._process_memory.assert_not_called()
+
+
+@pytest.mark.parametrize('failure',['short','wrong_kind','error','empty_target'])
+def test_clone_rejects_incomplete_or_failed_helper_results(trainer,failure):
+    trainer._query_native_table_handlers=Mock(side_effect=lambda names:{
+        name:module.NativeHandler(name,0,0x200000+n*0x100) for n,name in enumerate(names)})
+    response=[module.NativeHelperOpResult(136,1),module.NativeHelperOpResult(118,0x9900)]+[
+        module.NativeHelperOpResult(trainer.NATIVE_HELPER_OP_JASS_MULTI_ARG,0)]*13
+    if failure=='short':response.pop()
+    elif failure=='wrong_kind':response[1]=module.NativeHelperOpResult(80,0x9900)
+    elif failure=='error':response[-1]=module.NativeHelperOpResult(trainer.NATIVE_HELPER_OP_JASS_MULTI_ARG,0,last_error=6)
+    else:response[1]=module.NativeHelperOpResult(118,0)
+    trainer._run_native_helper_ops=Mock(return_value=response)
+    with pytest.raises(RuntimeError):trainer.create_local_unit(None,(12,-4))

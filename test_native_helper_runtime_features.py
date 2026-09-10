@@ -276,12 +276,12 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
             return_value=(candidate, candidate.native_snapshot.handle)
         )
         trainer._run_native_helper_ops = Mock(
-            return_value=[
+            return_value=[trainer_module.NativeHelperOpResult(136, 1),
                 trainer_module.NativeHelperOpResult(
                     kind=trainer.NATIVE_HELPER_OP_JASS_CLONE_SELECTED_UNIT,
                     result=0x7788,
                 )
-            ]
+            ] + [trainer_module.NativeHelperOpResult(trainer.NATIVE_HELPER_OP_JASS_MULTI_ARG, 0)] * 13
         )
 
         rawcode, handle = trainer.create_local_unit(None)
@@ -289,15 +289,15 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
         self.assertEqual((rawcode, handle), (candidate.unit_type_id, 0x7788))
         unit_handle, ops = trainer._run_native_helper_ops.call_args.args[:2]
         self.assertEqual(unit_handle, candidate.native_snapshot.handle)
-        self.assertEqual(len(ops), 14)
+        self.assertEqual(len(ops), 15)
         self.assertEqual(
-            ops[0][0],
+            ops[1][0],
             trainer.NATIVE_HELPER_OP_JASS_CLONE_SELECTED_UNIT,
         )
         self.assertTrue(
             all(
                 op[0] == trainer.NATIVE_HELPER_OP_JASS_MULTI_ARG
-                for op in ops[1:]
+                for op in ops[2:]
             )
         )
 
@@ -309,12 +309,12 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
         )
         trainer._selected_components = Mock(return_value={"move": (1, 2)})
         trainer._run_native_helper_ops = Mock(
-            return_value=[
+            return_value=[trainer_module.NativeHelperOpResult(136, 1),
                 trainer_module.NativeHelperOpResult(
                     kind=trainer.NATIVE_HELPER_OP_JASS_CLONE_SELECTED_UNIT,
                     result=0x7788,
                 )
-            ]
+            ] + [trainer_module.NativeHelperOpResult(trainer.NATIVE_HELPER_OP_JASS_MULTI_ARG, 0)] * 13
         )
 
         trainer.create_local_unit(None)
@@ -325,11 +325,11 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
         )
         _unit_handle, ops = trainer._run_native_helper_ops.call_args.args[:2]
         self.assertFalse(
-            ops[1][1] & trainer.NATIVE_HELPER_CLONE_FLAG_INVENTORY
+            ops[2][1] & trainer.NATIVE_HELPER_CLONE_FLAG_INVENTORY
         )
-        for descriptor in ops[8:11]:
+        for descriptor in ops[9:12]:
             self.assertEqual(descriptor[2:5], (0, 0, 0))
-        self.assertEqual(ops[11][2:4], (0, 0))
+        self.assertEqual(ops[12][2:4], (0, 0))
 
     def test_selected_clone_with_inventory_requests_item_natives(self):
         trainer = self.make_trainer()
@@ -341,12 +341,12 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
             return_value={"inventory": (1, 2)}
         )
         trainer._run_native_helper_ops = Mock(
-            return_value=[
+            return_value=[trainer_module.NativeHelperOpResult(136, 1),
                 trainer_module.NativeHelperOpResult(
                     kind=trainer.NATIVE_HELPER_OP_JASS_CLONE_SELECTED_UNIT,
                     result=0x7788,
                 )
-            ]
+            ] + [trainer_module.NativeHelperOpResult(trainer.NATIVE_HELPER_OP_JASS_MULTI_ARG, 0)] * 13
         )
 
         trainer.create_local_unit(None)
@@ -357,7 +357,7 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
         )
         _unit_handle, ops = trainer._run_native_helper_ops.call_args.args[:2]
         self.assertTrue(
-            ops[1][1] & trainer.NATIVE_HELPER_CLONE_FLAG_INVENTORY
+            ops[2][1] & trainer.NATIVE_HELPER_CLONE_FLAG_INVENTORY
         )
 
     def test_selected_clone_can_preserve_source_owner(self):
@@ -368,12 +368,12 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
         )
         trainer._selected_components = Mock(return_value={})
         trainer._run_native_helper_ops = Mock(
-            return_value=[
+            return_value=[trainer_module.NativeHelperOpResult(136, 1),
                 trainer_module.NativeHelperOpResult(
                     kind=trainer.NATIVE_HELPER_OP_JASS_CLONE_SELECTED_UNIT,
                     result=0x7788,
                 )
-            ]
+            ] + [trainer_module.NativeHelperOpResult(trainer.NATIVE_HELPER_OP_JASS_MULTI_ARG, 0)] * 13
         )
 
         trainer.create_local_unit(None, preserve_owner=True)
@@ -383,7 +383,7 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
         self.assertNotIn("GetLocalPlayer", requested)
         _unit_handle, ops = trainer._run_native_helper_ops.call_args.args[:2]
         self.assertTrue(
-            ops[1][1] & trainer.NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER
+            ops[2][1] & trainer.NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER
         )
 
     def test_explicit_create_keeps_plain_create_path(self):
@@ -480,7 +480,6 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
         self.assertIn("while (selected_count < 12u)", helper_source)
         self.assertIn("selected_units[selected_count++] = current;", helper_source)
         self.assertIn("while (processed < 100000u)", helper_source)
-        self.assertIn("get_unit_type_id(cmd.unit_handle) != op->rawcode", helper_source)
         self.assertIn("remove_unit(target)", helper_source)
         self.assertIn("if (target_value != source_value)", helper_source)
         self.assertIn(

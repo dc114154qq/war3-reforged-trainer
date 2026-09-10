@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 66u
+#define WAR3_NATIVE_VERSION 67u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -2358,7 +2358,10 @@ static int war3_is_essential_ability(uint32_t rawcode) {
     return 0;
 }
 
+#include "war3_native_clone_guard.h"
+
 static int war3_copy_item_instance_fields(
+    War3CloneGuard *clone_guard,
     uint64_t source_item,
     uint64_t target_item,
     JassItemFieldGetFn get_integer,
@@ -2400,15 +2403,15 @@ static int war3_copy_item_instance_fields(
         ++index
     ) {
         uint32_t source_value =
-            (uint32_t)get_integer(source_item, integer_fields[index]);
+            (uint32_t)WAR3_CLONE_VALUE(clone_guard, get_integer(source_item, integer_fields[index]));
         uint32_t target_value =
-            (uint32_t)get_integer(target_item, integer_fields[index]);
+            (uint32_t)WAR3_CLONE_VALUE(clone_guard, get_integer(target_item, integer_fields[index]));
         if (target_value != source_value) {
-            if (!set_integer(target_item, integer_fields[index], source_value)) {
+            if (!WAR3_CLONE_VALUE(clone_guard, set_integer(target_item, integer_fields[index], source_value))) {
                 return 0;
             }
             if (
-                (uint32_t)get_integer(target_item, integer_fields[index]) !=
+                (uint32_t)WAR3_CLONE_VALUE(clone_guard, get_integer(target_item, integer_fields[index])) !=
                 source_value
             ) {
                 return 0;
@@ -2421,9 +2424,9 @@ static int war3_copy_item_instance_fields(
         ++index
     ) {
         uint32_t source_bits =
-            (uint32_t)get_real(source_item, real_fields[index]);
+            (uint32_t)WAR3_CLONE_VALUE(clone_guard, get_real(source_item, real_fields[index]));
         uint32_t target_bits =
-            (uint32_t)get_real(target_item, real_fields[index]);
+            (uint32_t)WAR3_CLONE_VALUE(clone_guard, get_real(target_item, real_fields[index]));
         float source_value = war3_real_from_bits(source_bits);
         float target_value = war3_real_from_bits(target_bits);
         float delta = target_value - source_value;
@@ -2434,10 +2437,10 @@ static int war3_copy_item_instance_fields(
             return 0;
         }
         if (delta > 0.0001f) {
-            if (!set_real(target_item, real_fields[index], &source_value)) {
+            if (!WAR3_CLONE_VALUE(clone_guard, set_real(target_item, real_fields[index], &source_value))) {
                 return 0;
             }
-            target_bits = (uint32_t)get_real(target_item, real_fields[index]);
+            target_bits = (uint32_t)WAR3_CLONE_VALUE(clone_guard, get_real(target_item, real_fields[index]));
             target_value = war3_real_from_bits(target_bits);
             delta = target_value - source_value;
             if (delta < 0.0f) {
@@ -2454,15 +2457,15 @@ static int war3_copy_item_instance_fields(
         ++index
     ) {
         uint32_t source_value =
-            (uint32_t)get_boolean(source_item, boolean_fields[index]) & 1u;
+            (uint32_t)WAR3_CLONE_VALUE(clone_guard, get_boolean(source_item, boolean_fields[index])) & 1u;
         uint32_t target_value =
-            (uint32_t)get_boolean(target_item, boolean_fields[index]) & 1u;
+            (uint32_t)WAR3_CLONE_VALUE(clone_guard, get_boolean(target_item, boolean_fields[index])) & 1u;
         if (target_value != source_value) {
-            if (!set_boolean(target_item, boolean_fields[index], source_value)) {
+            if (!WAR3_CLONE_VALUE(clone_guard, set_boolean(target_item, boolean_fields[index], source_value))) {
                 return 0;
             }
             if (
-                ((uint32_t)get_boolean(target_item, boolean_fields[index]) & 1u) !=
+                ((uint32_t)WAR3_CLONE_VALUE(clone_guard, get_boolean(target_item, boolean_fields[index])) & 1u) !=
                 source_value
             ) {
                 return 0;
@@ -3593,6 +3596,7 @@ static void run_command(void) {
                 op->kind != WAR3_NATIVE_OP_JASS_UNIT_BOOL &&
                 op->kind != WAR3_NATIVE_OP_JASS_UNIT_VOID &&
                 op->kind != WAR3_NATIVE_OP_JASS_UNIT_INT_QUERY &&
+                op->kind != WAR3_NATIVE_OP_JASS_CLONE_SELECTED_UNIT &&
                 op->kind != WAR3_NATIVE_OP_JASS_UNIT_SCALE &&
                 op->kind != WAR3_NATIVE_OP_JASS_TAKE_OWNERSHIP &&
                 op->kind != WAR3_NATIVE_OP_JASS_SET_UNIT_INT &&
@@ -4691,9 +4695,12 @@ static void run_command(void) {
                 uint32_t copied_abilities = 0;
                 uint32_t clone_flags;
                 DWORD clone_error = ERROR_SUCCESS;
+                War3CloneGuard clone_guard={0};
+                clone_guard.source=i==1?&cmd:NULL;
 
                 if (
-                    i != 0 || cmd.op_count != 14 || !cmd.unit_handle ||
+                    !((i==0 && cmd.op_count==14) ||
+                      (i==1 && cmd.op_count==15 && cmd.ops[0].kind==WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY)) || !cmd.unit_handle ||
                     !op->rawcode || i + 13 >= cmd.op_count
                 ) {
                     op->last_error = ERROR_INVALID_DATA;
@@ -4726,7 +4733,7 @@ static void run_command(void) {
                     goto finish;
                 }
                 for (uint32_t descriptor = 1; descriptor <= 13; ++descriptor) {
-                    NativeOp *descriptor_op = &cmd.ops[descriptor];
+                    NativeOp *descriptor_op = &cmd.ops[i + descriptor];
                     if (descriptor_op->kind != WAR3_NATIVE_OP_JASS_MULTI_ARG) {
                         op->last_error = ERROR_INVALID_DATA;
                         last_error = op->last_error;
@@ -4846,16 +4853,21 @@ static void run_command(void) {
                 memcpy(coordinates, &op->arg1, sizeof(coordinates));
                 __try {
                     int32_t source_level;
-                    if (get_unit_type_id(cmd.unit_handle) != op->rawcode) {
+                    war3_clone_check(&clone_guard);
+                    if(!(coordinates[0]>=-1000000.0f && coordinates[0]<=1000000.0f &&
+                         coordinates[1]>=-1000000.0f && coordinates[1]<=1000000.0f)) {
+                        clone_error=ERROR_INVALID_PARAMETER;__leave;
+                    }
+                    if (WAR3_CLONE_VALUE(&clone_guard, get_unit_type_id(cmd.unit_handle)) != op->rawcode) {
                         clone_error = ERROR_INVALID_DATA;
                         __leave;
                     }
                     player = (
                         clone_flags & WAR3_CLONE_FLAG_PRESERVE_OWNER
-                        ? get_owning_player(cmd.unit_handle)
-                        : get_local_player()
+                        ? WAR3_CLONE_VALUE(&clone_guard, get_owning_player(cmd.unit_handle))
+                        : WAR3_CLONE_VALUE(&clone_guard, get_local_player())
                     );
-                    facing = war3_real_from_bits(get_unit_facing(cmd.unit_handle));
+                    facing = war3_real_from_bits(WAR3_CLONE_VALUE(&clone_guard, get_unit_facing(cmd.unit_handle)));
                     if (!player || !(facing == facing)) {
                         clone_error = ERROR_NOT_FOUND;
                         __leave;
@@ -4872,47 +4884,51 @@ static void run_command(void) {
                         __leave;
                     }
 
+                    clone_error=war3_clone_capture_target(&clone_guard,target);
+                    if(clone_error) __leave;
+                    war3_clone_check(&clone_guard);
+
                     source_level = (clone_flags & WAR3_CLONE_FLAG_HERO)
-                        ? get_hero_level(cmd.unit_handle)
+                        ? WAR3_CLONE_VALUE(&clone_guard, get_hero_level(cmd.unit_handle))
                         : 0;
                     if (
                         (clone_flags & WAR3_CLONE_FLAG_HERO) &&
                         source_level > 0
                     ) {
-                        int32_t source_xp = get_hero_xp(cmd.unit_handle);
+                        int32_t source_xp = WAR3_CLONE_VALUE(&clone_guard, get_hero_xp(cmd.unit_handle));
                         int32_t source_points;
                         int32_t target_points;
-                        set_hero_xp(target, source_xp, 0);
-                        if (get_hero_level(target) != source_level) {
-                            set_hero_level(target, source_level, 0);
+                        WAR3_CLONE_VOID(&clone_guard, set_hero_xp(target, source_xp, 0));
+                        if (WAR3_CLONE_VALUE(&clone_guard, get_hero_level(target)) != source_level) {
+                            WAR3_CLONE_VOID(&clone_guard, set_hero_level(target, source_level, 0));
                         }
-                        if (get_hero_xp(target) != source_xp) {
-                            set_hero_xp(target, source_xp, 0);
+                        if (WAR3_CLONE_VALUE(&clone_guard, get_hero_xp(target)) != source_xp) {
+                            WAR3_CLONE_VOID(&clone_guard, set_hero_xp(target, source_xp, 0));
                         }
-                        set_hero_str(target, get_hero_str(cmd.unit_handle, 0), 1);
-                        set_hero_agi(target, get_hero_agi(cmd.unit_handle, 0), 1);
-                        set_hero_int(target, get_hero_int(cmd.unit_handle, 0), 1);
-                        source_points = get_hero_skill_points(cmd.unit_handle);
-                        target_points = get_hero_skill_points(target);
+                        WAR3_CLONE_VOID(&clone_guard, set_hero_str(target, WAR3_CLONE_VALUE(&clone_guard, get_hero_str(cmd.unit_handle, 0)), 1));
+                        WAR3_CLONE_VOID(&clone_guard, set_hero_agi(target, WAR3_CLONE_VALUE(&clone_guard, get_hero_agi(cmd.unit_handle, 0)), 1));
+                        WAR3_CLONE_VOID(&clone_guard, set_hero_int(target, WAR3_CLONE_VALUE(&clone_guard, get_hero_int(cmd.unit_handle, 0)), 1));
+                        source_points = WAR3_CLONE_VALUE(&clone_guard, get_hero_skill_points(cmd.unit_handle));
+                        target_points = WAR3_CLONE_VALUE(&clone_guard, get_hero_skill_points(target));
                         if (source_points != target_points) {
-                            if (!modify_skill_points(
+                            if (!WAR3_CLONE_VALUE(&clone_guard, modify_skill_points(
                                 target,
                                 source_points - target_points
-                            )) {
+                            ))) {
                                 clone_error = ERROR_WRITE_FAULT;
                                 __leave;
                             }
                         }
                         if (
-                            get_hero_level(target) != source_level ||
-                            get_hero_xp(target) != source_xp ||
-                            get_hero_str(target, 0) !=
-                                get_hero_str(cmd.unit_handle, 0) ||
-                            get_hero_agi(target, 0) !=
-                                get_hero_agi(cmd.unit_handle, 0) ||
-                            get_hero_int(target, 0) !=
-                                get_hero_int(cmd.unit_handle, 0) ||
-                            get_hero_skill_points(target) != source_points
+                            WAR3_CLONE_VALUE(&clone_guard, get_hero_level(target)) != source_level ||
+                            WAR3_CLONE_VALUE(&clone_guard, get_hero_xp(target)) != source_xp ||
+                            WAR3_CLONE_VALUE(&clone_guard, get_hero_str(target, 0)) !=
+                                WAR3_CLONE_VALUE(&clone_guard, get_hero_str(cmd.unit_handle, 0)) ||
+                            WAR3_CLONE_VALUE(&clone_guard, get_hero_agi(target, 0)) !=
+                                WAR3_CLONE_VALUE(&clone_guard, get_hero_agi(cmd.unit_handle, 0)) ||
+                            WAR3_CLONE_VALUE(&clone_guard, get_hero_int(target, 0)) !=
+                                WAR3_CLONE_VALUE(&clone_guard, get_hero_int(cmd.unit_handle, 0)) ||
+                            WAR3_CLONE_VALUE(&clone_guard, get_hero_skill_points(target)) != source_points
                         ) {
                             clone_error = ERROR_WRITE_FAULT;
                             __leave;
@@ -4921,22 +4937,23 @@ static void run_command(void) {
 
                     if (clone_flags & WAR3_CLONE_FLAG_INVENTORY) {
                     for (int32_t slot = 0; slot < 6; ++slot) {
-                        uint64_t source_item = unit_item_in_slot(cmd.unit_handle, slot);
+                        uint64_t source_item = WAR3_CLONE_VALUE(&clone_guard, unit_item_in_slot(cmd.unit_handle, slot));
                         uint32_t item_id;
                         uint64_t target_item;
                         if (!source_item) {
                             continue;
                         }
-                        item_id = get_item_type_id(source_item);
+                        item_id = WAR3_CLONE_VALUE(&clone_guard, get_item_type_id(source_item));
                         if (!item_id) {
                             continue;
                         }
-                        target_item = unit_add_item_by_id(target, item_id);
+                        target_item = WAR3_CLONE_VALUE(&clone_guard, unit_add_item_by_id(target, item_id));
                         if (!target_item) {
                             clone_error = ERROR_NOT_FOUND;
                             __leave;
                         }
                         if (!war3_copy_item_instance_fields(
+                            &clone_guard,
                             source_item,
                             target_item,
                             get_item_integer_field,
@@ -4950,9 +4967,9 @@ static void run_command(void) {
                             __leave;
                         }
                         {
-                            int32_t charges = get_item_charges(source_item);
-                            set_item_charges(target_item, charges);
-                            if (get_item_charges(target_item) != charges) {
+                            int32_t charges = WAR3_CLONE_VALUE(&clone_guard, get_item_charges(source_item));
+                            WAR3_CLONE_VOID(&clone_guard, set_item_charges(target_item, charges));
+                            if (WAR3_CLONE_VALUE(&clone_guard, get_item_charges(target_item)) != charges) {
                                 clone_error = ERROR_WRITE_FAULT;
                                 __leave;
                             }
@@ -4964,33 +4981,33 @@ static void run_command(void) {
                     for (int32_t index = 0; index < 256; ++index) {
                         __try {
                         uint64_t source_ability =
-                            get_ability_by_index(cmd.unit_handle, index);
+                            WAR3_CLONE_VALUE(&clone_guard, get_ability_by_index(cmd.unit_handle, index));
                         uint32_t ability_id;
                         int32_t source_ability_level;
                         int32_t target_ability_level;
                         if (!source_ability) {
                             break;
                         }
-                        ability_id = get_ability_id(source_ability);
+                        ability_id = WAR3_CLONE_VALUE(&clone_guard, get_ability_id(source_ability));
                         if (!ability_id || war3_is_essential_ability(ability_id)) {
                             continue;
                         }
                         source_ability_level =
-                            get_ability_level(cmd.unit_handle, ability_id);
+                            WAR3_CLONE_VALUE(&clone_guard, get_ability_level(cmd.unit_handle, ability_id));
                         if (source_ability_level <= 0) {
                             continue;
                         }
-                        target_ability_level = get_ability_level(target, ability_id);
-                        if (target_ability_level <= 0 && !add_ability(target, ability_id)) {
+                        target_ability_level = WAR3_CLONE_VALUE(&clone_guard, get_ability_level(target, ability_id));
+                        if (target_ability_level <= 0 && !WAR3_CLONE_VALUE(&clone_guard, add_ability(target, ability_id))) {
                             /* Some map-provided abilities cannot be attached
                              * to a newly created instance; leave that one out
                              * without calling another unsafe native. */
                             continue;
                         }
-                        if (get_ability_level(target, ability_id) != source_ability_level) {
-                            set_ability_level(target, ability_id, source_ability_level);
+                        if (WAR3_CLONE_VALUE(&clone_guard, get_ability_level(target, ability_id)) != source_ability_level) {
+                            WAR3_CLONE_VALUE(&clone_guard, set_ability_level(target, ability_id, source_ability_level));
                             if (
-                                get_ability_level(target, ability_id) !=
+                                WAR3_CLONE_VALUE(&clone_guard, get_ability_level(target, ability_id)) !=
                                 source_ability_level
                             ) {
                                 clone_error = ERROR_WRITE_FAULT;
@@ -4999,34 +5016,37 @@ static void run_command(void) {
                         }
                         ++copied_abilities;
                         } __except (EXCEPTION_EXECUTE_HANDLER) {
+                            if(clone_guard.source) {clone_error=GetExceptionCode();break;}
                             continue;
                         }
+                        if(clone_error) break;
                     }
+                    if(clone_error) __leave;
 
                     {
-                        int32_t max_hp = get_unit_max_hp(cmd.unit_handle);
-                        float life = war3_real_from_bits(get_widget_life(cmd.unit_handle));
-                        int32_t max_mana = get_unit_max_mana(cmd.unit_handle);
+                        int32_t max_hp = WAR3_CLONE_VALUE(&clone_guard, get_unit_max_hp(cmd.unit_handle));
+                        float life = war3_real_from_bits(WAR3_CLONE_VALUE(&clone_guard, get_widget_life(cmd.unit_handle)));
+                        int32_t max_mana = WAR3_CLONE_VALUE(&clone_guard, get_unit_max_mana(cmd.unit_handle));
                         float mana = war3_real_from_bits(
-                            get_unit_state(cmd.unit_handle, 2)
+                            WAR3_CLONE_VALUE(&clone_guard, get_unit_state(cmd.unit_handle, 2))
                         );
                         if (max_hp > 0) {
-                            set_unit_max_hp(target, max_hp);
+                            WAR3_CLONE_VOID(&clone_guard, set_unit_max_hp(target, max_hp));
                         }
                         if (max_mana >= 0) {
-                            set_unit_max_mana(target, max_mana);
+                            WAR3_CLONE_VOID(&clone_guard, set_unit_max_mana(target, max_mana));
                         }
                         if (life == life) {
-                            set_widget_life(target, &life);
+                            WAR3_CLONE_VOID(&clone_guard, set_widget_life(target, &life));
                         }
                         if (mana == mana) {
-                            set_unit_state(target, 2, &mana);
+                            WAR3_CLONE_VOID(&clone_guard, set_unit_state(target, 2, &mana));
                         }
                         {
                             float actual_life =
-                                war3_real_from_bits(get_widget_life(target));
+                                war3_real_from_bits(WAR3_CLONE_VALUE(&clone_guard, get_widget_life(target)));
                             float actual_mana =
-                                war3_real_from_bits(get_unit_state(target, 2));
+                                war3_real_from_bits(WAR3_CLONE_VALUE(&clone_guard, get_unit_state(target, 2)));
                             float life_delta = actual_life - life;
                             float mana_delta = actual_mana - mana;
                             if (life_delta < 0.0f) {
@@ -5036,8 +5056,8 @@ static void run_command(void) {
                                 mana_delta = -mana_delta;
                             }
                             if (
-                                get_unit_max_hp(target) != max_hp ||
-                                get_unit_max_mana(target) != max_mana ||
+                                WAR3_CLONE_VALUE(&clone_guard, get_unit_max_hp(target)) != max_hp ||
+                                WAR3_CLONE_VALUE(&clone_guard, get_unit_max_mana(target)) != max_mana ||
                                 !(actual_life == actual_life) ||
                                 !(actual_mana == actual_mana) ||
                                 life_delta > 0.51f ||
@@ -5058,7 +5078,11 @@ static void run_command(void) {
                     DWORD rollback_error = ERROR_SUCCESS;
                     __try {
                         if (target) {
-                            remove_unit(target);
+                            if(clone_guard.source) {
+                                rollback_error=clone_guard.target_captured?
+                                    war3_validate_unit_identity(&clone_guard.target,&clone_guard.target.ops[0]):ERROR_INVALID_HANDLE;
+                            }
+                            if(!rollback_error) remove_unit(target);
                         }
                     } __except (EXCEPTION_EXECUTE_HANDLER) {
                         rollback_error = GetExceptionCode();

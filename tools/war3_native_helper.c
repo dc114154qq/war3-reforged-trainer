@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 61u
+#define WAR3_NATIVE_VERSION 62u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -110,6 +110,8 @@
 #define WAR3_NATIVE_OP_BOUND_WORLD_EFFECT 162u
 #define WAR3_NATIVE_OP_SET_BOUND_HERO_BASE 163u
 #define WAR3_NATIVE_OP_SET_BOUND_HERO_ATTRIBUTES 164u
+#define WAR3_NATIVE_OP_SET_BOUND_HERO_LEVEL 165u
+#define WAR3_NATIVE_OP_ADD_BOUND_HERO_SKILL_POINTS 166u
 #define WAR3_BOUND_INVENTORY_QWORDS 49u
 #define WAR3_BOUND_UNIT_FIELD_QWORDS (15u + 36u + 121u + 121u + WAR3_BOUND_INVENTORY_QWORDS + 4u)
 #define WAR3_CLONE_FLAG_HERO 0x01u
@@ -417,6 +419,11 @@ static const char *g_persistent_native_names[] = {
     "GetUnitY",
     "GetUnitMoveSpeed",
     "GetHeroLevel",
+    "SetHeroLevel",
+    "UnitStripHeroLevel",
+    "SuspendHeroXP",
+    "IsSuspendedXP",
+    "UnitModifySkillPoints",
     "GetHeroXP",
     "GetHeroStr",
     "GetHeroAgi",
@@ -1384,6 +1391,7 @@ static DWORD war3_set_bound_hero_int(NativeCommand *cmd,NativeOp *op) {
 
 #include "war3_native_hero_skill.h"
 #include "war3_native_hero_base.h"
+#include "war3_native_hero_progress.h"
 
 static int war3_is_ability_field_op(uint32_t kind) {
     return kind == WAR3_NATIVE_OP_JASS_ABILITY_FIELD_GET ||
@@ -3589,6 +3597,8 @@ static void run_command(void) {
                 op->kind != WAR3_NATIVE_OP_BOUND_WORLD_EFFECT &&
                 op->kind != WAR3_NATIVE_OP_SET_BOUND_HERO_BASE &&
                 op->kind != WAR3_NATIVE_OP_SET_BOUND_HERO_ATTRIBUTES &&
+                op->kind != WAR3_NATIVE_OP_SET_BOUND_HERO_LEVEL &&
+                op->kind != WAR3_NATIVE_OP_ADD_BOUND_HERO_SKILL_POINTS &&
                 op->kind != WAR3_NATIVE_OP_BOUND_ABILITY_IDENTITY &&
                 op->kind != WAR3_NATIVE_OP_BOUND_INVENTORY_ITEM &&
                 !war3_is_internal_ability_op(op->kind) &&
@@ -3640,6 +3650,8 @@ static void run_command(void) {
             op->kind != WAR3_NATIVE_OP_SET_UNIT_REGEN &&
             op->kind != WAR3_NATIVE_OP_BOUND_INVENTORY &&
             op->kind != WAR3_NATIVE_OP_SET_BOUND_HERO_ATTRIBUTES &&
+            op->kind != WAR3_NATIVE_OP_SET_BOUND_HERO_LEVEL &&
+            op->kind != WAR3_NATIVE_OP_ADD_BOUND_HERO_SKILL_POINTS &&
             op->kind != WAR3_NATIVE_OP_PERSISTENT_SELECTED_SNAPSHOT
         ) {
             op->last_error = ERROR_INVALID_DATA;
@@ -3696,6 +3708,16 @@ static void run_command(void) {
             }
             case WAR3_NATIVE_OP_SET_BOUND_HERO_ATTRIBUTES: {
                 last_error=i==1?war3_set_bound_hero_attributes(&cmd,op):ERROR_INVALID_PARAMETER;
+                if(last_error) {op->last_error=last_error;goto finish;}
+                break;
+            }
+            case WAR3_NATIVE_OP_SET_BOUND_HERO_LEVEL: {
+                last_error=i==1?war3_set_bound_hero_level(&cmd,op):ERROR_INVALID_PARAMETER;
+                if(last_error) {op->last_error=last_error;goto finish;}
+                break;
+            }
+            case WAR3_NATIVE_OP_ADD_BOUND_HERO_SKILL_POINTS: {
+                last_error=i==1?war3_add_bound_hero_skill_points(&cmd,op):ERROR_INVALID_PARAMETER;
                 if(last_error) {op->last_error=last_error;goto finish;}
                 break;
             }

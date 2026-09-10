@@ -2619,7 +2619,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 61
+    NATIVE_HELPER_VERSION = 62
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -2728,6 +2728,8 @@ class War3Trainer:
     NATIVE_HELPER_OP_BOUND_WORLD_EFFECT = 162
     NATIVE_HELPER_OP_SET_BOUND_HERO_BASE = 163
     NATIVE_HELPER_OP_SET_BOUND_HERO_ATTRIBUTES = 164
+    NATIVE_HELPER_OP_SET_BOUND_HERO_LEVEL = 165
+    NATIVE_HELPER_OP_ADD_BOUND_HERO_SKILL_POINTS = 166
     PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 154
     NATIVE_BASIC_FIELD_ARGUMENTS = {
         "hp_current": ("target_hp", "hp"),
@@ -2759,6 +2761,11 @@ class War3Trainer:
         "GetUnitY",
         "GetUnitMoveSpeed",
         "GetHeroLevel",
+        "SetHeroLevel",
+        "UnitStripHeroLevel",
+        "SuspendHeroXP",
+        "IsSuspendedXP",
+        "UnitModifySkillPoints",
         "GetHeroXP",
         "GetHeroStr",
         "GetHeroAgi",
@@ -4239,6 +4246,8 @@ class War3Trainer:
                     details = f" toggle_order_accepted={operation[5]} toggle_cleanup_error={operation[7]}"
                 elif operation[0] == self.NATIVE_HELPER_OP_BOUND_WORLD_EFFECT:
                     details = f" world_attempts={operation[5] >> 32} world_callbacks={operation[5] & 0xFFFFFFFF} world_cleanup_error={operation[7]}"
+                elif operation[0] == self.NATIVE_HELPER_OP_SET_BOUND_HERO_LEVEL:
+                    details = f" xp_restore_error={operation[4]}"
             if actual_count == op_count == 3:
                 base, size = self.NATIVE_HELPER_HEADER_STRUCT.size, self.NATIVE_HELPER_OP_STRUCT.size
                 operation = self.NATIVE_HELPER_OP_STRUCT.unpack_from(data, base + size)
@@ -4638,6 +4647,8 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_BOUND_WORLD_EFFECT,
             self.NATIVE_HELPER_OP_SET_BOUND_HERO_BASE,
             self.NATIVE_HELPER_OP_SET_BOUND_HERO_ATTRIBUTES,
+            self.NATIVE_HELPER_OP_SET_BOUND_HERO_LEVEL,
+            self.NATIVE_HELPER_OP_ADD_BOUND_HERO_SKILL_POINTS,
             self.NATIVE_HELPER_OP_BOUND_INVENTORY_ITEM,
             self.NATIVE_HELPER_OP_BOUND_ITEM_TYPE,
         }
@@ -5113,99 +5124,17 @@ class War3Trainer:
         target = int(level)
         if not 1 <= target <= 100000:
             raise ValueError("英雄等级必须在 1 到 100000 之间")
-        with self._process_memory() as pm:
-            unit_handle = self._elephant_selected_handle(pm)
-            handlers = self._elephant_handlers(
-                pm,
-                (
-                    "SetHeroLevel",
-                    "GetHeroLevel",
-                    "UnitStripHeroLevel",
-                    "SuspendHeroXP",
-                    "IsSuspendedXP",
-                ),
-            )
-        current = int(self._run_native_helper_ops(
-            unit_handle,
-            ((
-                self.NATIVE_HELPER_OP_JASS_UNIT_INT_QUERY,
-                0,
-                handlers["GetHeroLevel"].handler_address,
-                0,
-                0,
-            ),),
-        )[0].result & 0xFFFFFFFF)
-        if target > current:
-            suspended = bool(self._run_native_helper_ops(
-                unit_handle,
-                ((
-                    self.NATIVE_HELPER_OP_JASS_UNIT_INT_QUERY,
-                    0,
-                    handlers["IsSuspendedXP"].handler_address,
-                    0,
-                    0,
-                ),),
-            )[0].result & 1)
-            if suspended:
-                self._run_native_helper_ops(
-                    unit_handle,
-                    ((
-                        self.NATIVE_HELPER_OP_JASS_UNIT_BOOL,
-                        0,
-                        handlers["SuspendHeroXP"].handler_address,
-                        0,
-                        0,
-                    ),),
-                )
-            try:
-                self._run_native_helper_ops(
-                    unit_handle,
-                    ((
-                        self.NATIVE_HELPER_OP_JASS_UNIT_INT_BOOL,
-                        target,
-                        handlers["SetHeroLevel"].handler_address,
-                        1,
-                        0,
-                    ),),
-                )
-            finally:
-                if suspended:
-                    self._run_native_helper_ops(
-                        unit_handle,
-                        ((
-                            self.NATIVE_HELPER_OP_JASS_UNIT_BOOL,
-                            1,
-                            handlers["SuspendHeroXP"].handler_address,
-                            0,
-                            0,
-                        ),),
-                    )
-        elif target < current:
-            result = self._run_native_helper_ops(
-                unit_handle,
-                ((
-                    self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE,
-                    current - target,
-                    handlers["UnitStripHeroLevel"].handler_address,
-                    0,
-                    0,
-                ),),
-            )[0].result
-            if not result:
-                raise RuntimeError("游戏拒绝降低英雄等级")
-        actual = int(self._run_native_helper_ops(
-            unit_handle,
-            ((
-                self.NATIVE_HELPER_OP_JASS_UNIT_INT_QUERY,
-                0,
-                handlers["GetHeroLevel"].handler_address,
-                0,
-                0,
-            ),),
-        )[0].result & 0xFFFFFFFF)
-        if actual != target:
-            raise RuntimeError(f"英雄等级写入后读回 {actual}，目标为 {target}")
-        return actual
+        self._run_bound_hero_progress(self.NATIVE_HELPER_OP_SET_BOUND_HERO_LEVEL, target)
+        return target
+
+    def _run_bound_hero_progress(self, kind: int, value: int) -> None:
+        candidate, unit_handle = self._direct_selected_context()
+        results = self._run_native_helper_ops(unit_handle, (
+            (self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY, 0, candidate.unit_address,
+             candidate.handle, candidate.owner_address), (kind, value, 0, 0, 0)))
+        if (len(results) != 2 or any(result.last_error for result in results)
+                or results[1].kind != kind or results[1].result != value):
+            raise RuntimeError("Native hero progression readback differs from request")
 
     def set_selected_unit_invulnerable(self, enabled: bool) -> None:
         self._run_elephant_unit_bool("SetUnitInvulnerable", enabled)
@@ -5230,18 +5159,7 @@ class War3Trainer:
         delta = int(amount)
         if not 1 <= delta <= 1_000_000:
             raise ValueError("增加技能点数必须在 1 到 1000000 之间")
-        with self._process_memory() as pm:
-            unit_handle = self._elephant_selected_handle(pm)
-            handler = self._elephant_handlers(
-                pm,
-                ("UnitModifySkillPoints",),
-            )["UnitModifySkillPoints"].handler_address
-        result = int(self._run_native_helper_ops(
-            unit_handle,
-            ((self.NATIVE_HELPER_OP_JASS_UNIT_RAWCODE, delta, handler, 0, 0),),
-        )[0].result)
-        if not result:
-            raise RuntimeError("游戏拒绝增加英雄技能点")
+        self._run_bound_hero_progress(self.NATIVE_HELPER_OP_ADD_BOUND_HERO_SKILL_POINTS, delta)
         return delta
 
     def is_selected_unit_invulnerable(self) -> bool:

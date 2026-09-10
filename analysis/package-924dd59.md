@@ -33,3 +33,10 @@ position, ownership, owner-group kills and lookup simplification after the user'
 c358dbc acceptance. That acceptance must not be reused for this build. Test
 instructions are beside the EXE. Stop implementation after delivery and await
 the user's gameplay feedback. The full DLL migration goal remains unproven.
+
+## Subsequent user feedback
+
+On 2026-09-10 the user confirmed “测试没问题，继续，有的能代码层面直接验证的你可以自己验证”.
+This accepts the requested gameplay checks for package 1.0.19-924dd59 and
+authorizes further development and independent offline verification. It is not
+acceptance of later changes. Preserve this delivered EXE and proceed on branches.

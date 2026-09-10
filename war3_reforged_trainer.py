@@ -3806,8 +3806,7 @@ class War3Trainer:
         return self._query_native_table_handlers(names)
 
     def verify_native_handlers(self) -> dict[str, NativeHandler]:
-        with self._process_memory() as pm:
-            return self._discover_native_handlers(pm, self.NATIVE_HANDLER_NAMES)
+        return self._query_native_table_handlers(self.NATIVE_HANDLER_NAMES)
 
     @staticmethod
     def _read_rel32_call(pm: ProcessMemory, address: int) -> int:
@@ -4791,12 +4790,11 @@ class War3Trainer:
         names: Iterable[str],
     ) -> dict[str, NativeHandler]:
         requested = tuple(dict.fromkeys(names))
-        discovery_names = tuple(dict.fromkeys((*self.ELEPHANT_NATIVE_NAMES, *requested)))
-        self._discover_native_handlers_near_table(pm, discovery_names)
-        missing = tuple(name for name in requested if name not in self._native_handlers)
+        handlers = self._query_native_table_handlers(requested)
+        missing = tuple(name for name in requested if name not in handlers)
         if missing:
             raise RuntimeError("缺少 native 函数：" + ", ".join(missing))
-        return {name: self._native_handlers[name] for name in requested}
+        return {name: handlers[name] for name in requested}
 
     def _candidate_from_native_snapshot(
         self, pm: ProcessMemory | None, snapshot: PersistentNativeUnitSnapshot,
@@ -10642,10 +10640,7 @@ class War3Trainer:
         # Retain the old public signature for callers, but this locator now
         # uses the engine selection and its complete identity on every call.
         # Neither compatibility flag enables historical slots or heap scans.
-        if pm is not None:
-            return self._selected_candidates_snapshot(pm)[0][0]
-        with self._process_memory() as owned_pm:
-            return self._selected_candidates_snapshot(owned_pm)[0][0]
+        return self._selected_candidates_snapshot(pm)[0][0]
 
     def locate_selected_unit_win10(
         self,
@@ -10930,7 +10925,7 @@ class War3Trainer:
         return candidate
 
     def _candidate_from_display_identity(
-        self, pm: ProcessMemory, handle: int, owner: int, unit: int,
+        self, pm: ProcessMemory | None, handle: int, owner: int, unit: int,
         note: str, score: int = 0,
     ) -> UnitCandidate | None:
         # Resolve the full object identity in the DLL, including its current
@@ -13956,7 +13951,7 @@ class War3Trainer:
 
     def _write_basic_unit_values_to_candidate(
         self,
-        pm: ProcessMemory,
+        pm: ProcessMemory | None,
         candidate: UnitCandidate,
         target_hp: float | None,
         target_mp: float | None,
@@ -14069,21 +14064,10 @@ class War3Trainer:
         target_hp_regen: float | None = None,
         target_mp_regen: float | None = None,
     ) -> UnitCandidate:
-        with self._process_memory(write=True) as pm:
-            candidate = self.locate_selected_unit_by_handle(pm, allow_deep_scan=True)
-            candidate = self._write_basic_unit_values_to_candidate(
-                pm,
-                candidate,
-                target_hp,
-                target_mp,
-                max_hp,
-                max_mp,
-                target_x,
-                target_y,
-                target_hp_regen,
-                target_mp_regen,
-            )
-        return candidate
+        candidate = self.locate_selected_unit_by_handle()
+        return self._write_basic_unit_values_to_candidate(
+            None, candidate, target_hp, target_mp, max_hp, max_mp,
+            target_x, target_y, target_hp_regen, target_mp_regen)
 
     def set_unit_by_identity(
         self,
@@ -14101,30 +14085,14 @@ class War3Trainer:
         target_hp_regen: float | None = None,
         target_mp_regen: float | None = None,
     ) -> UnitCandidate:
-        with self._process_memory(write=True) as pm:
-            candidate = self._candidate_from_display_identity(
-                pm,
-                handle,
-                owner,
-                unit,
-                f"manual_candidate handle=0x{handle:x} owner=0x{owner:x} unit=0x{unit:x}",
-                850,
-            )
-            if candidate is None:
-                raise RuntimeError("候选单位已经失效，请重新读取候选列表")
-            candidate = self._write_basic_unit_values_to_candidate(
-                pm,
-                candidate,
-                target_hp,
-                target_mp,
-                max_hp,
-                max_mp,
-                target_x,
-                target_y,
-                target_hp_regen,
-                target_mp_regen,
-            )
-            return candidate
+        candidate = self._candidate_from_display_identity(
+            None, handle, owner, unit,
+            f"manual_candidate handle=0x{handle:x} owner=0x{owner:x} unit=0x{unit:x}", 850)
+        if candidate is None:
+            raise RuntimeError("候选单位已经失效，请重新读取候选列表")
+        return self._write_basic_unit_values_to_candidate(
+            None, candidate, target_hp, target_mp, max_hp, max_mp,
+            target_x, target_y, target_hp_regen, target_mp_regen)
 
     def set_unit_by_identity_win10(
         self,

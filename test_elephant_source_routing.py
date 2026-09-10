@@ -161,11 +161,7 @@ class ElephantSourceRoutingTests(unittest.TestCase):
             )
 
         self.assertEqual(handlers, {"CreateUnit": handler})
-        backup_discovery.assert_called_once()
-        self.assertIn(
-            "CreateUnit",
-            backup_discovery.call_args.args[0],
-        )
+        backup_discovery.assert_called_once_with(("CreateUnit",))
 
     def test_batch_gui_reuses_one_edition_session(self):
         source = SOURCE_PATH.read_text(encoding="utf-8")

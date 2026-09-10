@@ -54,14 +54,13 @@ class NativeSelectedWriteRoutingTests(unittest.TestCase):
         self.assertEqual(self.memory.mock_calls, [])
         self.assertEqual(self.trainer.persistent_native_selected_snapshots.call_count, 4)
 
-    def test_owned_memory_closes_on_success_and_native_error(self):
+    def test_native_locator_never_opens_external_memory_even_on_error(self):
+        self.trainer._process_memory.side_effect = AssertionError("Unexpected external memory")
         self.assert_current(self.trainer.locate_selected_unit_by_handle())
-        self.memory.__exit__.assert_called_once()
-        self.memory.reset_mock()
         self.trainer.persistent_native_selected_snapshots.side_effect = RuntimeError("selection unavailable")
         with self.assertRaisesRegex(RuntimeError, "selection unavailable"):
             self.trainer.locate_selected_unit_by_handle(allow_deep_scan=True)
-        self.memory.__exit__.assert_called_once()
+        self.trainer._process_memory.assert_not_called()
 
     def test_public_writes_follow_new_native_identity_with_identical_panel_input(self):
         for index in (1, 2):

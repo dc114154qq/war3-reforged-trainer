@@ -605,8 +605,8 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
         trainer._native_handlers = {}
         requested = ("CreateUnit", "BlzGetItemIntegerField")
 
-        def discover(_pm, names):
-            self.assertTrue(set(requested).issubset(names))
+        def discover(names):
+            self.assertEqual(tuple(names), requested)
             trainer._native_handlers.update(
                 {
                     name: trainer_module.NativeHandler(name, 0x1000, 0x2000 + index)
@@ -615,17 +615,17 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
             )
             return trainer._native_handlers
 
-        trainer._discover_native_handlers_near_table = Mock(side_effect=discover)
+        trainer._query_native_table_handlers = Mock(side_effect=discover)
 
         handlers = trainer._elephant_handlers(object(), requested)
 
         self.assertEqual(set(handlers), set(requested))
-        trainer._discover_native_handlers_near_table.assert_called_once()
+        trainer._query_native_table_handlers.assert_called_once_with(requested)
 
     def test_elephant_handlers_reports_missing_native_without_key_error(self):
         trainer = object.__new__(trainer_module.War3Trainer)
         trainer._native_handlers = {}
-        trainer._discover_native_handlers_near_table = Mock(return_value={})
+        trainer._query_native_table_handlers = Mock(return_value={})
 
         with self.assertRaisesRegex(
             RuntimeError,

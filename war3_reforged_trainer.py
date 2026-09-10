@@ -13837,6 +13837,18 @@ class War3Trainer:
                 raise RuntimeError(f"当前选中单位没有字段：{spec.label}")
             if not field.writable:
                 raise RuntimeError(f"字段不可写：{field.label}")
+            if native_bound:
+                # A native snapshot must never authorize an external address
+                # write. Check the entire request before submitting any setter.
+                supported = field.native_write and (
+                    field.key in self.NATIVE_BASIC_FIELD_ARGUMENTS
+                    or (field.key in NATIVE_COMPONENT_FIELD_SPECS and all(field.native_component_identity))
+                    or ((field.key == "intelligence_total" or self._skill_index_from_field_key(field.key) is not None)
+                        and all(field.native_component_identity))
+                    or self._inventory_slot_charges_index_from_field_key(field.key) is not None
+                    or self._inventory_slot_index_from_field_key(field.key) is not None)
+                if not supported:
+                    raise RuntimeError("Native field has no bound setter: " + field.key)
             resolved.append((field, spec))
             if field.key in NATIVE_COMPONENT_FIELD_SPECS and field.native_write and all(field.native_component_identity):
                 if field.key in component_keys:

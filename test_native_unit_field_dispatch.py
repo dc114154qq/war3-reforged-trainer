@@ -173,6 +173,19 @@ def test_dispatch_identity_membership_and_complete_fields(dispatcher,tmp_path,ma
     for name in ('read','read_u32','read_u64','read_i32','read_f32','regions'):
         getattr(memory,name).side_effect=AssertionError('unexpected external field read')
     fields={f.key:f for f in trainer._unit_fields_from_candidate(memory,candidate)}
+    for field in fields.values():
+        if not field.writable:
+            continue
+        assert field.native_write, field.key
+        assert not field.write_address and not field.extra_writes, field.key
+        if field.key in module.NATIVE_COMPONENT_FIELD_SPECS:
+            assert all(field.native_component_identity), field.key
+        elif field.key == 'intelligence_total' or trainer._skill_index_from_field_key(field.key) is not None:
+            assert all(field.native_component_identity), field.key
+        else:
+            assert (field.key in trainer.NATIVE_BASIC_FIELD_ARGUMENTS
+                    or trainer._inventory_slot_index_from_field_key(field.key) is not None
+                    or trainer._inventory_slot_charges_index_from_field_key(field.key) is not None), field.key
     assert fields['armor'].value==12.5 and fields['armor_type'].value==4
     assert ('skill_points' in fields)==bool(mask&2)
     if mask&2:

@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 65u
+#define WAR3_NATIVE_VERSION 66u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -1169,6 +1169,8 @@ static DWORD war3_same_inventory(const NativeCommand *cmd,const uint64_t *before
     return ERROR_SUCCESS;
 }
 
+#include "war3_native_slot_resolver.h"
+
 /* Return success only after the new object occupies the exact slot. Retain
    the old object until then; never restore into a slot claimed by a trigger. */
 static DWORD war3_replace_inventory_item(NativeCommand *cmd) {
@@ -1190,7 +1192,12 @@ static DWORD war3_replace_inventory_item(NativeCommand *cmd) {
     float x,y;
     if(cmd->op_count!=3 || cmd->ops[0].kind!=WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY ||
        context->kind!=WAR3_NATIVE_OP_REPLACE_INVENTORY_CONTEXT || slot>=6 || !op->rawcode ||
-       context->arg0>UINT32_MAX || !war3_executable_pointer(op->handler)) return ERROR_INVALID_PARAMETER;
+       context->arg0>UINT32_MAX) return ERROR_INVALID_PARAMETER;
+    if(!op->handler) {
+        uint64_t resolved=0;
+        error=war3_resolve_slot_add(&resolved);if(error) return error;
+        add=(InternalUnitAddItemToSlotFn)(uintptr_t)resolved;
+    } else if(!war3_executable_pointer(op->handler)) return ERROR_INVALID_PARAMETER;
     const uint64_t functions[]={ (uint64_t)(uintptr_t)create,(uint64_t)(uintptr_t)destroy,
         (uint64_t)(uintptr_t)detach,(uint64_t)(uintptr_t)owned,(uint64_t)(uintptr_t)get_x,(uint64_t)(uintptr_t)get_y };
     for(unsigned n=0;n<sizeof(functions)/sizeof(functions[0]);++n)
@@ -3676,6 +3683,7 @@ static void run_command(void) {
             op->kind != WAR3_NATIVE_OP_ADD_BOUND_HERO_SKILL_POINTS &&
             op->kind != WAR3_NATIVE_OP_BOUND_INVENTORY_BATCH &&
             op->kind != WAR3_NATIVE_OP_BOUND_ITEM_CREATE &&
+            op->kind != WAR3_NATIVE_OP_REPLACE_INVENTORY_ITEM &&
             op->kind != WAR3_NATIVE_OP_PERSISTENT_SELECTED_SNAPSHOT
         ) {
             op->last_error = ERROR_INVALID_DATA;

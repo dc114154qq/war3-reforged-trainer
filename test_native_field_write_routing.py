@@ -40,7 +40,7 @@ def test_public_field_write_batches_values_and_returns_actual_native_readback(fi
     trainer._selected_candidates_snapshot = Mock(return_value=[(candidate, snapshot.handle)])
     manager = MagicMock()
     manager.__enter__.return_value = memory
-    trainer._process_memory = Mock(return_value=manager)
+    trainer._process_memory = Mock(side_effect=AssertionError('External write context'))
     requested = [('HP-当前值', 150), ('x', 125), ('hp_max', 400), ('mp_current', 80),
                  ('mp_max', 100), ('y', 23)]
     result = trainer.write_selected_unit_fields([module.MemoryWriteSpec(key, 0, '', value)
@@ -54,7 +54,7 @@ def test_public_field_write_batches_values_and_returns_actual_native_readback(fi
     assert [op[0] for op in ops] == [136, 135, 134, 135, 134, 94]
     assert ops[0][2:] == (candidate.unit_address, candidate.handle, candidate.owner_address)
     memory.write_f32.assert_not_called()
-    manager.__exit__.assert_called_once()
+    trainer._process_memory.assert_not_called()
 
 
 @pytest.mark.parametrize('second', [('hero_level', 9), ('missing_field', 1), ('x', 'nan')])

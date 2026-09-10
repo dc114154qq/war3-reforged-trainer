@@ -177,12 +177,8 @@ def test_corrupt_inventory_payload_is_rejected(change):
 def test_internal_item_calls_keep_unit_guard_without_vital_properties():
     trainer=module.War3Trainer.__new__(module.War3Trainer)
     candidate=make_candidate(make_snapshot())
-    contracts=json.loads((Path(__file__).parent/'tools/native-call-contracts-23745.json').read_text())['contracts']
-    records={row['name']:row for row in contracts}
-    trainer._query_native_table_handlers=Mock(side_effect=lambda names:{
-        name:module.NativeHandler(name,0,records[name]['rva']) for name in names})
-    trainer._rel32_calls_in_function=Mock(side_effect=lambda memory,address,**kw:
-        next(row['targets'] for row in records.values() if row['rva']==address))
+    trainer._query_native_table_handlers=Mock(side_effect=AssertionError('Controller function lookup'))
+    trainer._rel32_calls_in_function=Mock(side_effect=AssertionError('External code read'))
     trainer._is_executable_image_address=Mock(return_value=True)
     trainer._run_native_helper_ops=Mock(return_value=[module.NativeHelperOpResult(136,1),
         module.NativeHelperOpResult(150,0x456000),module.NativeHelperOpResult(151,0x49303032)])
@@ -193,5 +189,8 @@ def test_internal_item_calls_keep_unit_guard_without_vital_properties():
     assert handle==candidate.native_snapshot.handle
     assert ops[0]==(136,0,candidate.unit_address,candidate.handle,candidate.owner_address)
     assert [op[0] for op in ops]==[136,150,151]
+    assert ops[1][2]==0
+    trainer._query_native_table_handlers.assert_not_called()
+    trainer._rel32_calls_in_function.assert_not_called()
     assert ops[1][3:]==(candidate.native_snapshot.item_handles[0],candidate.native_snapshot.item_full_handles[0])
     assert ops[2][2:4]==(candidate.native_snapshot.item_addresses[0],candidate.native_snapshot.item_ids[0])

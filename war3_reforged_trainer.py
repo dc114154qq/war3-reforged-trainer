@@ -2619,7 +2619,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 65
+    NATIVE_HELPER_VERSION = 66
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -8097,14 +8097,10 @@ class War3Trainer:
         if native is not None:
             if not 0 <= slot_index < 6:
                 raise ValueError("Invalid inventory slot")
-            handler = self._query_native_table_handlers(("UnitAddItemToSlotById",))["UnitAddItemToSlotById"]
-            calls = self._rel32_calls_in_function(pm, handler.handler_address, max_bytes=0x180)
-            if len(calls) != 8:
-                raise RuntimeError("未能从物品 native handler 中定位内部物品栏函数")
             results = self._run_native_helper_ops(native.handle, (
                 (self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY, 0, candidate.unit_address,
                  candidate.handle, candidate.owner_address),
-                (self.NATIVE_HELPER_OP_REPLACE_INVENTORY_ITEM, rawcode, calls[-1],
+                (self.NATIVE_HELPER_OP_REPLACE_INVENTORY_ITEM, rawcode, 0,
                  native.item_handles[slot_index], native.item_full_handles[slot_index]),
                 (self.NATIVE_HELPER_OP_REPLACE_INVENTORY_CONTEXT, slot_index,
                  native.item_addresses[slot_index], native.item_ids[slot_index], 0),
@@ -13804,7 +13800,7 @@ class War3Trainer:
 
     def _write_unit_fields_to_candidate(
         self,
-        pm: ProcessMemory,
+        pm: ProcessMemory | None,
         candidate: UnitCandidate,
         specs: Iterable[MemoryWriteSpec],
     ) -> list[UnitMemoryField]:
@@ -13904,9 +13900,8 @@ class War3Trainer:
         specs = list(specs)
         if not specs:
             return []
-        with self._process_memory(write=True) as pm:
-            candidate = self.locate_selected_unit_by_handle(pm, allow_deep_scan=True)
-            return self._write_unit_fields_to_candidate(pm, candidate, specs)
+        candidate = self.locate_selected_unit_by_handle()
+        return self._write_unit_fields_to_candidate(None, candidate, specs)
 
     def write_selected_unit_field(self, key: str, value: int | float | str) -> UnitMemoryField:
         fields = self.write_selected_unit_fields([MemoryWriteSpec(key, 0, "", value)])
@@ -13920,18 +13915,12 @@ class War3Trainer:
         key: str,
         value: int | float | str,
     ) -> UnitMemoryField:
-        with self._process_memory(write=True) as pm:
-            candidate = self._candidate_from_display_identity(
-                pm,
-                handle,
-                owner,
-                unit,
-                f"manual_candidate handle=0x{handle:x} owner=0x{owner:x} unit=0x{unit:x}",
-                850,
-            )
-            if candidate is None:
-                raise RuntimeError("候选单位已经失效，请重新读取候选列表")
-            return self._write_unit_fields_to_candidate(pm, candidate, [MemoryWriteSpec(key, 0, "", value)])[0]
+        candidate = self._candidate_from_display_identity(
+            None, handle, owner, unit,
+            f"manual_candidate handle=0x{handle:x} owner=0x{owner:x} unit=0x{unit:x}", 850)
+        if candidate is None:
+            raise RuntimeError("候选单位已经失效，请重新读取候选列表")
+        return self._write_unit_fields_to_candidate(None, candidate, [MemoryWriteSpec(key, 0, "", value)])[0]
 
     def write_unit_field_by_identity_win10(
         self,

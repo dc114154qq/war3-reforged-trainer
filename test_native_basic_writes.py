@@ -17,7 +17,8 @@ def context():
     trainer.persistent_native_init = Mock()
     trainer.persistent_native_selected_snapshots = Mock(side_effect=AssertionError("Unexpected selection query"))
     trainer._native_handlers = {}
-    trainer._elephant_handlers = Mock(side_effect=lambda pm, names: {
+    trainer._elephant_handlers = Mock(side_effect=AssertionError("Unexpected full Elephant lookup"))
+    trainer._query_native_table_handlers = Mock(side_effect=lambda names: {
         name: module.NativeHandler(name, 0, index + 100)
         for index, name in enumerate(names)
     })
@@ -45,6 +46,9 @@ def test_vitals_and_position_use_jass_handle_in_one_write_batch(context):
     assert trainer._float_from_bits(ops[-1][1]) == 123
     assert trainer._float_from_bits(ops[-1][3]) == snapshot.y
     trainer.persistent_native_selected_snapshots.assert_not_called()
+    trainer._query_native_table_handlers.assert_called_once_with(
+        ("BlzSetUnitMaxHP", "SetUnitState", "BlzSetUnitMaxMana", "SetUnitPosition"))
+    trainer._elephant_handlers.assert_not_called()
 
     # Exercise the real whitelist and serializer too, not just a mocked entry.
     trainer._native_helper_command_path = Mock(return_value="offline-command")
@@ -121,4 +125,6 @@ def test_unbound_identity_must_resolve_in_native_object_table_before_writing(con
         (155,0,snapshot.unit_address,snapshot.full_handle,snapshot.owner_address),
     ))
     trainer.persistent_native_selected_snapshots.assert_not_called()
+    trainer._query_native_table_handlers.assert_not_called()
+    trainer._elephant_handlers.assert_not_called()
     memory.write_f32.assert_not_called()

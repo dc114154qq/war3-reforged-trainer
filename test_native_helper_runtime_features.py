@@ -170,7 +170,7 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
     def test_group_move_uses_one_helper_request_without_unit_readback(self):
         trainer = object.__new__(trainer_module.War3Trainer)
         trainer.persistent_native_init = Mock()
-        trainer._process_memory = Mock(return_value=_Memory())
+        trainer._process_memory = Mock(side_effect=AssertionError("Unexpected external memory context"))
         trainer._native_handlers = {
             "SetUnitPosition": trainer_module.NativeHandler("SetUnitPosition", 0x1000, 0x2000),
         }
@@ -181,6 +181,7 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
             kind=trainer.NATIVE_HELPER_OP_MOVE_SELECTED_GROUP_TO_MOUSE, result=9, arg0=point,
         )])
         self.assertEqual(trainer.move_selected_group_to_mouse(), (9, 12.5, -8.0))
+        trainer._process_memory.assert_not_called()
         trainer._run_native_helper_ops.assert_called_once_with(0, ((
             trainer.NATIVE_HELPER_OP_MOVE_SELECTED_GROUP_TO_MOUSE, 0, 0x2000, 0, 0,
         ),))

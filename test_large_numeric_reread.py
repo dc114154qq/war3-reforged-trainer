@@ -53,7 +53,7 @@ def large_numeric_context():
     subject.persistent_native_init = lambda: None
     handlers = {name: trainer.NativeHandler(name, 0, i + 100) for i, name in enumerate(
         ("BlzSetUnitMaxHP", "BlzSetUnitMaxMana", "SetUnitState"))}
-    subject._elephant_handlers = lambda memory, names: {name: handlers[name] for name in names}
+    subject._query_native_table_handlers = lambda names: {name: handlers[name] for name in names}
 
     def run_native(handle, ops):
         assert handle == 7  # JASS handle, not the full object identity 0x1234.

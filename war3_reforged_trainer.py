@@ -5301,11 +5301,7 @@ class War3Trainer:
         return self.set_selected_unit_position(x, y)
 
     def move_selected_group_to_mouse(self) -> tuple[int, float, float]:
-        self.persistent_native_init()
-        with self._process_memory() as pm:
-            handler = self._discover_native_handlers_near_table(pm, ("SetUnitPosition",))[
-                "SetUnitPosition"
-            ].handler_address
+        handler = self._query_native_table_handlers(("SetUnitPosition",))["SetUnitPosition"].handler_address
         result = self._run_native_helper_ops(0, ((
             self.NATIVE_HELPER_OP_MOVE_SELECTED_GROUP_TO_MOUSE, 0, handler, 0, 0,
         ),))[0]
@@ -14048,7 +14044,7 @@ class War3Trainer:
                              self._float_bits(x), self._float_bits(y), 0))
         ops = ()
         if requests:
-            handlers = self._elephant_handlers(pm, tuple(dict.fromkeys(row[0] for row in requests)))
+            handlers = self._query_native_table_handlers(tuple(dict.fromkeys(row[0] for row in requests)))
             ops = tuple((kind, rawcode, handlers[name].handler_address, arg0, arg1)
                         for name, kind, rawcode, arg0, arg1 in requests)
         if regen_mask:

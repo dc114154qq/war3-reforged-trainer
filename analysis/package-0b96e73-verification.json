@@ -1,0 +1,23 @@
+{
+  "ok": true,
+  "source_commit": "0b96e73668c438df4b1a87aa30177587d61241bc",
+  "file_version": "1.0.19.0",
+  "native_protocol": 69,
+  "exe": "C:\\Users\\14186\\Desktop\\xiugai\\releases\\1.0.19-0b96e73\\War3ReforgedTrainer-v1.0.19-0b96e73.exe",
+  "exe_bytes": 18653976,
+  "exe_sha256": "7376c79bc73f10a3b6d6640b65c596fa27eb5911687a23d54225c714bceaabac",
+  "bundled_sources_match": true,
+  "runtime": {
+    "ok": true,
+    "frozen": true,
+    "decoder": "C:\\Users\\14186\\AppData\\Local\\Temp\\_MEI373242\\capstone\\lib\\capstone.dll",
+    "decoder_sha256": "76958e18380023a68fd1714fa2e01c594cc6db1955a07ad6937b66e66dc5d6c3",
+    "instructions": [
+      "mov",
+      "mov",
+      "call",
+      "ret"
+    ],
+    "helper_sha256": "8e633416819cf5515822279ec712bbf724ce8f64dbe1b699678c8dab4906c130"
+  }
+}

@@ -5035,11 +5035,18 @@ static void run_command(void) {
                         }
                         if(target_level_query_error) { continue; }
                         if (target_level_value != source_ability_level) {
-                            WAR3_CLONE_VALUE(&clone_guard, set_ability_level(target, ability_id, source_ability_level));
-                            if (
-                                WAR3_CLONE_VALUE(&clone_guard, get_ability_level(target, ability_id)) !=
-                                source_ability_level
-                            ) {
+                            int target_level_write_error=0;
+                            int target_level_readback=0;
+                            __try {
+                                WAR3_CLONE_VALUE(&clone_guard, set_ability_level(target, ability_id, source_ability_level));
+                                target_level_readback=WAR3_CLONE_VALUE(&clone_guard, get_ability_level(target, ability_id));
+                            } __except (EXCEPTION_EXECUTE_HANDLER) {
+                                DWORD target_exception=GetExceptionCode();
+                                if(target_exception==0xc0000094u) target_level_write_error=1;
+                                else { clone_error=target_exception; __leave; }
+                            }
+                            if (target_level_write_error) { continue; }
+                            if (target_level_readback != source_ability_level) {
                                 clone_error = ERROR_WRITE_FAULT;
                                 __leave;
                             }

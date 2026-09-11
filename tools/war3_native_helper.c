@@ -4995,6 +4995,7 @@ static void run_command(void) {
                     for (int32_t index = 0; index < 256; ++index) {
                         op->result=clone_phase=0x600u+(uint32_t)index;
                         __try {
+                        op->result=clone_phase=0x800u+(uint32_t)index;
                         uint64_t source_ability =
                             WAR3_CLONE_VALUE(&clone_guard, get_ability_by_index(cmd.unit_handle, index));
                         uint32_t ability_id;
@@ -5003,15 +5004,18 @@ static void run_command(void) {
                         if (!source_ability) {
                             break;
                         }
+                        op->result=clone_phase=0x900u+(uint32_t)index;
                         ability_id = WAR3_CLONE_VALUE(&clone_guard, get_ability_id(source_ability));
                         if (!ability_id || war3_is_essential_ability(ability_id)) {
                             continue;
                         }
+                        op->result=clone_phase=0xa00u+(uint32_t)index;
                         source_ability_level =
                             WAR3_CLONE_VALUE(&clone_guard, get_ability_level(cmd.unit_handle, ability_id));
                         if (source_ability_level <= 0) {
                             continue;
                         }
+                        op->result=clone_phase=0xb00u+(uint32_t)index;
                         target_ability_level = WAR3_CLONE_VALUE(&clone_guard, get_ability_level(target, ability_id));
                         if (target_ability_level <= 0 && !WAR3_CLONE_VALUE(&clone_guard, add_ability(target, ability_id))) {
                             /* Some map-provided abilities cannot be attached
@@ -5019,6 +5023,7 @@ static void run_command(void) {
                              * without calling another unsafe native. */
                             continue;
                         }
+                        op->result=clone_phase=0xd00u+(uint32_t)index;
                         if (WAR3_CLONE_VALUE(&clone_guard, get_ability_level(target, ability_id)) != source_ability_level) {
                             WAR3_CLONE_VALUE(&clone_guard, set_ability_level(target, ability_id, source_ability_level));
                             if (

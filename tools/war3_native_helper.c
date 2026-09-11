@@ -4872,8 +4872,11 @@ static void run_command(void) {
                         clone_error = ERROR_NOT_FOUND;
                         __leave;
                     }
-                    if(clone_flags & WAR3_CLONE_FLAG_INVENTORY)
+                    if(clone_flags & WAR3_CLONE_FLAG_INVENTORY) {
+                        op->result=0x100u;
                         war3_clone_prepare_items(&clone_guard,unit_item_in_slot);
+                    }
+                    op->result=0x200u;
                     target = create_unit(
                         player,
                         op->rawcode,
@@ -4888,6 +4891,7 @@ static void run_command(void) {
 
                     clone_error=war3_clone_capture_target(&clone_guard,target);
                     if(clone_error) __leave;
+                    op->result=0x300u;
                     war3_clone_check(&clone_guard);
                     war3_clone_check_saved_items(&clone_guard);
 
@@ -4940,6 +4944,7 @@ static void run_command(void) {
 
                     if (clone_flags & WAR3_CLONE_FLAG_INVENTORY) {
                     for (int32_t slot = 0; slot < 6; ++slot) {
+                        op->result=0x500u+(uint32_t)slot;
                         war3_clone_begin_item(&clone_guard,(unsigned)slot);
                         uint64_t source_item = WAR3_CLONE_VALUE(&clone_guard, unit_item_in_slot(cmd.unit_handle, slot));
                         uint32_t item_id;
@@ -4987,6 +4992,7 @@ static void run_command(void) {
                     }
 
                     for (int32_t index = 0; index < 256; ++index) {
+                        op->result=0x600u+(uint32_t)index;
                         __try {
                         uint64_t source_ability =
                             WAR3_CLONE_VALUE(&clone_guard, get_ability_by_index(cmd.unit_handle, index));
@@ -5032,6 +5038,7 @@ static void run_command(void) {
                     if(clone_error) __leave;
 
                     {
+                        op->result=0x700u;
                         int32_t max_hp = WAR3_CLONE_VALUE(&clone_guard, get_unit_max_hp(cmd.unit_handle));
                         float life = war3_real_from_bits(WAR3_CLONE_VALUE(&clone_guard, get_widget_life(cmd.unit_handle)));
                         int32_t max_mana = WAR3_CLONE_VALUE(&clone_guard, get_unit_max_mana(cmd.unit_handle));

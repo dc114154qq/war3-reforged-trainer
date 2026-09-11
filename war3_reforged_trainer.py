@@ -4265,7 +4265,14 @@ class War3Trainer:
                 if (operation[0] == self.NATIVE_HELPER_OP_REPLACE_INVENTORY_ITEM
                         and context[0] == self.NATIVE_HELPER_OP_REPLACE_INVENTORY_CONTEXT):
                     details = f" item_recovery_error={context[5]} item_cleanup_error={context[4]}"
-            raise RuntimeError(f"native helper 执行失败：status={status} last_error={last_error}{details}")
+            phase = ""
+            if actual_count >= 2:
+                phase_value = self.NATIVE_HELPER_OP_STRUCT.unpack_from(
+                    data, self.NATIVE_HELPER_HEADER_STRUCT.size + self.NATIVE_HELPER_OP_STRUCT.size
+                )[3]
+                if phase_value:
+                    phase = f" clone_phase=0x{phase_value:x}"
+            raise RuntimeError(f"native helper 执行失败：status={status} last_error={last_error}{phase}{details}")
         if actual_count != op_count:
             raise RuntimeError(f"native helper 返回操作数量异常：{actual_count}!={op_count}")
         extra_offset = self._native_helper_command_size()

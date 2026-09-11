@@ -4269,7 +4269,7 @@ class War3Trainer:
             if actual_count >= 2:
                 phase_value = self.NATIVE_HELPER_OP_STRUCT.unpack_from(
                     data, self.NATIVE_HELPER_HEADER_STRUCT.size + self.NATIVE_HELPER_OP_STRUCT.size
-                )[3]
+                )[5]
                 if phase_value:
                     phase = f" clone_phase=0x{phase_value:x}"
             raise RuntimeError(f"native helper 执行失败：status={status} last_error={last_error}{phase}{details}")

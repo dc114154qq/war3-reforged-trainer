@@ -8438,6 +8438,33 @@ class War3Trainer:
             raise RuntimeError("GetPlayerState 返回的人口数值超出合理范围")
         return snapshot
 
+    def _native_resource_cache(self, pm: ProcessMemory) -> ResourceCache:
+        snapshot = self._read_local_player_resources_via_native(pm)
+        return ResourceCache(
+            0, 0, snapshot.gold, snapshot.lumber,
+            food_used=snapshot.food_used,
+            food_cap=snapshot.food_cap,
+            block_start_kind=1 + snapshot.player_id * 0x28,
+            source="persistent native player state",
+            player_value=snapshot.player_id,
+        )
+
+    def _set_local_player_state_via_native(
+        self, pm: ProcessMemory, state: int, value: int,
+    ) -> None:
+        handlers = self._discover_native_handlers(
+            pm, ("GetLocalPlayer", "SetPlayerState")
+        )
+        result = self._run_native_helper_ops(0, ((
+            self.NATIVE_HELPER_OP_JASS_LOCAL_PLAYER_SET,
+            int(state),
+            handlers["GetLocalPlayer"].handler_address,
+            handlers["SetPlayerState"].handler_address,
+            int(value),
+        ),))[0]
+        if result.last_error:
+            raise RuntimeError(f"SetPlayerState native 写入失败：{result.last_error}")
+
     def _set_local_player_food_cap_via_native(self, pm: ProcessMemory, target_food_cap: int) -> None:
         handlers = self._discover_native_handlers(
             pm,
@@ -8512,6 +8539,12 @@ class War3Trainer:
         return True
 
     def validate_local_player_resource_cache(self, cache: ResourceCache) -> ResourceCache:
+        if cache.source == "persistent native player state":
+            with self._process_memory() as pm:
+                current = self._native_resource_cache(pm)
+            if cache.player_value != current.player_value:
+                raise RuntimeError("本地玩家 native 资源身份已经变化")
+            return current
         with self._process_memory() as pm:
             for _attempt in range(3):
                 snapshot = self._read_local_player_resources_via_native(pm)
@@ -8534,6 +8567,8 @@ class War3Trainer:
             caches = self.list_resource_caches()
         if not caches:
             raise RuntimeError("未找到可用于匹配本地玩家的资源组")
+        if len(caches) == 1 and caches[0].source == "persistent native player state":
+            return self.validate_local_player_resource_cache(caches[0])
 
         with self._process_memory() as pm:
             match = self._locate_local_player_resource_cache_with_pm(pm, caches)
@@ -8586,6 +8621,14 @@ class War3Trainer:
         current_food: int | None = None,
         current_food_cap: int | None = None,
     ) -> tuple[list[ResourceCache], ResourceCache]:
+        # Compatibility name only: resource state is now read through the
+        # injected native helper on every Windows version.
+        caches = self.list_resource_caches(
+            current_gold, current_lumber, current_food, current_food_cap,
+        )
+        return caches, caches[0]
+
+        # Historical backup implementation retained below for old diagnostics.
         with self._win10_memory_operation(
             "list_resource_caches",
         ) as (diagnostics, pm):
@@ -8675,6 +8718,18 @@ class War3Trainer:
         current_food_cap: int | None = None,
     ) -> list[ResourceCache]:
         with self._process_memory() as pm:
+            native = self._native_resource_cache(pm)
+        if (
+            current_gold is not None and native.gold != int(current_gold)
+            or current_lumber is not None and native.lumber != int(current_lumber)
+            or current_food is not None and native.food_used != int(current_food)
+            or current_food_cap is not None and native.food_cap != int(current_food_cap)
+        ):
+            raise RuntimeError("当前输入的资源值与本地玩家 native 状态不一致")
+        return [native]
+
+        # Legacy resource-property discovery is retained for diagnostics only.
+        with self._process_memory() as pm:
             groups = self._resource_property_groups(pm, warm_unit_owner_index=True)
             return self._resource_caches_from_groups(
                 groups,
@@ -8697,6 +8752,9 @@ class War3Trainer:
         return replace(cache, gold=gold, lumber=lumber, food_used=food_used, food_cap=food_cap, food_limit=food_limit)
 
     def read_resource_cache_addresses(self, cache: ResourceCache) -> ResourceCache:
+        if cache.source == "persistent native player state":
+            with self._process_memory() as pm:
+                return self._native_resource_cache(pm)
         with self._process_memory() as pm:
             return self._read_resource_cache_addresses(pm, cache)
 
@@ -8717,6 +8775,21 @@ class War3Trainer:
             and target_food_cap is None
         ):
             raise ValueError("至少填写一个目标资源值")
+        if cache.source == "persistent native player state":
+            with self._process_memory() as pm:
+                targets = (
+                    (1, target_gold, 10_000_000),
+                    (2, target_lumber, 10_000_000),
+                    (5, target_food_used, 1000),
+                    (4, target_food_cap, 1000),
+                )
+                for state, value, upper in targets:
+                    if value is None:
+                        continue
+                    if not 0 <= int(value) <= upper:
+                        raise ValueError("目标资源值超出允许范围")
+                    self._set_local_player_state_via_native(pm, state, int(value))
+                return self._native_resource_cache(pm)
         with self._process_memory(write=True) as pm:
             current = self._read_resource_cache_addresses(pm, cache)
             if target_gold is not None:
@@ -8805,6 +8878,23 @@ class War3Trainer:
         current_food_cap: int | None = None,
     ) -> ResourceCache:
         with self._process_memory() as pm:
+            native = self._native_resource_cache(pm)
+        if (
+            current_gold is None and current_lumber is None
+            and current_food is None and current_food_cap is None
+        ):
+            return native
+        if (
+            (current_gold is not None and native.gold != int(current_gold))
+            or (current_lumber is not None and native.lumber != int(current_lumber))
+            or (current_food is not None and native.food_used != int(current_food))
+            or (current_food_cap is not None and native.food_cap != int(current_food_cap))
+        ):
+            raise RuntimeError("当前输入的资源值与本地玩家 native 状态不一致")
+        return native
+
+        # Legacy address calibration is retained for diagnostics only.
+        with self._process_memory() as pm:
             found = self.locate_resource_cache(current_gold, current_lumber, current_food, current_food_cap, pm)
             if found:
                 return found
@@ -8837,16 +8927,14 @@ class War3Trainer:
         cache = self.read_resource_cache(current_gold, current_lumber)
         delta = int(target) - cache.gold
         if delta:
-            with self._process_memory(write=True) as pm:
-                pm.write_i32(cache.gold_address, int(target) * 10)
+            self.write_resource_cache(cache, target_gold=int(target))
         return delta
 
     def set_lumber(self, target: int, current_gold: int | None = None, current_lumber: int | None = None) -> int:
         cache = self.read_resource_cache(current_gold, current_lumber)
         delta = int(target) - cache.lumber
         if delta:
-            with self._process_memory(write=True) as pm:
-                pm.write_i32(cache.lumber_address, int(target) * 10)
+            self.write_resource_cache(cache, target_lumber=int(target))
         return delta
 
     def add_gold(self, amount: int) -> None:

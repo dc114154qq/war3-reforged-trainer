@@ -383,7 +383,7 @@ typedef struct War3CastPendingState {
 } War3CastPendingState;
 
 static DWORD war3_remove_item_handles(NativeCommand *cmd, uint32_t index);
-static DWORD war3_cast_ability(NativeCommand *cmd, uint32_t index);
+static DWORD war3_cast_ability(NativeCommand *cmd, uint32_t index) __attribute__((unused));
 static DWORD war3_direct_ability_enum(
     NativeCommand *cmd,
     uint32_t index,
@@ -1685,8 +1685,8 @@ static DWORD war3_persistent_selected_snapshot(
                 }
             }
             if (get_ability_by_index && get_ability_id && get_ability_level) {
-                for (int32_t index = 0; index <= WAR3_PERSISTENT_SNAPSHOT_ENUM_LIMIT; ++index) {
-                    uint64_t ability = get_ability_by_index(unit, index);
+                for (uint32_t index = 0; index <= WAR3_PERSISTENT_SNAPSHOT_ENUM_LIMIT; ++index) {
+                    uint64_t ability = get_ability_by_index(unit, (int32_t)index);
                     uint32_t rawcode;
                     uint64_t level;
                     if (!ability) {

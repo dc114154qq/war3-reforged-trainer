@@ -9995,38 +9995,8 @@ class War3Trainer:
         return None
 
     def _locate_selected_unit_by_player_component_scan(self, pm: ProcessMemory) -> UnitCandidate | None:
-        tag = struct.pack("<Q", self.PLAYER_COMPONENT_TAG)
-        seen: set[int] = set()
-        regions = sorted(pm.regions(), key=lambda region: region.base, reverse=True)
-        for region in regions:
-            if region.typ != MEM_PRIVATE or region.size > 1024 * 1024:
-                continue
-            if region.base >= 0x700000000000:
-                continue
-            try:
-                data = pm.read(region.base, region.size)
-            except OSError:
-                continue
-            start = 0
-            while True:
-                offset = data.find(tag, start)
-                if offset < 0:
-                    break
-                owner = region.base + offset - 0x18
-                for player_offset in (0x90, 0x88):
-                    try:
-                        player = pm.read_u64(owner + player_offset)
-                        vtable = pm.read_u64(player)
-                    except OSError:
-                        continue
-                    if player in seen or not self._looks_like_vtable(vtable):
-                        continue
-                    seen.add(player)
-                    candidate = self._candidate_from_selection_player(pm, player)
-                    if candidate is not None:
-                        return candidate
-                start = offset + 1
-        return None
+        del pm
+        raise RuntimeError("selection component scan is disabled; use persistent native selection")
 
     @staticmethod
     def _selection_manager_offsets_from_code(code: bytes) -> list[int]:
@@ -10137,9 +10107,6 @@ class War3Trainer:
             candidate = self._candidate_from_selection_player(pm, player)
             if candidate is not None:
                 return candidate
-        candidate = self._locate_selected_unit_by_player_component_scan(pm)
-        if candidate is not None:
-            return candidate
         for player in self._selection_player_pointer_candidates(pm, discover=True):
             candidate = self._candidate_from_selection_player(pm, player)
             if candidate is not None:
@@ -10193,34 +10160,6 @@ class War3Trainer:
             candidate,
             "persistent_native_snapshot",
         )
-        # Historical selection-manager probing is intentionally unreachable.
-        with self._process_memory() as pm:
-            manager_offset, primary_offset, alternate_offset, handlers = self._discover_native_selection_layout(pm)
-            self._selection_manager_offset = manager_offset
-            self._selection_list_offsets = tuple(dict.fromkeys((primary_offset, alternate_offset)))
-            candidate = self._locate_selected_unit_by_selection_manager(pm)
-            fallback_note = ""
-            if candidate is None:
-                try:
-                    candidate = self.locate_selected_unit_by_handle(pm, allow_deep_scan=True)
-                    fallback_note = " fallback=normal_locator"
-                except Exception:
-                    candidate = None
-            note = (
-                f"native_disasm manager_offset=0x{manager_offset:x} "
-                f"list_offsets={','.join('0x%x' % offset for offset in self._selection_list_offsets)}"
-                f"{fallback_note}"
-            )
-            return NativeSelectionProbeResult(
-                manager_offset,
-                primary_offset,
-                alternate_offset,
-                handlers["IsUnitSelected"].handler_address,
-                handlers.get("GroupEnumUnitsSelected", NativeHandler("GroupEnumUnitsSelected", 0, 0)).handler_address,
-                candidate,
-                note,
-            )
-
     def prewarm_selected_unit_cache(self) -> UnitCandidate:
         candidate = self.locate_selected_unit_by_handle()
         self._unit_fields_from_candidate(None, candidate)
@@ -11791,18 +11730,10 @@ class War3Trainer:
             cached = self._validated_cached_ability_instances(pm, candidate, cache_key)
             if cached is not None:
                 return cached
+        if allow_global_scan:
+            raise RuntimeError("global ability scan is disabled; native object-table enumeration is required")
         component_rawcodes = {tag >> 32 for tag in self.COMPONENT_TAGS.values()}
         instances, seen_wrappers = self._near_ability_instances_from_candidate(pm, candidate, component_rawcodes)
-        if allow_global_scan:
-            instances.extend(
-                self._global_ability_instances_from_candidate(
-                    pm,
-                    candidate,
-                    component_rawcodes,
-                    required_rawcodes,
-                    seen_wrappers,
-                )
-            )
         instances.sort(key=lambda instance: (instance.handle, instance.wrapper_address))
         instances = [
             replace(instance, slot=index + 1)

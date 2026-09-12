@@ -8788,8 +8788,32 @@ class War3Trainer:
                         continue
                     if not 0 <= int(value) <= upper:
                         raise ValueError("目标资源值超出允许范围")
-                    self._set_local_player_state_via_native(pm, state, int(value))
-                return self._native_resource_cache(pm)
+                    if state == 5:
+                        self._set_local_player_food_used_via_native(pm, int(value))
+                    elif state == 4:
+                        self._set_local_player_food_cap_via_native(pm, int(value))
+                    else:
+                        self._set_local_player_state_via_native(pm, state, int(value))
+                current = self._native_resource_cache(pm)
+                expected = {
+                    1: target_gold,
+                    2: target_lumber,
+                    5: target_food_used,
+                    4: target_food_cap,
+                }
+                actual = {
+                    1: current.gold,
+                    2: current.lumber,
+                    5: current.food_used,
+                    4: current.food_cap,
+                }
+                for state, target in expected.items():
+                    if target is not None and actual[state] != int(target):
+                        raise RuntimeError(
+                            f"native 资源写入读回不一致：state={state} "
+                            f"expected={int(target)} actual={actual[state]}"
+                        )
+                return current
         with self._process_memory(write=True) as pm:
             current = self._read_resource_cache_addresses(pm, cache)
             if target_gold is not None:
@@ -8993,6 +9017,12 @@ class War3Trainer:
         current_food_cap: int | None = None,
     ) -> ResourceCache:
         cache = self.read_resource_cache(current_gold, current_lumber, current_food, current_food_cap)
+        if cache.source == "persistent native player state":
+            return self.write_resource_cache(
+                cache,
+                target_food_used=target_used,
+                target_food_cap=target_cap,
+            )
         with self._process_memory(write=True) as pm:
             if target_used is not None:
                 if not cache.food_used_address:

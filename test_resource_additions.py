@@ -50,6 +50,28 @@ class ResourceAdditionTests(unittest.TestCase):
             target_lumber=40,
         )
 
+    def test_native_food_updates_use_the_helper_route(self):
+        native_cache = ResourceCache(
+            gold_address=0,
+            lumber_address=0,
+            gold=10,
+            lumber=20,
+            food_used=3,
+            food_cap=10,
+            source="persistent native player state",
+        )
+        self.trainer.read_resource_cache = Mock(return_value=native_cache)
+        self.trainer.write_resource_cache = Mock(return_value=native_cache)
+
+        result = self.trainer.set_food(target_used=7, target_cap=18)
+
+        self.assertIs(result, native_cache)
+        self.trainer.write_resource_cache.assert_called_once_with(
+            native_cache,
+            target_food_used=7,
+            target_food_cap=18,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

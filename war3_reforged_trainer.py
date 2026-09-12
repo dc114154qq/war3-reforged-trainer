@@ -8608,51 +8608,6 @@ class War3Trainer:
         )
         return caches, caches[0]
 
-        # Historical backup implementation retained below for old diagnostics.
-        with self._win10_memory_operation(
-            "list_resource_caches",
-        ) as (diagnostics, pm):
-            isolated = BackupReadWar3Trainer(self.pid)
-            self._seed_win10_isolated_state(isolated)
-            regions = pm.regions(force_refresh=True)
-            pointer_layout = isolated.set_readable_pointer_regions(regions)
-            diagnostics.log("backup_resource_pointer_layout", **pointer_layout)
-            self._recover_win10_native_handlers(isolated, pm, diagnostics)
-            groups = isolated._resource_property_groups_win10(
-                pm,
-                warm_unit_owner_index=True,
-            )
-            caches = isolated._resource_caches_from_groups(
-                groups,
-                current_gold,
-                current_lumber,
-                current_food,
-                current_food_cap,
-            )
-            if not caches:
-                raise RuntimeError("备用扫描未找到可用于匹配本地玩家的资源组")
-            local_cache = isolated._locate_local_player_resource_cache_with_pm(
-                pm,
-                caches,
-            )
-            if local_cache is None:
-                raise RuntimeError(
-                    "备用扫描无法按玩家槽唯一匹配本地玩家资源组；"
-                    "已拒绝自动选择，避免修改其他阵营"
-                )
-            self._resource_candidates_by_start = {
-                start: list(items)
-                for start, items in isolated._resource_candidates_by_start.items()
-            }
-            self._unit_owner_index.update(isolated._unit_owner_index)
-            diagnostics.log(
-                "backup_resource_success",
-                group_count=len(caches),
-                local_owner=f"0x{local_cache.owner_key:x}",
-                local_start_kind=f"0x{local_cache.block_start_kind:x}",
-            )
-            return caches, local_cache
-
     def _resource_caches_from_groups(
         self,
         groups: dict[int, dict[int, ResourceProperty]],
@@ -8794,35 +8749,6 @@ class War3Trainer:
                         )
                 return current
         raise RuntimeError("历史资源地址写入已禁用，请重新读取本地玩家 native 状态")
-        with self._process_memory(write=True) as pm:
-            current = self._read_resource_cache_addresses(pm, cache)
-            if target_gold is not None:
-                if not 0 <= int(target_gold) <= 10_000_000:
-                    raise ValueError("目标金币必须在 0 到 10000000 之间")
-                pm.write_i32(current.gold_address, int(target_gold) * 10)
-            if target_lumber is not None:
-                if not 0 <= int(target_lumber) <= 10_000_000:
-                    raise ValueError("目标木材必须在 0 到 10000000 之间")
-                pm.write_i32(current.lumber_address, int(target_lumber) * 10)
-            if target_food_used is not None:
-                if not current.food_used_address:
-                    raise RuntimeError("所选资源组没有可写的人口占用字段")
-                if not 0 <= int(target_food_used) <= 1000:
-                    raise ValueError("目标人口占用必须在 0 到 1000 之间")
-                if sync_local_food_used:
-                    self._set_local_player_food_used_via_native(pm, int(target_food_used))
-                else:
-                    pm.write_i32(current.food_used_address, int(target_food_used))
-            if target_food_cap is not None:
-                if not current.food_cap_address:
-                    raise RuntimeError("所选资源组没有可写的人口上限字段")
-                if not 0 <= int(target_food_cap) <= 1000:
-                    raise ValueError("目标人口上限必须在 0 到 1000 之间")
-                if sync_local_food_cap:
-                    self._set_local_player_food_cap_via_native(pm, int(target_food_cap))
-                else:
-                    pm.write_i32(current.food_cap_address, int(target_food_cap))
-            return self._read_resource_cache_addresses(pm, current)
 
     def locate_resource_cache(
         self,
@@ -8849,49 +8775,6 @@ class War3Trainer:
             return None
         return native
 
-        # Historical resource-property scan retained below for diagnostics.
-        close_pm = False
-        if pm is None:
-            pm = self._process_memory()
-            close_pm = True
-        try:
-            groups = self._resource_property_groups(pm)
-            best: tuple[int, ResourceCache] | None = None
-            for group in groups.values():
-                candidate = self._resource_cache_from_group(
-                    group, current_gold, current_lumber, current_food, current_food_cap
-                )
-                if candidate is not None and (best is None or candidate[0] > best[0]):
-                    best = candidate
-            if best is not None:
-                return best[1]
-
-            if current_gold is None or current_lumber is None:
-                return None
-            gold10 = int(current_gold) * 10
-            lumber10 = int(current_lumber) * 10
-            for address, _protect, typ in pm.scan_i32(gold10):
-                if typ != MEM_PRIVATE:
-                    continue
-                for delta in (0xE0, -0xE0):
-                    other = address + delta
-                    try:
-                        if pm.read_i32(other) == lumber10:
-                            gaddr, laddr = (address, other) if delta > 0 else (other, address)
-                            return ResourceCache(
-                                gaddr,
-                                laddr,
-                                int(current_gold),
-                                int(current_lumber),
-                                source="calibrated i32 scan",
-                            )
-                    except OSError:
-                        pass
-            return None
-        finally:
-            if close_pm:
-                pm.close()
-
     def read_resource_cache(
         self,
         current_gold: int | None = None,
@@ -8914,26 +8797,6 @@ class War3Trainer:
         ):
             raise RuntimeError("当前输入的资源值与本地玩家 native 状态不一致")
         return native
-
-        # Legacy address calibration is retained for diagnostics only.
-        with self._process_memory() as pm:
-            found = self.locate_resource_cache(current_gold, current_lumber, current_food, current_food_cap, pm)
-            if found:
-                return found
-            for gold_addr, lumber_addr in self.KNOWN_RESOURCE_PAIRS:
-                try:
-                    gold10 = pm.read_i32(gold_addr)
-                    lumber10 = pm.read_i32(lumber_addr)
-                except OSError:
-                    continue
-                if (
-                    gold10 % 10 == 0
-                    and lumber10 % 10 == 0
-                    and 0 <= gold10 <= 100000000
-                    and 0 <= lumber10 <= 100000000
-                ):
-                    return ResourceCache(gold_addr, lumber_addr, gold10 // 10, lumber10 // 10, source="known fixed pair")
-        raise RuntimeError("无法读取资源缓存；请在当前资源栏输入当前金币/木材后重新校准")
 
     def read_resources(
         self,
@@ -9004,18 +8867,6 @@ class War3Trainer:
                 target_food_cap=target_cap,
             )
         raise RuntimeError("历史资源地址写入已禁用，请重新读取本地玩家 native 状态")
-        with self._process_memory(write=True) as pm:
-            if target_used is not None:
-                if not cache.food_used_address:
-                    raise RuntimeError("当前资源块没有可写的人口占用字段")
-                pm.write_i32(cache.food_used_address, int(target_used))
-            if target_cap is not None:
-                if not cache.food_cap_address:
-                    raise RuntimeError("当前资源块没有可写的人口上限字段")
-                if not 0 <= int(target_cap) <= 1000:
-                    raise ValueError("目标人口上限必须在 0 到 1000 之间")
-                pm.write_i32(cache.food_cap_address, int(target_cap))
-        return self.read_resource_cache(current_gold, current_lumber)
 
     @staticmethod
     def _looks_like_unit_handle(value: int) -> bool:

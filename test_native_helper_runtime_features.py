@@ -173,6 +173,18 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
         trainer._build_unit_object_index.assert_not_called()
         trainer._selected_candidates_from_selection_manager.assert_not_called()
 
+    def test_persistent_snapshot_has_no_process_scan_dependency(self):
+        source = (Path(__file__).parent / "tools" / "war3_native_helper.c").read_text(
+            encoding="utf-8"
+        )
+        start = source.index("static DWORD war3_persistent_selected_snapshot(")
+        end = source.index("static DWORD war3_move_selected_group_at_point(", start)
+        snapshot = source[start:end]
+        for forbidden in ("ReadProcessMemory", "VirtualQuery", "VirtualAlloc", "VirtualProtect"):
+            self.assertNotIn(forbidden, snapshot)
+        self.assertIn("GroupEnumUnitsSelected", snapshot)
+        self.assertIn("war3_validate_unit_identity", snapshot)
+
     def test_new_session_ignores_shared_heap_records_and_queries_dll(self):
         trainer = object.__new__(trainer_module.War3Trainer)
         trainer.pid = 123

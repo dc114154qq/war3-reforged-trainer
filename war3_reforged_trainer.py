@@ -8539,43 +8539,23 @@ class War3Trainer:
         return True
 
     def validate_local_player_resource_cache(self, cache: ResourceCache) -> ResourceCache:
-        if cache.source == "persistent native player state":
-            with self._process_memory() as pm:
-                current = self._native_resource_cache(pm)
-            if cache.player_value != current.player_value:
-                raise RuntimeError("本地玩家 native 资源身份已经变化")
-            return current
+        if cache.source != "persistent native player state":
+            raise RuntimeError("历史资源地址缓存已禁用，请重新读取本地玩家 native 状态")
         with self._process_memory() as pm:
-            for _attempt in range(3):
-                snapshot = self._read_local_player_resources_via_native(pm)
-                expected_start_kind = 1 + snapshot.player_id * 0x28
-                if cache.block_start_kind != expected_start_kind:
-                    break
-                try:
-                    current = self._read_resource_cache_addresses(pm, cache)
-                except (OSError, RuntimeError):
-                    continue
-                if self._resource_cache_matches_local_snapshot(current, snapshot):
-                    return current
-        raise RuntimeError("缓存资源地址与本地玩家 GetPlayerState 不一致")
+            current = self._native_resource_cache(pm)
+        if cache.player_value != current.player_value:
+            raise RuntimeError("本地玩家 native 资源身份已经变化")
+        return current
 
     def locate_local_player_resource_cache(
         self,
         caches: list[ResourceCache] | None = None,
     ) -> ResourceCache:
-        if caches is None:
-            caches = self.list_resource_caches()
-        if not caches:
+        del caches
+        native = self.list_resource_caches()
+        if not native:
             raise RuntimeError("未找到可用于匹配本地玩家的资源组")
-        if len(caches) == 1 and caches[0].source == "persistent native player state":
-            return self.validate_local_player_resource_cache(caches[0])
-
-        with self._process_memory() as pm:
-            match = self._locate_local_player_resource_cache_with_pm(pm, caches)
-            if match is not None:
-                return match
-
-        raise RuntimeError("无法按玩家槽唯一匹配本地玩家资源组；已拒绝自动选择，避免修改其他阵营")
+        return self.validate_local_player_resource_cache(native[0])
 
     def _locate_local_player_resource_cache_with_pm(
         self,
@@ -8752,11 +8732,10 @@ class War3Trainer:
         return replace(cache, gold=gold, lumber=lumber, food_used=food_used, food_cap=food_cap, food_limit=food_limit)
 
     def read_resource_cache_addresses(self, cache: ResourceCache) -> ResourceCache:
-        if cache.source == "persistent native player state":
-            with self._process_memory() as pm:
-                return self._native_resource_cache(pm)
+        if cache.source != "persistent native player state":
+            raise RuntimeError("历史资源地址缓存已禁用，请重新读取本地玩家 native 状态")
         with self._process_memory() as pm:
-            return self._read_resource_cache_addresses(pm, cache)
+            return self._native_resource_cache(pm)
 
     def write_resource_cache(
         self,
@@ -8814,6 +8793,7 @@ class War3Trainer:
                             f"expected={int(target)} actual={actual[state]}"
                         )
                 return current
+        raise RuntimeError("历史资源地址写入已禁用，请重新读取本地玩家 native 状态")
         with self._process_memory(write=True) as pm:
             current = self._read_resource_cache_addresses(pm, cache)
             if target_gold is not None:
@@ -9023,6 +9003,7 @@ class War3Trainer:
                 target_food_used=target_used,
                 target_food_cap=target_cap,
             )
+        raise RuntimeError("历史资源地址写入已禁用，请重新读取本地玩家 native 状态")
         with self._process_memory(write=True) as pm:
             if target_used is not None:
                 if not cache.food_used_address:

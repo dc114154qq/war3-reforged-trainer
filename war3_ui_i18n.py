@@ -808,6 +808,8 @@ _EN_TRANSLATIONS.update(
     "本地玩家 native 资源身份已经变化": "The local player's native resource identity changed",
     "目标资源值超出允许范围": "Target resource value is outside the allowed range",
     "native 资源写入读回不一致：state=": "Native resource writeback mismatch: state=",
+    "历史资源地址缓存已禁用，请重新读取本地玩家 native 状态": "Historical resource address caches are disabled; read the local player's native state again",
+    "历史资源地址写入已禁用，请重新读取本地玩家 native 状态": "Historical resource address writes are disabled; read the local player's native state again",
     "native selection handler 中没有找到 CPlayer selection manager 偏移": "CPlayer selection manager offset not found in native selection handler",
     "JASS 当前选择为空": "JASS current selection is empty",
     "JASS 当前选择句柄无法解析：0x": "JASS current selection handle cannot be resolved: 0x",

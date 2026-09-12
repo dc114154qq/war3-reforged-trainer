@@ -5024,7 +5024,12 @@ static void run_command(void) {
                             if(target_exception==0xc0000094u) target_query_error=1;
                             else { clone_error=target_exception; __leave; }
                         }
-                        if (target_query_error) { continue; }
+                        /* Some map/ability objects fault when queried on a
+                           target that does not yet have the ability. Treat
+                           that as an unknown target level and try attaching
+                           the rawcode; the later level readback remains
+                           isolated and may preserve the engine default. */
+                        if (target_query_error) target_ability_level=0;
                         int add_query_error=0;
                         int add_result=1;
                         if (target_ability_level <= 0) {

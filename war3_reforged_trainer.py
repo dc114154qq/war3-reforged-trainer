@@ -8828,6 +8828,24 @@ class War3Trainer:
         current_food_cap: int | None = None,
         pm: ProcessMemory | None = None,
     ) -> ResourceCache | None:
+        # Public resource lookup is native-only.  The optional memory object
+        # remains in the signature for old diagnostic callers, but must never
+        # reactivate the historical process scan.
+        if pm is None:
+            with self._process_memory() as native_pm:
+                native = self._native_resource_cache(native_pm)
+        else:
+            native = self._native_resource_cache(pm)
+        if (
+            (current_gold is not None and native.gold != int(current_gold))
+            or (current_lumber is not None and native.lumber != int(current_lumber))
+            or (current_food is not None and native.food_used != int(current_food))
+            or (current_food_cap is not None and native.food_cap != int(current_food_cap))
+        ):
+            return None
+        return native
+
+        # Historical resource-property scan retained below for diagnostics.
         close_pm = False
         if pm is None:
             pm = self._process_memory()

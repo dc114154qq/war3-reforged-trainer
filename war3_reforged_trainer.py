@@ -5005,12 +5005,9 @@ class War3Trainer:
         self,
         action: Callable[[], object],
     ) -> tuple[int, int, tuple[object, ...], tuple[str, ...]]:
-        with self._process_memory() as pm:
-            # One persistent native snapshot supplies both the verified object
-            # identity and its current JASS handle. Re-querying the single
-            # selected unit through the selection manager can reintroduce the
-            # old locator path and pair a new unit with stale state.
-            snapshot = self._selected_candidates_snapshot(pm)
+        # One persistent native snapshot supplies both the verified object
+        # identity and its current JASS handle.
+        snapshot = self._selected_candidates_snapshot(None)
         results: list[object] = []
         errors: list[str] = []
 
@@ -5046,8 +5043,10 @@ class War3Trainer:
     def _resolve_jass_unit_handle(self, unit_handle: int, *, allow_missing: bool = False) -> int:
         if not unit_handle:
             return 0
-        with self._process_memory() as pm:
-            resolver = self._discover_jass_unit_resolver(pm)
+        self.persistent_native_init()
+        resolver = int(self._jass_unit_resolver_address)
+        if not resolver:
+            raise RuntimeError("native 表没有提供单位句柄解析函数")
         try:
             return int(self._run_native_helper_ops(
                 unit_handle,
@@ -5077,7 +5076,11 @@ class War3Trainer:
         handles = tuple(dict.fromkeys(int(handle) for handle in unit_handles if int(handle)))
         if not handles:
             return {}
-        resolver = self._discover_jass_unit_resolver(pm)
+        del pm
+        self.persistent_native_init()
+        resolver = int(self._jass_unit_resolver_address)
+        if not resolver:
+            raise RuntimeError("native 表没有提供单位句柄解析函数")
         try:
             results = self._run_native_helper_ops(
                 0,
@@ -5116,22 +5119,20 @@ class War3Trainer:
                 "临时技能清理前单位身份已变化："
                 f"0x{resolved_unit:x}!=0x{candidate.unit_address:x}"
             )
-        with self._process_memory() as pm:
-            self._remove_engine_ability_instance(pm, candidate, data_address)
+        self._remove_engine_ability_instance(None, candidate, data_address)
 
     def prewarm_elephant_functions(self) -> int:
         persistent_count = self.persistent_native_init()
-        with self._process_memory() as pm:
-            handlers = self._discover_native_handlers_near_table(
-                pm,
-                self.ELEPHANT_NATIVE_NAMES,
-            )
-            try:
-                selected = self._selected_candidates_snapshot(pm)
-                self._selected_summaries_from_snapshot(pm, selected)
-            except (RuntimeError, OSError):
-                # Initialization must remain usable before a unit is selected.
-                pass
+        handlers = self._discover_native_handlers_near_table(
+            None,
+            self.ELEPHANT_NATIVE_NAMES,
+        )
+        try:
+            selected = self._selected_candidates_snapshot(None)
+            self._selected_summaries_from_snapshot(None, selected)
+        except (RuntimeError, OSError):
+            # Initialization must remain usable before a unit is selected.
+            pass
         return max(len(handlers), persistent_count)
 
     def get_selected_hero_level(self) -> int:
@@ -5721,8 +5722,7 @@ class War3Trainer:
         item_limit = int(limit)
         if not 0 <= item_limit <= 100000:
             raise ValueError("创建物品测试上限必须在 0 到 100000 之间")
-        with self._process_memory() as pm:
-            handlers = self._elephant_handlers(pm, ("ChooseRandomItem", "CreateItem"))
+        handlers = self._elephant_handlers(None, ("ChooseRandomItem", "CreateItem"))
         encoded_limit = item_limit | (0x80000000 if dry_run else 0)
         result = self._run_native_helper_ops(
             0,
@@ -5754,8 +5754,7 @@ class War3Trainer:
         handles = tuple(int(handle) for handle in item_handles if int(handle))
         if not handles:
             return 0
-        with self._process_memory() as pm:
-            handler = self._elephant_handlers(pm, ("RemoveItem",))["RemoveItem"].handler_address
+        handler = self._elephant_handlers(None, ("RemoveItem",))["RemoveItem"].handler_address
         removed = 0
         for start in range(0, len(handles), 47):
             batch = handles[start : start + 47]
@@ -6017,9 +6016,8 @@ class War3Trainer:
         return unit_rawcode, result
 
     def heal_local_player_units(self) -> int:
-        with self._process_memory() as pm:
-            handlers = self._elephant_handlers(
-                pm,
+        handlers = self._elephant_handlers(
+                None,
                 (
                     "GetLocalPlayer",
                     "CreateGroup",
@@ -6061,9 +6059,8 @@ class War3Trainer:
         )[0].result)
 
     def reset_local_player_unit_cooldowns(self) -> int:
-        with self._process_memory() as pm:
-            handlers = self._elephant_handlers(
-                pm,
+        handlers = self._elephant_handlers(
+                None,
                 (
                     "GetLocalPlayer",
                     "CreateGroup",
@@ -7081,9 +7078,8 @@ class War3Trainer:
         target_level = int(level)
         if not tech_rawcode or not 0 <= target_level <= 100000:
             raise ValueError("请提供有效科技 ID，等级必须在 0 到 100000 之间")
-        with self._process_memory() as pm:
-            handlers = self._elephant_handlers(
-                pm,
+        handlers = self._elephant_handlers(
+                None,
                 ("GetLocalPlayer", "SetPlayerTechMaxAllowed", "SetPlayerTechResearched"),
             )
         self._run_native_helper_ops(

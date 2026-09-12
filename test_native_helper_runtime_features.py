@@ -163,12 +163,12 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
         })
         trainer._selected_candidates_snapshot = Mock(return_value=[])
         trainer._selected_summaries_from_snapshot = Mock(return_value=())
-        trainer._process_memory = Mock(return_value=_Memory())
+        trainer._process_memory = Mock(side_effect=AssertionError("External memory"))
 
         self.assertEqual(trainer.prewarm_elephant_functions(), 4)
         trainer._selected_candidates_snapshot.assert_called_once()
         trainer._selected_summaries_from_snapshot.assert_called_once_with(
-            trainer._process_memory.return_value, [],
+            None, [],
         )
         trainer._build_unit_object_index.assert_not_called()
         trainer._selected_candidates_from_selection_manager.assert_not_called()

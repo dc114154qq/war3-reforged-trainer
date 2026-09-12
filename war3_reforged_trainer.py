@@ -10317,6 +10317,21 @@ class War3Trainer:
         return tuple(candidates)
 
     def probe_native_selection_manager(self) -> NativeSelectionProbeResult:
+        # The persistent native snapshot is the sole selection source. Keep
+        # this compatibility-shaped result for the UI without rediscovering
+        # offsets or walking process memory.
+        selected = self._selected_candidates_snapshot(None)
+        candidate = selected[0][0] if selected else None
+        return NativeSelectionProbeResult(
+            0,
+            0,
+            0,
+            0,
+            0,
+            candidate,
+            "persistent_native_snapshot",
+        )
+        # Historical selection-manager probing is intentionally unreachable.
         with self._process_memory() as pm:
             manager_offset, primary_offset, alternate_offset, handlers = self._discover_native_selection_layout(pm)
             self._selection_manager_offset = manager_offset
@@ -10616,6 +10631,9 @@ class War3Trainer:
         pm: ProcessMemory,
         diagnostics: Win10ReadLogger,
     ) -> UnitCandidate:
+        del pm, diagnostics
+        return self.locate_selected_unit_by_handle()
+        # Historical Win10/JASS resolution is intentionally unreachable.
         started = time.perf_counter()
         self._last_win10_jass_unit_handle = 0
         self._last_win10_jass_player_handle = 0
@@ -10733,6 +10751,9 @@ class War3Trainer:
         pm: ProcessMemory | None = None,
         diagnostics: Win10ReadLogger | None = None,
     ) -> UnitCandidate:
+        del pm, diagnostics
+        return self.locate_selected_unit_by_handle()
+        # Historical Win10 slot probing is intentionally unreachable.
         close_pm = False
         close_diagnostics = False
         if diagnostics is None and isinstance(pm, Win10ProcessMemory):
@@ -15444,25 +15465,26 @@ def run_gui() -> None:
         return call_with_read_success_sound(read_unit_win10)
 
     def read_unit_native_selection() -> str:
+        # Keep the legacy button, but route it through the same persistent
+        # native snapshot as every other unit read.
+        started = time.perf_counter()
         try:
             t = trainer()
-            probe = t.probe_native_selection_manager()
-            if probe.candidate is None:
-                raise RuntimeError(f"native selection manager 已定位，但当前选择列表没有可映射单位；{probe.note}")
-            with ProcessMemory(t.pid) as pm:
-                candidate = t._candidate_with_selected_unit_type_id(pm, probe.candidate)
-                panel = t._panel_from_candidate(pm, candidate)
-                fields = t._unit_fields_from_candidate(pm, candidate)
+            panel, cand, fields = t.read_selected_unit_fields()
         except Exception:
             root.after(0, clear_selected_unit_readout)
             root.after(0, populate_selection_candidates, [])
             raise
-        root.after(0, populate_auto_selected_unit_readout, panel, candidate, fields, True)
+        root.after(0, populate_auto_selected_unit_readout, panel, cand, fields, True)
+        selected_summaries = t.selected_unit_summaries()
+        if selected_summaries:
+            root.after(0, populate_selection_candidates, list(selected_summaries))
+        elapsed_ms = (time.perf_counter() - started) * 1000
         return (
-            f"Native定位：HP {panel.hp_text}，MP {panel.mp_text}；"
-            f"offset=0x{probe.selection_manager_offset:x} "
-            f"IsUnitSelected=0x{probe.is_unit_selected_handler:x} "
-            f"unit=0x{candidate.unit_address:x}"
+            f"已读取当前选中的 {max(1, len(selected_summaries))} 个单位；"
+            f"主单位 HP {panel.hp_text}，MP {panel.mp_text}；"
+            f"source={cand.selection_source or 'unknown'} base=0x{cand.base:x} unit=0x{cand.unit_address:x}；"
+            f"耗时 {elapsed_ms:.0f} ms"
         )
 
     def prewarm_selection_cache() -> str:

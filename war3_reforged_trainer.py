@@ -7107,8 +7107,7 @@ class War3Trainer:
         target = float(rate)
         if not 0.0 <= target <= 10000.0:
             raise ValueError("经验倍率必须在 0 到 10000 之间")
-        with self._process_memory() as pm:
-            handlers = self._elephant_handlers(pm, ("GetLocalPlayer", "SetPlayerHandicapXP"))
+        handlers = self._elephant_handlers(None, ("GetLocalPlayer", "SetPlayerHandicapXP"))
         self._run_native_helper_ops(
             0,
             ((
@@ -7122,8 +7121,7 @@ class War3Trainer:
         return target
 
     def get_map_fog_state(self) -> tuple[bool, bool]:
-        with self._process_memory() as pm:
-            handlers = self._elephant_handlers(pm, ("IsFogEnabled", "IsFogMaskEnabled"))
+        handlers = self._elephant_handlers(None, ("IsFogEnabled", "IsFogMaskEnabled"))
         results = self._run_native_helper_ops(
             0,
             (
@@ -7146,8 +7144,7 @@ class War3Trainer:
         return bool(results[0].result), bool(results[1].result)
 
     def set_map_revealed(self, revealed: bool) -> None:
-        with self._process_memory() as pm:
-            handlers = self._elephant_handlers(pm, ("FogEnable", "FogMaskEnable"))
+        handlers = self._elephant_handlers(None, ("FogEnable", "FogMaskEnable"))
         fog_enabled = 0 if revealed else 1
         self._run_native_helper_ops(
             0,
@@ -7170,8 +7167,7 @@ class War3Trainer:
         )
 
     def set_game_paused(self, paused: bool) -> None:
-        with self._process_memory() as pm:
-            handlers = self._elephant_handlers(pm, ("PauseGame",))
+        handlers = self._elephant_handlers(None, ("PauseGame",))
         self._run_native_helper_ops(
             0,
             ((
@@ -7184,8 +7180,7 @@ class War3Trainer:
         )
 
     def end_current_game(self, show_score_screen: bool = True) -> None:
-        with self._process_memory() as pm:
-            handlers = self._elephant_handlers(pm, ("EndGame",))
+        handlers = self._elephant_handlers(None, ("EndGame",))
         self._run_native_helper_ops(
             0,
             ((
@@ -7198,8 +7193,7 @@ class War3Trainer:
         )
 
     def set_peace_mode(self, enabled: bool) -> int:
-        with self._process_memory() as pm:
-            handlers = self._elephant_handlers(pm, ("Player", "SetPlayerAlliance"))
+        handlers = self._elephant_handlers(None, ("Player", "SetPlayerAlliance"))
         return int(self._run_native_helper_ops(
             0,
             ((
@@ -8406,7 +8400,8 @@ class War3Trainer:
         return groups
 
     def _read_local_player_resources_via_native(self, pm: ProcessMemory) -> LocalPlayerResources:
-        handlers = self._discover_native_handlers(pm, ("GetLocalPlayer", "GetPlayerId", "GetPlayerState"))
+        del pm
+        handlers = self._discover_native_handlers(None, ("GetLocalPlayer", "GetPlayerId", "GetPlayerState"))
         get_local_player = handlers["GetLocalPlayer"].handler_address
         get_player_id = handlers["GetPlayerId"].handler_address
         get_player_state = handlers["GetPlayerState"].handler_address
@@ -8448,9 +8443,8 @@ class War3Trainer:
     def _set_local_player_state_via_native(
         self, pm: ProcessMemory, state: int, value: int,
     ) -> None:
-        handlers = self._discover_native_handlers(
-            pm, ("GetLocalPlayer", "SetPlayerState")
-        )
+        del pm
+        handlers = self._discover_native_handlers(None, ("GetLocalPlayer", "SetPlayerState"))
         result = self._run_native_helper_ops(0, ((
             self.NATIVE_HELPER_OP_JASS_LOCAL_PLAYER_SET,
             int(state),
@@ -8462,8 +8456,9 @@ class War3Trainer:
             raise RuntimeError(f"SetPlayerState native 写入失败：{result.last_error}")
 
     def _set_local_player_food_cap_via_native(self, pm: ProcessMemory, target_food_cap: int) -> None:
+        del pm
         handlers = self._discover_native_handlers(
-            pm,
+            None,
             ("GetLocalPlayer", "GetPlayerId", "GetPlayerState", "SetPlayerState"),
         )
         results = self._run_native_helper_ops(
@@ -8492,8 +8487,9 @@ class War3Trainer:
             )
 
     def _set_local_player_food_used_via_native(self, pm: ProcessMemory, target_food_used: int) -> None:
+        del pm
         handlers = self._discover_native_handlers(
-            pm,
+            None,
             ("GetLocalPlayer", "GetPlayerId", "GetPlayerState", "SetPlayerState"),
         )
         results = self._run_native_helper_ops(
@@ -8537,8 +8533,7 @@ class War3Trainer:
     def validate_local_player_resource_cache(self, cache: ResourceCache) -> ResourceCache:
         if cache.source != "persistent native player state":
             raise RuntimeError("历史资源地址缓存已禁用，请重新读取本地玩家 native 状态")
-        with self._process_memory() as pm:
-            current = self._native_resource_cache(pm)
+        current = self._native_resource_cache(None)
         if cache.player_value != current.player_value:
             raise RuntimeError("本地玩家 native 资源身份已经变化")
         return current
@@ -8648,8 +8643,7 @@ class War3Trainer:
         current_food: int | None = None,
         current_food_cap: int | None = None,
     ) -> list[ResourceCache]:
-        with self._process_memory() as pm:
-            native = self._native_resource_cache(pm)
+        native = self._native_resource_cache(None)
         if (
             current_gold is not None and native.gold != int(current_gold)
             or current_lumber is not None and native.lumber != int(current_lumber)
@@ -8674,8 +8668,7 @@ class War3Trainer:
     def read_resource_cache_addresses(self, cache: ResourceCache) -> ResourceCache:
         if cache.source != "persistent native player state":
             raise RuntimeError("历史资源地址缓存已禁用，请重新读取本地玩家 native 状态")
-        with self._process_memory() as pm:
-            return self._native_resource_cache(pm)
+        return self._native_resource_cache(None)
 
     def write_resource_cache(
         self,
@@ -8695,44 +8688,43 @@ class War3Trainer:
         ):
             raise ValueError("至少填写一个目标资源值")
         if cache.source == "persistent native player state":
-            with self._process_memory() as pm:
-                targets = (
-                    (1, target_gold, 10_000_000),
-                    (2, target_lumber, 10_000_000),
-                    (5, target_food_used, 1000),
-                    (4, target_food_cap, 1000),
-                )
-                for state, value, upper in targets:
-                    if value is None:
-                        continue
-                    if not 0 <= int(value) <= upper:
-                        raise ValueError("目标资源值超出允许范围")
-                    if state == 5:
-                        self._set_local_player_food_used_via_native(pm, int(value))
-                    elif state == 4:
-                        self._set_local_player_food_cap_via_native(pm, int(value))
-                    else:
-                        self._set_local_player_state_via_native(pm, state, int(value))
-                current = self._native_resource_cache(pm)
-                expected = {
-                    1: target_gold,
-                    2: target_lumber,
-                    5: target_food_used,
-                    4: target_food_cap,
-                }
-                actual = {
-                    1: current.gold,
-                    2: current.lumber,
-                    5: current.food_used,
-                    4: current.food_cap,
-                }
-                for state, target in expected.items():
-                    if target is not None and actual[state] != int(target):
-                        raise RuntimeError(
-                            f"native 资源写入读回不一致：state={state} "
-                            f"expected={int(target)} actual={actual[state]}"
-                        )
-                return current
+            targets = (
+                (1, target_gold, 10_000_000),
+                (2, target_lumber, 10_000_000),
+                (5, target_food_used, 1000),
+                (4, target_food_cap, 1000),
+            )
+            for state, value, upper in targets:
+                if value is None:
+                    continue
+                if not 0 <= int(value) <= upper:
+                    raise ValueError("目标资源值超出允许范围")
+                if state == 5:
+                    self._set_local_player_food_used_via_native(None, int(value))
+                elif state == 4:
+                    self._set_local_player_food_cap_via_native(None, int(value))
+                else:
+                    self._set_local_player_state_via_native(None, state, int(value))
+            current = self._native_resource_cache(None)
+            expected = {
+                1: target_gold,
+                2: target_lumber,
+                5: target_food_used,
+                4: target_food_cap,
+            }
+            actual = {
+                1: current.gold,
+                2: current.lumber,
+                5: current.food_used,
+                4: current.food_cap,
+            }
+            for state, target in expected.items():
+                if target is not None and actual[state] != int(target):
+                    raise RuntimeError(
+                        f"native 资源写入读回不一致：state={state} "
+                        f"expected={int(target)} actual={actual[state]}"
+                    )
+            return current
         raise RuntimeError("历史资源地址写入已禁用，请重新读取本地玩家 native 状态")
 
     def locate_resource_cache(
@@ -8746,11 +8738,8 @@ class War3Trainer:
         # Public resource lookup is native-only.  The optional memory object
         # remains in the signature for old diagnostic callers, but must never
         # reactivate the historical process scan.
-        if pm is None:
-            with self._process_memory() as native_pm:
-                native = self._native_resource_cache(native_pm)
-        else:
-            native = self._native_resource_cache(pm)
+        del pm
+        native = self._native_resource_cache(None)
         if (
             (current_gold is not None and native.gold != int(current_gold))
             or (current_lumber is not None and native.lumber != int(current_lumber))
@@ -8767,8 +8756,7 @@ class War3Trainer:
         current_food: int | None = None,
         current_food_cap: int | None = None,
     ) -> ResourceCache:
-        with self._process_memory() as pm:
-            native = self._native_resource_cache(pm)
+        native = self._native_resource_cache(None)
         if (
             current_gold is None and current_lumber is None
             and current_food is None and current_food_cap is None

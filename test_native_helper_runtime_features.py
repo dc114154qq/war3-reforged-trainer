@@ -151,6 +151,28 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
         )
         self.assertEqual(pm.mock_calls, [])
 
+    def test_prewarm_uses_native_snapshot_without_selection_scan(self):
+        trainer = object.__new__(trainer_module.War3Trainer)
+        trainer._build_unit_object_index = Mock(side_effect=AssertionError("Unexpected global scan"))
+        trainer._selected_candidates_from_selection_manager = Mock(
+            side_effect=AssertionError("Unexpected legacy selection")
+        )
+        trainer.persistent_native_init = Mock(return_value=4)
+        trainer._discover_native_handlers_near_table = Mock(return_value={
+            "SetUnitPosition": trainer_module.NativeHandler("SetUnitPosition", 0, 0x2000),
+        })
+        trainer._selected_candidates_snapshot = Mock(return_value=[])
+        trainer._selected_summaries_from_snapshot = Mock(return_value=())
+        trainer._process_memory = Mock(return_value=_Memory())
+
+        self.assertEqual(trainer.prewarm_elephant_functions(), 4)
+        trainer._selected_candidates_snapshot.assert_called_once()
+        trainer._selected_summaries_from_snapshot.assert_called_once_with(
+            trainer._process_memory.return_value, [],
+        )
+        trainer._build_unit_object_index.assert_not_called()
+        trainer._selected_candidates_from_selection_manager.assert_not_called()
+
     def test_new_session_ignores_shared_heap_records_and_queries_dll(self):
         trainer = object.__new__(trainer_module.War3Trainer)
         trainer.pid = 123

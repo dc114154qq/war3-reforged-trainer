@@ -2978,25 +2978,19 @@ class War3Trainer:
                 stop.wait(1.0)
                 continue
             try:
-                with self._process_memory() as pm:
-                    # The injected helper already returns the engine's live
-                    # selected handles and object-table identities.  Do not
-                    # prime the legacy selection-manager locator here: that
-                    # path can scan player components and would make the first
-                    # user action depend on a process-wide discovery pass.
-                    native_selection = self.persistent_native_selected_snapshots(
-                        timeout_ms=5000,
-                    )
-                    if not native_selection:
-                        stop.wait(0.5)
-                        continue
-                    selected = self._selected_candidates_snapshot(
-                        pm,
-                        persistent_snapshots=native_selection,
-                    )
-                    self._last_selected_summaries = (
-                        self._selected_summaries_from_snapshot(pm, selected)
-                    )
+                native_selection = self.persistent_native_selected_snapshots(
+                    timeout_ms=5000,
+                )
+                if not native_selection:
+                    stop.wait(0.5)
+                    continue
+                selected = self._selected_candidates_snapshot(
+                    None,
+                    persistent_snapshots=native_selection,
+                )
+                self._last_selected_summaries = (
+                    self._selected_summaries_from_snapshot(None, selected)
+                )
             except Exception:
                 # Native registration stays valid when the map is still
                 # loading or a selected unit cannot yet be mapped.
@@ -10483,31 +10477,21 @@ class War3Trainer:
         return candidate
 
     def probe_jass_selected_unit(self) -> JassSelectionProbeResult:
-        with self._process_memory() as pm:
-            unit_handle, handle_id, player_handle = self._read_jass_selected_unit_raw(pm)
-            candidate = self._candidate_from_jass_selection_result(pm, unit_handle, handle_id, player_handle)
-            note = "mapped" if candidate is not None else "raw_only"
-            return JassSelectionProbeResult(unit_handle, handle_id, player_handle, candidate, note)
+        selected = self._selected_candidates_snapshot(None)
+        if not selected:
+            return JassSelectionProbeResult(0, 0, 0, None, "empty")
+        candidate, unit_handle = selected[0]
+        return JassSelectionProbeResult(
+            unit_handle,
+            candidate.handle & 0xFFFFFFFF,
+            0,
+            candidate,
+            "persistent_native_snapshot",
+        )
 
     def locate_selected_unit_by_jass_native(self, pm: ProcessMemory | None = None) -> UnitCandidate:
-        close_pm = False
-        if pm is None:
-            pm = self._process_memory()
-            close_pm = True
-        try:
-            unit_handle, handle_id, player_handle = self._read_jass_selected_unit_raw(pm)
-            if not unit_handle and not handle_id:
-                raise RuntimeError("JASS selection native 没有返回选中单位")
-            candidate = self._candidate_from_jass_selection_result(pm, unit_handle, handle_id, player_handle)
-            if candidate is None:
-                raise RuntimeError(
-                    "JASS selection native 返回了单位，但无法映射到当前内存单位结构："
-                    f"unit=0x{unit_handle:x} handle_id=0x{handle_id:x} player=0x{player_handle:x}"
-                )
-            return candidate
-        finally:
-            if close_pm:
-                pm.close()
+        del pm
+        return self._selected_candidates_snapshot(None)[0][0]
 
     def locate_selected_unit_by_handle(
         self,

@@ -79,3 +79,38 @@ def test_native_function_verification_does_not_open_memory():
     assert subject.verify_native_handlers()=={}
     subject._query_native_table_handlers.assert_called_once_with(subject.NATIVE_HANDLER_NAMES)
     subject._process_memory.assert_not_called()
+
+
+@pytest.mark.parametrize('cls', [module.War3Trainer, module.BackupReadWar3Trainer])
+@pytest.mark.parametrize('failure', ['none', 'reused', 'helper'])
+def test_candidate_refresh_resolves_remembered_identity_without_external_reads(cls, failure):
+    subject = cls.__new__(cls)
+    selected = make_snapshot()
+    remembered = replace(selected, handle=2, full_handle=0x200000002,
+                         owner_address=0x5000, unit_address=0x4000, hp=75)
+    subject._unit_owner_index = {}
+    subject._last_persistent_native_snapshots = ()
+    subject.persistent_native_init = Mock()
+    subject.persistent_native_selected_snapshots = Mock(return_value=(selected,))
+    subject._process_memory = Mock(side_effect=AssertionError('external memory'))
+    subject._candidate_from_identity = Mock(side_effect=AssertionError('legacy identity'))
+    subject._selected_components = Mock(side_effect=AssertionError('component scan'))
+    subject._native_unit_field_memory = Mock(return_value=Mock(components={}, inventory_items=[]))
+    returned = replace(remembered, full_handle=remembered.full_handle + 1) if failure == 'reused' else remembered
+    subject._run_native_helper_ops = Mock(return_value=[snapshot_result(returned)])
+    if failure == 'helper':
+        subject._run_native_helper_ops.side_effect = RuntimeError('helper unavailable')
+    identity = (remembered.full_handle, remembered.owner_address, remembered.unit_address)
+    if failure == 'none':
+        summaries = subject.list_selection_candidates(extra_identities=[identity])
+        assert [summary.hp_text for summary in summaries] == ['100/200', '75/200']
+        assert summaries[1].candidate.native_snapshot == remembered
+    else:
+        with pytest.raises(RuntimeError):
+            subject.list_selection_candidates(extra_identities=[identity])
+    subject._run_native_helper_ops.assert_called_once_with(
+        0, ((subject.NATIVE_HELPER_OP_IDENTITY_UNIT_SNAPSHOT, 0,
+             remembered.unit_address, remembered.full_handle, remembered.owner_address),))
+    subject._process_memory.assert_not_called()
+    subject._candidate_from_identity.assert_not_called()
+    subject._selected_components.assert_not_called()

@@ -8663,17 +8663,6 @@ class War3Trainer:
             raise RuntimeError("当前输入的资源值与本地玩家 native 状态不一致")
         return [native]
 
-        # Legacy resource-property discovery is retained for diagnostics only.
-        with self._process_memory() as pm:
-            groups = self._resource_property_groups(pm, warm_unit_owner_index=True)
-            return self._resource_caches_from_groups(
-                groups,
-                current_gold,
-                current_lumber,
-                current_food,
-                current_food_cap,
-            )
-
     def _read_resource_cache_addresses(self, pm: ProcessMemory, cache: ResourceCache) -> ResourceCache:
         gold10 = pm.read_i32(cache.gold_address)
         lumber10 = pm.read_i32(cache.lumber_address)
@@ -10907,18 +10896,14 @@ class War3Trainer:
         unit: int,
         note: str = "",
     ) -> UnitSelectionSummary:
-        with self._process_memory() as pm:
-            candidate = self._candidate_from_display_identity(
-                pm,
-                handle,
-                owner,
-                unit,
-                note or f"remembered_identity=0x{handle:x},0x{owner:x},0x{unit:x}",
-                860,
-            )
-            if candidate is None:
-                raise RuntimeError("候选单位已经失效，请重新读取候选列表")
-            return self._selection_summary_from_candidate(pm, candidate, refs=0, known_hits=2, region_base=0)
+        candidate = self._candidate_from_display_identity(
+            None, handle, owner, unit,
+            note or f"remembered_identity=0x{handle:x},0x{owner:x},0x{unit:x}",
+            860,
+        )
+        if candidate is None:
+            raise RuntimeError("候选单位已经失效，请重新读取候选列表")
+        return self._selection_summary_from_candidate(None, candidate, refs=0, known_hits=2, region_base=0)
 
     @staticmethod
     def _selection_summary_priority(summary: UnitSelectionSummary) -> tuple[int, int, int, int, int]:
@@ -10950,30 +10935,15 @@ class War3Trainer:
         limit: int = 80,
         extra_identities: Iterable[tuple[int, int, int]] | None = None,
     ) -> list[UnitSelectionSummary]:
-        # Candidate refresh is a public hot path. Establish the persistent
-        # native table first so the first refresh cannot fall into the legacy
-        # process-wide unit index scan.
+        # Remembered identities need their own bound snapshot after selection
+        # changes; resolving them from external addresses loses that binding.
         self.persistent_native_init()
-        with self._process_memory() as pm:
-            selected = self._selected_candidates_snapshot(pm)
-            summaries = list(self._selected_summaries_from_snapshot(pm, selected))
-            if extra_identities is not None:
-                for handle, owner, unit in extra_identities:
-                    candidate = self._candidate_from_identity(
-                        pm,
-                        handle,
-                        owner,
-                        unit,
-                        f"remembered_identity=0x{handle:x},0x{owner:x},0x{unit:x}",
-                        860,
-                    )
-                    if candidate is not None:
-                        summaries.append(
-                            self._selection_summary_from_candidate(
-                                pm, candidate, 0, 2, 0,
-                            )
-                        )
-            return summaries[:max(0, int(limit))]
+        selected = self._selected_candidates_snapshot(None)
+        summaries = list(self._selected_summaries_from_snapshot(None, selected))
+        if extra_identities is not None:
+            for handle, owner, unit in extra_identities:
+                summaries.append(self.selection_summary_from_identity(handle, owner, unit))
+        return summaries[:max(0, int(limit))]
     def selection_candidate_line(self, summary: UnitSelectionSummary, index: int) -> str:
         pos = summary.position
         pos_text = f" x={pos[0]:.1f} y={pos[1]:.1f}" if pos is not None else ""
@@ -11562,36 +11532,6 @@ class War3Trainer:
             data_cache_address=data + 0xA0,
             data_cache_pointer=data_cache_pointer if self._sane_heap_ptr(data_cache_pointer) else 0,
         )
-
-    def _global_ability_instances_from_candidate(
-        self,
-        pm: ProcessMemory,
-        candidate: UnitCandidate,
-        component_rawcodes: set[int],
-        required_rawcodes: set[int] | None,
-        seen_wrappers: set[int],
-    ) -> list[AbilityInstance]:
-        if not candidate.owner_address:
-            return []
-        rawcode_filter = {
-            rawcode & 0xFFFFFFFF
-            for rawcode in (required_rawcodes or set())
-            if rawcode and self._looks_like_rawcode(rawcode)
-        }
-        instances: list[AbilityInstance] = []
-        owner_pattern = struct.pack("<Q", candidate.owner_address)
-        for owner_ref in pm.scan_bytes_private(owner_pattern, max_region_size=16 * 1024 * 1024):
-            wrapper = owner_ref - 0x50
-            if wrapper in seen_wrappers:
-                continue
-            instance = self._ability_instance_from_wrapper(pm, candidate, wrapper, component_rawcodes)
-            if instance is None:
-                continue
-            if rawcode_filter and instance.rawcode not in rawcode_filter:
-                continue
-            seen_wrappers.add(wrapper)
-            instances.append(instance)
-        return instances
 
     def _validated_cached_ability_instances(
         self,

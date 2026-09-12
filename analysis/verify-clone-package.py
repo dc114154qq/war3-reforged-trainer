@@ -47,7 +47,8 @@ runtime = json.loads(runtime_path.read_text(encoding='utf8'))
 assert runtime['ok'] and runtime['frozen']
 assert runtime['helper_sha256'] == sha(helper)
 assert runtime['decoder_sha256'] == sha((root/'tools/capstone.dll').read_bytes())
-report = dict(ok=True, source_commit=head, file_version='1.0.19.0', native_protocol=69,
+protocol = int(re.search(r'NATIVE_HELPER_VERSION\s*=\s*(\d+)', (root/'war3_reforged_trainer.py').read_text(encoding='utf8')).group(1))
+report = dict(ok=True, source_commit=head, file_version='1.0.19.0', native_protocol=protocol,
               exe=str(exe), exe_bytes=exe.stat().st_size, exe_sha256=sha(exe.read_bytes()),
               bundled_sources_match=True, runtime=runtime)
 (root/f'analysis/package-{revision}-verification.json').write_text(json.dumps(report, indent=2), encoding='utf8')

@@ -2620,7 +2620,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 68
+    NATIVE_HELPER_VERSION = 69
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -2645,6 +2645,8 @@ class War3Trainer:
     NATIVE_HELPER_OP_JASS_SELECTED_UNIT_ARG = 51
     NATIVE_HELPER_OP_JASS_LOCAL_PLAYER_QUERY = 52
     NATIVE_HELPER_OP_JASS_LOCAL_PLAYER_SET = 53
+    NATIVE_HELPER_OP_JASS_PLAYER_STATE_QUERY = 54
+    NATIVE_HELPER_OP_JASS_PLAYER_STATE_SET = 55
     NATIVE_HELPER_OP_JASS_UNIT_VOID = 70
     NATIVE_HELPER_OP_JASS_UNIT_BOOL = 71
     NATIVE_HELPER_OP_JASS_UNIT_INT_BOOL = 72
@@ -4597,6 +4599,8 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_JASS_SELECTED_UNIT_ARG,
             self.NATIVE_HELPER_OP_JASS_LOCAL_PLAYER_QUERY,
             self.NATIVE_HELPER_OP_JASS_LOCAL_PLAYER_SET,
+            self.NATIVE_HELPER_OP_JASS_PLAYER_STATE_QUERY,
+            self.NATIVE_HELPER_OP_JASS_PLAYER_STATE_SET,
             self.NATIVE_HELPER_OP_JASS_UNIT_VOID,
             self.NATIVE_HELPER_OP_JASS_UNIT_BOOL,
             self.NATIVE_HELPER_OP_JASS_UNIT_INT_BOOL,
@@ -8445,6 +8449,33 @@ class War3Trainer:
             raise RuntimeError("GetPlayerState 返回的人口数值超出合理范围")
         return snapshot
 
+    def _read_player_resources_via_native(self, player_id: int) -> LocalPlayerResources:
+        cache = self._native_resource_cache_for_player(player_id)
+        return LocalPlayerResources(cache.player_value, cache.gold, cache.lumber,
+                                    cache.food_used, cache.food_cap)
+
+    def _player_resource_query_ops(self, player_id: int, handlers: dict[str, NativeHandler]) -> tuple:
+        if not 0 <= player_id < 28:
+            raise ValueError("Player slot must be in 0..27")
+        return tuple((self.NATIVE_HELPER_OP_JASS_PLAYER_STATE_QUERY, player_id,
+                      handlers["Player"].handler_address, handlers["GetPlayerState"].handler_address, state)
+                     for state in (1, 2, 5, 4, 6))
+
+    def _decode_player_resource_cache(self, player_id: int, results: Iterable[NativeHelperOpResult]) -> ResourceCache | None:
+        results = tuple(results)
+        if (len(results) != 5 or any(r.kind != self.NATIVE_HELPER_OP_JASS_PLAYER_STATE_QUERY or r.last_error
+                                     or r.result >> 32 not in (0, 1) for r in results)):
+            raise RuntimeError("Incomplete native player resource snapshot")
+        present = [r.result >> 32 for r in results]
+        if not any(present):
+            return None
+        if not all(present):
+            raise RuntimeError("Player disappeared during native resource read")
+        gold, lumber, used, cap, ceiling = (self._native_result_i32(r.result) for r in results)
+        return ResourceCache(0, 0, gold, lumber, food_used=used, food_cap=cap, food_limit=ceiling,
+                             block_start_kind=1 + player_id * 0x28,
+                             source="persistent native player state", player_value=player_id)
+
     def _native_resource_cache(self, pm: ProcessMemory) -> ResourceCache:
         snapshot = self._read_local_player_resources_via_native(pm)
         return ResourceCache(
@@ -8455,6 +8486,14 @@ class War3Trainer:
             source="persistent native player state",
             player_value=snapshot.player_id,
         )
+
+    def _native_resource_cache_for_player(self, player_id: int) -> ResourceCache:
+        handlers = self._query_native_table_handlers(("Player", "GetPlayerState"))
+        ops = self._player_resource_query_ops(player_id, handlers)
+        cache = self._decode_player_resource_cache(player_id, self._run_native_helper_ops(0, ops))
+        if cache is None:
+            raise RuntimeError(f"Native player slot {player_id} is unavailable")
+        return cache
 
     def _set_local_player_state_via_native(
         self, pm: ProcessMemory, state: int, value: int,
@@ -8554,15 +8593,10 @@ class War3Trainer:
             raise RuntimeError("本地玩家 native 资源身份已经变化")
         return current
 
-    def locate_local_player_resource_cache(
-        self,
-        caches: list[ResourceCache] | None = None,
-    ) -> ResourceCache:
+    def locate_local_player_resource_cache(self, caches: list[ResourceCache] | None = None) -> ResourceCache:
+        # Local shortcuts target GetLocalPlayer, never the first row of the table.
         del caches
-        native = self.list_resource_caches()
-        if not native:
-            raise RuntimeError("未找到可用于匹配本地玩家的资源组")
-        return self.validate_local_player_resource_cache(native[0])
+        return self._native_resource_cache(None)
 
     def _locate_local_player_resource_cache_with_pm(
         self,
@@ -8613,7 +8647,7 @@ class War3Trainer:
         caches = self.list_resource_caches(
             current_gold, current_lumber, current_food, current_food_cap,
         )
-        return caches, caches[0]
+        return caches, self.locate_local_player_resource_cache(caches)
 
     def _resource_caches_from_groups(
         self,
@@ -8653,21 +8687,26 @@ class War3Trainer:
         return sorted(found, key=lambda cache: (cache.block_start_kind, cache.owner_key))
 
     def list_resource_caches(
-        self,
-        current_gold: int | None = None,
-        current_lumber: int | None = None,
-        current_food: int | None = None,
-        current_food_cap: int | None = None,
+        self, current_gold: int | None = None, current_lumber: int | None = None,
+        current_food: int | None = None, current_food_cap: int | None = None,
     ) -> list[ResourceCache]:
-        native = self._native_resource_cache(None)
-        if (
-            current_gold is not None and native.gold != int(current_gold)
-            or current_lumber is not None and native.lumber != int(current_lumber)
-            or current_food is not None and native.food_used != int(current_food)
-            or current_food_cap is not None and native.food_cap != int(current_food_cap)
-        ):
-            raise RuntimeError("当前输入的资源值与本地玩家 native 状态不一致")
-        return [native]
+        handlers = self._query_native_table_handlers(("Player", "GetPlayerState"))
+        caches = []
+        # Three complete players per command (15 ops); empty slots are explicit
+        # results, while helper failures propagate instead of hiding whole rows.
+        for start in range(0, 28, 3):
+            players = tuple(range(start, min(start + 3, 28)))
+            ops = tuple(op for player in players for op in self._player_resource_query_ops(player, handlers))
+            results = self._run_native_helper_ops(0, ops)
+            if len(results) != len(ops):
+                raise RuntimeError("Incomplete native resource group list")
+            for index, player in enumerate(players):
+                cache = self._decode_player_resource_cache(player, results[index*5:(index+1)*5])
+                if cache is not None and all(expected is None or actual == int(expected) for actual, expected in (
+                    (cache.gold, current_gold), (cache.lumber, current_lumber),
+                    (cache.food_used, current_food), (cache.food_cap, current_food_cap))):
+                    caches.append(cache)
+        return caches
 
     def _read_resource_cache_addresses(self, pm: ProcessMemory, cache: ResourceCache) -> ResourceCache:
         gold10 = pm.read_i32(cache.gold_address)
@@ -8684,64 +8723,41 @@ class War3Trainer:
     def read_resource_cache_addresses(self, cache: ResourceCache) -> ResourceCache:
         if cache.source != "persistent native player state":
             raise RuntimeError("历史资源地址缓存已禁用，请重新读取本地玩家 native 状态")
-        return self._native_resource_cache(None)
+        return self._native_resource_cache_for_player(cache.player_value)
 
     def write_resource_cache(
-        self,
-        cache: ResourceCache,
-        target_gold: int | None = None,
-        target_lumber: int | None = None,
-        target_food_used: int | None = None,
-        target_food_cap: int | None = None,
-        sync_local_food_used: bool = False,
+        self, cache: ResourceCache, target_gold: int | None = None,
+        target_lumber: int | None = None, target_food_used: int | None = None,
+        target_food_cap: int | None = None, sync_local_food_used: bool = False,
         sync_local_food_cap: bool = False,
     ) -> ResourceCache:
-        if (
-            target_gold is None
-            and target_lumber is None
-            and target_food_used is None
-            and target_food_cap is None
-        ):
+        del sync_local_food_used, sync_local_food_cap
+        if cache.source != "persistent native player state":
+            raise RuntimeError("历史资源地址写入已禁用，请重新读取本地玩家 native 状态")
+        targets = [(state, int(value)) for state, value in (
+            (1, target_gold), (2, target_lumber), (5, target_food_used), (4, target_food_cap)) if value is not None]
+        if not targets:
             raise ValueError("至少填写一个目标资源值")
-        if cache.source == "persistent native player state":
-            targets = (
-                (1, target_gold, 10_000_000),
-                (2, target_lumber, 10_000_000),
-                (5, target_food_used, 1000),
-                (4, target_food_cap, 1000),
-            )
-            for state, value, upper in targets:
-                if value is None:
-                    continue
-                if not 0 <= int(value) <= upper:
-                    raise ValueError("目标资源值超出允许范围")
-                if state == 5:
-                    self._set_local_player_food_used_via_native(None, int(value))
-                elif state == 4:
-                    self._set_local_player_food_cap_via_native(None, int(value))
-                else:
-                    self._set_local_player_state_via_native(None, state, int(value))
-            current = self._native_resource_cache(None)
-            expected = {
-                1: target_gold,
-                2: target_lumber,
-                5: target_food_used,
-                4: target_food_cap,
-            }
-            actual = {
-                1: current.gold,
-                2: current.lumber,
-                5: current.food_used,
-                4: current.food_cap,
-            }
-            for state, target in expected.items():
-                if target is not None and actual[state] != int(target):
-                    raise RuntimeError(
-                        f"native 资源写入读回不一致：state={state} "
-                        f"expected={int(target)} actual={actual[state]}"
-                    )
-            return current
-        raise RuntimeError("历史资源地址写入已禁用，请重新读取本地玩家 native 状态")
+        # Validate the complete request before submitting any mutation.
+        if any(not 0 <= value <= (10_000_000 if state in (1, 2) else 1000) for state, value in targets):
+            raise ValueError("目标资源值超出允许范围")
+        handlers = self._query_native_table_handlers(("Player", "GetPlayerState", "SetPlayerState"))
+        query = self._player_resource_query_ops(cache.player_value, handlers)
+        setters = tuple((self.NATIVE_HELPER_OP_JASS_PLAYER_STATE_SET, cache.player_value,
+                         handlers["Player"].handler_address, handlers["SetPlayerState"].handler_address,
+                         (state << 32) | value) for state, value in targets)
+        results = self._run_native_helper_ops(0, setters + query)
+        if (len(results) != len(setters) + len(query) or any(r.last_error or r.kind != setters[i][0]
+                or r.result != targets[i][1] for i, r in enumerate(results[:len(setters)]))):
+            raise RuntimeError("Incomplete native resource write result")
+        current = self._decode_player_resource_cache(cache.player_value, results[len(setters):])
+        if current is None:
+            raise RuntimeError("Native player disappeared after resource write")
+        actual = {1: current.gold, 2: current.lumber, 5: current.food_used, 4: current.food_cap}
+        for state, target in targets:
+            if actual[state] != target:
+                raise RuntimeError(f"native 资源写入读回不一致：state={state} expected={target} actual={actual[state]}")
+        return current
 
     def locate_resource_cache(
         self,
@@ -14382,33 +14398,39 @@ def run_gui() -> None:
         return f"已连接 Warcraft III，PID {state['trainer'].pid}"
 
     def resource_iid(cache: ResourceCache) -> str:
+        if cache.source == "persistent native player state":
+            return f"native-player:{cache.player_value}"
         return f"{cache.gold_address:x}:{cache.lumber_address:x}"
 
     def resource_row_values(index: int, cache: ResourceCache) -> tuple[str, str, str, str, str, str, str]:
-        food_text = f"{cache.food_used}/{cache.food_cap}" if cache.food_used_address or cache.food_cap_address else ""
+        native = cache.source == "persistent native player state"
+        food_text = f"{cache.food_used}/{cache.food_cap}" if native or cache.food_used_address or cache.food_cap_address else ""
         player_text = f"{index}"
         if cache.player_value or cache.header_value:
             player_text = f"{index} (h{cache.header_value}/p{cache.player_value})"
+        if native:
+            player_text = f"{index} (Player {cache.player_value})"
         return (
             player_text,
             str(cache.gold),
             str(cache.lumber),
             food_text,
-            f"0x{cache.gold_address:x}",
-            f"0x{cache.lumber_address:x}",
+            "—" if native else f"0x{cache.gold_address:x}",
+            "—" if native else f"0x{cache.lumber_address:x}",
             cache.source,
         )
 
     def set_resource_entries(cache: ResourceCache, reset_targets: bool = True) -> None:
+        native = cache.source == "persistent native player state"
         gold_current.set(str(cache.gold))
         lumber_current.set(str(cache.lumber))
-        food_current.set(str(cache.food_used) if cache.food_used_address else "")
-        food_cap_current.set(str(cache.food_cap) if cache.food_cap_address else "")
+        food_current.set(str(cache.food_used) if native or cache.food_used_address else "")
+        food_cap_current.set(str(cache.food_cap) if native or cache.food_cap_address else "")
         if reset_targets:
             gold_target.set(str(cache.gold))
             lumber_target.set(str(cache.lumber))
-            food_used_target.set(str(cache.food_used) if cache.food_used_address else "")
-            food_cap_target.set(str(cache.food_cap) if cache.food_cap_address else "")
+            food_used_target.set(str(cache.food_used) if native or cache.food_used_address else "")
+            food_cap_target.set(str(cache.food_cap) if native or cache.food_cap_address else "")
 
     def populate_resource_caches(
         caches: list[ResourceCache],
@@ -14484,22 +14506,17 @@ def run_gui() -> None:
 
     def refresh_resources() -> str:
         t = trainer()
-        cg = int(gold_current.get()) if gold_current.get().strip() else None
-        cl = int(lumber_current.get()) if lumber_current.get().strip() else None
-        cf = int(food_current.get()) if food_current.get().strip() else None
-        cfc = int(food_cap_current.get()) if food_cap_current.get().strip() else None
         caches = t.list_resource_caches()
         if not caches:
-            caches = [t.read_resource_cache(cg, cl, cf, cfc)]
+            raise RuntimeError("No native player resource groups returned")
         local_cache = t.locate_local_player_resource_cache(caches)
         local_iid = resource_iid(local_cache)
-        caches = [cache for cache in caches if cache.owner_key != local_cache.owner_key]
-        caches.append(local_cache)
-        caches.sort(key=lambda cache: (cache.block_start_kind, cache.owner_key))
+        if not any(resource_iid(cache) == local_iid for cache in caches):
+            raise RuntimeError("Local player is missing from native resource groups; refresh again")
         root.after(0, populate_resource_caches, caches, local_iid, local_iid)
         return (
             f"已读取 {len(caches)} 个资源组；"
-            "已识别并选中本地玩家资源组（普通扫描）"
+            "已识别并选中本地玩家资源组（native）"
         )
 
     def set_resource(kind: str) -> str:
@@ -17406,7 +17423,7 @@ def run_cli(args: argparse.Namespace) -> int:
                 args.current_food_cap,
             )
             food_text = ""
-            if cache.food_used_address or cache.food_cap_address:
+            if cache.source == "persistent native player state" or cache.food_used_address or cache.food_cap_address:
                 food_text = (
                     f" food={cache.food_used}/{cache.food_cap}"
                     f" food_used_addr=0x{cache.food_used_address:x}"
@@ -17431,7 +17448,7 @@ def run_cli(args: argparse.Namespace) -> int:
                 print("resource_groups count=0")
             for index, cache in enumerate(caches, 1):
                 food_text = ""
-                if cache.food_used_address or cache.food_cap_address:
+                if cache.source == "persistent native player state" or cache.food_used_address or cache.food_cap_address:
                     food_text = (
                         f" food={cache.food_used}/{cache.food_cap}"
                         f" food_used_addr=0x{cache.food_used_address:x}"

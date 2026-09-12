@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 68u
+#define WAR3_NATIVE_VERSION 69u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -26,6 +26,8 @@
 #define WAR3_NATIVE_OP_JASS_SELECTED_UNIT_ARG 51u
 #define WAR3_NATIVE_OP_JASS_LOCAL_PLAYER_QUERY 52u
 #define WAR3_NATIVE_OP_JASS_LOCAL_PLAYER_SET 53u
+#define WAR3_NATIVE_OP_JASS_PLAYER_STATE_QUERY 54u
+#define WAR3_NATIVE_OP_JASS_PLAYER_STATE_SET 55u
 #define WAR3_NATIVE_OP_JASS_UNIT_VOID 70u
 #define WAR3_NATIVE_OP_JASS_UNIT_BOOL 71u
 #define WAR3_NATIVE_OP_JASS_UNIT_INT_BOOL 72u
@@ -4384,6 +4386,61 @@ static void run_command(void) {
                     }
                     set_player_state(player, op->rawcode, (int32_t)op->arg1);
                     op->result = (uint32_t)op->arg1;
+                } __except (EXCEPTION_EXECUTE_HANDLER) {
+                    op->last_error = GetExceptionCode();
+                    last_error = op->last_error;
+                    goto finish;
+                }
+                break;
+            }
+            case WAR3_NATIVE_OP_JASS_PLAYER_STATE_QUERY: {
+                JassPlayerFn player_fn = (JassPlayerFn)(uintptr_t)op->handler;
+                JassGetPlayerStateFn get_player_state = (JassGetPlayerStateFn)(uintptr_t)op->arg0;
+                uint64_t player = 0;
+                if (!war3_executable_pointer(op->handler) || !war3_executable_pointer(op->arg0) ||
+                    op->rawcode >= 28u || (op->arg1 != 1 && op->arg1 != 2 &&
+                    op->arg1 != 4 && op->arg1 != 5 && op->arg1 != 6)) {
+                    op->last_error = ERROR_INVALID_DATA;
+                    last_error = ERROR_INVALID_DATA;
+                    goto finish;
+                }
+                __try {
+                    player = player_fn((int32_t)op->rawcode);
+                    if (!player) {
+                        op->result = 0; /* Explicit absent slot; never an exception fallback. */
+                        break;
+                    }
+                    op->result = (1ULL << 32) | (uint32_t)get_player_state(player, (uint32_t)op->arg1);
+                } __except (EXCEPTION_EXECUTE_HANDLER) {
+                    op->last_error = GetExceptionCode();
+                    last_error = op->last_error;
+                    goto finish;
+                }
+                break;
+            }
+            case WAR3_NATIVE_OP_JASS_PLAYER_STATE_SET: {
+                JassPlayerFn player_fn = (JassPlayerFn)(uintptr_t)op->handler;
+                JassSetPlayerStateFn set_player_state = (JassSetPlayerStateFn)(uintptr_t)op->arg0;
+                uint64_t player = 0;
+                uint32_t state = (uint32_t)(op->arg1 >> 32);
+                int32_t value = (int32_t)op->arg1;
+                if (!war3_executable_pointer(op->handler) || !war3_executable_pointer(op->arg0) ||
+                    op->rawcode >= 28u || value < 0 ||
+                    ((state == 1 || state == 2) ? value > 10000000 :
+                     ((state == 4 || state == 5) ? value > 1000 : 1))) {
+                    op->last_error = ERROR_INVALID_DATA;
+                    last_error = ERROR_INVALID_DATA;
+                    goto finish;
+                }
+                __try {
+                    player = player_fn((int32_t)op->rawcode);
+                    if (!player) {
+                        op->last_error = ERROR_NOT_FOUND;
+                        last_error = ERROR_NOT_FOUND;
+                        goto finish;
+                    }
+                    set_player_state(player, (uint32_t)(op->arg1 >> 32), (int32_t)(op->arg1 & 0xFFFFFFFFu));
+                    op->result = (uint32_t)(op->arg1 & 0xFFFFFFFFu);
                 } __except (EXCEPTION_EXECUTE_HANDLER) {
                     op->last_error = GetExceptionCode();
                     last_error = op->last_error;

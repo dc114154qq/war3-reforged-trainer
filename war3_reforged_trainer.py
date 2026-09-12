@@ -13938,17 +13938,8 @@ class BackupReadWar3Trainer(War3Trainer):
         self._backup_selected_identity = normalized
 
     def _process_memory(self, write: bool = False) -> ProcessMemory:
-        diagnostics = self._backup_diagnostics
-        if diagnostics is None:
-            raise RuntimeError("备用读取会话已经失效，请重新点击备用读取")
-        pm = Win10ProcessMemory(self.pid, diagnostics, write=write)
-        self._last_win10_log_path = str(diagnostics.latest_path)
-        try:
-            self.set_readable_pointer_regions(pm.regions(force_refresh=True))
-        except Exception:
-            pm.close()
-            raise
-        return pm
+        del write
+        raise RuntimeError("备用读取后端已禁用；当前版本必须使用持久 native helper")
 
     @staticmethod
     def _require_win10_memory(pm: ProcessMemory) -> Win10ProcessMemory:

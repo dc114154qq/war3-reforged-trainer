@@ -100,36 +100,17 @@ class ElephantSourceRoutingTests(unittest.TestCase):
 
         self.assertEqual(diagnostics.close_calls, 0)
 
-    def test_backup_memory_factory_never_builds_normal_memory(self):
+    def test_backup_memory_factory_is_disabled(self):
         backup = object.__new__(trainer_module.BackupReadWar3Trainer)
         backup.pid = 123
-        backup._last_win10_log_path = ""
-        backup._readable_pointer_bases = ()
-        backup._readable_pointer_ends = ()
-        backup._backup_diagnostics = _Diagnostics()
-        with patch.object(trainer_module, "Win10ProcessMemory", _BackupMemory):
-            memory = backup._process_memory(write=True)
+        with self.assertRaisesRegex(RuntimeError, "备用读取后端已禁用"):
+            backup._process_memory(write=True)
 
-        self.assertIsInstance(memory, _BackupMemory)
-        self.assertTrue(memory.write)
-        self.assertTrue(memory.force_refresh)
-
-    def test_backup_memory_factory_reuses_session_diagnostics(self):
+    def test_backup_memory_factory_does_not_reuse_session_diagnostics(self):
         backup = object.__new__(trainer_module.BackupReadWar3Trainer)
         backup.pid = 123
-        backup._last_win10_log_path = ""
-        backup._readable_pointer_bases = ()
-        backup._readable_pointer_ends = ()
-        diagnostics = _Diagnostics()
-        backup._backup_diagnostics = diagnostics
-
-        with patch.object(trainer_module, "Win10ProcessMemory", _BackupMemory):
-            first = backup._process_memory()
-            second = backup._process_memory(write=True)
-
-        self.assertIs(first.diagnostics, diagnostics)
-        self.assertIs(second.diagnostics, diagnostics)
-        self.assertEqual(diagnostics.close_calls, 0)
+        with self.assertRaisesRegex(RuntimeError, "备用读取后端已禁用"):
+            backup._process_memory()
 
     def test_compatibility_native_discovery_uses_dll_without_memory_backend(self):
         backup = object.__new__(trainer_module.BackupReadWar3Trainer)

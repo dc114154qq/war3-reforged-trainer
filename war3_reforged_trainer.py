@@ -12849,21 +12849,13 @@ class War3Trainer:
         unit: int,
         pm: ProcessMemory,
     ) -> "War3Trainer":
-        identity = (int(handle), int(owner), int(unit))
-        isolated = self._win10_session_trainer
-        if (
-            isolated is None
-            or not isinstance(isolated, BackupReadWar3Trainer)
-            or isolated.pid != self.pid
-            or self._win10_session_identity != identity
-        ):
-            isolated = BackupReadWar3Trainer(self.pid)
-            self._win10_session_trainer = isolated
-            self._win10_session_identity = identity
-        self._seed_win10_isolated_state(isolated)
-        isolated.set_readable_pointer_regions(pm.regions())
-        isolated.bind_selected_identity(identity)
-        return isolated
+        # Compatibility callers used to create an isolated backup reader here.
+        # Identity-bound operations now all use the persistent native object
+        # table, so creating a second reader would reintroduce a scan-capable
+        # execution path. Keep the signature for old callers but return the
+        # active native trainer directly.
+        del handle, owner, unit, pm
+        return self
 
     def trainer_for_read_source(
         self,

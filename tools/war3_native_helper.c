@@ -5016,8 +5016,28 @@ static void run_command(void) {
                             continue;
                         }
                         op->result=clone_phase=0xb00u+(uint32_t)index;
-                        target_ability_level = WAR3_CLONE_VALUE(&clone_guard, get_ability_level(target, ability_id));
-                        if (target_ability_level <= 0 && !WAR3_CLONE_VALUE(&clone_guard, add_ability(target, ability_id))) {
+                        int target_query_error=0;
+                        __try {
+                            target_ability_level = WAR3_CLONE_VALUE(&clone_guard, get_ability_level(target, ability_id));
+                        } __except (EXCEPTION_EXECUTE_HANDLER) {
+                            DWORD target_exception=GetExceptionCode();
+                            if(target_exception==0xc0000094u) target_query_error=1;
+                            else { clone_error=target_exception; __leave; }
+                        }
+                        if (target_query_error) { continue; }
+                        int add_query_error=0;
+                        int add_result=1;
+                        if (target_ability_level <= 0) {
+                            op->result=clone_phase=0xc00u+(uint32_t)index;
+                            __try {
+                                add_result=WAR3_CLONE_VALUE(&clone_guard, add_ability(target, ability_id));
+                            } __except (EXCEPTION_EXECUTE_HANDLER) {
+                                DWORD target_exception=GetExceptionCode();
+                                if(target_exception==0xc0000094u) add_query_error=1;
+                                else { clone_error=target_exception; __leave; }
+                            }
+                        }
+                        if (add_query_error || (target_ability_level <= 0 && !add_result)) {
                             /* Some map-provided abilities cannot be attached
                              * to a newly created instance; leave that one out
                              * without calling another unsafe native. */

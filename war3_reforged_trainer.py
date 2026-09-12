@@ -1692,10 +1692,10 @@ class Win10ReadLogger:
     MAX_ARCHIVE_LOGS = 128
 
     @classmethod
-    def _prune_archives(cls, log_root: Path, reserve: int = 1) -> None:
+    def _prune_archives(cls, log_root: Path, reserve: int = 1, prefix: str = "win10-read") -> None:
         try:
             archives = sorted(
-                log_root.glob("win10-read-*-pid*.log"),
+                log_root.glob(f"{prefix}-*-pid*.log"),
                 key=lambda path: (path.stat().st_mtime_ns, path.name),
             )
         except OSError:
@@ -1708,8 +1708,9 @@ class Win10ReadLogger:
             except OSError:
                 pass
 
-    def __init__(self, pid: int):
+    def __init__(self, pid: int, prefix: str = "win10-read"):
         self.pid = int(pid)
+        self.prefix = str(prefix)
         self.started = time.perf_counter()
         self._lock = threading.Lock()
         self._files = []
@@ -1728,9 +1729,9 @@ class Win10ReadLogger:
             opened = []
             try:
                 log_root.mkdir(parents=True, exist_ok=True)
-                self._prune_archives(log_root)
-                archive_path = log_root / f"win10-read-{stamp}-pid{self.pid}.log"
-                latest_path = log_root / "win10-read-latest.log"
+                self._prune_archives(log_root, prefix=self.prefix)
+                archive_path = log_root / f"{self.prefix}-{stamp}-pid{self.pid}.log"
+                latest_path = log_root / f"{self.prefix}-latest.log"
                 for path in (archive_path, latest_path):
                     opened.append(path.open("w", encoding="utf-8-sig", buffering=1))
             except OSError as exc:
@@ -4305,14 +4306,35 @@ class War3Trainer:
         timeout_ms: int = 10000,
     ) -> list[NativeHelperOpResult]:
         wait_ms = max(5000, min(300000, int(timeout_ms) + 5000))
-        with self._native_helper_lock:
-            self._ensure_native_helper_persistent_hook(wait_ms=wait_ms)
-            with self._native_helper_transaction(wait_ms=wait_ms):
-                return self._run_native_helper_ops_locked(
-                    unit_address,
-                    ops,
-                    timeout_ms=timeout_ms,
-                )
+        try:
+            with self._native_helper_lock:
+                self._ensure_native_helper_persistent_hook(wait_ms=wait_ms)
+                with self._native_helper_transaction(wait_ms=wait_ms):
+                    return self._run_native_helper_ops_locked(
+                        unit_address,
+                        ops,
+                        timeout_ms=timeout_ms,
+                    )
+        except Exception as exc:
+            self._write_native_helper_failure_log(unit_address, exc)
+            raise
+
+    def _write_native_helper_failure_log(self, unit_address: int, exc: BaseException) -> None:
+        try:
+            logger = Win10ReadLogger(int(self.pid), prefix="native-helper")
+            logger.log(
+                "native_helper_failure",
+                unit_address=f"0x{int(unit_address):x}",
+                pid=int(self.pid),
+                helper_dll=str(self._native_helper_dll_path()),
+                protocol=int(self.NATIVE_HELPER_VERSION),
+            )
+            logger.log_traceback("native_helper_exception", exc)
+            self._last_native_helper_log_path = str(logger.latest_path)
+            logger.close()
+        except Exception:
+            # A diagnostic failure must never hide the original helper error.
+            pass
 
     @contextmanager
     def _native_helper_transaction(self, *, wait_ms: int = 300000) -> Iterator[None]:

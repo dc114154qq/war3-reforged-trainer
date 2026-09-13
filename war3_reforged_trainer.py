@@ -2201,6 +2201,26 @@ def find_war3(pid: int | None = None) -> tuple[int, int]:
         matches = [m for m in matches if m[1] == pid]
     if not matches:
         raise RuntimeError("没有找到标题为 Warcraft III 的可见窗口")
+    if pid is None and len(matches) > 1:
+        # Multiple clients can remain open after a restart. Window enumeration
+        # order is unspecified; bind to the newest process so prewarm does not
+        # read a stale client. An explicit PID always wins above.
+        def start_key(match: tuple[int, int, str]) -> int:
+            process = kernel32.OpenProcess(0x1000, False, match[1])
+            if not process:
+                return -1
+            class FileTime(ctypes.Structure):
+                _fields_ = [("low", ctypes.c_ulong), ("high", ctypes.c_ulong)]
+            creation = FileTime(); exit_time = FileTime(); kernel_time = FileTime(); user_time = FileTime()
+            if not kernel32.GetProcessTimes(
+                process, ctypes.byref(creation), ctypes.byref(exit_time),
+                ctypes.byref(kernel_time), ctypes.byref(user_time),
+            ):
+                kernel32.CloseHandle(process)
+                return -1
+            kernel32.CloseHandle(process)
+            return (int(creation.high) << 32) | int(creation.low)
+        matches = sorted(matches, key=start_key, reverse=True)
     hwnd, found_pid, _title = matches[0]
     return hwnd, found_pid
 

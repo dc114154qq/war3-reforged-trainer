@@ -6430,6 +6430,20 @@ class War3Trainer:
         target = int(charges)
         if not 1 <= target <= 1_000_000_000:
             raise ValueError("物品数量必须在 1 到 1000000000 之间")
+        if self._native_selection_unavailable:
+            candidate, _handle = self._direct_selected_context()
+            with self._process_memory(write=True) as memory:
+                items = self._inventory_items_from_candidate(memory, candidate)
+                writable = [item for item in items if item.item_address and item.charges_address]
+                if not writable:
+                    raise RuntimeError("当前选中单位没有可写物品数量")
+                for item in writable:
+                    memory.write_i32(item.charges_address, target)
+                refreshed = self._inventory_items_from_candidate(memory, candidate)
+            by_slot = {item.slot: item for item in refreshed}
+            if any(item.slot not in by_slot or by_slot[item.slot].charges != target for item in writable):
+                raise RuntimeError("3.0 物品数量写入读回不一致")
+            return len(writable)
         return self._run_bound_inventory_batch(1, target)
 
     def duplicate_selected_inventory_items(self) -> int:
@@ -12056,6 +12070,8 @@ class War3Trainer:
                         self._sane_heap_ptr(item)
                         and self._looks_like_vtable(pm.read_u64(item))
                         and pm.read_u64(item + 0x18) == handle
+                        and self._looks_like_rawcode(pm.read_u32(item + 0x70))
+                        and pm.read_u32(item + 0x70) == pm.read_u32(item + 0x178)
                     ):
                         return item
                 except OSError:
@@ -12064,7 +12080,12 @@ class War3Trainer:
         for address in pm.scan_bytes_private(struct.pack("<Q", handle), max_region_size=1024 * 1024):
             item = address - 0x18
             try:
-                if self._looks_like_vtable(pm.read_u64(item)) and pm.read_u64(item + 0x18) == handle:
+                if (
+                    self._looks_like_vtable(pm.read_u64(item))
+                    and pm.read_u64(item + 0x18) == handle
+                    and self._looks_like_rawcode(pm.read_u32(item + 0x70))
+                    and pm.read_u32(item + 0x70) == pm.read_u32(item + 0x178)
+                ):
                     return item
             except OSError:
                 continue
@@ -12129,6 +12150,8 @@ class War3Trainer:
                             self._sane_heap_ptr(item)
                             and self._looks_like_vtable(pm.read_u64(item))
                             and pm.read_u64(item + 0x18) == handle
+                            and self._looks_like_rawcode(pm.read_u32(item + 0x70))
+                            and pm.read_u32(item + 0x70) == pm.read_u32(item + 0x178)
                         ):
                             found[handle] = item
                             self._item_object_cache[handle] = item
@@ -12170,6 +12193,8 @@ class War3Trainer:
                                 if (
                                     self._looks_like_vtable(pm.read_u64(item))
                                     and pm.read_u64(item + 0x18) == handle
+                                    and self._looks_like_rawcode(pm.read_u32(item + 0x70))
+                                    and pm.read_u32(item + 0x70) == pm.read_u32(item + 0x178)
                                 ):
                                     found[handle] = item
                                     self._item_object_cache[handle] = item
@@ -12215,6 +12240,12 @@ class War3Trainer:
             raise RuntimeError("Invalid DLL inventory payload length or capacity")
         items = []
         seen_handles, seen_full, seen_objects = set(), set(), set()
+        try:
+            slot_array = pm.read_u64(record + 0xD8)
+        except OSError:
+            slot_array = 0
+        if not self._sane_heap_ptr(slot_array):
+            return []
         for index in range(6):
             handle, full, obj, rawcode, charges, mirror, ability, wrapper = values[1+index*8:9+index*8]
             if not handle:
@@ -12259,8 +12290,17 @@ class War3Trainer:
 
         items: list[InventoryItem] = []
         slot_handles: list[tuple[int, int, int]] = []
+        try:
+            slot_array = pm.read_u64(record + 0xD8)
+        except OSError:
+            slot_array = 0
+        if not self._sane_heap_ptr(slot_array):
+            return []
         for index in range(6):
-            handle_address = record + 0xD4 + index * 0x0C
+            # Warcraft III 3.0 stores six 12-byte inventory entries at D8.
+            # The old 2.0 layout used D4; reading that offset shifts every
+            # slot and produces invalid item handles.
+            handle_address = slot_array + index * 0x0C
             try:
                 handle = pm.read_u64(handle_address)
             except OSError:

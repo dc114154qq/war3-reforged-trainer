@@ -562,6 +562,8 @@ class ResourceCache:
     header_value: int = 0
     player_value: int = 0
     score: int = 0
+    player_handle: int | None = None
+    process_id: int = 0
 
 
 @dataclass(frozen=True)
@@ -1826,6 +1828,17 @@ class Win10ReadLogger:
 
 
 # Historical UI label only; this compatibility reader is used on Win10 and Win11.
+def record_operation_failure(pid: int, operation: str, exc: BaseException) -> str:
+    logger = Win10ReadLogger(pid, prefix="trainer-error")
+    try:
+        logger.log("operation_failure", operation=operation,
+                   executable=sys.executable, source=__file__,
+                   exception=repr(exc), traceback="".join(traceback.format_exception(exc)))
+        return str(logger.archive_path)
+    finally:
+        logger.close()
+
+
 class Win10ProcessMemory(ProcessMemory):
     EXACT_READ_LIMIT = 0x1000
     SCAN_CHUNK_SIZE = 0x10000
@@ -2201,68 +2214,8 @@ def find_war3(pid: int | None = None) -> tuple[int, int]:
         matches = [m for m in matches if m[1] == pid]
     if not matches:
         raise RuntimeError("没有找到标题为 Warcraft III 的可见窗口")
-    if pid is None and len(matches) > 1:
-        # Multiple clients can remain open after a restart. Window enumeration
-        # order is unspecified; bind to the newest process so prewarm does not
-        # read a stale client. An explicit PID always wins above.
-        def start_key(match: tuple[int, int, str]) -> int:
-            process = kernel32.OpenProcess(0x1000, False, match[1])
-            if not process:
-                return -1
-            class FileTime(ctypes.Structure):
-                _fields_ = [("low", ctypes.c_ulong), ("high", ctypes.c_ulong)]
-            creation = FileTime(); exit_time = FileTime(); kernel_time = FileTime(); user_time = FileTime()
-            if not kernel32.GetProcessTimes(
-                process, ctypes.byref(creation), ctypes.byref(exit_time),
-                ctypes.byref(kernel_time), ctypes.byref(user_time),
-            ):
-                kernel32.CloseHandle(process)
-                return -1
-            kernel32.CloseHandle(process)
-            return (int(creation.high) << 32) | int(creation.low)
-        matches = sorted(matches, key=start_key, reverse=True)
-        # A newly restarted client can expose its window before the game image
-        # and 3.0 code pages are readable. Prefer the newest client that has
-        # passed the verified object-registry profile; otherwise the next
-        # prewarm pass will retry the newest one after loading completes.
-        try:
-            from war3_object_registry import ObjectRegistry24268
-            ready = []
-            for match in matches:
-                try:
-                    with ProcessMemory(match[1]) as memory:
-                        ObjectRegistry24268.attach(memory)
-                    ready.append(match)
-                except (OSError, RuntimeError, ValueError):
-                    continue
-            if ready:
-                matches = ready
-                # Prefer the client that is actually in a map with selected
-                # units. A newly launched client can pass PE checks later than
-                # the active client but still have no live game state yet.
-                try:
-                    from war3_classic_selection import read_player_selection
-                    scored = []
-                    for match in matches:
-                        selected_count = 0
-                        try:
-                            with ProcessMemory(match[1]) as memory:
-                                registry = ObjectRegistry24268.attach(memory)
-                                for mode in (0, 1):
-                                    try:
-                                        player = registry.local_player_for_mode(memory, mode)
-                                        selected_count = max(selected_count, len(read_player_selection(memory, player).units))
-                                    except (OSError, RuntimeError, ValueError):
-                                        continue
-                        except (OSError, RuntimeError, ValueError):
-                            pass
-                        scored.append((selected_count, start_key(match), match))
-                    if scored:
-                        matches = [row[2] for row in sorted(scored, reverse=True)]
-                except Exception:
-                    pass
-        except Exception:
-            pass
+    if pid is None and len({match[1] for match in matches}) > 1:
+        raise RuntimeError("Multiple Warcraft III clients are open; select an explicit PID")
     hwnd, found_pid, _title = matches[0]
     return hwnd, found_pid
 
@@ -2926,9 +2879,9 @@ class War3Trainer:
         self._classic_object_registry = None
         self._classic_thread_context = None
         self._last_classic_mode = None
-        # This branch targets 3.0.0.24268. The bundled native helper still
-        # carries the 2.0.4.23745 profile, so never probe it in the 3.0
-        # product path. The classic selection backend is the entry path.
+        # This branch targets 3.0.0.24268. Legacy execution binaries have
+        # been removed; the new engine executor is still being adapted.
+        # Indexed engine objects are the current selection entry path.
         self._native_selection_unavailable = True
         self._classic_resource_cache: ResourceCache | None = None
         self._start_persistent_bootstrap()
@@ -4005,22 +3958,13 @@ class War3Trainer:
 
     def _native_helper_dll_path(self) -> Path:
         base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
-        candidates = (
-            base / "tools" / "war3_native_helper.dll",
-            base / "war3_native_helper.dll",
-            Path(__file__).resolve().parent / "tools" / "war3_native_helper.dll",
-        )
-        for candidate in candidates:
-            if candidate.exists():
-                return candidate
-        raise RuntimeError("缺少 native helper DLL：tools\\war3_native_helper.dll")
+        candidate = base / "tools" / "war3_engine_24268.dll"
+        if candidate.is_file():
+            return candidate
+        raise RuntimeError("The 24268 engine execution module has not been built and validated")
 
     def _native_helper_live_dll_path(self) -> Path:
-        base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
-        candidate = base / "tools" / "war3_native_helper.3.0-live.dll"
-        if candidate.exists():
-            return candidate
-        raise RuntimeError("缺少 3.0 live native helper DLL")
+        return self._native_helper_dll_path()
 
     def _discover_agent_resolver(self, pm: ProcessMemory, state_handler: int) -> int:
         calls = self._native_function_calls(pm, state_handler)
@@ -4094,12 +4038,7 @@ class War3Trainer:
             index = self.PERSISTENT_NATIVE_NAMES.index(name)
             ordered.append((self.NATIVE_HELPER_OP_PERSISTENT_REGISTER_NATIVE,
                             index, entry.handler, 0, 0))
-        old_path = self._native_helper_dll_path
-        self._native_helper_dll_path = self._native_helper_live_dll_path
-        try:
-            results = self._run_native_helper_ops(0, ordered, timeout_ms=timeout_ms)
-        finally:
-            self._native_helper_dll_path = old_path
+        results = self._run_native_helper_ops(0, ordered, timeout_ms=timeout_ms)
         if len(results) != len(ordered) or any(result.last_error for result in results):
             raise RuntimeError("3.0 native handler registration failed")
         self._native_handlers = {
@@ -8928,6 +8867,13 @@ class War3Trainer:
         return True
 
     def validate_local_player_resource_cache(self, cache: ResourceCache) -> ResourceCache:
+        if getattr(self, "_native_selection_unavailable", False):
+            with self._process_memory() as memory:
+                current = self._refresh_indexed_resource_cache(memory, cache)
+                local = self._classic_local_resource_cache(memory)
+                if (current.owner_key, current.player_handle) != (local.owner_key, local.player_handle):
+                    raise RuntimeError("Resource cache is not the current local player")
+                return current
         if cache.source != "persistent native player state":
             raise RuntimeError("历史资源地址缓存已禁用，请重新读取本地玩家 native 状态")
         current = self._native_resource_cache(None)
@@ -8936,6 +8882,9 @@ class War3Trainer:
         return current
 
     def locate_local_player_resource_cache(self, caches: list[ResourceCache] | None = None) -> ResourceCache:
+        if getattr(self, "_native_selection_unavailable", False):
+            with self._process_memory() as memory:
+                return self._classic_local_resource_cache(memory)
         # Local shortcuts target GetLocalPlayer, never the first row of the table.
         del caches
         return self._native_resource_cache(None)
@@ -9040,111 +8989,50 @@ class War3Trainer:
         mode = self._classic_thread_context.read_mode(pm)
         player = self._classic_object_registry.local_player_for_mode(pm, mode.value)
         direct = self._indexed_resource_cache_for_player(pm, player)
-        if direct is not None:
-            self._classic_resource_cache = direct
-            return direct
-        if self._classic_resource_cache is not None:
-            cached = self._classic_resource_cache
-            try:
-                owner_player = pm.read_u64(cached.owner_key + 0x90)
-            except OSError:
-                owner_player = 0
-            if owner_player == player:
-                return self._read_resource_cache_addresses(pm, cached)
-            self._classic_resource_cache = None
-        groups = self._resource_property_groups(pm, warm_unit_owner_index=False)
-        matches: list[tuple[int, ResourceCache]] = []
-        for group in groups.values():
-            for score, cache in self._resource_cache_candidates_from_group(group):
-                try:
-                    owner_player = pm.read_u64(cache.owner_key + 0x90)
-                except OSError:
-                    continue
-                if owner_player == player:
-                    matches.append((score, cache))
-        unique: dict[tuple[int, int], tuple[int, ResourceCache]] = {}
-        for score, cache in matches:
-            key = (cache.gold_address, cache.lumber_address)
-            if key not in unique or score > unique[key][0]:
-                unique[key] = (score, cache)
-        if not unique:
-            raise RuntimeError("3.0 local player resource group was not found")
-        _score, cache = max(unique.values(), key=lambda item: item[0])
-        cache = replace(cache, source="3.0 classic resource properties", player_value=0)
-        self._classic_resource_cache = cache
-        return self._read_resource_cache_addresses(pm, cache)
+        self._classic_resource_cache = direct
+        return direct
 
     def _indexed_resource_cache_for_player(
-        self, pm: ProcessMemory, player: int,
-    ) -> ResourceCache | None:
-        """Read 3.0 player properties through the verified object registry.
-
-        The property list belongs to the player owner, so this path does not
-        search private memory for resource tags.  Each property is checked by
-        its tag, owner back-link, packed kind and value field.
-        """
+        self, pm: ProcessMemory, player: int, player_id: int | None = None,
+    ) -> ResourceCache:
+        from war3_player_resources import SOURCE, read_player_properties
         registry = self._classic_object_registry
-        if registry is None:
-            return None
-        try:
-            full_handle = pm.read_u64(player + 0x18)
-            owner = registry.resolve_handle(pm, full_handle)
-            if pm.read_u64(owner + 0x18) != self.PLAYER_COMPONENT_TAG:
-                return None
-            prop_list = pm.read_u64(owner + 0xA0)
-            size = pm.read_u64(owner + 0xA8)
-        except OSError:
-            return None
-        if not self._sane_heap_ptr(prop_list) or not 0 < size <= 0x4000 or size % 8:
-            return None
-        properties: dict[int, tuple[int, int]] = {}
-        for offset in range(0, int(size), 8):
-            try:
-                prop = pm.read_u64(prop_list + offset)
-                if not self._sane_heap_ptr(prop):
-                    continue
-                if pm.read_u64(prop + 0x18) != self.RESOURCE_PROP_TAG:
-                    continue
-                if pm.read_u64(prop + 0x50) != owner:
-                    continue
-                packed_kind = pm.read_u64(prop + 0x20)
-                kind_low = packed_kind & 0xFFFFFFFF
-                kind_high = packed_kind >> 32
-                if kind_low != kind_high or kind_low > 0x1000:
-                    continue
-                value = pm.read_i32(prop + 0xD0)
-                properties[int(kind_low)] = (prop + 0xD0, value)
-            except OSError:
-                continue
-        player_id = properties.get(1 + 0x28 * 0)
-        # The property block is indexed by player slot; infer the block start
-        # from the selected player by testing the exact 0x28 stride.
-        starts = [kind for kind in properties if kind >= 1 and (kind - 1) % 0x28 == 0]
-        if len(starts) != 1:
-            return None
-        start = starts[0]
-        def field(delta: int):
-            return properties.get(start + delta, (0, 0))
-        gold_address, gold10 = field(2)
-        lumber_address, lumber10 = field(3)
-        # In 3.0 the two food fields follow the old block, but their semantic
-        # order is used (+5), cap (+6); the 2.0 reader had these reversed.
-        used_address, food_used = field(5)
-        cap_address, food_cap = field(6)
-        limit_address, food_limit = field(7)
-        if not gold_address or not lumber_address or not used_address or not cap_address \
-                or not 0 <= gold10 <= 100_000_000 \
-                or not 0 <= lumber10 <= 100_000_000:
-            return None
+        if player_id is None:
+            player_id = registry.players(pm).index(player)
+        owner, handle, states = read_player_properties(pm, registry, player, player_id)
+        gold_address, gold10 = states[1]
+        lumber_address, lumber10 = states[2]
+        cap_address, food_cap = states[4]
+        used_address, food_used = states[5]
+        limit_address, food_limit = states[6]
+        if not 0 <= gold10 <= 100_000_000 or not 0 <= lumber10 <= 100_000_000:
+            raise RuntimeError("Player resource values are outside supported bounds")
         return ResourceCache(
-            gold_address=gold_address, lumber_address=lumber_address,
-            gold=gold10 // 10, lumber=lumber10 // 10,
+            gold_address, lumber_address, gold10 // 10, lumber10 // 10,
             food_used_address=used_address, food_cap_address=cap_address,
             food_limit_address=limit_address, food_used=food_used,
             food_cap=food_cap, food_limit=food_limit,
-            block_start_kind=start, source="3.0 indexed player properties",
-            owner_key=owner, player_value=(start - 1) // 0x28, score=1000,
+            block_start_kind=1 + 0x28 * player_id, source=SOURCE,
+            owner_key=owner, player_value=player_id, score=1000,
+            player_handle=handle, process_id=self.pid,
         )
+
+    def _refresh_indexed_resource_cache(self, memory: ProcessMemory, cache: ResourceCache) -> ResourceCache:
+        from war3_player_resources import SOURCE
+        from war3_object_registry import ObjectRegistry24268
+        if cache.source != SOURCE or cache.process_id != self.pid or cache.player_handle is None:
+            raise RuntimeError("Resource cache belongs to another backend or process; reload resources")
+        registry = self._classic_object_registry or ObjectRegistry24268.attach(memory)
+        self._classic_object_registry = registry
+        players = registry.players(memory)
+        if not 0 <= cache.player_value < len(players):
+            raise RuntimeError("Resource player slot is no longer available")
+        current = self._indexed_resource_cache_for_player(memory, players[cache.player_value], cache.player_value)
+        identity = ("owner_key", "player_handle", "gold_address", "lumber_address",
+                    "food_used_address", "food_cap_address", "food_limit_address")
+        if any(getattr(current, name) != getattr(cache, name) for name in identity):
+            raise RuntimeError("Resource cache identity changed; reload resources")
+        return current
 
     def list_resource_caches(
         self, current_gold: int | None = None, current_lumber: int | None = None,
@@ -9155,21 +9043,13 @@ class War3Trainer:
                 from war3_object_registry import ObjectRegistry24268
                 registry = self._classic_object_registry or ObjectRegistry24268.attach(memory)
                 self._classic_object_registry = registry
-                direct_caches = []
-                for player in registry.players(memory):
-                    cache = self._indexed_resource_cache_for_player(memory, player)
-                    if cache is not None:
-                        direct_caches.append(self._read_resource_cache_addresses(memory, cache))
-                if direct_caches:
-                    self._resource_candidates_by_start = {}
-                    return direct_caches
-                groups = self._resource_property_groups(memory, warm_unit_owner_index=False)
-                caches = self._resource_caches_from_groups(
-                    groups, current_gold, current_lumber, current_food, current_food_cap,
-                )
-                if not caches:
-                    raise RuntimeError("3.0 resource property groups did not yield any resource caches")
-                return caches
+                direct_caches = [self._indexed_resource_cache_for_player(memory, player, slot)
+                                 for slot, player in enumerate(registry.players(memory))]
+                self._resource_candidates_by_start = {}
+                return [cache for cache in direct_caches if all(
+                    expected is None or actual == int(expected) for actual, expected in (
+                        (cache.gold, current_gold), (cache.lumber, current_lumber),
+                        (cache.food_used, current_food), (cache.food_cap, current_food_cap)))]
         handlers = self._query_native_table_handlers(("Player", "GetPlayerState"))
         caches = []
         # Three complete players per command (15 ops); empty slots are explicit
@@ -9201,6 +9081,9 @@ class War3Trainer:
         return replace(cache, gold=gold, lumber=lumber, food_used=food_used, food_cap=food_cap, food_limit=food_limit)
 
     def read_resource_cache_addresses(self, cache: ResourceCache) -> ResourceCache:
+        if getattr(self, "_native_selection_unavailable", False):
+            with self._process_memory() as memory:
+                return self._refresh_indexed_resource_cache(memory, cache)
         if cache.source not in ("persistent native player state", "3.0 indexed player properties"):
             raise RuntimeError("历史资源地址缓存已禁用，请重新读取本地玩家 native 状态")
         return self._native_resource_cache_for_player(cache.player_value)
@@ -9213,30 +9096,23 @@ class War3Trainer:
     ) -> ResourceCache:
         del sync_local_food_used, sync_local_food_cap
         if getattr(self, "_native_selection_unavailable", False):
-            targets = [(address, value) for address, value in (
-                (cache.gold_address, None if target_gold is None else int(target_gold) * 10),
-                (cache.lumber_address, None if target_lumber is None else int(target_lumber) * 10),
-                (cache.food_used_address, None if target_food_used is None else int(target_food_used)),
-                (cache.food_cap_address, None if target_food_cap is None else int(target_food_cap)),
+            targets = [(field, int(value), scale) for field, value, scale in (
+                ("gold", target_gold, 10), ("lumber", target_lumber, 10),
+                ("food_used", target_food_used, 1), ("food_cap", target_food_cap, 1),
             ) if value is not None]
             if not targets:
                 raise ValueError("至少填写一个目标资源值")
-            for address, value in targets:
-                if address <= 0 or not 0 <= value <= 100_000_000:
-                    raise ValueError("目标资源值超出允许范围")
+            if any(not 0 <= value <= (10_000_000 if scale == 10 else 1000)
+                   for _, value, scale in targets):
+                raise ValueError("目标资源值超出允许范围")
             with self._process_memory(write=True) as memory:
-                for address, value in targets:
-                    memory.write_i32(address, value)
-                refreshed = self._read_resource_cache_addresses(memory, cache)
-            expected = {
-                cache.gold_address: refreshed.gold * 10,
-                cache.lumber_address: refreshed.lumber * 10,
-                cache.food_used_address: refreshed.food_used,
-                cache.food_cap_address: refreshed.food_cap,
-            }
-            for address, value in targets:
-                if expected.get(address) != value:
-                    raise RuntimeError("3.0 资源写入读回不一致")
+                current = self._refresh_indexed_resource_cache(memory, cache)
+                for field, value, scale in targets:
+                    address = getattr(current, field + "_address")
+                    memory.write_i32(address, value * scale)
+                    if memory.read_i32(address) != value * scale:
+                        raise RuntimeError("Player resource write acknowledgment differs from request")
+                refreshed = self._refresh_indexed_resource_cache(memory, current)
             self._classic_resource_cache = refreshed
             return refreshed
         if cache.source not in ("persistent native player state", "3.0 indexed player properties"):
@@ -11637,27 +11513,13 @@ class War3Trainer:
         pm: ProcessMemory,
         owner: int,
     ) -> Iterable[tuple[str, int, int]]:
-        """Read the 3.0 component vector without searching process regions.
-
-        The vector starts at owner+0x158 and uses 0x158-byte wrapper slots.
-        Components are optional; a missing hero shifts later slots, which is
-        why we validate the tag/owner/data at every bounded slot.
-        """
+        from war3_object_registry import ObjectRegistry24268
+        from war3_unit_components import read_unit_components
         if not owner:
             return
-        for offset in range(0x158, 0x1200, 0x158):
-            wrapper = owner + offset
-            try:
-                tag = pm.read_u64(wrapper + 0x18)
-                name = self.COMPONENT_NAMES.get(tag)
-                if name is None or pm.read_u64(wrapper + 0x50) != owner:
-                    continue
-                data = pm.read_u64(wrapper + 0x90)
-                if not self._sane_heap_ptr(data) or not self._looks_like_vtable(pm.read_u64(wrapper)) \
-                        or not self._looks_like_vtable(pm.read_u64(data)):
-                    continue
-            except OSError:
-                continue
+        registry = self._classic_object_registry or ObjectRegistry24268.attach(pm)
+        self._classic_object_registry = registry
+        for name, (wrapper, data) in read_unit_components(pm, registry, owner, self.COMPONENT_NAMES).items():
             yield name, wrapper, data
 
     def _components_from_unit_object(
@@ -11720,6 +11582,11 @@ class War3Trainer:
     def _selected_components(self, pm: ProcessMemory, owner: int) -> dict[str, tuple[int, int]]:
         if not owner:
             return {}
+        if getattr(self, "_native_selection_unavailable", False):
+            # Read the live list every time: a valid cached subset can still
+            # miss components attached after the previous read.
+            return {name: (wrapper, data) for name, wrapper, data in
+                    self._iter_indexed_owner_component_wrappers(pm, owner)}
         components: dict[str, tuple[int, int]] = {}
         cache_key = self._owner_component_identity(pm, owner)
         if cache_key is None:
@@ -11742,11 +11609,6 @@ class War3Trainer:
             self._selected_components_cache[cache_key] = dict(direct)
             return direct
         wrapper_components: dict[str, tuple[int, int]] = {}
-        for name, wrapper, data in self._iter_indexed_owner_component_wrappers(pm, owner):
-            wrapper_components.setdefault(name, (wrapper, data))
-        if wrapper_components and set(wrapper_components) >= set(direct):
-            self._selected_components_cache[cache_key] = dict(wrapper_components)
-            return dict(wrapper_components)
         for name, wrapper, data in self._iter_owner_component_wrappers(pm, owner):
             wrapper_components.setdefault(name, (wrapper, data))
 
@@ -12085,7 +11947,7 @@ class War3Trainer:
             return None
         if unit != candidate.unit_address:
             return None
-        if rawcode != mirror_rawcode or not self._looks_like_rawcode(rawcode):
+        if rawcode != mirror_rawcode or not self._looks_like_item_rawcode(rawcode):
             return None
         return AbilityInstance(
             slot=0,
@@ -12181,6 +12043,24 @@ class War3Trainer:
     ) -> list[AbilityInstance]:
         if not candidate.owner_address or not candidate.unit_address:
             return []
+        if getattr(self, "_native_selection_unavailable", False):
+            from war3_unit_components import read_unit_component_nodes
+            from war3_object_registry import ObjectRegistry24268
+            registry = self._classic_object_registry or ObjectRegistry24268.attach(pm)
+            self._classic_object_registry = registry
+            component_rawcodes = {tag >> 32 for tag in self.COMPONENT_NAMES}
+            instances = []
+            for tag, wrapper, full, data in read_unit_component_nodes(pm, registry, candidate.owner_address):
+                # The owner list also contains task records (task/tskO/etc.).
+                # Ability class tags in this build start with A.
+                if tag >> 56 != ord("A") or tag >> 32 in component_rawcodes:
+                    continue
+                instance = self._ability_instance_from_wrapper(pm, candidate, wrapper, component_rawcodes)
+                if instance is None or (instance.handle, instance.data_address) != (full, data):
+                    raise RuntimeError("Ability metadata differs from current component list")
+                if required_rawcodes is None or instance.rawcode in required_rawcodes:
+                    instances.append(replace(instance, slot=len(instances) + 1))
+            return instances
         if (self._persistent_native_initialized or candidate.native_snapshot is not None
                 or candidate.selection_source == "persistent_native"):
             # Persistent native selection already identifies the live unit.
@@ -12262,6 +12142,16 @@ class War3Trainer:
     ) -> int:
         if not inventory_data or not candidate.unit_address:
             return 0
+        if getattr(self, "_native_selection_unavailable", False):
+            # AInv is the wrapper class. The actual ability rawcode may be
+            # AInv, Aihn or map-defined; it does not change the list identity.
+            if pm.read_u64(inventory_data + 0x68) != candidate.unit_address:
+                raise RuntimeError("Inventory component changed unit")
+            capacity = pm.read_u64(inventory_data + 0xD0)
+            count = pm.read_u64(inventory_data + 0xE0)
+            if capacity != 6 or count != 6:
+                raise RuntimeError("Inventory slot layout differs from verified six-slot record")
+            return inventory_data
         for offset in range(0, 0x4000, 0x210):
             record = inventory_data + offset
             try:
@@ -12764,35 +12654,42 @@ class War3Trainer:
                 self._append_unit_field(pm, fields, "xp", "经验值", "i32", data + 0x100, "英雄")
                 self._append_unit_field(pm, fields, "base_strength", "力量(基础)", "i32", data + 0x108, "英雄")
                 self._append_unit_field(pm, fields, "base_agility", "敏捷(基础)", "i32", data + 0x130, "英雄")
-                try:
-                    base_intelligence, total_intelligence = self._get_hero_intelligence_pair_via_native_internal(pm, candidate)
-                    fields.append(
-                        UnitMemoryField(
-                            key="intelligence_total",
-                            label="智力(当前总值)",
-                            value_type="i32",
-                            value=total_intelligence,
-                            address=data + 0x118,
-                            category="英雄",
-                            write_address=data + 0x118,
-                            write_type="i32",
-                            note=(
-                                "内部 GetHeroInt 真实总智力；写入通过内部 SetHeroInt；"
-                                f"基础智力={base_intelligence}"
-                            ),
-                        )
-                    )
-                except Exception as exc:
+                if getattr(self, "_native_selection_unavailable", False):
                     self._append_unit_field(
-                        pm,
-                        fields,
-                        "intelligence_total",
-                        "智力(当前总值候选)",
-                        "f32",
-                        data + 0x118,
-                        "英雄",
-                        note=f"内部 GetHeroInt 读取失败，暂用旧缓存候选：{exc}",
+                        pm, fields, "intelligence_total", "智力(当前总值候选)", "f32",
+                        data + 0x118, "英雄",
+                        note="3.0 hero attribute cache; engine setter validation pending",
                     )
+                else:
+                    try:
+                        base_intelligence, total_intelligence = self._get_hero_intelligence_pair_via_native_internal(pm, candidate)
+                        fields.append(
+                            UnitMemoryField(
+                                key="intelligence_total",
+                                label="智力(当前总值)",
+                                value_type="i32",
+                                value=total_intelligence,
+                                address=data + 0x118,
+                                category="英雄",
+                                write_address=data + 0x118,
+                                write_type="i32",
+                                note=(
+                                    "内部 GetHeroInt 真实总智力；写入通过内部 SetHeroInt；"
+                                    f"基础智力={base_intelligence}"
+                                ),
+                            )
+                        )
+                    except Exception as exc:
+                        self._append_unit_field(
+                            pm,
+                            fields,
+                            "intelligence_total",
+                            "智力(当前总值候选)",
+                            "f32",
+                            data + 0x118,
+                            "英雄",
+                            note=f"内部 GetHeroInt 读取失败，暂用旧缓存候选：{exc}",
+                        )
             self._append_unit_field(pm, fields, "skill_points", "技能点", "i32", data + 0x104, "英雄")
             growth_note = "英雄组件成长值，不是面板装备/光环加成"
             self._append_unit_field(pm, fields, "strength_growth", "力量成长/级", "f32", data + 0x188, "英雄", note=growth_note)
@@ -14993,7 +14890,10 @@ def run_gui() -> None:
             if busy_widget is not None:
                 busy_widget.state(["!disabled"])
             if exc is not None:
-                messagebox.showerror(ui_text("错误"), ui_text(str(exc)))
+                details = str(exc)
+                if getattr(exc, "__notes__", None):
+                    details += "\n\n" + "\n".join(exc.__notes__)
+                messagebox.showerror(ui_text("错误"), ui_text(details))
                 set_status(f"失败：{exc}")
             elif result:
                 set_status(result)
@@ -15005,6 +14905,15 @@ def run_gui() -> None:
                 with operation_lock:
                     result = fn()
             except Exception as exc:
+                try:
+                    current_trainer = state.get("trainer")
+                    path = record_operation_failure(
+                        getattr(current_trainer, "pid", 0),
+                        operation_key or getattr(fn, "__name__", "operation"), exc,
+                    )
+                    exc.add_note("Diagnostic log: " + path)
+                except Exception as log_error:
+                    exc.add_note("Diagnostic log failed: " + repr(log_error))
                 root.after(0, finish, None, exc)
             else:
                 root.after(0, finish, result, None)
@@ -15015,16 +14924,20 @@ def run_gui() -> None:
     def trainer() -> War3Trainer:
         obj = state.get("trainer")
         if obj is None:
-            obj = War3Trainer()
+            obj = War3Trainer(pid=int(pid_var.get()) if pid_var.get().strip() else None)
             state["trainer"] = obj
         else:
             assert isinstance(obj, War3Trainer)
-            obj.refresh_window(allow_pid_change=True)
+            obj.refresh_window(allow_pid_change=False)
         root.after(0, pid_var.set, str(obj.pid))
         return obj
 
     def connect() -> str:
-        state["trainer"] = War3Trainer()
+        replacement = War3Trainer(pid=int(pid_var.get()) if pid_var.get().strip() else None)
+        previous = state.get("trainer")
+        if previous is not None:
+            previous.close()
+        state["trainer"] = replacement
         root.after(0, pid_var.set, str(state["trainer"].pid))
         return f"已连接 Warcraft III，PID {state['trainer'].pid}"
 
@@ -17181,7 +17094,7 @@ def run_gui() -> None:
         command=refresh_elephant_hotkeys,
     ).pack(side="left", padx=(12, 0))
     ttk.Label(top, text="PID").pack(side="left", padx=(16, 4))
-    ttk.Entry(top, textvariable=pid_var, width=10, state="readonly").pack(side="left")
+    ttk.Entry(top, textvariable=pid_var, width=10).pack(side="left")
     ttk.Label(
         top,
         text="大象功能灵感来源于经典版大象修改器，本软件完全免费，谨防倒卖",

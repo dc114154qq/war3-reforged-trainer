@@ -35,6 +35,7 @@ def detect_ui_language(locale_name: str | None = None) -> str:
 
 
 _EN_TRANSLATIONS = {
+    "3.0 选中组坐标写入读回不一致": "3.0 selected group position write readback mismatch",
     "3.0 坐标写入读回不一致：": "3.0 position write readback mismatch: ",
     "3.0 物品数量写入读回不一致": "3.0 item charge write readback mismatch",
     "3.0 英雄属性写入读回不一致：": "3.0 hero attribute write readback mismatch: ",

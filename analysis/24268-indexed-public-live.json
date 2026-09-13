@@ -1,0 +1,1206 @@
+{
+  "pid": 32868,
+  "captured_utc": "2026-09-13T11:44:55.271676+00:00",
+  "read_only": false,
+  "ok": true,
+  "scope": "One live 24268 process. Writes establish field roundtrip, not engine-side notifications. No cross-device, 24-unit or native execution claim.",
+  "resource_list_ms": 46.513299999787705,
+  "groups": [
+    {
+      "gold_address": 1990053908176,
+      "lumber_address": 1990053908400,
+      "gold": 997469,
+      "lumber": 999839,
+      "food_used_address": 1990053909072,
+      "food_cap_address": 1990053908848,
+      "food_limit_address": 1990053909296,
+      "food_used": 38,
+      "food_cap": 72,
+      "food_limit": 100,
+      "block_start_kind": 1,
+      "source": "3.0 indexed player properties",
+      "owner_key": 1990051936096,
+      "header_value": 0,
+      "player_value": 0,
+      "score": 1000,
+      "player_handle": 0,
+      "process_id": 32868
+    },
+    {
+      "gold_address": 1990053916464,
+      "lumber_address": 1990053916688,
+      "gold": 997149,
+      "lumber": 999591,
+      "food_used_address": 1990053917360,
+      "food_cap_address": 1990053917136,
+      "food_limit_address": 1990053917584,
+      "food_used": 40,
+      "food_cap": 41,
+      "food_limit": 100,
+      "block_start_kind": 41,
+      "source": "3.0 indexed player properties",
+      "owner_key": 1990051936784,
+      "header_value": 0,
+      "player_value": 1,
+      "score": 1000,
+      "player_handle": 171798691880,
+      "process_id": 32868
+    },
+    {
+      "gold_address": 1990053924768,
+      "lumber_address": 1990053924992,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used_address": 1990053925664,
+      "food_cap_address": 1990053925440,
+      "food_limit_address": 1990053925888,
+      "food_used": 0,
+      "food_cap": 0,
+      "food_limit": 100,
+      "block_start_kind": 81,
+      "source": "3.0 indexed player properties",
+      "owner_key": 1990051937472,
+      "header_value": 0,
+      "player_value": 2,
+      "score": 1000,
+      "player_handle": 343597383760,
+      "process_id": 32868
+    },
+    {
+      "gold_address": 1990053933056,
+      "lumber_address": 1990053933280,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used_address": 1990053933952,
+      "food_cap_address": 1990053933728,
+      "food_limit_address": 1990053934176,
+      "food_used": 0,
+      "food_cap": 0,
+      "food_limit": 100,
+      "block_start_kind": 121,
+      "source": "3.0 indexed player properties",
+      "owner_key": 1990051938160,
+      "header_value": 0,
+      "player_value": 3,
+      "score": 1000,
+      "player_handle": 515396075640,
+      "process_id": 32868
+    },
+    {
+      "gold_address": 1990053774656,
+      "lumber_address": 1990053774880,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used_address": 1990053775552,
+      "food_cap_address": 1990053775328,
+      "food_limit_address": 1990053775776,
+      "food_used": 0,
+      "food_cap": 0,
+      "food_limit": 100,
+      "block_start_kind": 161,
+      "source": "3.0 indexed player properties",
+      "owner_key": 1990051938848,
+      "header_value": 0,
+      "player_value": 4,
+      "score": 1000,
+      "player_handle": 687194767520,
+      "process_id": 32868
+    },
+    {
+      "gold_address": 1990053782944,
+      "lumber_address": 1990053783168,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used_address": 1990053783840,
+      "food_cap_address": 1990053783616,
+      "food_limit_address": 1990053784064,
+      "food_used": 0,
+      "food_cap": 0,
+      "food_limit": 100,
+      "block_start_kind": 201,
+      "source": "3.0 indexed player properties",
+      "owner_key": 1990051939536,
+      "header_value": 0,
+      "player_value": 5,
+      "score": 1000,
+      "player_handle": 858993459400,
+      "process_id": 32868
+    },
+    {
+      "gold_address": 1990053791248,
+      "lumber_address": 1990053791472,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used_address": 1990053792144,
+      "food_cap_address": 1990053791920,
+      "food_limit_address": 1990053792368,
+      "food_used": 0,
+      "food_cap": 0,
+      "food_limit": 100,
+      "block_start_kind": 241,
+      "source": "3.0 indexed player properties",
+      "owner_key": 1990051940224,
+      "header_value": 0,
+      "player_value": 6,
+      "score": 1000,
+      "player_handle": 1030792151280,
+      "process_id": 32868
+    },
+    {
+      "gold_address": 1990053799552,
+      "lumber_address": 1990053799776,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used_address": 1990053800448,
+      "food_cap_address": 1990053800224,
+      "food_limit_address": 1990053800672,
+      "food_used": 0,
+      "food_cap": 0,
+      "food_limit": 100,
+      "block_start_kind": 281,
+      "source": "3.0 indexed player properties",
+      "owner_key": 1990051940912,
+      "header_value": 0,
+      "player_value": 7,
+      "score": 1000,
+      "player_handle": 1202590843160,
+      "process_id": 32868
+    },
+    {
+      "gold_address": 1990053807840,
+      "lumber_address": 1990053808064,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used_address": 1990053808736,
+      "food_cap_address": 1990053808512,
+      "food_limit_address": 1990053808960,
+      "food_used": 0,
+      "food_cap": 0,
+      "food_limit": 100,
+      "block_start_kind": 321,
+      "source": "3.0 indexed player properties",
+      "owner_key": 1990051941600,
+      "header_value": 0,
+      "player_value": 8,
+      "score": 1000,
+      "player_handle": 1374389535040,
+      "process_id": 32868
+    },
+    {
+      "gold_address": 1990053816144,
+      "lumber_address": 1990053816368,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used_address": 1990053817040,
+      "food_cap_address": 1990053816816,
+      "food_limit_address": 1990053817264,
+      "food_used": 0,
+      "food_cap": 0,
+      "food_limit": 100,
+      "block_start_kind": 361,
+      "source": "3.0 indexed player properties",
+      "owner_key": 1990051942288,
+      "header_value": 0,
+      "player_value": 9,
+      "score": 1000,
+      "player_handle": 1546188226920,
+      "process_id": 32868
+    },
+    {
+      "gold_address": 1990053824432,
+      "lumber_address": 1990053824656,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used_address": 1990053825328,
+      "food_cap_address": 1990053825104,
+      "food_limit_address": 1990053825552,
+      "food_used": 0,
+      "food_cap": 0,
+      "food_limit": 100,
+      "block_start_kind": 401,
+      "source": "3.0 indexed player properties",
+      "owner_key": 1990051942976,
+      "header_value": 0,
+      "player_value": 10,
+      "score": 1000,
+      "player_handle": 1717986918800,
+      "process_id": 32868
+    },
+    {
+      "gold_address": 1990053832736,
+      "lumber_address": 1990053832960,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used_address": 1990053833632,
+      "food_cap_address": 1990053833408,
+      "food_limit_address": 1990053833856,
+      "food_used": 0,
+      "food_cap": 0,
+      "food_limit": 100,
+      "block_start_kind": 441,
+      "source": "3.0 indexed player properties",
+      "owner_key": 1990051943664,
+      "header_value": 0,
+      "player_value": 11,
+      "score": 1000,
+      "player_handle": 1889785610680,
+      "process_id": 32868
+    },
+    {
+      "gold_address": 1990053841024,
+      "lumber_address": 1990053841248,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used_address": 1990053841936,
+      "food_cap_address": 1990053841712,
+      "food_limit_address": 1990053842160,
+      "food_used": 0,
+      "food_cap": 0,
+      "food_limit": 100,
+      "block_start_kind": 481,
+      "source": "3.0 indexed player properties",
+      "owner_key": 1990051944352,
+      "header_value": 0,
+      "player_value": 12,
+      "score": 1000,
+      "player_handle": 2061584302560,
+      "process_id": 32868
+    },
+    {
+      "gold_address": 1990053849328,
+      "lumber_address": 1990053849552,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used_address": 1990053850224,
+      "food_cap_address": 1990053850000,
+      "food_limit_address": 1990053850448,
+      "food_used": 0,
+      "food_cap": 0,
+      "food_limit": 100,
+      "block_start_kind": 521,
+      "source": "3.0 indexed player properties",
+      "owner_key": 1990051945040,
+      "header_value": 0,
+      "player_value": 13,
+      "score": 1000,
+      "player_handle": 2233382994440,
+      "process_id": 32868
+    },
+    {
+      "gold_address": 1990157032192,
+      "lumber_address": 1990157032416,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used_address": 1990157033088,
+      "food_cap_address": 1990157032864,
+      "food_limit_address": 1990157033312,
+      "food_used": 0,
+      "food_cap": 0,
+      "food_limit": 100,
+      "block_start_kind": 561,
+      "source": "3.0 indexed player properties",
+      "owner_key": 1990051945728,
+      "header_value": 0,
+      "player_value": 14,
+      "score": 1000,
+      "player_handle": 2405181686320,
+      "process_id": 32868
+    },
+    {
+      "gold_address": 1990157040480,
+      "lumber_address": 1990157040704,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used_address": 1990157041376,
+      "food_cap_address": 1990157041152,
+      "food_limit_address": 1990157041600,
+      "food_used": 0,
+      "food_cap": 0,
+      "food_limit": 100,
+      "block_start_kind": 601,
+      "source": "3.0 indexed player properties",
+      "owner_key": 1990051946416,
+      "header_value": 0,
+      "player_value": 15,
+      "score": 1000,
+      "player_handle": 2576980378200,
+      "process_id": 32868
+    },
+    {
+      "gold_address": 1990157048784,
+      "lumber_address": 1990157049008,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used_address": 1990157049680,
+      "food_cap_address": 1990157049456,
+      "food_limit_address": 1990157049904,
+      "food_used": 0,
+      "food_cap": 0,
+      "food_limit": 100,
+      "block_start_kind": 641,
+      "source": "3.0 indexed player properties",
+      "owner_key": 1990051947104,
+      "header_value": 0,
+      "player_value": 16,
+      "score": 1000,
+      "player_handle": 2748779070080,
+      "process_id": 32868
+    },
+    {
+      "gold_address": 1990157057072,
+      "lumber_address": 1990157057296,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used_address": 1990157057968,
+      "food_cap_address": 1990157057744,
+      "food_limit_address": 1990157058192,
+      "food_used": 0,
+      "food_cap": 0,
+      "food_limit": 100,
+      "block_start_kind": 681,
+      "source": "3.0 indexed player properties",
+      "owner_key": 1990051947792,
+      "header_value": 0,
+      "player_value": 17,
+      "score": 1000,
+      "player_handle": 2920577761960,
+      "process_id": 32868
+    },
+    {
+      "gold_address": 1990157065376,
+      "lumber_address": 1990157065600,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used_address": 1990157066272,
+      "food_cap_address": 1990157066048,
+      "food_limit_address": 1990157066496,
+      "food_used": 0,
+      "food_cap": 0,
+      "food_limit": 100,
+      "block_start_kind": 721,
+      "source": "3.0 indexed player properties",
+      "owner_key": 1990051948480,
+      "header_value": 0,
+      "player_value": 18,
+      "score": 1000,
+      "player_handle": 3092376453840,
+      "process_id": 32868
+    },
+    {
+      "gold_address": 1990157073680,
+      "lumber_address": 1990157073904,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used_address": 1990157074576,
+      "food_cap_address": 1990157074352,
+      "food_limit_address": 1990157074800,
+      "food_used": 0,
+      "food_cap": 0,
+      "food_limit": 100,
+      "block_start_kind": 761,
+      "source": "3.0 indexed player properties",
+      "owner_key": 1990051949168,
+      "header_value": 0,
+      "player_value": 19,
+      "score": 1000,
+      "player_handle": 3264175145720,
+      "process_id": 32868
+    },
+    {
+      "gold_address": 1990157081968,
+      "lumber_address": 1990157082192,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used_address": 1990157082864,
+      "food_cap_address": 1990157082640,
+      "food_limit_address": 1990157083088,
+      "food_used": 0,
+      "food_cap": 0,
+      "food_limit": 100,
+      "block_start_kind": 801,
+      "source": "3.0 indexed player properties",
+      "owner_key": 1990051949856,
+      "header_value": 0,
+      "player_value": 20,
+      "score": 1000,
+      "player_handle": 3435973837600,
+      "process_id": 32868
+    },
+    {
+      "gold_address": 1990157090272,
+      "lumber_address": 1990157090496,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used_address": 1990157091168,
+      "food_cap_address": 1990157090944,
+      "food_limit_address": 1990157091392,
+      "food_used": 0,
+      "food_cap": 0,
+      "food_limit": 100,
+      "block_start_kind": 841,
+      "source": "3.0 indexed player properties",
+      "owner_key": 1990051950544,
+      "header_value": 0,
+      "player_value": 21,
+      "score": 1000,
+      "player_handle": 3607772529480,
+      "process_id": 32868
+    },
+    {
+      "gold_address": 1990157098560,
+      "lumber_address": 1990157098784,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used_address": 1990157099456,
+      "food_cap_address": 1990157099232,
+      "food_limit_address": 1990157099680,
+      "food_used": 0,
+      "food_cap": 0,
+      "food_limit": 100,
+      "block_start_kind": 881,
+      "source": "3.0 indexed player properties",
+      "owner_key": 1990051951232,
+      "header_value": 0,
+      "player_value": 22,
+      "score": 1000,
+      "player_handle": 3779571221360,
+      "process_id": 32868
+    },
+    {
+      "gold_address": 1990157106864,
+      "lumber_address": 1990157107088,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used_address": 1990157107760,
+      "food_cap_address": 1990157107536,
+      "food_limit_address": 1990157107984,
+      "food_used": 0,
+      "food_cap": 0,
+      "food_limit": 100,
+      "block_start_kind": 921,
+      "source": "3.0 indexed player properties",
+      "owner_key": 1990051951920,
+      "header_value": 0,
+      "player_value": 23,
+      "score": 1000,
+      "player_handle": 3951369913240,
+      "process_id": 32868
+    },
+    {
+      "gold_address": 1990157115152,
+      "lumber_address": 1990157115376,
+      "gold": 0,
+      "lumber": 0,
+      "food_used_address": 1990157116048,
+      "food_cap_address": 1990157115824,
+      "food_limit_address": 1990157116272,
+      "food_used": 150,
+      "food_cap": 0,
+      "food_limit": 100,
+      "block_start_kind": 961,
+      "source": "3.0 indexed player properties",
+      "owner_key": 1990051952608,
+      "header_value": 0,
+      "player_value": 24,
+      "score": 1000,
+      "player_handle": 4123168605120,
+      "process_id": 32868
+    },
+    {
+      "gold_address": 1990055534016,
+      "lumber_address": 1990055534240,
+      "gold": 0,
+      "lumber": 0,
+      "food_used_address": 1990055534912,
+      "food_cap_address": 1990055534688,
+      "food_limit_address": 1990055535136,
+      "food_used": 0,
+      "food_cap": 0,
+      "food_limit": 100,
+      "block_start_kind": 1001,
+      "source": "3.0 indexed player properties",
+      "owner_key": 1990051953296,
+      "header_value": 0,
+      "player_value": 25,
+      "score": 1000,
+      "player_handle": 4294967297000,
+      "process_id": 32868
+    },
+    {
+      "gold_address": 1990055542320,
+      "lumber_address": 1990055542544,
+      "gold": 0,
+      "lumber": 0,
+      "food_used_address": 1990055543216,
+      "food_cap_address": 1990055542992,
+      "food_limit_address": 1990055543440,
+      "food_used": 0,
+      "food_cap": 0,
+      "food_limit": 100,
+      "block_start_kind": 1041,
+      "source": "3.0 indexed player properties",
+      "owner_key": 1990051953984,
+      "header_value": 0,
+      "player_value": 26,
+      "score": 1000,
+      "player_handle": 4466765988880,
+      "process_id": 32868
+    },
+    {
+      "gold_address": 1990055550608,
+      "lumber_address": 1990055550832,
+      "gold": 0,
+      "lumber": 0,
+      "food_used_address": 1990055551504,
+      "food_cap_address": 1990055551280,
+      "food_limit_address": 1990055551728,
+      "food_used": 0,
+      "food_cap": 0,
+      "food_limit": 100,
+      "block_start_kind": 1081,
+      "source": "3.0 indexed player properties",
+      "owner_key": 1990051954672,
+      "header_value": 0,
+      "player_value": 27,
+      "score": 1000,
+      "player_handle": 4638564680760,
+      "process_id": 32868
+    }
+  ],
+  "local": {
+    "gold_address": 1990053908176,
+    "lumber_address": 1990053908400,
+    "gold": 997469,
+    "lumber": 999839,
+    "food_used_address": 1990053909072,
+    "food_cap_address": 1990053908848,
+    "food_limit_address": 1990053909296,
+    "food_used": 38,
+    "food_cap": 72,
+    "food_limit": 100,
+    "block_start_kind": 1,
+    "source": "3.0 indexed player properties",
+    "owner_key": 1990051936096,
+    "header_value": 0,
+    "player_value": 0,
+    "score": 1000,
+    "player_handle": 0,
+    "process_id": 32868
+  },
+  "selected_fields_ms": 39.025300000503194,
+  "selected_count": 15,
+  "field_count": 77,
+  "fields": [
+    {
+      "key": "hp_max",
+      "value": 650.0
+    },
+    {
+      "key": "hp_current",
+      "value": 650.0
+    },
+    {
+      "key": "hp_regen",
+      "value": 1.3499999046325684
+    },
+    {
+      "key": "mp_max",
+      "value": 255.0
+    },
+    {
+      "key": "mp_current",
+      "value": 255.0
+    },
+    {
+      "key": "mp_regen",
+      "value": 0.8499999642372131
+    },
+    {
+      "key": "x",
+      "value": 316.5153503417969
+    },
+    {
+      "key": "y",
+      "value": 384.0969543457031
+    },
+    {
+      "key": "move_speed",
+      "value": 300.0
+    },
+    {
+      "key": "armor",
+      "value": 8.668953404718216e-17
+    },
+    {
+      "key": "armor_type",
+      "value": 0
+    },
+    {
+      "key": "xp",
+      "value": 0
+    },
+    {
+      "key": "base_strength",
+      "value": 22
+    },
+    {
+      "key": "base_agility",
+      "value": 13
+    },
+    {
+      "key": "intelligence_total",
+      "value": 22.0
+    },
+    {
+      "key": "skill_points",
+      "value": 0
+    },
+    {
+      "key": "strength_growth",
+      "value": 2.700000047683716
+    },
+    {
+      "key": "intelligence_growth",
+      "value": 1.8000000715255737
+    },
+    {
+      "key": "agility_growth",
+      "value": 1.5000001192092896
+    },
+    {
+      "key": "skill1_name",
+      "value": 1
+    },
+    {
+      "key": "skill1_cache_rawcode",
+      "value": 1095264354
+    },
+    {
+      "key": "skill1_learnable",
+      "value": 1095264354
+    },
+    {
+      "key": "skill1_requirement",
+      "value": 3
+    },
+    {
+      "key": "skill2_name",
+      "value": 1
+    },
+    {
+      "key": "skill2_cache_rawcode",
+      "value": 1095263347
+    },
+    {
+      "key": "skill2_learnable",
+      "value": 1095263347
+    },
+    {
+      "key": "skill2_requirement",
+      "value": 3
+    },
+    {
+      "key": "skill3_name",
+      "value": 6
+    },
+    {
+      "key": "skill3_cache_rawcode",
+      "value": 1095266917
+    },
+    {
+      "key": "skill3_learnable",
+      "value": 1095266917
+    },
+    {
+      "key": "skill3_requirement",
+      "value": 1
+    },
+    {
+      "key": "skill4_name",
+      "value": 1
+    },
+    {
+      "key": "skill4_cache_rawcode",
+      "value": 1095262564
+    },
+    {
+      "key": "skill4_learnable",
+      "value": 1095262564
+    },
+    {
+      "key": "skill4_requirement",
+      "value": 3
+    },
+    {
+      "key": "skill5_name",
+      "value": 0
+    },
+    {
+      "key": "skill5_cache_rawcode",
+      "value": 0
+    },
+    {
+      "key": "skill5_learnable",
+      "value": 0
+    },
+    {
+      "key": "skill5_requirement",
+      "value": 0
+    },
+    {
+      "key": "ability_01_rawcode",
+      "value": 1095264354
+    },
+    {
+      "key": "ability_01_effect_class",
+      "value": 1095264354
+    },
+    {
+      "key": "ability_01_data_vtable",
+      "value": 140699453259416
+    },
+    {
+      "key": "ability_01_data_cache",
+      "value": 1988578362344
+    },
+    {
+      "key": "ability_02_rawcode",
+      "value": 1095332976
+    },
+    {
+      "key": "ability_02_effect_class",
+      "value": 1095332976
+    },
+    {
+      "key": "ability_02_data_vtable",
+      "value": 140699451662472
+    },
+    {
+      "key": "ability_02_data_cache",
+      "value": 1988578357984
+    },
+    {
+      "key": "attack1_multiplier",
+      "value": 6
+    },
+    {
+      "key": "attack1_multiplier_cache",
+      "value": 6
+    },
+    {
+      "key": "attack1_dice",
+      "value": 2
+    },
+    {
+      "key": "attack1_base1",
+      "value": 22
+    },
+    {
+      "key": "attack1_base2",
+      "value": 22
+    },
+    {
+      "key": "attack1_dice_cache",
+      "value": 2
+    },
+    {
+      "key": "attack1_internal_bonus1",
+      "value": 0
+    },
+    {
+      "key": "attack1_internal_bonus2",
+      "value": 0
+    },
+    {
+      "key": "attack1_sound",
+      "value": 2
+    },
+    {
+      "key": "attack1_damage_loss_factor",
+      "value": 0.0
+    },
+    {
+      "key": "attack1_type",
+      "value": 32759
+    },
+    {
+      "key": "attack1_max_targets",
+      "value": 2
+    },
+    {
+      "key": "attack1_interval",
+      "value": 8.668963992630057e-17
+    },
+    {
+      "key": "attack1_first_delay",
+      "value": 2.0
+    },
+    {
+      "key": "attack1_acquire_range",
+      "value": 0.0
+    },
+    {
+      "key": "attack1_projectile_speed",
+      "value": 500.0
+    },
+    {
+      "key": "attack1_range",
+      "value": 0.0
+    },
+    {
+      "key": "attack1_range_buffer",
+      "value": 100.0
+    },
+    {
+      "key": "inventory_slot_1",
+      "value": 1937012592
+    },
+    {
+      "key": "inventory_slot_1_charges",
+      "value": 1
+    },
+    {
+      "key": "inventory_slot_2",
+      "value": 0
+    },
+    {
+      "key": "inventory_slot_2_charges",
+      "value": 0
+    },
+    {
+      "key": "inventory_slot_3",
+      "value": 0
+    },
+    {
+      "key": "inventory_slot_3_charges",
+      "value": 0
+    },
+    {
+      "key": "inventory_slot_4",
+      "value": 0
+    },
+    {
+      "key": "inventory_slot_4_charges",
+      "value": 0
+    },
+    {
+      "key": "inventory_slot_5",
+      "value": 0
+    },
+    {
+      "key": "inventory_slot_5_charges",
+      "value": 0
+    },
+    {
+      "key": "inventory_slot_6",
+      "value": 0
+    },
+    {
+      "key": "inventory_slot_6_charges",
+      "value": 0
+    }
+  ],
+  "unit_components": [
+    {
+      "unit": "0x1cf58830f70",
+      "components": {
+        "inventory": [
+          1990334254904,
+          1990055370456
+        ],
+        "hero": [
+          1990334199520,
+          1990052422048
+        ],
+        "attack": [
+          1990390850152,
+          1989974985896
+        ],
+        "move": [
+          1990390899344,
+          1990053266536
+        ]
+      }
+    },
+    {
+      "unit": "0x1cf58840260",
+      "components": {
+        "inventory": [
+          1990328217688,
+          1990055373712
+        ],
+        "attack": [
+          1990328295776,
+          1989975010376
+        ],
+        "move": [
+          1990328283048,
+          1990053272248
+        ]
+      }
+    },
+    {
+      "unit": "0x1cf58840bb8",
+      "components": {
+        "inventory": [
+          1990328136160,
+          1990055374008
+        ],
+        "attack": [
+          1990328133064,
+          1989975012008
+        ],
+        "move": [
+          1990328209776,
+          1990053272656
+        ]
+      }
+    },
+    {
+      "unit": "0x1cf5883d3a8",
+      "components": {
+        "inventory": [
+          1990334239768,
+          1990055372528
+        ],
+        "attack": [
+          1990328185352,
+          1989975003848
+        ],
+        "move": [
+          1990328188104,
+          1990053270616
+        ]
+      }
+    },
+    {
+      "unit": "0x1cf5883ca50",
+      "components": {
+        "inventory": [
+          1990328203928,
+          1990055372232
+        ],
+        "attack": [
+          1990328172280,
+          1989975002216
+        ],
+        "move": [
+          1990328186384,
+          1990053270208
+        ]
+      }
+    },
+    {
+      "unit": "0x1cf58839b98",
+      "components": {
+        "inventory": [
+          1990334129344,
+          1990055371936
+        ],
+        "attack": [
+          1990328299904,
+          1989974998952
+        ],
+        "move": [
+          1990334125216,
+          1990053269800
+        ]
+      }
+    },
+    {
+      "unit": "0x1cf5883efb0",
+      "components": {
+        "inventory": [
+          1990328283736,
+          1990055373120
+        ],
+        "attack": [
+          1990328239360,
+          1989975007112
+        ],
+        "move": [
+          1990334240456,
+          1990053271432
+        ]
+      }
+    },
+    {
+      "unit": "0x1cf58841e68",
+      "components": {
+        "inventory": [
+          1990328234544,
+          1990055374600
+        ],
+        "attack": [
+          1990328215280,
+          1989975015272
+        ],
+        "move": [
+          1990328284080,
+          1990053273472
+        ]
+      }
+    },
+    {
+      "unit": "0x1cf58832b78",
+      "components": {
+        "inventory": [
+          1990334134160,
+          1990055371048
+        ],
+        "attack": [
+          1990334197112,
+          1989974989160
+        ],
+        "move": [
+          1990334236672,
+          1990053267352
+        ]
+      }
+    },
+    {
+      "unit": "0x1cf588318c8",
+      "components": {
+        "inventory": [
+          1990328268256,
+          1990055370752
+        ],
+        "attack": [
+          1990328271696,
+          1989974987528
+        ],
+        "move": [
+          1990328274104,
+          1990053266944
+        ]
+      }
+    },
+    {
+      "unit": "0x1cf5882ea10",
+      "components": {
+        "inventory": [
+          1990334089784,
+          1990055369272
+        ],
+        "attack": [
+          1990334091160,
+          1989974979368
+        ],
+        "move": [
+          1990334109048,
+          1990053264904
+        ]
+      }
+    },
+    {
+      "unit": "0x1cf5882d760",
+      "components": {
+        "inventory": [
+          1990334113176,
+          1990055368976
+        ],
+        "attack": [
+          1990390883864,
+          1989974976104
+        ],
+        "move": [
+          1990334109392,
+          1990053264088
+        ]
+      }
+    },
+    {
+      "unit": "0x1cf5882fcc0",
+      "components": {
+        "inventory": [
+          1990390895216,
+          1990055369864
+        ],
+        "attack": [
+          1990390910008,
+          1989974982632
+        ],
+        "move": [
+          1990390894528,
+          1990053265720
+        ]
+      }
+    },
+    {
+      "unit": "0x1cf58830618",
+      "components": {
+        "inventory": [
+          1990390901752,
+          1990055370160
+        ],
+        "attack": [
+          1990334100448,
+          1989974984264
+        ],
+        "move": [
+          1990328295088,
+          1990053266128
+        ]
+      }
+    },
+    {
+      "unit": "0x1cf5882bb58",
+      "components": {
+        "inventory": [
+          1990390865288,
+          1990055368680
+        ],
+        "attack": [
+          1990334205712,
+          1989974971208
+        ],
+        "move": [
+          1990390859440,
+          1990053263272
+        ]
+      }
+    }
+  ],
+  "write_ms": 11.862499999551801,
+  "write_after": {
+    "gold_address": 1990053908176,
+    "lumber_address": 1990053908400,
+    "gold": 997470,
+    "lumber": 999840,
+    "food_used_address": 1990053909072,
+    "food_cap_address": 1990053908848,
+    "food_limit_address": 1990053909296,
+    "food_used": 38,
+    "food_cap": 72,
+    "food_limit": 100,
+    "block_start_kind": 1,
+    "source": "3.0 indexed player properties",
+    "owner_key": 1990051936096,
+    "header_value": 0,
+    "player_value": 0,
+    "score": 1000,
+    "player_handle": 0,
+    "process_id": 32868
+  },
+  "restored": true,
+  "restore_after": {
+    "gold_address": 1990053908176,
+    "lumber_address": 1990053908400,
+    "gold": 997469,
+    "lumber": 999839,
+    "food_used_address": 1990053909072,
+    "food_cap_address": 1990053908848,
+    "food_limit_address": 1990053909296,
+    "food_used": 38,
+    "food_cap": 72,
+    "food_limit": 100,
+    "block_start_kind": 1,
+    "source": "3.0 indexed player properties",
+    "owner_key": 1990051936096,
+    "header_value": 0,
+    "player_value": 0,
+    "score": 1000,
+    "player_handle": 0,
+    "process_id": 32868
+  }
+}

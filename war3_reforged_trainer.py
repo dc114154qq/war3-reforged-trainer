@@ -1407,6 +1407,7 @@ def read_selected_panel_loose_from_image(image: Image.Image) -> VisibleUnitPanel
 
 class ProcessMemory:
     def __init__(self, pid: int, write: bool = False):
+        self.pid = int(pid)
         access = PROCESS_QUERY_INFORMATION | PROCESS_VM_READ
         if write:
             access |= PROCESS_VM_WRITE | PROCESS_VM_OPERATION

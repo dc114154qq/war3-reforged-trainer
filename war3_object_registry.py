@@ -63,6 +63,32 @@ def game_module_base(memory):
         modules = (ctypes.c_void_p * capacity)()
         needed = ctypes.c_ulong()
         if not enum(memory.handle, modules, ctypes.sizeof(modules), ctypes.byref(needed), 2):
+            # Some 3.0 installations reject PSAPI enumeration with
+            # ERROR_PARTIAL_COPY while Toolhelp still exposes module metadata.
+            # This remains module enumeration; it is not a memory-region scan.
+            kernel.CreateToolhelp32Snapshot.argtypes = (ctypes.c_ulong, ctypes.c_ulong)
+            kernel.CreateToolhelp32Snapshot.restype = ctypes.c_void_p
+            snap = kernel.CreateToolhelp32Snapshot(0x00000008, memory.pid)
+            if snap == ctypes.c_void_p(-1).value:
+                raise ctypes.WinError(ctypes.get_last_error())
+            class ModuleEntry(ctypes.Structure):
+                _fields_ = [("size", ctypes.c_ulong), ("module_id", ctypes.c_ulong),
+                            ("pid", ctypes.c_ulong), ("global_usage", ctypes.c_ulong),
+                            ("process_usage", ctypes.c_ulong),
+                            ("base", ctypes.c_void_p), ("module_size", ctypes.c_ulong),
+                            ("handle", ctypes.c_void_p), ("name", ctypes.c_wchar * 256),
+                            ("path", ctypes.c_wchar * 260)]
+            first, nxt = kernel.Module32FirstW, kernel.Module32NextW
+            first.argtypes = (ctypes.c_void_p, ctypes.POINTER(ModuleEntry)); first.restype = ctypes.c_int
+            nxt.argtypes = (ctypes.c_void_p, ctypes.POINTER(ModuleEntry)); nxt.restype = ctypes.c_int
+            entry = ModuleEntry(); entry.size = ctypes.sizeof(ModuleEntry)
+            try:
+                if first(snap, ctypes.byref(entry)):
+                    while True:
+                        if entry.name.lower() == "warcraft iii.exe": return int(entry.base)
+                        if not nxt(snap, ctypes.byref(entry)): break
+            finally:
+                kernel.CloseHandle(snap)
             raise ctypes.WinError(ctypes.get_last_error())
         if needed.value > ctypes.sizeof(modules):
             capacity = (needed.value + ctypes.sizeof(ctypes.c_void_p) - 1) // ctypes.sizeof(ctypes.c_void_p)
@@ -74,6 +100,28 @@ def game_module_base(memory):
             if name(memory.handle, module, text, len(text)) and text.value.lower() == "warcraft iii.exe":
                 return int(module)
         break
+    # PSAPI can enumerate handles but fail to read names with ERROR_PARTIAL_COPY.
+    # Always give Toolhelp a final chance before rejecting the process.
+    kernel.CreateToolhelp32Snapshot.argtypes = (ctypes.c_ulong, ctypes.c_ulong)
+    kernel.CreateToolhelp32Snapshot.restype = ctypes.c_void_p
+    snap = kernel.CreateToolhelp32Snapshot(0x00000008, memory.pid)
+    if snap != ctypes.c_void_p(-1).value:
+        class ModuleEntry(ctypes.Structure):
+            _fields_ = [("size", ctypes.c_ulong), ("module_id", ctypes.c_ulong),
+                        ("pid", ctypes.c_ulong), ("global_usage", ctypes.c_ulong),
+                        ("process_usage", ctypes.c_ulong), ("base", ctypes.c_void_p),
+                        ("module_size", ctypes.c_ulong), ("handle", ctypes.c_void_p),
+                        ("name", ctypes.c_wchar * 256), ("path", ctypes.c_wchar * 260)]
+        first, nxt = kernel.Module32FirstW, kernel.Module32NextW
+        first.argtypes = (ctypes.c_void_p, ctypes.POINTER(ModuleEntry)); first.restype = ctypes.c_int
+        nxt.argtypes = (ctypes.c_void_p, ctypes.POINTER(ModuleEntry)); nxt.restype = ctypes.c_int
+        entry = ModuleEntry(); entry.size = ctypes.sizeof(ModuleEntry)
+        try:
+            if first(snap, ctypes.byref(entry)):
+                while True:
+                    if entry.name.lower() == "warcraft iii.exe": return int(entry.base)
+                    if not nxt(snap, ctypes.byref(entry)): break
+        finally: kernel.CloseHandle(snap)
     raise ObjectIdentityError("Warcraft III module not found")
 
 

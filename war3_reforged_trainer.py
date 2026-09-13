@@ -4006,6 +4006,12 @@ class War3Trainer:
             return count
 
     def _query_native_table_handlers(self, names: Iterable[str]) -> dict[str, NativeHandler]:
+        if getattr(self, "_native_selection_unavailable", False):
+            requested = ", ".join(dict.fromkeys(str(name) for name in names))
+            raise RuntimeError(
+                "Warcraft III 3.0 当前未启用旧版 native helper；"
+                f"该功能仍待 3.0 handler 适配：{requested}"
+            )
         wanted = tuple(dict.fromkeys(names))
         unknown = [name for name in wanted if name not in NATIVE_INDEX]
         if unknown:

@@ -1,0 +1,8 @@
+{
+  "build": "3.0.0.24268",
+  "exe": "dist-3.0.0.24268-r16/War3ReforgedTrainer-3.0.0.24268.exe",
+  "sha256": "7b35dd9a6d3237cad03ae389bb89e21a07712bbf22c0288b9700003a02dbf9aa",
+  "startup_smoke": "responding 5s",
+  "binding": "prefers readable Warcraft client with most selected units",
+  "release_ready": false
+}

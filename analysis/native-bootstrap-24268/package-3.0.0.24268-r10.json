@@ -1,0 +1,11 @@
+{
+  "build": "3.0.0.24268",
+  "exe": "dist-3.0.0.24268-r10/War3ReforgedTrainer-3.0.0.24268.exe",
+  "sha256": "54b6999c07cb1c4f9839e8dd68f2ae7a5ecd5032c52f1341b2b0ce2e74dbe3ee",
+  "startup_smoke": "responding 5s",
+  "embedded_helpers": [
+    "war3_native_helper.3.0-live.dll"
+  ],
+  "legacy_helper_embedded": false,
+  "release_ready": false
+}

@@ -2868,6 +2868,7 @@ class War3Trainer:
         # carries the 2.0.4.23745 profile, so never probe it in the 3.0
         # product path. The classic selection backend is the entry path.
         self._native_selection_unavailable = True
+        self._classic_resource_cache: ResourceCache | None = None
         self._start_persistent_bootstrap()
 
     def close(self) -> None:
@@ -2948,6 +2949,7 @@ class War3Trainer:
             self._classic_selection_layout = None
             self._classic_selection_cache = ()
             self._native_selection_unavailable = False
+            self._classic_resource_cache = None
             self._start_persistent_bootstrap()
 
     def _close_native_helper_persistent(self) -> None:
@@ -8915,10 +8917,55 @@ class War3Trainer:
         self._resource_candidates_by_start = candidates_by_start
         return sorted(found, key=lambda cache: (cache.block_start_kind, cache.owner_key))
 
+    def _classic_local_resource_cache(self, pm: ProcessMemory) -> ResourceCache:
+        """Resolve the local player's resource properties on the 3.0 path."""
+        layout = self._classic_selection_layout
+        if layout is None:
+            # Locate the bounded selection container once; this also gives us
+            # the player object used to disambiguate resource groups.
+            self._classic_selection_candidates(pm)
+            layout = self._classic_selection_layout
+        if layout is None:
+            raise RuntimeError("3.0 local player selection layout is unavailable")
+        player = layout[0]
+        if self._classic_resource_cache is not None:
+            cached = self._classic_resource_cache
+            try:
+                owner_player = pm.read_u64(cached.owner_key + 0x90)
+            except OSError:
+                owner_player = 0
+            if owner_player == player:
+                return self._read_resource_cache_addresses(pm, cached)
+            self._classic_resource_cache = None
+        groups = self._resource_property_groups(pm, warm_unit_owner_index=False)
+        matches: list[tuple[int, ResourceCache]] = []
+        for group in groups.values():
+            for score, cache in self._resource_cache_candidates_from_group(group):
+                try:
+                    owner_player = pm.read_u64(cache.owner_key + 0x90)
+                except OSError:
+                    continue
+                if owner_player == player:
+                    matches.append((score, cache))
+        unique: dict[tuple[int, int], tuple[int, ResourceCache]] = {}
+        for score, cache in matches:
+            key = (cache.gold_address, cache.lumber_address)
+            if key not in unique or score > unique[key][0]:
+                unique[key] = (score, cache)
+        if not unique:
+            raise RuntimeError("3.0 local player resource group was not found")
+        _score, cache = max(unique.values(), key=lambda item: item[0])
+        cache = replace(cache, source="3.0 classic resource properties", player_value=0)
+        self._classic_resource_cache = cache
+        return self._read_resource_cache_addresses(pm, cache)
+
     def list_resource_caches(
         self, current_gold: int | None = None, current_lumber: int | None = None,
         current_food: int | None = None, current_food_cap: int | None = None,
     ) -> list[ResourceCache]:
+        if self._native_selection_unavailable:
+            with self._process_memory() as memory:
+                return [self._classic_local_resource_cache(memory)]
         handlers = self._query_native_table_handlers(("Player", "GetPlayerState"))
         caches = []
         # Three complete players per command (15 ops); empty slots are explicit
@@ -8961,6 +9008,33 @@ class War3Trainer:
         sync_local_food_cap: bool = False,
     ) -> ResourceCache:
         del sync_local_food_used, sync_local_food_cap
+        if self._native_selection_unavailable:
+            targets = [(address, value) for address, value in (
+                (cache.gold_address, None if target_gold is None else int(target_gold) * 10),
+                (cache.lumber_address, None if target_lumber is None else int(target_lumber) * 10),
+                (cache.food_used_address, None if target_food_used is None else int(target_food_used)),
+                (cache.food_cap_address, None if target_food_cap is None else int(target_food_cap)),
+            ) if value is not None]
+            if not targets:
+                raise ValueError("至少填写一个目标资源值")
+            for address, value in targets:
+                if address <= 0 or not 0 <= value <= 100_000_000:
+                    raise ValueError("目标资源值超出允许范围")
+            with self._process_memory(write=True) as memory:
+                for address, value in targets:
+                    memory.write_i32(address, value)
+                refreshed = self._read_resource_cache_addresses(memory, cache)
+            expected = {
+                cache.gold_address: refreshed.gold * 10,
+                cache.lumber_address: refreshed.lumber * 10,
+                cache.food_used_address: refreshed.food_used,
+                cache.food_cap_address: refreshed.food_cap,
+            }
+            for address, value in targets:
+                if expected.get(address) != value:
+                    raise RuntimeError("3.0 资源写入读回不一致")
+            self._classic_resource_cache = refreshed
+            return refreshed
         if cache.source != "persistent native player state":
             raise RuntimeError("历史资源地址写入已禁用，请重新读取本地玩家 native 状态")
         targets = [(state, int(value)) for state, value in (
@@ -9017,6 +9091,15 @@ class War3Trainer:
         current_food: int | None = None,
         current_food_cap: int | None = None,
     ) -> ResourceCache:
+        if self._native_selection_unavailable:
+            with self._process_memory() as memory:
+                cache = self._classic_local_resource_cache(memory)
+            if any(expected is not None and actual != int(expected) for actual, expected in (
+                (cache.gold, current_gold), (cache.lumber, current_lumber),
+                (cache.food_used, current_food), (cache.food_cap, current_food_cap),
+            )):
+                raise RuntimeError("当前输入的资源值与 3.0 本地玩家资源状态不一致")
+            return cache
         native = self._native_resource_cache(None)
         if (
             current_gold is None and current_lumber is None

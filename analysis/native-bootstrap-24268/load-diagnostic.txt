@@ -1,0 +1,1 @@
+pid=24284 wait=0 thread_exit=0x0 read_ok=1 module=0000000012345678 loader_error=4294967295 argument_retained=0

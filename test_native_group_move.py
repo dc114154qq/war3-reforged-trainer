@@ -73,7 +73,7 @@ class NativeGroupMoveTests(unittest.TestCase):
         cls.native.run_case.restype = ctypes.c_uint
 
     def test_group_sizes_and_changed_handles(self):
-        for count, generation in ((1, 0x100000), (9, 0x200000), (12, 0x300000)):
+        for count, generation in ((1, 0x100000), (9, 0x200000), (12, 0x300000), (13, 0x400000), (24, 0x500000)):
             with self.subTest(count=count):
                 self.assertEqual(self.native.run_case(count, 0, generation, 0), 0)
                 self.assertEqual(self.native.moved_count(), count)
@@ -81,7 +81,7 @@ class NativeGroupMoveTests(unittest.TestCase):
                 self.assertEqual(self.native.invalid_target_count(), 0)
 
     def test_empty_and_oversized_groups_change_nothing(self):
-        for count, error in ((0, 1168), (13, 234)):
+        for count, error in ((0, 1168), (25, 234)):
             with self.subTest(count=count):
                 self.assertEqual(self.native.run_case(count, 0, 0x400000, 0), error)
                 self.assertEqual(self.native.moved_count(), 0)

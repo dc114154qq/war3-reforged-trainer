@@ -4,7 +4,8 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 69u
+#define WAR3_NATIVE_VERSION 70u
+#define WAR3_SELECTED_MAX_UNITS 24u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
 #define WAR3_NATIVE_STATUS_FAILED 3u
@@ -526,7 +527,7 @@ typedef struct War3SnapshotExtra {
 } War3SnapshotExtra;
 
 static DWORD war3_snapshot_append_ability(War3SnapshotExtra *extra, uint64_t id, uint64_t level) {
-    const uint32_t limit = 12u * 2u *
+    const uint32_t limit = WAR3_SELECTED_MAX_UNITS * 2u *
         (WAR3_PERSISTENT_SNAPSHOT_ENUM_LIMIT - WAR3_PERSISTENT_SNAPSHOT_MAX_ABILITIES);
     if (extra->count > limit - 2u) {
         return ERROR_MORE_DATA;
@@ -1584,7 +1585,7 @@ static DWORD war3_persistent_selected_snapshot(
     buffer = (uint64_t *)HeapAlloc(
         GetProcessHeap(),
         HEAP_ZERO_MEMORY,
-        12u * sizeof(War3PersistentSnapshot)
+        WAR3_SELECTED_MAX_UNITS * sizeof(War3PersistentSnapshot)
     );
     if (!buffer) {
         return ERROR_OUTOFMEMORY;
@@ -1599,7 +1600,7 @@ static DWORD war3_persistent_selected_snapshot(
             }
             enum_selected(group, player, 0);
         }
-        while (count < 12u) {
+        while (count < WAR3_SELECTED_MAX_UNITS) {
             uint64_t unit = targeted ? (count ? 0 : cmd->unit_handle) : first_of_group(group);
             War3PersistentSnapshot *snapshot;
             if (!unit) {
@@ -1744,7 +1745,7 @@ static DWORD war3_persistent_selected_snapshot(
             }
             ++count;
         }
-        if (!targeted && count == 12u && first_of_group(group) != 0) {
+        if (!targeted && count == WAR3_SELECTED_MAX_UNITS && first_of_group(group) != 0) {
             error = ERROR_MORE_DATA;
             __leave;
         }
@@ -1795,7 +1796,7 @@ static DWORD war3_move_selected_group_at_point(NativeOp *op, uint64_t point) {
     uint32_t resolved = 0;
     DWORD error = war3_persistent_resolve_natives(&resolved);
     uint64_t group = 0;
-    uint64_t units[12] = {0};
+    uint64_t units[WAR3_SELECTED_MAX_UNITS] = {0};
     uint32_t count = 0;
     float x = war3_real_from_bits((uint32_t)point);
     float y = war3_real_from_bits((uint32_t)(point >> 32));
@@ -1830,7 +1831,7 @@ static DWORD war3_move_selected_group_at_point(NativeOp *op, uint64_t point) {
             __leave;
         }
         enumerate(group, player, 0);
-        while (count < 12u) {
+        while (count < WAR3_SELECTED_MAX_UNITS) {
             uint64_t unit = first(group);
             if (!unit) {
                 break;
@@ -1842,7 +1843,7 @@ static DWORD war3_move_selected_group_at_point(NativeOp *op, uint64_t point) {
             error = ERROR_NOT_FOUND;
             __leave;
         }
-        if (count == 12u && first(group)) {
+        if (count == WAR3_SELECTED_MAX_UNITS && first(group)) {
             error = ERROR_MORE_DATA;
             __leave;
         }
@@ -2581,7 +2582,7 @@ static DWORD run_jass_selected_units(
     uint64_t group = 0;
     uint64_t player = 0;
     uint64_t unit = 0;
-    uint64_t selected_units[12];
+    uint64_t selected_units[WAR3_SELECTED_MAX_UNITS];
     uint32_t selected_count = 0;
     uint32_t handle_id = 0;
     DWORD error = 0;
@@ -2616,7 +2617,7 @@ static DWORD run_jass_selected_units(
         main_op->result = 4;
         group_enum_selected(group, player, 0);
         main_op->result = 5;
-        while (selected_count < 12u) {
+        while (selected_count < WAR3_SELECTED_MAX_UNITS) {
             uint64_t current = first_of_group(group);
             uint8_t duplicate = 0;
             if (!current) {
@@ -2630,13 +2631,18 @@ static DWORD run_jass_selected_units(
                 }
             }
             if (duplicate) {
-                continue;
+                error = ERROR_INVALID_DATA;
+                __leave;
             }
             selected_units[selected_count++] = current;
             if (!unit) {
                 unit = current;
                 handle_id = get_handle_id(current);
             }
+        }
+        if (selected_count == WAR3_SELECTED_MAX_UNITS && first_of_group(group)) {
+            error = ERROR_MORE_DATA;
+            __leave;
         }
         if (selected_count) {
             uint64_t *resized = *extra_results

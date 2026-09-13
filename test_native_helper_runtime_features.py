@@ -2,6 +2,7 @@ from pathlib import Path
 from dataclasses import replace
 from concurrent.futures import ThreadPoolExecutor
 import unittest
+import re
 import threading
 import uuid
 from types import SimpleNamespace
@@ -118,7 +119,7 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
         trainer = self.make_selection_trainer()
         with self.assertRaisesRegex(RuntimeError, "超过安全上限"):
             trainer._selected_candidates_snapshot(
-                Mock(), persistent_snapshots=(self.selection_snapshot(),) * 13,
+                Mock(), persistent_snapshots=(self.selection_snapshot(),) * 25,
             )
         trainer._candidate_from_identity.assert_not_called()
 
@@ -510,8 +511,10 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
             "WAR3_NATIVE_OP_PERSISTENT_SELECTED_SNAPSHOT 131u",
             helper_source,
         )
-        self.assertIn("uint64_t selected_units[12]", helper_source)
-        self.assertIn("while (selected_count < 12u)", helper_source)
+        selection_limit = re.search(r"#define WAR3_SELECTED_MAX_UNITS (\d+)u", helper_source)
+        self.assertIsNotNone(selection_limit)
+        self.assertEqual(int(selection_limit.group(1)), trainer_module.War3Trainer.SELECTED_BATCH_MAX_UNITS)
+        self.assertTrue("while (selected_count < WAR3_SELECTED_MAX_UNITS)" in helper_source)
         self.assertIn("selected_units[selected_count++] = current;", helper_source)
         self.assertIn("while (processed < 100000u)", helper_source)
         self.assertIn("remove_unit(target)", helper_source)
@@ -669,10 +672,10 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
         self.assertEqual(handles, (0x100, 0x200, 0x300))
         trainer.persistent_native_selected_snapshots.assert_called_once()
 
-    def test_selected_handles_rejects_more_than_twelve(self):
+    def test_selected_handles_rejects_more_than_twenty_four(self):
         trainer = self.make_trainer()
         trainer.persistent_native_selected_snapshots = Mock(
-            return_value=tuple(SimpleNamespace(handle=value) for value in range(1, 14))
+            return_value=tuple(SimpleNamespace(handle=value) for value in range(1, 26))
         )
 
         with self.assertRaisesRegex(RuntimeError, "超过安全上限"):

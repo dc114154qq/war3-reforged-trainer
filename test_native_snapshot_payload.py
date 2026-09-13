@@ -34,10 +34,10 @@ static BOOL test_free(HANDLE heap, DWORD flags, void *p) {
 #define HeapReAlloc test_realloc
 #define HeapFree test_free
 #include "HELPER_SOURCE"
-static unsigned sizes[13], selected, cursor, destroyed, fail_index, holes;
+static unsigned sizes[25], selected, cursor, destroyed, fail_index, holes;
 static unsigned target_unit, target_fault, enumerations, field_reads;
 static unsigned recycle_point, recycle_unit;
-static uint8_t objects[13][0x600], owners[13][0xc0], items[13][0x20];
+static uint8_t objects[25][0x600], owners[25][0xc0], items[25][0x20];
 static void recycle(unsigned point, uint64_t unit) {
     if (point != recycle_point || unit != recycle_unit) return;
     recycle_point = 0;
@@ -59,7 +59,7 @@ static int32_t fake_hero(uint64_t u) { return u == 1 ? 5 : 0; }
 static int32_t fake_stat(uint64_t u, uint32_t b) { return b ? 25 : 10; }
 static uint64_t fake_unit(uint64_t u) { return (uint64_t)(uintptr_t)objects[u-1]; }
 static uint64_t fake_agent(uint32_t slot, uint32_t serial) {
-    return slot && slot <= 13 && *(uint64_t *)(owners[slot-1]+0x20) == (((uint64_t)serial<<32)|slot)
+    return slot && slot <= 25 && *(uint64_t *)(owners[slot-1]+0x20) == (((uint64_t)serial<<32)|slot)
         ? (uint64_t)(uintptr_t)owners[slot-1] : 0;
 }
 static uint64_t fake_slot(uint64_t u, int32_t s) { return s == 0 ? u + 1000 : 0; }
@@ -85,7 +85,7 @@ __declspec(dllexport) unsigned collect(unsigned n, const unsigned *counts, unsig
     enumerations = field_reads = 0;
     allocation_calls = 0;
     *length = *units = 0;
-    if (n > 13) return ERROR_INVALID_PARAMETER;
+    if (n > 25) return ERROR_INVALID_PARAMETER;
     ZeroMemory(objects,sizeof(objects));
     for (unsigned i = 0; i < n; ++i) {
         uint64_t full = ((uint64_t)(i+1) << 32) | (i+1);
@@ -179,7 +179,7 @@ class NativeSnapshotPayloadTests(unittest.TestCase):
         cls.native.collect.restype = ctypes.c_uint
 
     def collect(self, counts, fail=0xffffffff, sparse=False):
-        payload = (ctypes.c_uint64 * 100000)()
+        payload = (ctypes.c_uint64 * 200000)()
         sizes = (ctypes.c_uint * len(counts))(*counts)
         length, units = ctypes.c_uint(), ctypes.c_uint()
         error = self.native.collect(len(counts), sizes, fail, sparse, payload, len(payload),
@@ -198,7 +198,7 @@ class NativeSnapshotPayloadTests(unittest.TestCase):
 
     def test_c_output_roundtrips_boundaries_and_mixed_groups(self):
         for counts in ((0,), (48,), (49,), (256,), (300,), (4096,),
-                       (49, 0, 300, 48, 1), (4096,) * 12):
+                       (49, 0, 300, 48, 1), (0,) * 13, (4096,) * 24):
             with self.subTest(counts=counts):
                 error, n, payload = self.collect(counts)
                 self.assertEqual(error, 0)
@@ -221,7 +221,7 @@ class NativeSnapshotPayloadTests(unittest.TestCase):
         self.assertEqual(self.parse(n, payload)[0].ability_levels, tuple(i + 1 for i in range(60) if i not in (3, 5)))
 
     def test_overflow_has_no_partial_payload_and_releases_group(self):
-        for counts in ((4097,), (0,) * 13):
+        for counts in ((4097,), (0,) * 25):
             self.assertEqual(self.collect(counts), (234, 0, ()))
             self.assertEqual(self.native.destroyed_count(), 1)
         self.assertEqual(self.collect(()), (0, 0, ()))
@@ -257,7 +257,7 @@ class NativeSnapshotPayloadTests(unittest.TestCase):
             self.native.set_fail_allocation(0)
 
     def test_parser_rejects_invalid_counts(self):
-        for count in (-1, 13):
+        for count in (-1, 25):
             with self.assertRaises(RuntimeError):
                 self.parse(count, (0,) * 154 * max(0, count))
         for ability_count in (-1, 4097):

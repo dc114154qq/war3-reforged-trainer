@@ -1,5 +1,7 @@
 """Both controller editions use one native selection and the actual JASS handle."""
 from dataclasses import replace
+from contextlib import nullcontext
+import threading
 from unittest.mock import Mock
 
 import pytest
@@ -69,3 +71,30 @@ def test_ability_add_uses_actual_selection_context(trainer):
     native=make_snapshot()
     assert trainer._run_native_helper_ops.call_args.args==(native.handle,(
         (136,0,native.unit_address,native.full_handle,native.owner_address),(156,0x41303031,1,0,0)))
+
+
+@pytest.mark.parametrize('count', [13, 24])
+def test_large_mixed_batch_keeps_every_display_and_action_target(trainer, count):
+    initial = make_snapshot()
+    snapshots = tuple(replace(initial, handle=i, full_handle=(i << 32) | i,
+        owner_address=0x100000+i*0x1000, unit_address=0x200000+i*0x1000,
+        hero_level=5 if i % 2 else 0, component_mask=15 if i % 2 else 12)
+        for i in range(1, count+1))
+    trainer.persistent_native_selected_snapshots.return_value = snapshots
+    trainer._native_helper_lock = threading.RLock()
+    trainer._native_helper_batch_transaction = Mock(side_effect=nullcontext)
+    trainer._run_native_helper_ops = Mock(return_value=[module.NativeHelperOpResult(136,1),
+                                                       module.NativeHelperOpResult(156,1)])
+    selected = trainer._selected_candidates_snapshot(None)
+    summaries = trainer._selected_summaries_from_snapshot(None, selected)
+    assert len(summaries) == count
+    assert [s.candidate.unit_address for s in summaries] == [s.unit_address for s in snapshots]
+    assert [s.hero for s in summaries] == [bool(i % 2) for i in range(1,count+1)]
+    trainer.persistent_native_selected_snapshots.reset_mock()
+    succeeded, failed, results, errors = trainer.run_for_selected_units(
+        lambda: trainer.add_ability_to_selected_unit('A001'))
+    assert (succeeded, failed, len(results), errors) == (count, 0, count, ())
+    assert [call.args[0] for call in trainer._run_native_helper_ops.call_args_list] == list(range(1,count+1))
+    trainer.persistent_native_selected_snapshots.assert_called_once_with()
+    trainer._native_helper_batch_transaction.assert_called_once_with()
+    assert trainer._elephant_selection_override is None

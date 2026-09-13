@@ -1,3 +1,9 @@
 *.bin
+*.raw
+*.dll
+*.lib
+*.exp
+*.status
+*.exe
 module-text.json
 _deps/

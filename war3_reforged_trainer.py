@@ -12240,12 +12240,6 @@ class War3Trainer:
             raise RuntimeError("Invalid DLL inventory payload length or capacity")
         items = []
         seen_handles, seen_full, seen_objects = set(), set(), set()
-        try:
-            slot_array = pm.read_u64(record + 0xD8)
-        except OSError:
-            slot_array = 0
-        if not self._sane_heap_ptr(slot_array):
-            return []
         for index in range(6):
             handle, full, obj, rawcode, charges, mirror, ability, wrapper = values[1+index*8:9+index*8]
             if not handle:

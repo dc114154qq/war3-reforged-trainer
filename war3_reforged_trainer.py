@@ -16029,6 +16029,11 @@ def run_gui() -> None:
             ability_field_detail.set("")
             ability_field_write_button.state(["disabled"])
             return
+        if getattr(trainer(), "_native_selection_unavailable", False):
+            ability_field_detail.set("3.0 当前只读；native 执行入口尚未接通")
+            ability_field_write_button.state(["disabled"])
+            ability_field_value.set(field_value.value_text())
+            return
         spec = field_value.spec
         ability_field_value.set(field_value.value_text())
         bounds = ""
@@ -16299,6 +16304,12 @@ def run_gui() -> None:
         )
 
     def item_field_write_clicked() -> None:
+        if getattr(trainer(), "_native_selection_unavailable", False):
+            messagebox.showinfo(
+                ui_text("提示"),
+                ui_text("3.0 当前只读；物品字段写入等待 native 执行入口适配"),
+            )
+            return
         snapshot = state.get("item_field_snapshot")
         if not isinstance(snapshot, ItemFieldSnapshot):
             messagebox.showerror(ui_text("错误"), ui_text("请先读取物品字段"))

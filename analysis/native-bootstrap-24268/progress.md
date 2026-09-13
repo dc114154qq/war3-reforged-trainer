@@ -68,3 +68,5 @@ war3_loader.dll 的 Authenticode 签名有效，签名主体 Blizzard Entertainm
 按主模块共享 Section 句柄 0x320 只读取得 `.data`（RVA 0x2e8d000，184204896 字节）；非零字节约 452543。数据中有 14385 个指向 `.rdata` 范围的 64 位内部表引用，说明 3.0 确实维护大量运行时目录/对象表；但五个已知 native 名称的字符串地址没有直接绝对指针，名称经过索引或编码。原始 `section-data.bin` 保留在本机分析目录，不进入 Git。
 
 当前源码的旧 `war3_bootstrap_query` 依赖 2.0.4 的名称哈希、context slot 和固定 resolver profile；证据已证明这些不能直接移植到 3.0。下一步必须从 `.data` 表的已知目录边界和运行时线程调用上下文恢复 3.0 表项，随后才能重建 `PERSISTENT_NATIVE_NAMES` 的 handler 返回。不要把 `.rdata` 名称地址、`.data` 任意指针或旧版固定 RVA 当作 callable handler。
+
+进一步只读取得 loader `.data`（RVA 0x20f0000，1142719 字节，0 缺页，哈希 `5e8b48688f7b42217531d38cdb34c6b692997334697fea6815b81ac0372364d9`）。它包含 loader 自身的大量上下文/对象表，并有 3 个指向游戏主模块的基址引用（0x7fff10bf6c70、0x7fff10bf6c78、0x7fff10bf7c40）。这些是有价值的 loader→game 上下文锚点，但还不是 native handler；仍只读分析，不调用表项。

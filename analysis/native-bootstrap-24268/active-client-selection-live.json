@@ -1,0 +1,9 @@
+{
+  "clients": [
+    {"pid": 32868, "registry_profile": true, "selection_count": 15, "state": "active_map"},
+    {"pid": 34272, "registry_profile": "loading_read_error_299", "selection_count": null, "state": "still_loading"}
+  ],
+  "binding_rule": "choose the readable verified client with the largest current local selection; explicit PID overrides this rule",
+  "selected_pid": 32868,
+  "scope": "Read-only multi-client binding check; no game writes or native calls."
+}

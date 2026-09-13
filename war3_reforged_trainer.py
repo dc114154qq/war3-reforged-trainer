@@ -2221,6 +2221,24 @@ def find_war3(pid: int | None = None) -> tuple[int, int]:
             kernel32.CloseHandle(process)
             return (int(creation.high) << 32) | int(creation.low)
         matches = sorted(matches, key=start_key, reverse=True)
+        # A newly restarted client can expose its window before the game image
+        # and 3.0 code pages are readable. Prefer the newest client that has
+        # passed the verified object-registry profile; otherwise the next
+        # prewarm pass will retry the newest one after loading completes.
+        try:
+            from war3_object_registry import ObjectRegistry24268
+            ready = []
+            for match in matches:
+                try:
+                    with ProcessMemory(match[1]) as memory:
+                        ObjectRegistry24268.attach(memory)
+                    ready.append(match)
+                except (OSError, RuntimeError, ValueError):
+                    continue
+            if ready:
+                matches = ready
+        except Exception:
+            pass
     hwnd, found_pid, _title = matches[0]
     return hwnd, found_pid
 

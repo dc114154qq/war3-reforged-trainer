@@ -1,0 +1,13 @@
+{
+  "build": "3.0.0.24268",
+  "pid": 16700,
+  "operation": "PERSISTENT_REGISTER_NATIVE",
+  "registered_names_attempted": ["GroupEnumUnitsSelected", "GetUnitState", "GetHeroStr", "UnitAddAbility", "GetLocalPlayer", "UnitAddItemById"],
+  "result": "timeout_pending",
+  "timeout_ms": 10000,
+  "command_status": 1,
+  "handler_execution": false,
+  "game_writes": false,
+  "interpretation": "The command was serialized and the WH_CALLWNDPROC hook was installed, but the 3.0 window-thread message did not reach War3HookProc. This is an execution-entry failure, not evidence against the live handler addresses.",
+  "scope": "One live registration attempt; no handler was invoked and no game mutation was requested."
+}

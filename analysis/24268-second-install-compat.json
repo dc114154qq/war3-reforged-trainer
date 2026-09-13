@@ -1,0 +1,5 @@
+{
+  "pid": 23644,
+  "ok": false,
+  "traceback": "Traceback (most recent call last):\n  File \"<stdin>\", line 6, in <module>\n  File \"C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\war3_object_registry.py\", line 106, in attach\n    return cls(memory, game_module_base(memory))\n                       ^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\war3_object_registry.py\", line 66, in game_module_base\n    raise ctypes.WinError(ctypes.get_last_error())\nOSError: [WinError 299] \u4ec5\u5b8c\u6210\u90e8\u5206\u7684 ReadProcessMemory \u6216 WriteProcessMemory \u8bf7\u6c42\u3002\n"
+}

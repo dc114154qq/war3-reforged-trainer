@@ -70,3 +70,5 @@ war3_loader.dll 的 Authenticode 签名有效，签名主体 Blizzard Entertainm
 当前源码的旧 `war3_bootstrap_query` 依赖 2.0.4 的名称哈希、context slot 和固定 resolver profile；证据已证明这些不能直接移植到 3.0。下一步必须从 `.data` 表的已知目录边界和运行时线程调用上下文恢复 3.0 表项，随后才能重建 `PERSISTENT_NATIVE_NAMES` 的 handler 返回。不要把 `.rdata` 名称地址、`.data` 任意指针或旧版固定 RVA 当作 callable handler。
 
 进一步只读取得 loader `.data`（RVA 0x20f0000，1142719 字节，0 缺页，哈希 `5e8b48688f7b42217531d38cdb34c6b692997334697fea6815b81ac0372364d9`）。它包含 loader 自身的大量上下文/对象表，并有 3 个指向游戏主模块的基址引用（0x7fff10bf6c70、0x7fff10bf6c78、0x7fff10bf7c40）。这些是有价值的 loader→game 上下文锚点，但还不是 native handler；仍只读分析，不调用表项。
+
+沿第一个上下文对象的有限三层指针关系后，目标进入 loader 的通用服务/缓存对象，出现 `pragma:no-cache` 等服务元数据，没有出现 Warcraft native 名称、选择对象或游戏对象表。该分支已判定为非目标，停止继续展开，避免把 loader 的网络/服务对象误当作游戏 native 上下文。

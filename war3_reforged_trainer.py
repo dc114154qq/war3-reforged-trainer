@@ -3953,6 +3953,13 @@ class War3Trainer:
                 return candidate
         raise RuntimeError("缺少 native helper DLL：tools\\war3_native_helper.dll")
 
+    def _native_helper_live_dll_path(self) -> Path:
+        base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+        candidate = base / "tools" / "war3_native_helper.3.0-live.dll"
+        if candidate.exists():
+            return candidate
+        raise RuntimeError("缺少 3.0 live native helper DLL")
+
     def _discover_agent_resolver(self, pm: ProcessMemory, state_handler: int) -> int:
         calls = self._native_function_calls(pm, state_handler)
         if len(calls) != 2:
@@ -4009,6 +4016,34 @@ class War3Trainer:
             self._jass_unit_resolver_address = values[0]
             self._persistent_native_initialized = True
             return count
+
+    def register_live_3_native_handlers(self, entries, *, timeout_ms: int = 10000) -> int:
+        """Register verified 3.0 handlers without invoking the old bootstrap."""
+        from war3_native_table import LiveNativeEntry
+        if not entries:
+            raise ValueError("3.0 native registration set is empty")
+        unknown = [name for name in entries if name not in self.PERSISTENT_NATIVE_NAMES]
+        if unknown:
+            raise ValueError("3.0 native not present in helper ABI: " + ", ".join(unknown))
+        if not all(isinstance(entry, LiveNativeEntry) for entry in entries.values()):
+            raise TypeError("entries must contain LiveNativeEntry values")
+        ordered = []
+        for name, entry in entries.items():
+            index = self.PERSISTENT_NATIVE_NAMES.index(name)
+            ordered.append((self.NATIVE_HELPER_OP_PERSISTENT_REGISTER_NATIVE,
+                            index, entry.handler, 0, 0))
+        old_path = self._native_helper_dll_path
+        self._native_helper_dll_path = self._native_helper_live_dll_path
+        try:
+            results = self._run_native_helper_ops(0, ordered, timeout_ms=timeout_ms)
+        finally:
+            self._native_helper_dll_path = old_path
+        if len(results) != len(ordered) or any(result.last_error for result in results):
+            raise RuntimeError("3.0 native handler registration failed")
+        self._native_handlers = {
+            name: NativeHandler(name, 0, entries[name].handler) for name in entries
+        }
+        return len(results)
 
     def _query_native_table_handlers(self, names: Iterable[str]) -> dict[str, NativeHandler]:
         if getattr(self, "_native_selection_unavailable", False):
@@ -4400,7 +4435,12 @@ class War3Trainer:
         *,
         timeout_ms: int = 10000,
     ) -> list[NativeHelperOpResult]:
-        if getattr(self, "_native_selection_unavailable", False):
+        op_list = list(ops)
+        live_registration = bool(op_list) and all(
+            int(operation[0]) == self.NATIVE_HELPER_OP_PERSISTENT_REGISTER_NATIVE
+            for operation in op_list
+        )
+        if getattr(self, "_native_selection_unavailable", False) and not live_registration:
             raise RuntimeError(
                 "Warcraft III 3.0 当前未启用旧版 native helper；"
                 "该操作尚未迁移到 3.0 经典链路"
@@ -4412,7 +4452,7 @@ class War3Trainer:
                 with self._native_helper_transaction(wait_ms=wait_ms):
                     return self._run_native_helper_ops_locked(
                         unit_address,
-                        ops,
+                        op_list,
                         timeout_ms=timeout_ms,
                     )
         except Exception as exc:
@@ -4438,11 +4478,6 @@ class War3Trainer:
 
     @contextmanager
     def _native_helper_transaction(self, *, wait_ms: int = 300000) -> Iterator[None]:
-        if getattr(self, "_native_selection_unavailable", False):
-            raise RuntimeError(
-                "Warcraft III 3.0 当前未启用旧版 native helper；"
-                "该操作尚未迁移到 3.0 经典链路"
-            )
         if (
             self._native_helper_batch_hook is not None
             and self._native_helper_batch_thread_id == threading.get_ident()

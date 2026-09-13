@@ -3585,7 +3585,20 @@ static void run_command(void) {
         return;
     }
 
-    if (g_bootstrap_module && cmd.op_count && cmd.ops[0].kind != WAR3_NATIVE_OP_BOOTSTRAP_NATIVE_TABLE) {
+    /* A caller may explicitly provide the current build's live resolver and
+       handler table through PERSISTENT_REGISTER_NATIVE. In that transaction
+       do not overwrite it with the legacy fixed-RVA profile. Every other
+       command keeps the historical refresh and validation behavior. */
+    int live_registration_batch = 0;
+    for (uint32_t registration_index = 0; registration_index < cmd.op_count; ++registration_index) {
+        if (cmd.ops[registration_index].kind == WAR3_NATIVE_OP_PERSISTENT_REGISTER_NATIVE) {
+            live_registration_batch = 1;
+            break;
+        }
+    }
+    if (g_bootstrap_module && cmd.op_count &&
+        cmd.ops[0].kind != WAR3_NATIVE_OP_BOOTSTRAP_NATIVE_TABLE &&
+        !live_registration_batch) {
         last_error = war3_bootstrap_refresh();
         if (last_error) { cmd.ops[0].last_error = last_error; goto finish; }
     }

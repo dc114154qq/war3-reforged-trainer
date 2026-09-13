@@ -80,3 +80,5 @@ war3_loader.dll 的 Authenticode 签名有效，签名主体 Blizzard Entertainm
 上下文结构还指向 loader 内的 `0x7fff10cd06e8` 表；该表由大量连续的 32 位 loader 内偏移组成，另有相邻的编码数据块。它更像 loader 的内部函数/状态索引表，而不是 Warcraft native handler 表。已记录其结构形状，但不执行解码函数、不把表偏移直接映射为 callable 地址。
 
 工作区旧的 24 单位选择研究工具也已审计：其选择 vtable、ClientSdk 调用点、单位集合和订单 dispatch 都是固定旧构建 RVA（例如 0x023d18d8、0x0123f430），测试协议版本 27，不能直接迁移到 3.0.0.24268。它可提供容量/事务设计参考，但不能作为当前游戏的地址证据；本适配分支继续采用 3.0 独立 profile。
+
+3.0 `.rdata` 中能看到 `Selection`、`CUnit`、`CPlayer` 等类型字符串，但没有 `CGroup` 名称；同时存在大量连续的代码指针运行时段。仅凭字符串或 vtable 候选无法证明当前选择对象布局，暂不执行旧式私有对象扫描，也不把候选 vtable 接入产品。

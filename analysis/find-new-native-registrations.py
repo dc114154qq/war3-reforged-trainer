@@ -21,7 +21,7 @@ for section in pe.sections:
     for name in names:
         start=0
         while (pos:=data.find(name.encode()+b'\0',start))>=0:
-            targets[section.VirtualAddress+pos]=name
+            targets[pe.OPTIONAL_HEADER.ImageBase+section.VirtualAddress+pos]=name
             start=pos+1
 md=capstone.Cs(capstone.CS_ARCH_X86,capstone.CS_MODE_64)
 records=[]
@@ -29,7 +29,7 @@ for origin,blob in (('disk',code),('captured',captured),('shared-section',shared
     pos=-1
     while (pos:=blob.find(b'\x4c\x8d\x05',pos+1))>=0:
         if pos+7>len(blob): break
-        ref=text.VirtualAddress+pos
+        ref=pe.OPTIONAL_HEADER.ImageBase+text.VirtualAddress+pos
         dest=ref+7+struct.unpack_from('<i',blob,pos+3)[0]
         if dest not in targets: continue
         start=pos-20
@@ -38,7 +38,7 @@ for origin,blob in (('disk',code),('captured',captured),('shared-section',shared
         end=pos+24
         if origin=='captured' and any(page in gaps for page in range((text.VirtualAddress+start)&~4095,
                                                                    text.VirtualAddress+end,4096)): continue
-        ins=[f'{i.address:x}: {i.mnemonic} {i.op_str}' for i in md.disasm(blob[start:end],text.VirtualAddress+start)]
+        ins=[f'{i.address:x}: {i.mnemonic} {i.op_str}' for i in md.disasm(blob[start:end],pe.OPTIONAL_HEADER.ImageBase+text.VirtualAddress+start)]
         records.append(dict(origin=origin,name=targets[dest],rva=hex(ref),instructions=ins))
 (root/'analysis/native-bootstrap-24268/registration-references.json').write_text(json.dumps(records,indent=2),encoding='utf8')
 print('name_addresses', {hex(k):v for k,v in targets.items()})

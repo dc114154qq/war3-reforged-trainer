@@ -51,4 +51,6 @@ war3_loader.dll 的 Authenticode 签名有效，签名主体 Blizzard Entertainm
 
 在完整共享 `.text` 上按旧版本的四个注册字符串锚点仍没有得到注册记录；不能沿用旧 profile。新代码在磁盘和共享映像起始字节也出现不同，说明需要按 3.0 的新执行/解码路径恢复代码视图。
 
+补充核对：此前注册搜索脚本漏加 PE ImageBase，已经修正；修正后运行时 `.rdata` 的四个名称地址已确认，但在当前共享 `.text` 中仍没有直接 RIP-relative 引用。说明注册链不是旧版简单的 `lea name; call dispatcher` 形状，不能把空结果解释成名称不存在。
+
 进一步只读分析了 Windows 异常分发入口：`KiUserExceptionDispatcher` 的第一跳调用游戏/加载器回调，加载器异常路径建立 Fiber 并调用 TLS 取值；这些调用均只在 Unicorn 的模拟内存中推演，未调用真实函数。模拟结果不能证明完整保护算法，当前不修改异常处理链。

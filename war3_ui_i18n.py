@@ -35,6 +35,8 @@ def detect_ui_language(locale_name: str | None = None) -> str:
 
 
 _EN_TRANSLATIONS = {
+    "3.0 对象链已预热：": "3.0 object chain warmed: ",
+    "个选中单位可直接操作；引擎动作仍待适配": " selected units are directly writable; engine actions still need adaptation",
     "3.0 英雄等级写入读回不一致": "3.0 hero level write readback mismatch",
     "3.0 技能点写入读回不一致": "3.0 skill points write readback mismatch",
     "当前单位没有英雄组件": "The current unit has no hero component",

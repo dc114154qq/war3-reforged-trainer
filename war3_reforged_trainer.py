@@ -5353,6 +5353,17 @@ class War3Trainer:
         self._remove_engine_ability_instance(None, candidate, data_address)
 
     def prewarm_elephant_functions(self) -> int:
+        if getattr(self, "_native_selection_unavailable", False):
+            # 3.0 direct paths bind to the verified object registry and do not
+            # need the retired native execution bootstrap. Keep this method
+            # useful for the UI instead of turning prewarm into an error.
+            with self._process_memory() as memory:
+                selected = self._classic_selection_candidates(memory)
+                direct = 0
+                for candidate, _handle in selected:
+                    if candidate.owner_address and candidate.unit_address:
+                        direct += 1
+                return direct
         persistent_count = self.persistent_native_init()
         handlers = self._discover_native_handlers_near_table(
             None,
@@ -5380,9 +5391,10 @@ class War3Trainer:
                 hero = components.get("hero")
                 if hero is None:
                     raise RuntimeError("当前单位没有英雄组件")
-                address = hero[1] + 0x100
-                memory.write_i32(address, target)
-                if memory.read_i32(address) != target:
+                addresses = (hero[1] + 0xD8, hero[1] + 0xF0)
+                for address in addresses:
+                    memory.write_i32(address, target)
+                if any(memory.read_i32(address) != target for address in addresses):
                     raise RuntimeError("3.0 英雄等级写入读回不一致")
             return target
         self._run_bound_hero_progress(self.NATIVE_HELPER_OP_SET_BOUND_HERO_LEVEL, target)
@@ -15920,6 +15932,8 @@ def run_gui() -> None:
 
     def elephant_prewarm() -> str:
         count = elephant_trainer().prewarm_elephant_functions()
+        if getattr(elephant_trainer(), "_native_selection_unavailable", False):
+            return f"3.0 对象链已预热：{count} 个选中单位可直接操作；引擎动作仍待适配"
         return f"大象功能已初始化：{count} 个 native 函数可用"
 
     def elephant_batch(action: Callable[[], object], label: str, *, direct_memory: bool = False) -> tuple[object, ...]:

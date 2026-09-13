@@ -14,6 +14,8 @@ from unicorn.x86_const import *
 from war3_reforged_trainer import ProcessMemory,kernel32
 
 pid=int(sys.argv[1]); base=int(sys.argv[2],0); entry=int(sys.argv[3],0)
+mode=sys.argv[4] if len(sys.argv)>4 else 'stop'
+assert mode in ('stop','private','image','query-failure')
 directory=ROOT/'analysis/native-bootstrap-24268/_pages'
 directory.mkdir(exist_ok=True)
 uc=Uc(UC_ARCH_X86,UC_MODE_64)
@@ -26,7 +28,7 @@ uc.mem_write(rsp,struct.pack('<Q',stop))
 for reg,value in ((UC_X86_REG_RSP,rsp),(UC_X86_REG_RCX,0),(UC_X86_REG_RDX,procedure),
                   (UC_X86_REG_R8,parameter)):
     uc.reg_write(reg,value)
-mapped=set(); rows=[]; calls=[]; last=collections.deque(maxlen=12); halt=[]
+mapped=set(); rows=[]; calls=[]; last=collections.deque(maxlen=12); halt=[]; synthetic=[]
 md=capstone.Cs(capstone.CS_ARCH_X86,capstone.CS_MODE_64)
 with ProcessMemory(pid) as memory:
     nt=ctypes.WinDLL('ntdll')
@@ -40,6 +42,7 @@ with ProcessMemory(pid) as memory:
     uc.mem_write(teb+0x60,struct.pack('<Q',peb))
     # One observed PEB-masked import trampoline, discovered by the previous trace.
     allowed_thunk=0x29237eb0000
+    query_virtual=kernel32.GetProcAddress(nt._handle,b'NtQueryVirtualMemory')
     def unmapped(uc,access,address,size,value,user):
         page=address&~4095
         if page<0x10000 or page>=0x800000000000:
@@ -54,6 +57,26 @@ with ProcessMemory(pid) as memory:
             halt.append(f'Cannot capture requested page {page:#x}: {exc.winerror}');return False
     def instruction(uc,address,size,user):
         last.append(address)
+        if address==query_virtual and mode!='stop':
+            process=uc.reg_read(UC_X86_REG_RCX); target=uc.reg_read(UC_X86_REG_RDX)
+            info_class=uc.reg_read(UC_X86_REG_R8); out=uc.reg_read(UC_X86_REG_R9)
+            call_stack=uc.reg_read(UC_X86_REG_RSP)
+            out_size,returned_ptr=struct.unpack('<QQ',uc.mem_read(call_stack+0x28,16))
+            if process!=0xffffffffffffffff or target!=procedure or info_class!=0 or out_size<48 or not stack<=out<stack+0x20000-48:
+                halt.append('Unmodeled virtual-memory query');uc.emu_stop();return
+            result=0xc0000001 if mode=='query-failure' else 0
+            if result==0:
+                record=struct.pack('<QQIIQIIII',procedure,procedure,0x20,0,4096,0x1000,0x20,
+                                   0x20000 if mode=='private' else 0x1000000,0)
+                uc.mem_write(out,record)
+                if returned_ptr:
+                    if not stack<=returned_ptr<stack+0x20000-8:
+                        halt.append('Unexpected returned-length pointer');uc.emu_stop();return
+                    uc.mem_write(returned_ptr,struct.pack('<Q',48))
+            synthetic.append({'api':'NtQueryVirtualMemory','scenario':mode,'address':hex(target),'status':hex(result)})
+            return_address=struct.unpack('<Q',uc.mem_read(call_stack,8))[0]
+            uc.reg_write(UC_X86_REG_RAX,result);uc.reg_write(UC_X86_REG_RSP,call_stack+8)
+            uc.reg_write(UC_X86_REG_RIP,return_address);return
         if not (base<=address<base+0x2660000 or allowed_thunk<=address<allowed_thunk+4096):
             halt.append(f'External call reached {address:#x}; stopped before execution')
             uc.emu_stop();return
@@ -69,7 +92,8 @@ with ProcessMemory(pid) as memory:
     except UcError as exc: halt.append(str(exc))
 registers={name:hex(uc.reg_read(reg)) for name,reg in [('rip',UC_X86_REG_RIP),('rax',UC_X86_REG_RAX),
     ('rcx',UC_X86_REG_RCX),('rdx',UC_X86_REG_RDX),('r8',UC_X86_REG_R8),('r9',UC_X86_REG_R9)]}
-report={'pid':pid,'loader_base':hex(base),'entry':hex(entry),'scope':'Emulation only; OS calls not executed',
+report={'pid':pid,'loader_base':hex(base),'entry':hex(entry),'scenario':mode,'synthetic_api_results':synthetic,
+        'scope':'Emulation only; OS calls not executed; synthetic scenarios are not live compatibility validation',
         'halt':halt,'registers':registers,'pages':rows,'calls':calls[-30:],'last_addresses':[hex(a) for a in last]}
-(ROOT/'analysis/native-bootstrap-24268/thread-gate-trace.json').write_text(json.dumps(report,indent=2),encoding='utf8')
+(ROOT/'analysis/native-bootstrap-24268'/f'thread-gate-trace-{mode}.json').write_text(json.dumps(report,indent=2),encoding='utf8')
 print(json.dumps({k:v for k,v in report.items() if k!='pages'},indent=2));print('captured_pages',len(rows))

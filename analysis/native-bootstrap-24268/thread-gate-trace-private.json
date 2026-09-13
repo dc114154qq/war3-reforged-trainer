@@ -1,0 +1,167 @@
+{
+  "pid": 24284,
+  "loader_base": "0x7fff11490000",
+  "entry": "0x7fff13236be0",
+  "scenario": "private",
+  "synthetic_api_results": [
+    {
+      "api": "NtQueryVirtualMemory",
+      "scenario": "private",
+      "address": "0x720000000",
+      "status": "0x0"
+    }
+  ],
+  "scope": "Emulation only; OS calls not executed; synthetic scenarios are not live compatibility validation",
+  "halt": [
+    "External call reached 0x7fffeb1d0f40; stopped before execution"
+  ],
+  "registers": {
+    "rip": "0x7fffeb1d0f40",
+    "rax": "0x7e0559faa76b43df",
+    "rcx": "0x0",
+    "rdx": "0x7fff132f2960",
+    "r8": "0x730000000",
+    "r9": "0x7fffeb1d0f40"
+  },
+  "pages": [
+    {
+      "address": "0x7fff13236000",
+      "sha256": "da4e22293b7ab83047c5a99dbb202190d94be63eaec048b79e75b99947fe5cfc"
+    },
+    {
+      "address": "0x7fff13580000",
+      "sha256": "959fef0b90391ff320da198112b09701f78acac0064f67b161ac84c0970e80d1"
+    },
+    {
+      "address": "0x7fff1363b000",
+      "sha256": "f07c98b866116093fa9a70df45ef2697f45ef014cbf1f0e784354e383c23f566"
+    },
+    {
+      "address": "0x7fff13315000",
+      "sha256": "30e5f1c7d0ab59f205420483d47c5a12e81c0f5b24bba29360995e86943284ad"
+    },
+    {
+      "address": "0x7fff1363e000",
+      "sha256": "e56514ae1fad8135145137227080bb0ec284988e1571961e2c53365a0d654edf"
+    },
+    {
+      "address": "0x7fff117d0000",
+      "sha256": "a4a7a260956010253355731a4f4b3d76dfc09e86432679f68a747021cee8a747"
+    },
+    {
+      "address": "0x7fff135c8000",
+      "sha256": "740428ea3a16b8bfee7985393921921baf4d2eff3b0fba9e41187ff5a2d3cf1e"
+    },
+    {
+      "address": "0x7fff117d1000",
+      "sha256": "10849818b51e5163b12831ac060edc2b529900b76d339c198aa4595aee7b70b1"
+    },
+    {
+      "address": "0x7fff117d2000",
+      "sha256": "d288447c0acbebb82c6fa04acb8a11fc5e6957b816a392e002815058c9b90b54"
+    },
+    {
+      "address": "0x7fff1358d000",
+      "sha256": "2e99ec6609d14c047ff6ad794a52d0520c7339cb850c64f36879a0111bd5db5e"
+    },
+    {
+      "address": "0x7fff134ee000",
+      "sha256": "0d5d83212c2e5d254669353aaf1a1b009b6999d36eaf77d4f18dea3cd730b028"
+    },
+    {
+      "address": "0x7fff13550000",
+      "sha256": "3c91a7a4b82b1012b82b4534b8f0b0ef6a57f1d87ae70f4b76f8b68cb2fb4112"
+    },
+    {
+      "address": "0x29237eb0000",
+      "sha256": "8a2d13806ad390b60b50192e8a9a8558a81bd7bd456c417ca84991728b443e92"
+    },
+    {
+      "address": "0x96145c1000",
+      "sha256": "3c7a439cc5821c55c1cf1a35d24abe6b262226238b80fb9b0a3ed7ee86c0f995"
+    },
+    {
+      "address": "0x7fffeb345000",
+      "sha256": "3aa50efcd7db5dfe9efa39b779c6cee13a96d348fcb41782cb42271c57044d4d"
+    },
+    {
+      "address": "0x7fff11c1a000",
+      "sha256": "66a01c53ea260a94d0d060d16a451c2208ecf8516db1d626616c01233f958c62"
+    },
+    {
+      "address": "0x7fff12760000",
+      "sha256": "95575adea9b2766bc4850218b7b064dd5d22345cfdddb72266095995cd673ee0"
+    },
+    {
+      "address": "0x7fff1360e000",
+      "sha256": "5755660e4a22371b11056fe990f7cdee72f69e272476a237d4c32babec30ad43"
+    },
+    {
+      "address": "0x7fff13582000",
+      "sha256": "63573759f53e3e549ef05c208fc7bacdc3289ed6d36f37bea95acb4d21d4cbdf"
+    },
+    {
+      "address": "0x7fff12761000",
+      "sha256": "85640f9213423a55457868633b8b858a123851b20ce900ab3a18ecf30a50b327"
+    },
+    {
+      "address": "0x7fff135a6000",
+      "sha256": "70ac496413ccfd97e129905deabe47b50fb086b085576d4162747170fb0528ae"
+    },
+    {
+      "address": "0x7fff13647000",
+      "sha256": "43f26837b6c427f87e251575095ec025d1627d4b55135d8cb242c43fc9548a7b"
+    },
+    {
+      "address": "0x7fff12785000",
+      "sha256": "28de183b2697fb154ab51eba1b789eeb283302e53039bff79875473a39433cac"
+    },
+    {
+      "address": "0x7fff1360f000",
+      "sha256": "81985bedd7b103a436b1851be36a42639baf1a6c8cbd2f95f579c92351615f61"
+    },
+    {
+      "address": "0x7fff13646000",
+      "sha256": "b3635735869d59af81b0191aadc7160a65c4e6bba09942b5c27ec527c2f8dde3"
+    },
+    {
+      "address": "0x7fff1256f000",
+      "sha256": "329d6a6d8c5cfd9ef6cac217286e95f109b612354fcc62f406fd88d60f30b9ef"
+    },
+    {
+      "address": "0x7fff13605000",
+      "sha256": "c694915ee145f8d3036b1ee5f9ceaf0b290c0c4392359368b4e0502e2f074e60"
+    },
+    {
+      "address": "0x7fff135a3000",
+      "sha256": "d1b2971129afae8a7f18d0c43e4bbe0d5cc276539c29aeabaef541f00f4030c5"
+    },
+    {
+      "address": "0x7fffeb1d0000",
+      "sha256": "c80f06086927ead64c74b19929379b654519f6d20ba2b46b1770973ae272773c"
+    }
+  ],
+  "calls": [
+    "0x7fff13236c74: call 0x7fff133152f0",
+    "0x7fff133153f2: call 0x7fff117d0720",
+    "0x7fff117d19dc: call 0x7fff134ee220",
+    "0x7fff117d16a4: call 0x7fff11c1a290",
+    "0x7fff11c1a2a7: call 0x7fff12760dc0",
+    "0x7fff117d1efd: call 0x7fff12785b50",
+    "0x7fff13236ca7: call 0x7fff1256f3b0"
+  ],
+  "last_addresses": [
+    "0x7fff1256fdf1",
+    "0x7fff1256fdf6",
+    "0x7fff1256fdfd",
+    "0x7fff1256fdfe",
+    "0x7fff1256fdff",
+    "0x7fff1256fe00",
+    "0x7fff1256fe01",
+    "0x7fff1256fe03",
+    "0x7fff1256fe05",
+    "0x7fff1256fe07",
+    "0x7fff1256fe09",
+    "0x7fffeb1d0f40"
+  ]
+}

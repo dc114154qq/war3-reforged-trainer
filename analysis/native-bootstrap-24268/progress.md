@@ -32,3 +32,15 @@ war3_loader.dll 的 Authenticode 签名有效，签名主体 Blizzard Entertainm
 新增隔离 Unicorn 跟踪：仅按执行路径读取有限的代码/常量页面，在模拟器内运行线程入口，所有写入均在模拟内存；真实游戏中不调用这些函数。跟踪到通过 PEB 混淆的私有跳板调用 NtQueryVirtualMemory，查询对象是传入的新线程入口地址；在 OS 调用前停止。此证据表明其线程入口路径检查内存信息，尚不能推出完整允许规则，更不能宣称没有内部游戏数据入口。
 
 后续以此明确入口继续审计；不要再次重复无效 LoadLibrary/窗口 hook 超时测试。需要区分加载器职责与选中单位数据来源，仍优先寻找能稳定取得完整选择列表的实际 native 调用链。
+
+## 隔离对照与映像诊断入口
+
+在相同已采集的 BaseThreadInitThunk 跳转路径下，隔离模拟 NtQueryVirtualMemory 的返回：MEM_PRIVATE 场景把原入口 0x720000000 改为加载器内 0x7fff132f2960；MEM_IMAGE 场景保留原入口。最终均到原系统入口的 trampoline 前停止，未在真实进程运行这些模拟调用。证据为 thread-gate-trace-private.json 和 thread-gate-trace-image.json；这只证明该路径对这两个内存类型的差异，不证明所有校验规则。
+
+研究工具以 SEC_IMAGE 映射自己的无导入 PE，入口已可执行。首次调用加载函数时 PID 24284 退出；此错误随后在自建 Python 子进程中完全复现。根因为诊断 C 程序传递 `LoadLibraryW`/`GetLastError` 符号地址可能得到本程序的导入跳板，而非系统模块函数地址。已改为 GetProcAddress 明确解析；不能将这次崩溃归咎于游戏保护。普通分配诊断工具也同步修正。
+
+新增 analysis/test_image_probe.py 在临时目录编译真实映像和控制器，仅针对自己创建的子进程：验证成功加载、文件不存在时返回 126、阶段到达 2、线程正常返回、宿主仍存活；两项通过（3.24s）。桥接 PE 无导入、无 DllMain，不使用游戏函数。控制器只释放已结束线程的自有参数和映射，超时会保留仍可能使用的区域。
+
+修正后的真实游戏 PID 23652 诊断：映像映射成功，线程 exit=0，stage=2，module=NULL，loader error=2148073478（0x80090006，NTE_BAD_SIGNATURE）。游戏仍存活并响应，证据见 image-probe-live.txt。错误码官方定义为 Invalid Signature：https://learn.microsoft.com/en-us/windows/win32/com/com-error-codes-4 。此结果证明实际加载调用已执行并返回签名错误；并未证明签名检查所在全部路径，也没有绕过或修改保护代码。
+
+下一步可从已验证执行的无导入映像入口开展严格只读研究，或寻找游戏允许的加载/扩展机制；仍需确认 native 注册和对象布局，不能视为纯 native 功能已经恢复。暂停重复尝试被拒绝的普通 DLL 加载。

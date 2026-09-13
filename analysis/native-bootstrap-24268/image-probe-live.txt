@@ -1,0 +1,4 @@
+load=00007FFFEA25DC00 last_error=00007FFFEA248A50
+map_status=0x0 mapped=00007FFF90840000 view=16384 entry_rva=0x1000
+pid=23652 wait=0 exit=0x0 stage=2 module=0000000000000000 error=2148073478
+diagnostic_failure=6 last_error=0

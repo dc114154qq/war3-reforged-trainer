@@ -18,7 +18,9 @@ int wmain(int argc,wchar_t **argv) {
     }
     /* Store both the pointer-sized result and the loader's own last error. */
     struct { void *load,*last_error,*path,*module; DWORD error; } result={
-        (void *)LoadLibraryW,(void *)GetLastError,remote,(void *)(uintptr_t)0x12345678u,0xffffffffu};
+        (void *)GetProcAddress(GetModuleHandleW(L"kernel32.dll"),"LoadLibraryW"),
+        (void *)GetProcAddress(GetModuleHandleW(L"kernel32.dll"),"GetLastError"),
+        remote,(void *)(uintptr_t)0x12345678u,0xffffffffu};
     unsigned char stub[]={0x53,0x48,0x83,0xec,0x20,0x48,0x89,0xcb,0x48,0x8b,0x4b,0x10,
         0xff,0x13,0x48,0x89,0x43,0x18,0xff,0x53,0x08,0x89,0x43,0x20,0x31,0xc0,
         0x48,0x83,0xc4,0x20,0x5b,0xc3};

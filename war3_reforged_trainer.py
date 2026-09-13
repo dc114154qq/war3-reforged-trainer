@@ -4488,6 +4488,11 @@ class War3Trainer:
         *,
         timeout_ms: int = 10000,
     ) -> list[NativeHelperOpResult]:
+        if getattr(self, "_native_selection_unavailable", False):
+            raise RuntimeError(
+                "Warcraft III 3.0 当前未启用旧版 native helper；"
+                "该操作尚未迁移到 3.0 经典链路"
+            )
         wait_ms = max(5000, min(300000, int(timeout_ms) + 5000))
         try:
             with self._native_helper_lock:

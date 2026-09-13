@@ -13043,9 +13043,15 @@ class War3Trainer:
     def read_selected_unit_fields(self) -> tuple[VisibleUnitPanel, UnitCandidate, list[UnitMemoryField]]:
         snapshot = self._selected_candidates_snapshot(None)
         candidate = snapshot[0][0]
-        panel = self._panel_from_candidate(None, candidate)
-        summaries = self._selected_summaries_from_snapshot(None, snapshot)
-        fields = self._unit_fields_from_candidate(None, candidate)
+        if self._native_snapshot_for_candidate(candidate) is not None:
+            panel = self._panel_from_candidate(None, candidate)
+            summaries = self._selected_summaries_from_snapshot(None, snapshot)
+            fields = self._unit_fields_from_candidate(None, candidate)
+        else:
+            with self._process_memory() as memory:
+                panel = self._panel_from_candidate(memory, candidate)
+                summaries = self._selected_summaries_from_snapshot(memory, snapshot)
+                fields = self._unit_fields_from_candidate(memory, candidate)
         self._last_selected_summaries = summaries
         return panel, candidate, fields
 
@@ -13254,8 +13260,10 @@ class War3Trainer:
             f"manual_candidate handle=0x{handle:x} owner=0x{owner:x} unit=0x{unit:x}", 850)
         if candidate is None:
             raise RuntimeError("候选单位已经失效，请重新读取候选列表")
-        panel = self._panel_from_candidate(None, candidate)
-        return panel, candidate, self._unit_fields_from_candidate(None, candidate)
+        if self._native_snapshot_for_candidate(candidate) is not None:
+            return self._panel_from_candidate(None, candidate), candidate, self._unit_fields_from_candidate(None, candidate)
+        with self._process_memory() as memory:
+            return self._panel_from_candidate(memory, candidate), candidate, self._unit_fields_from_candidate(memory, candidate)
 
     def read_unit_fields_by_identity_win10(
         self,

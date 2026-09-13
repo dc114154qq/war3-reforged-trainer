@@ -2,12 +2,16 @@
   "pid": 32868,
   "operation": "hero_skill_config_roundtrip",
   "ok": true,
-  "selected": 14,
+  "selected": 13,
   "field": "skill1_name",
   "before": 1094070860,
   "target": 1095725926,
-  "write_value": 1095725926,
-  "after": 1095725926,
-  "restore_value": 1094070860,
-  "restored": 1094070860
+  "after": [
+    1095725926,
+    1095725926
+  ],
+  "restored": [
+    1094070860,
+    1094070860
+  ]
 }

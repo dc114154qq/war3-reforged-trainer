@@ -131,11 +131,6 @@ kernel32.ReleaseMutex.argtypes = (ctypes.c_void_p,)
 kernel32.ReleaseMutex.restype = ctypes.c_bool
 kernel32.CloseHandle.argtypes = (ctypes.c_void_p,)
 kernel32.CloseHandle.restype = ctypes.c_bool
-kernel32.VirtualProtectEx.argtypes = (
-    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_ulong,
-    ctypes.POINTER(ctypes.c_ulong),
-)
-kernel32.VirtualProtectEx.restype = ctypes.c_bool
 kernel32.LoadLibraryW.argtypes = (ctypes.c_wchar_p,)
 kernel32.LoadLibraryW.restype = ctypes.c_void_p
 kernel32.GetProcAddress.argtypes = (ctypes.c_void_p, ctypes.c_char_p)
@@ -1489,37 +1484,39 @@ class ProcessMemory:
         return struct.unpack("<Q", self.read(address, 8))[0]
 
     def write_f32(self, address: int, value: float) -> None:
-        self.write_bytes(address, struct.pack("<f", float(value)))
+        data = struct.pack("<f", float(value))
+        written = ctypes.c_size_t()
+        ok = kernel32.WriteProcessMemory(
+            self.handle, ctypes.c_void_p(address), data, len(data), ctypes.byref(written)
+        )
+        if not ok or written.value != len(data):
+            raise ctypes.WinError(ctypes.get_last_error())
 
     def write_i32(self, address: int, value: int) -> None:
-        self.write_bytes(address, struct.pack("<i", int(value)))
+        data = struct.pack("<i", int(value))
+        written = ctypes.c_size_t()
+        ok = kernel32.WriteProcessMemory(
+            self.handle, ctypes.c_void_p(address), data, len(data), ctypes.byref(written)
+        )
+        if not ok or written.value != len(data):
+            raise ctypes.WinError(ctypes.get_last_error())
 
     def write_u32(self, address: int, value: int) -> None:
-        self.write_bytes(address, struct.pack("<I", int(value)))
+        data = struct.pack("<I", int(value))
+        written = ctypes.c_size_t()
+        ok = kernel32.WriteProcessMemory(
+            self.handle, ctypes.c_void_p(address), data, len(data), ctypes.byref(written)
+        )
+        if not ok or written.value != len(data):
+            raise ctypes.WinError(ctypes.get_last_error())
 
     def write_bytes(self, address: int, data: bytes) -> None:
         written = ctypes.c_size_t()
-        page = address & ~0xFFF
-        end = (address + len(data) + 0xFFF) & ~0xFFF
-        old_protect = ctypes.c_ulong()
-        changed = bool(kernel32.VirtualProtectEx(
-            self.handle, ctypes.c_void_p(page), end - page, PAGE_READWRITE,
-            ctypes.byref(old_protect),
-        ))
-        try:
-            ok = kernel32.WriteProcessMemory(
-                self.handle, ctypes.c_void_p(address), data, len(data), ctypes.byref(written)
-            )
-            if not ok or written.value != len(data):
-                raise ctypes.WinError(ctypes.get_last_error())
-        finally:
-            if changed:
-                restored = ctypes.c_ulong()
-                if not kernel32.VirtualProtectEx(
-                    self.handle, ctypes.c_void_p(page), end - page,
-                    old_protect.value, ctypes.byref(restored),
-                ):
-                    raise ctypes.WinError(ctypes.get_last_error())
+        ok = kernel32.WriteProcessMemory(
+            self.handle, ctypes.c_void_p(address), data, len(data), ctypes.byref(written)
+        )
+        if not ok or written.value != len(data):
+            raise ctypes.WinError(ctypes.get_last_error())
 
     def scan_bytes(self, pattern: bytes, max_region_size: int = 256 * 1024 * 1024) -> list[tuple[int, int, int]]:
         hits: list[tuple[int, int, int]] = []
@@ -12743,7 +12740,7 @@ class War3Trainer:
             for index in range(self.HERO_SKILL_SLOT_COUNT):
                 number = index + 1
                 config_address = data + 0x1BC + index * 4
-                cache_address = data + 0x1BC + index * 4
+                cache_address = data + 0x1D4 + index * 4
                 extra_writes = [(cache_address, "rawcode")]
                 self._append_unit_field(
                     pm,
@@ -13724,9 +13721,12 @@ class War3Trainer:
             old_rawcode = pm.read_u32(config_address)
             if not old_rawcode:
                 raise RuntimeError(f"技能{index + 1}当前为空")
+            cache_address = hero_data + 0x1D4 + index * 4
             pm.write_u32(config_address, new_rawcode)
+            pm.write_u32(cache_address, new_rawcode)
             actual = pm.read_u32(config_address)
-            if actual != new_rawcode:
+            cache_actual = pm.read_u32(cache_address)
+            if actual != new_rawcode or cache_actual != new_rawcode:
                 raise RuntimeError("3.0 英雄技能配置写入读回不一致")
             return replace(
                 field, value=actual, address=config_address,
@@ -13739,7 +13739,7 @@ class War3Trainer:
             raise RuntimeError("当前选中单位没有英雄组件，不能写入英雄技能")
         _hero_wrapper, hero_data = hero
         config_address = hero_data + 0x1BC + index * 4
-        cache_address = hero_data + 0x1BC + index * 4
+        cache_address = hero_data + 0x1D4 + index * 4
         configs: list[int] = []
         for slot_index in range(self.HERO_SKILL_SLOT_COUNT):
             try:

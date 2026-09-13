@@ -1,0 +1,102 @@
+{
+  "version": "3.0.0.24268",
+  "image_sha256": "bd2a0dc256289de45287bb60f3725b88f1235216d5177984377fe1ca22840a12",
+  "timestamp": "0x6aa4de70",
+  "image_size": "0xe155000",
+  "machine": "0x8664",
+  "sections": [
+    {
+      "name": ".text",
+      "rva": "0x1000",
+      "virtual_size": 36036822,
+      "raw_size": 36037120
+    },
+    {
+      "name": ".rdata",
+      "rva": "0x2260000",
+      "virtual_size": 12764066,
+      "raw_size": 12764160
+    },
+    {
+      "name": ".data",
+      "rva": "0x2e8d000",
+      "virtual_size": 184204896,
+      "raw_size": 826880
+    },
+    {
+      "name": ".pdata",
+      "rva": "0xde39000",
+      "virtual_size": 1627272,
+      "raw_size": 1627648
+    },
+    {
+      "name": "_RDATA",
+      "rva": "0xdfc7000",
+      "virtual_size": 292,
+      "raw_size": 512
+    },
+    {
+      "name": ".rodata",
+      "rva": "0xdfc8000",
+      "virtual_size": 816,
+      "raw_size": 1024
+    },
+    {
+      "name": ".rsrc",
+      "rva": "0xdfc9000",
+      "virtual_size": 857200,
+      "raw_size": 857600
+    },
+    {
+      "name": ".reloc",
+      "rva": "0xe09b000",
+      "virtual_size": 759024,
+      "raw_size": 759296
+    }
+  ],
+  "old_checks": [
+    {
+      "rva": "0x30d360",
+      "size": 127,
+      "old_hash": "0xee47d32ded5646b8",
+      "disk_hash": "0x36cc96b036154b27",
+      "old_fingerprint_matches": false
+    },
+    {
+      "rva": "0x2e6940",
+      "size": 64,
+      "old_hash": "0x79ee034bd900d81a",
+      "disk_hash": "0x1db126275156f1e9",
+      "old_fingerprint_matches": false
+    },
+    {
+      "rva": "0xa110b0",
+      "size": 64,
+      "old_hash": "0x83b07cdee8d62f5a",
+      "disk_hash": "0xb198a6e0b7e35444",
+      "old_fingerprint_matches": false
+    },
+    {
+      "rva": "0xa0dff0",
+      "size": 64,
+      "old_hash": "0xe796972a8ed4f9ec",
+      "disk_hash": "0x4b5980003aadb2e0",
+      "old_fingerprint_matches": false
+    },
+    {
+      "rva": "0x31f430",
+      "size": 64,
+      "old_hash": "0x6f5b6cf163633067",
+      "disk_hash": "0xd0ac356c6bc54844",
+      "old_fingerprint_matches": false
+    },
+    {
+      "rva": "0xa0b8f0",
+      "size": 64,
+      "old_hash": "0xe826839cff1768ea",
+      "disk_hash": "0xfc1632d7227c3cea",
+      "old_fingerprint_matches": false
+    }
+  ],
+  "note": "Disk-only fingerprints. Protected live code may differ; mismatch does not identify a replacement."
+}

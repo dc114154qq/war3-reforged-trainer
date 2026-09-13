@@ -1,0 +1,3 @@
+*.bin
+module-text.json
+_deps/

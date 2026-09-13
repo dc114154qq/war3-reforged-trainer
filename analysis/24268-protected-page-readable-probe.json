@@ -1,0 +1,30 @@
+{
+  "GetHeroLevel": {
+    "protect_ok": true,
+    "old": "0x1",
+    "error": 0,
+    "bytes": "244b64265c866200dc654409c982ab0c825a1a7ed90536e1c2ab8e774d24506cbbdc212b7ec2d51aa4a5a98ba2948aab04e032c24894a7925516d72f1f38f135",
+    "restore_ok": true
+  },
+  "SetHeroLevel": {
+    "protect_ok": true,
+    "old": "0x1",
+    "error": 0,
+    "bytes": "c3f92ae91d669c1ca12cfc25b54ad99f738d531927526b063faf83c7b6e3b1689d0c8a612abf0191bd75f799d47328e5fc7cdb58ce28fe2bcced376d2575d59c",
+    "restore_ok": true
+  },
+  "CreateUnit": {
+    "protect_ok": true,
+    "old": "0x1",
+    "error": 0,
+    "bytes": "c05b097d5fcdea7a8931ac23dc8685c3f59bafedfc8686fc64531f529d3010dcf2eef098163a7705584bde844b64f6a9fc5f3c3adafd442f431356310452962e",
+    "restore_ok": true
+  },
+  "UnitAddAbility": {
+    "protect_ok": true,
+    "old": "0x1",
+    "error": 0,
+    "bytes": "42f7c6ae272130d06caf14e7435f39805e8b0d86d83579507b0227e68802981621e48d07c5e63723f73b8e7306e3fb0c6c7af3e437ffa4170cf15b723bcdd520",
+    "restore_ok": true
+  }
+}

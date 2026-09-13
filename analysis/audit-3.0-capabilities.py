@@ -15,11 +15,11 @@ def main() -> None:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             methods[node.name] = node.lineno
     matrix = [
-        {"feature": "24-unit selection", "status": "validated", "evidence": "classic-selection-live.json"},
-        {"feature": "resource read/write", "status": "validated", "evidence": "3.0 classic resource properties; live readback"},
+        {"feature": "24-unit selection", "status": "14 live; 24 structural fixture", "evidence": "canonical-player-list-live.json; test_classic_player_selection.py"},
+        {"feature": "resource read/write", "status": "read validated; live write pending", "evidence": "3.0 indexed player properties; test_indexed_resources.py"},
         {"feature": "coordinate write", "status": "code-routed", "evidence": "set_selected_unit_position"},
         {"feature": "hero attribute write", "status": "code-routed; live write pending", "evidence": "set_selected_hero_attributes"},
-        {"feature": "inventory read", "status": "validated", "evidence": "3.0 slot-array pointer + 12-byte entries + item wrapper/rawcode validation"},
+        {"feature": "inventory read", "status": "6 live items; new-unit live pending", "evidence": "3.0 slot-array pointer + registry item identities"},
         {"feature": "inventory charge write", "status": "code-routed; live write pending", "evidence": "set_selected_inventory_charges"},
         {"feature": "existing ability enumeration", "status": "validated read-only", "evidence": "ability-instances-live.json; 15/7/12 instances in live heroes"},
         {"feature": "ability field read/write", "status": "legacy native blocked", "evidence": "3.0 handler table not reconstructed"},

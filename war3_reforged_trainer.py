@@ -16624,10 +16624,16 @@ def run_gui() -> None:
         return f"已击杀该单位所属玩家的 {killed} 个单位"
 
     def elephant_action(action: Callable[[], None], message: str) -> str:
+        current = state.get("trainer")
+        if isinstance(current, War3Trainer) and getattr(current, "_native_selection_unavailable", False):
+            return "3.0 当前只读；该大象功能等待 native 执行入口适配"
         action()
         return message
 
     def elephant_batch_action(action: Callable[[], object], label: str) -> str:
+        current = state.get("trainer")
+        if isinstance(current, War3Trainer) and getattr(current, "_native_selection_unavailable", False):
+            return "3.0 当前只读；该大象功能等待 native 执行入口适配"
         results = elephant_batch(action, label)
         return f"{label}：成功 {len(results)} 个{elephant_batch_suffix()}"
 

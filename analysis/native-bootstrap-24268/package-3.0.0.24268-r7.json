@@ -7,5 +7,6 @@
   "gameplay_acceptance": false,
   "write_behavior": "3.0 ability/item field write controls are explicitly read-only and do not call the legacy helper; direct resource/charge memory routes remain separately guarded and require live acceptance.",
   "unsupported_actions": ["ability field write", "item field write", "ability add/remove", "unit clone", "group move", "native elephant actions"],
+  "legacy_helper_in_3.0_package": false,
   "release_ready": false
 }

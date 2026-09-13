@@ -4,7 +4,6 @@ a = Analysis(
     ['war3_reforged_trainer.py'],
     pathex=[],
     binaries=[
-        ('tools/war3_native_helper.dll', 'tools'),
         ('tools/war3_native_helper.3.0-live.dll', 'tools'),
         ('tools/capstone.dll', 'capstone/lib'),
     ],

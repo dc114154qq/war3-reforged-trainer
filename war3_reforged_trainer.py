@@ -5620,6 +5620,39 @@ class War3Trainer:
         x, y = self.query_mouse_world_position()
         return self.set_selected_unit_position(x, y)
 
+    def set_selected_group_position(self, x: float, y: float) -> int:
+        """Move every selected unit by direct validated fields on 3.0.
+
+        This route accepts an explicit world target and does not need the
+        native mouse-coordinate query. It is available while native execution
+        is gated; the mouse-hotkey route remains separately gated.
+        """
+        target_x, target_y = float(x), float(y)
+        if not math.isfinite(target_x) or not math.isfinite(target_y):
+            raise ValueError("单位坐标必须是有限数值")
+        if abs(target_x) > 1_000_000.0 or abs(target_y) > 1_000_000.0:
+            raise ValueError("单位坐标超出允许范围")
+        selected = self._selected_candidates_snapshot(None)
+        if not selected:
+            return 0
+        count = 0
+        with self._process_memory(write=True) as memory:
+            for candidate, _handle in selected:
+                if not candidate.x_address or not candidate.y_address:
+                    continue
+                # Revalidate the object identity before changing its fields.
+                if memory.read_u64(candidate.owner_address + 0x20) != candidate.handle \
+                        or memory.read_u64(candidate.unit_address + 0x18) != candidate.handle \
+                        or memory.read_u64(candidate.owner_address + 0x90) != candidate.unit_address:
+                    continue
+                memory.write_f32(candidate.x_address, target_x)
+                memory.write_f32(candidate.y_address, target_y)
+                actual_x, actual_y = memory.read_f32(candidate.x_address), memory.read_f32(candidate.y_address)
+                if abs(actual_x - target_x) > 0.01 or abs(actual_y - target_y) > 0.01:
+                    raise RuntimeError("3.0 选中组坐标写入读回不一致")
+                count += 1
+        return count
+
     def move_selected_group_to_mouse(self) -> tuple[int, float, float]:
         handler = self._query_native_table_handlers(("SetUnitPosition",))["SetUnitPosition"].handler_address
         result = self._run_native_helper_ops(0, ((

@@ -5535,6 +5535,17 @@ class War3Trainer:
         target = float(scale)
         if not 0.01 <= target <= 100.0:
             raise ValueError("单位大小必须在 0.01 到 100 之间")
+        if getattr(self, "_native_selection_unavailable", False):
+            candidate, _handle = self._direct_selected_context()
+            with self._process_memory(write=True) as memory:
+                address = candidate.unit_address + 0x290
+                if abs(memory.read_f32(address) - 1.0) > 0.001 and not math.isfinite(memory.read_f32(address)):
+                    raise RuntimeError("3.0 单位缩放字段校验失败")
+                memory.write_f32(address, target)
+                actual = memory.read_f32(address)
+                if abs(actual - target) > 0.001:
+                    raise RuntimeError("3.0 单位缩放写入读回不一致")
+            return actual
         expected = self._float_bits(target)
         result = self._run_bound_unit_value_action("SetUnitScale", self.NATIVE_HELPER_OP_JASS_UNIT_SCALE, expected)
         if result != expected:

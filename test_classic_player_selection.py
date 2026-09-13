@@ -90,6 +90,8 @@ class SelectionTests(unittest.TestCase):
         trainer = object.__new__(War3Trainer)
         trainer._classic_selection_layout = None
         trainer._classic_selection_cache = ()
+        trainer._classic_object_registry = Mock()
+        trainer._classic_object_registry.players.return_value = players
         trainer._selection_player_pointer_candidates = Mock(return_value=players)
         trainer._build_unit_object_index = Mock(side_effect=AssertionError("Unexpected index scan"))
         return trainer
@@ -109,11 +111,12 @@ class SelectionTests(unittest.TestCase):
         memory.player(0x200000, 0)
         manager, _ = memory.player(0x200E10, 1)
         trainer = self.trainer([0x200000, 0x200E10])
-        trainer._build_unit_object_index = Mock(return_value={0x800000: (123, 0x900000)})
+        trainer._classic_object_registry.resolve_unit.return_value = (123, 0x900000)
         candidate = object()
         trainer._candidate_from_identity = Mock(return_value=candidate)
         self.assertEqual(trainer._classic_selection_candidates(memory), [(candidate, 123)])
         self.assertEqual(trainer._classic_selection_layout, (0x200E10, manager, 0))
+        trainer._build_unit_object_index.assert_not_called()
 
     def test_multiple_player_lists_are_not_ranked_by_size(self):
         memory = Memory()
@@ -137,7 +140,7 @@ class SelectionTests(unittest.TestCase):
         memory.player(0x200000, 1)
         trainer = self.trainer([0x200000])
         trainer._classic_selection_cache = ((object(), 777),)
-        trainer._build_unit_object_index = Mock(return_value={0x800000: (123, 0x900000)})
+        trainer._classic_object_registry.resolve_unit.return_value = (123, 0x900000)
         def changed_identity(*args):
             memory.player(0x200000, 0)
             return object()

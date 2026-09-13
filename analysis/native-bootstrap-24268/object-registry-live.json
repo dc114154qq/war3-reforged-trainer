@@ -1,0 +1,111 @@
+{
+  "pid": 16700,
+  "captured_utc": "2026-09-13T07:15:27.936563+00:00",
+  "game_base": "0x7ff7229d0000",
+  "resolver_rva": "0x1951b0",
+  "root_slot_rva": "0x2f807f0",
+  "root": "0x2066167b9c0",
+  "player": "0x2066dbfbe28",
+  "read_only": true,
+  "memory_scans_forbidden": true,
+  "count": 14,
+  "all_samples_equal": true,
+  "list_matches": true,
+  "all_identities_match_previous_index": true,
+  "altered_generations_rejected": 14,
+  "cold_ms": 25.866199999654782,
+  "warm_median_ms": 26.897400000052585,
+  "timings_ms": [
+    25.866199999654782,
+    26.897400000052585,
+    25.26080000006914,
+    27.49279999989085
+  ],
+  "rows": [
+    {
+      "unit": "0x7ff442e0d178",
+      "full_handle": "0x97d6000097b0",
+      "owner": "0x2066d9b91b0",
+      "matches_previous_index": true
+    },
+    {
+      "unit": "0x7ff442e0c820",
+      "full_handle": "0x979c00009776",
+      "owner": "0x2066d9b6400",
+      "matches_previous_index": true
+    },
+    {
+      "unit": "0x7ff442e0bec8",
+      "full_handle": "0x974600009720",
+      "owner": "0x2066d9b20d0",
+      "matches_previous_index": true
+    },
+    {
+      "unit": "0x7ff442e814b0",
+      "full_handle": "0x464a00004640",
+      "owner": "0x2066d3d2760",
+      "matches_previous_index": true
+    },
+    {
+      "unit": "0x7ff442e81e08",
+      "full_handle": "0x46640000465a",
+      "owner": "0x2066d3d3220",
+      "matches_previous_index": true
+    },
+    {
+      "unit": "0x7ff442e82760",
+      "full_handle": "0x467d00004673",
+      "owner": "0x2066d3d3ce0",
+      "matches_previous_index": true
+    },
+    {
+      "unit": "0x7ff442e830b8",
+      "full_handle": "0x46960000468c",
+      "owner": "0x2066d3d48f8",
+      "matches_previous_index": true
+    },
+    {
+      "unit": "0x7ff442e83a10",
+      "full_handle": "0x46af000046a5",
+      "owner": "0x2066d3d5510",
+      "matches_previous_index": true
+    },
+    {
+      "unit": "0x7ff442e84368",
+      "full_handle": "0x46c2000046b8",
+      "owner": "0x2066d3d5d20",
+      "matches_previous_index": true
+    },
+    {
+      "unit": "0x7ff442e84cc0",
+      "full_handle": "0x46d5000046cb",
+      "owner": "0x2066d3d6530",
+      "matches_previous_index": true
+    },
+    {
+      "unit": "0x7ff442e85618",
+      "full_handle": "0x46e8000046de",
+      "owner": "0x2066d3d6d40",
+      "matches_previous_index": true
+    },
+    {
+      "unit": "0x7ff442e85f70",
+      "full_handle": "0x4701000046f7",
+      "owner": "0x2066d3d7800",
+      "matches_previous_index": true
+    },
+    {
+      "unit": "0x7ff442ed5630",
+      "full_handle": "0xd48900005af0",
+      "owner": "0x2066d523200",
+      "matches_previous_index": true
+    },
+    {
+      "unit": "0x7ff442eda0f0",
+      "full_handle": "0xe08000005bdd",
+      "owner": "0x2066d52d340",
+      "matches_previous_index": true
+    }
+  ],
+  "scope": "Actual candidate method including profile validation, module enumeration and object lookup. Player supplied explicitly: local-player bootstrap still unverified. No helper, native execution, game writes or cross-device live test."
+}

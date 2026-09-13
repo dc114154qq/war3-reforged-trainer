@@ -2858,12 +2858,10 @@ class War3Trainer:
         self._last_selected_summaries: tuple[UnitSelectionSummary, ...] = ()
         self._last_persistent_native_snapshots: tuple[PersistentNativeUnitSnapshot, ...] = ()
         self._elephant_selection_override: tuple[UnitCandidate, int] | None = None
-        # 3.0 keeps the classic linked selection container inside the player
-        # object, but its offset is no longer the old fixed CPlayer offset.
-        # Cache the dynamically validated container after the first bounded
-        # discovery so later operations stay on the fast path.
+        # 3.0 keeps the canonical selection manager at CPlayer+0x168.
         self._classic_selection_layout: tuple[int, int, int] | None = None
         self._classic_selection_cache: tuple[tuple[UnitCandidate, int], ...] = ()
+        self._classic_object_registry = None
         # This branch targets 3.0.0.24268. The bundled native helper still
         # carries the 2.0.4.23745 profile, so never probe it in the 3.0
         # product path. The classic selection backend is the entry path.
@@ -2948,6 +2946,7 @@ class War3Trainer:
             self._elephant_selection_override = None
             self._classic_selection_layout = None
             self._classic_selection_cache = ()
+            self._classic_object_registry = None
             # This branch always targets 3.0; reconnecting must not re-enable
             # the bundled 2.0.4.23745 native helper.
             self._native_selection_unavailable = True
@@ -4072,12 +4071,13 @@ class War3Trainer:
     ) -> list[tuple[UnitCandidate, int]]:
         """Read canonical 3.0 player lists without ranking unrelated containers.
 
-        Player discovery and owner resolution still use the legacy indexes.
-        They are not evidence of a scan-free 3.0 bootstrap. Once a player is
+        Players and owner identities come from the verified 3.0 game-state
+        array and engine registry. Once a player is
         cached, an empty selection must stay empty rather than rediscovering a
         different player's list or a remembered control group.
         """
         from war3_classic_selection import read_player_selection, SelectionReadError
+        from war3_object_registry import ObjectRegistry24268
 
         self._classic_selection_cache = ()
         layout = self._classic_selection_layout
@@ -4086,7 +4086,9 @@ class War3Trainer:
             # manager can be replaced when game state changes.
             selection = read_player_selection(pm, layout[0])
         else:
-            players = self._selection_player_pointer_candidates(pm, discover=True)
+            if self._classic_object_registry is None:
+                self._classic_object_registry = ObjectRegistry24268.attach(pm)
+            players = self._classic_object_registry.players(pm)
             nonempty = []
             valid_lists = 0
             for player in dict.fromkeys(players):
@@ -4111,15 +4113,11 @@ class War3Trainer:
             self._classic_selection_cache = ()
             return []
 
-        unit_index = self._build_unit_object_index(pm, force_refresh=False)
-        if any(unit not in unit_index for unit in selection.units):
-            unit_index = self._build_unit_object_index(pm, force_refresh=True)
+        if self._classic_object_registry is None:
+            self._classic_object_registry = ObjectRegistry24268.attach(pm)
         selected = []
         for unit in selection.units:
-            identity = unit_index.get(unit)
-            if identity is None:
-                raise RuntimeError("3.0 selected unit identity is not resolved")
-            handle, owner = identity
+            handle, owner = self._classic_object_registry.resolve_unit(pm, unit)
             candidate = self._candidate_from_identity(
                 pm, handle, owner, unit,
                 f"3.0 classic selection player=0x{selection.player:x} count={len(selection.units)}",

@@ -53,4 +53,6 @@ war3_loader.dll 的 Authenticode 签名有效，签名主体 Blizzard Entertainm
 
 补充核对：此前注册搜索脚本漏加 PE ImageBase，已经修正；修正后运行时 `.rdata` 的四个名称地址已确认，但在当前共享 `.text` 中仍没有直接 RIP-relative 引用。说明注册链不是旧版简单的 `lea name; call dispatcher` 形状，不能把空结果解释成名称不存在。
 
+运行时 `.rdata` 的名称目录已提取为 `native-catalog.json`。它包含 GroupEnumUnitsSelected、GetUnitState、GetHeroStr、UnitAddAbility、BlzGetUnitAbilityByIndex 及附近签名字符串；这证明 3.0 仍保留需要的 JASS/native 目录。当前代码没有保存这些地址的绝对指针，也没有旧版直接引用，推测注册前经过加载器解码或间接表生成。目录本身还不是可调用 handler，不能拿名称地址冒充函数地址。
+
 进一步只读分析了 Windows 异常分发入口：`KiUserExceptionDispatcher` 的第一跳调用游戏/加载器回调，加载器异常路径建立 Fiber 并调用 TLS 取值；这些调用均只在 Unicorn 的模拟内存中推演，未调用真实函数。模拟结果不能证明完整保护算法，当前不修改异常处理链。

@@ -1,0 +1,101 @@
+{
+  "build": "3.0.0.24268",
+  "source": "runtime shared .rdata read-only mapping",
+  "rdata_sha256": "2e0e663dd53bb4ed6c87acc93f478844df0c49ea8f2562d9d3c00b78ee2aceaa",
+  "names": [
+    {
+      "name": "GroupEnumUnitsSelected",
+      "rdata_offset": "0x6c04b8",
+      "rva": "0x29204b8",
+      "near_signatures": [
+        "(Hgroup;Hrect;Hboolexpr;I)V",
+        "(Hgroup;Hplayer;Hboolexpr;)V",
+        "(Hgroup;RRRHboolexpr;)V",
+        "(Hgroup;Hlocation;RHboolexpr;)V",
+        "(Hgroup;RRRHboolexpr;I)V",
+        "(Hgroup;Hlocation;RHboolexpr;I)V",
+        "(Hgroup;S)B",
+        "(Hgroup;I)B",
+        "(Hgroup;SRR)B",
+        "(Hgroup;SHlocation;)B",
+        "(Hgroup;IRR)B",
+        "(Hgroup;IHlocation;)B",
+        "(Hgroup;SHwidget;)B",
+        "(Hgroup;IHwidget;)B",
+        "(Hgroup;C)V"
+      ]
+    },
+    {
+      "name": "GetUnitState",
+      "rdata_offset": "0x6c0d08",
+      "rva": "0x2920d08",
+      "near_signatures": [
+        "(Hdestructable;)S",
+        "(Hplayer;IRRR)Hunit;",
+        "(Hplayer;SRRR)Hunit;",
+        "(Hplayer;IHlocation;R)Hunit;",
+        "(Hplayer;SHlocation;R)Hunit;",
+        "(Hunit;Hunitstate;)R",
+        "(Hunit;)I",
+        "(I)I",
+        "(Hunit;B)V",
+        "(Hunit;)R",
+        "(Hunit;)Hlocation;",
+        "(Hunit;)Hunit;",
+        "(Hunit;)Hdestructable;"
+      ]
+    },
+    {
+      "name": "GetHeroStr",
+      "rdata_offset": "0x6c1488",
+      "rva": "0x2921488",
+      "near_signatures": [
+        "(Hunit;S)R",
+        "(Hunit;I)R",
+        "(Hunit;RRR)V",
+        "(Hunit;IIII)V",
+        "(Hunit;SHunit;RRR)V",
+        "(Hunit;IB)V",
+        "(Hunit;B)I",
+        "(Hunit;I)B",
+        "(Hunit;I)I",
+        "(Hunit;RRB)B"
+      ]
+    },
+    {
+      "name": "UnitAddAbility",
+      "rdata_offset": "0x6c1d48",
+      "rva": "0x2921d48",
+      "near_signatures": [
+        "(Hunit;Hunit;)B",
+        "(Hunit;Hunit;R)B",
+        "(Hunit;RRR)B",
+        "(Hunit;Hlocation;R)B",
+        "(I)B",
+        "(IHunittype;)B",
+        "(Hunit;)Hplayer;",
+        "(Hunit;BI)B",
+        "(Hunit;BBBBBBB)B",
+        "(Hunit;BBBBBBB)I",
+        "(Hunit;BB)V",
+        "(Hunit;BBBBBBB)V",
+        "(Hunit;IR)V"
+      ]
+    },
+    {
+      "name": "BlzGetUnitAbilityByIndex",
+      "rdata_offset": "0x6c9870",
+      "rva": "0x2929870",
+      "near_signatures": [
+        "(Hattacktype;)B",
+        "(Hdamagetype;)B",
+        "(Hweapontype;)B",
+        "(Hunit;I)Hability;",
+        "(Hplayer;IS)V",
+        "(Horiginframetype;I)Hframehandle;",
+        "(IIII)I"
+      ]
+    }
+  ],
+  "scope": "Directory evidence only; no handlers invoked"
+}

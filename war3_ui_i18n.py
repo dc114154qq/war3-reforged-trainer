@@ -35,6 +35,9 @@ def detect_ui_language(locale_name: str | None = None) -> str:
 
 
 _EN_TRANSLATIONS = {
+    "3.0 单位缩放字段校验失败": "3.0 unit scale field validation failed",
+    "3.0 单位缩放写入读回不一致": "3.0 unit scale write readback mismatch",
+    "3.0 单位字段写入读回不一致": "3.0 unit field write readback mismatch",
     "3.0 对象链已预热：": "3.0 object chain warmed: ",
     "个选中单位可直接操作；引擎动作仍待适配": " selected units are directly writable; engine actions still need adaptation",
     "3.0 英雄等级写入读回不一致": "3.0 hero level write readback mismatch",

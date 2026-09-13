@@ -15756,7 +15756,14 @@ def run_gui() -> None:
 
     def prewarm_selection_cache() -> str:
         t = trainer()
-        cand = t.prewarm_selected_unit_cache()
+        try:
+            cand = t.prewarm_selected_unit_cache()
+        except (RuntimeError, OSError) as exc:
+            # The 3.0 game-state pointer is frame-scoped while the map/UI is
+            # settling. Prewarm is background maintenance; do not show an
+            # error dialog for this transient state. The next scheduled pass
+            # will retry through the normal reconnect/prewarm loop.
+            return f"选择缓存等待游戏状态稳定（{exc}）"
         return f"选择缓存已预热；unit=0x{cand.unit_address:x}"
 
     def elephant_prewarm() -> str:

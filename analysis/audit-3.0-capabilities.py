@@ -18,7 +18,7 @@ def main() -> None:
         {"feature": "24-unit selection", "status": "14 live; 24 structural fixture", "evidence": "canonical-player-list-live.json; test_classic_player_selection.py"},
         {"feature": "resource read/write", "status": "read and original-value writeback live validated", "evidence": "direct-writeback-live.json; test_indexed_resources.py"},
         {"feature": "coordinate write", "status": "code-routed", "evidence": "set_selected_unit_position"},
-        {"feature": "hero attribute write", "status": "code-routed; live write pending", "evidence": "set_selected_hero_attributes"},
+        {"feature": "hero attribute write", "status": "typed original-value writeback live validated", "evidence": "hero-writeback-live.json; set_selected_hero_attributes"},
         {"feature": "inventory read", "status": "6 live items; new-unit live pending", "evidence": "3.0 slot-array pointer + registry item identities"},
         {"feature": "inventory charge write", "status": "six existing items original-value writeback live validated", "evidence": "direct-writeback-live.json; set_selected_inventory_charges"},
         {"feature": "existing ability enumeration", "status": "validated read-only", "evidence": "ability-instances-live.json; 15/7/12 instances in live heroes"},

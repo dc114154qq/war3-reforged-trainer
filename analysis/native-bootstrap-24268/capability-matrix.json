@@ -32,8 +32,8 @@
     },
     {
       "feature": "hero attribute write",
-      "status": "code-routed; live write pending",
-      "evidence": "set_selected_hero_attributes"
+      "status": "typed original-value writeback live validated",
+      "evidence": "hero-writeback-live.json; set_selected_hero_attributes"
     },
     {
       "feature": "inventory read",

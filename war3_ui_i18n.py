@@ -35,6 +35,7 @@ def detect_ui_language(locale_name: str | None = None) -> str:
 
 
 _EN_TRANSLATIONS = {
+    "3.0 英雄等级尚未接通引擎等级接口，拒绝只改组件缓存": "3.0 hero level engine setter is not connected; refusing a component-cache-only write",
     "3.0 单位缩放字段校验失败": "3.0 unit scale field validation failed",
     "3.0 单位缩放写入读回不一致": "3.0 unit scale write readback mismatch",
     "3.0 单位字段写入读回不一致": "3.0 unit field write readback mismatch",

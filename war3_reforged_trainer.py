@@ -5385,18 +5385,7 @@ class War3Trainer:
         if not 1 <= target <= 100000:
             raise ValueError("英雄等级必须在 1 到 100000 之间")
         if getattr(self, "_native_selection_unavailable", False):
-            candidate, _handle = self._direct_selected_context()
-            with self._process_memory(write=True) as memory:
-                components = self._selected_components(memory, candidate.owner_address)
-                hero = components.get("hero")
-                if hero is None:
-                    raise RuntimeError("当前单位没有英雄组件")
-                addresses = (hero[1] + 0xD8, hero[1] + 0xF0)
-                for address in addresses:
-                    memory.write_i32(address, target)
-                if any(memory.read_i32(address) != target for address in addresses):
-                    raise RuntimeError("3.0 英雄等级写入读回不一致")
-            return target
+            raise RuntimeError("3.0 英雄等级尚未接通引擎等级接口，拒绝只改组件缓存")
         self._run_bound_hero_progress(self.NATIVE_HELPER_OP_SET_BOUND_HERO_LEVEL, target)
         return target
 

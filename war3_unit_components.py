@@ -36,12 +36,26 @@ def read_unit_component_nodes(memory, registry, owner):
             raise RuntimeError("Unit component head changed while reading")
         return identities, result
 
-    identities, result = traverse()
-    second_identities, second_result = traverse()
-    if (identities != second_identities or result != second_result
-            or registry.resolve_unit(memory, unit) != (handle, owner)):
-        raise RuntimeError("Unit component identity changed while reading")
-    return result
+    last_error = None
+    first_head = None
+    for _attempt in range(4):
+        try:
+            identities, result = traverse()
+            current_head = identities[0][3] if identities else None
+            if first_head is None:
+                first_head = current_head
+            elif current_head != first_head:
+                raise RuntimeError("Unit component head changed while retrying")
+            second_identities, second_result = traverse()
+            if (identities != second_identities or result != second_result
+                    or registry.resolve_unit(memory, unit) != (handle, owner)):
+                raise RuntimeError("Unit component identity changed while reading")
+            return result
+        except RuntimeError as exc:
+            last_error = exc
+            if "changed" not in str(exc):
+                raise
+    raise RuntimeError("Unit component list remained unstable after retries") from last_error
 
 
 def read_unit_components(memory, registry, owner, names):

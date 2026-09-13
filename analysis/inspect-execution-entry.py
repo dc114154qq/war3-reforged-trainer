@@ -25,7 +25,8 @@ with ProcessMemory(pid) as memory:
     report['instrumentation_query']={'status':hex(status&0xffffffff),'bytes':returned.value,
                                      'data':instrument.raw.hex() if status>=0 else None}
     for library,name in [('ntdll.dll','RtlUserThreadStart'),('ntdll.dll','LdrInitializeThunk'),
-                         ('kernel32.dll','BaseThreadInitThunk'),('kernel32.dll','LoadLibraryW')]:
+                         ('kernel32.dll','BaseThreadInitThunk'),('kernel32.dll','LoadLibraryW'),
+                         ('ntdll.dll','KiUserExceptionDispatcher')]:
         module=kernel32.GetModuleHandleW(library)
         address=kernel32.GetProcAddress(module,name.encode())
         if not address: continue

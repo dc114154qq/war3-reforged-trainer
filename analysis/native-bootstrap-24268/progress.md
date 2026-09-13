@@ -44,3 +44,11 @@ war3_loader.dll 的 Authenticode 签名有效，签名主体 Blizzard Entertainm
 修正后的真实游戏 PID 23652 诊断：映像映射成功，线程 exit=0，stage=2，module=NULL，loader error=2148073478（0x80090006，NTE_BAD_SIGNATURE）。游戏仍存活并响应，证据见 image-probe-live.txt。错误码官方定义为 Invalid Signature：https://learn.microsoft.com/en-us/windows/win32/com/com-error-codes-4 。此结果证明实际加载调用已执行并返回签名错误；并未证明签名检查所在全部路径，也没有绕过或修改保护代码。
 
 下一步可从已验证执行的无导入映像入口开展严格只读研究，或寻找游戏允许的加载/扩展机制；仍需确认 native 注册和对象布局，不能视为纯 native 功能已经恢复。暂停重复尝试被拒绝的普通 DLL 加载。
+
+## 共享映像读取结果（2026-09-13）
+
+继续使用当前运行的 PID 23652，按句柄元数据定位主模块的共享 Section（不枚举地址空间、不写入游戏）。本地只读映射校验 PE 时间戳、SizeOfImage 和模块头后，完整取得 `.text` 36036822 字节、`.rdata` 12764066 字节；游戏仍响应。旧的进程外 `ReadProcessMemory` 299 缺口因此解释为对共享映像保护页的外部读取限制，而不是不存在代码。证据见 `module-sections.json`、`section-capture.json`。
+
+在完整共享 `.text` 上按旧版本的四个注册字符串锚点仍没有得到注册记录；不能沿用旧 profile。新代码在磁盘和共享映像起始字节也出现不同，说明需要按 3.0 的新执行/解码路径恢复代码视图。
+
+进一步只读分析了 Windows 异常分发入口：`KiUserExceptionDispatcher` 的第一跳调用游戏/加载器回调，加载器异常路径建立 Fiber 并调用 TLS 取值；这些调用均只在 Unicorn 的模拟内存中推演，未调用真实函数。模拟结果不能证明完整保护算法，当前不修改异常处理链。

@@ -1,0 +1,21 @@
+{
+  "pid": 23652,
+  "handle": "0x320",
+  "read_only": true,
+  "sections": [
+    {
+      "name": ".text",
+      "rva": "0x1000",
+      "bytes": 36036822,
+      "sha256": "597a67135a58f8662cab111d1d2551fe518c690b5fccc8a8eaa70c5971e29305"
+    },
+    {
+      "name": ".rdata",
+      "rva": "0x2260000",
+      "bytes": 12764066,
+      "sha256": "2e0e663dd53bb4ed6c87acc93f478844df0c49ea8f2562d9d3c00b78ee2aceaa"
+    }
+  ],
+  "scope": "Locally mapped shared section; no game writes or page protection changes",
+  "header_sha256": "b5258c6c25cf82a735798fbebae931036426c9c9cd7f1c25163388c7bcc25042"
+}

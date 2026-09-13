@@ -1,0 +1,198 @@
+{
+  "pid": 23652,
+  "scope": "Section metadata only; no game writes or address-space scans",
+  "sections": [
+    {
+      "handle": "0x320",
+      "access": "0xf000f",
+      "size": 236277760,
+      "attributes": "0x8000000"
+    },
+    {
+      "handle": "0x428",
+      "access": "0xf0007",
+      "size": 131072,
+      "attributes": "0x800000"
+    },
+    {
+      "handle": "0x7d0",
+      "access": "0xf0007",
+      "size": 131072,
+      "attributes": "0x800000"
+    },
+    {
+      "handle": "0x810",
+      "access": "0xf0007",
+      "size": 131072,
+      "attributes": "0x800000"
+    },
+    {
+      "handle": "0x81c",
+      "access": "0xf0007",
+      "size": 131072,
+      "attributes": "0x800000"
+    },
+    {
+      "handle": "0x824",
+      "access": "0xf0007",
+      "size": 131072,
+      "attributes": "0x800000"
+    },
+    {
+      "handle": "0x838",
+      "access": "0xf0007",
+      "size": 131072,
+      "attributes": "0x800000"
+    },
+    {
+      "handle": "0x848",
+      "access": "0xf0007",
+      "size": 131072,
+      "attributes": "0x800000"
+    },
+    {
+      "handle": "0x84c",
+      "access": "0xf0007",
+      "size": 131072,
+      "attributes": "0x800000"
+    },
+    {
+      "handle": "0x850",
+      "access": "0xf0007",
+      "size": 131072,
+      "attributes": "0x800000"
+    },
+    {
+      "handle": "0x858",
+      "access": "0xf0007",
+      "size": 131072,
+      "attributes": "0x800000"
+    },
+    {
+      "handle": "0x864",
+      "access": "0xf0007",
+      "size": 131072,
+      "attributes": "0x800000"
+    },
+    {
+      "handle": "0x87c",
+      "access": "0xf0007",
+      "size": 131072,
+      "attributes": "0x800000"
+    },
+    {
+      "handle": "0x880",
+      "access": "0xf0007",
+      "size": 131072,
+      "attributes": "0x800000"
+    },
+    {
+      "handle": "0x890",
+      "access": "0xf0007",
+      "size": 131072,
+      "attributes": "0x800000"
+    },
+    {
+      "handle": "0x894",
+      "access": "0xf0007",
+      "size": 131072,
+      "attributes": "0x800000"
+    },
+    {
+      "handle": "0x8a4",
+      "access": "0xf0007",
+      "size": 11280,
+      "attributes": "0x800000"
+    },
+    {
+      "handle": "0x8b0",
+      "access": "0xf0007",
+      "size": 131072,
+      "attributes": "0x800000"
+    },
+    {
+      "handle": "0x9c0",
+      "access": "0xf0005",
+      "size": 1574998,
+      "attributes": "0x800000"
+    },
+    {
+      "handle": "0xafc",
+      "access": "0xf001f",
+      "size": 524288,
+      "attributes": "0x8000000"
+    },
+    {
+      "handle": "0xbb0",
+      "access": "0xf001f",
+      "size": 524288,
+      "attributes": "0x8000000"
+    },
+    {
+      "handle": "0xbb8",
+      "access": "0xf0007",
+      "size": 268435456,
+      "attributes": "0x800000"
+    },
+    {
+      "handle": "0xcdc",
+      "access": "0xf001f",
+      "size": 524288,
+      "attributes": "0x8000000"
+    },
+    {
+      "handle": "0xd6c",
+      "access": "0xf001f",
+      "size": 524288,
+      "attributes": "0x8000000"
+    },
+    {
+      "handle": "0xf38",
+      "access": "0xf001f",
+      "size": 45056,
+      "attributes": "0x8000000"
+    },
+    {
+      "handle": "0xf40",
+      "access": "0xf001f",
+      "size": 4096,
+      "attributes": "0x8000000"
+    },
+    {
+      "handle": "0x106c",
+      "access": "0xf001f",
+      "size": 524288,
+      "attributes": "0x8000000"
+    },
+    {
+      "handle": "0x109c",
+      "access": "0xf0007",
+      "size": 181223424,
+      "attributes": "0x8000000"
+    },
+    {
+      "handle": "0x1214",
+      "access": "0xf0007",
+      "size": 4096,
+      "attributes": "0x8000000"
+    },
+    {
+      "handle": "0x121c",
+      "access": "0xf0007",
+      "size": 32768,
+      "attributes": "0x8000000"
+    },
+    {
+      "handle": "0x1574",
+      "access": "0xf0007",
+      "size": 1048576,
+      "attributes": "0x800000"
+    },
+    {
+      "handle": "0x1738",
+      "access": "0xf001f",
+      "size": 4096,
+      "attributes": "0x8000000"
+    }
+  ]
+}

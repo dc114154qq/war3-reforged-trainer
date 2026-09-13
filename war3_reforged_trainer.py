@@ -5149,9 +5149,6 @@ class War3Trainer:
         pm: ProcessMemory,
         snapshot: Iterable[tuple[UnitCandidate, int]],
     ) -> tuple[UnitSelectionSummary, ...]:
-        if pm is None and snapshot:
-            with self._process_memory() as summary_memory:
-                return self._selected_summaries_from_snapshot(summary_memory, snapshot)
         snapshot = tuple(snapshot)
         if (
             snapshot
@@ -5190,6 +5187,10 @@ class War3Trainer:
                     )
                 )
             return tuple(summaries)
+
+        if pm is None and snapshot:
+            with self._process_memory() as summary_memory:
+                return self._selected_summaries_from_snapshot(summary_memory, snapshot)
 
         owners = {
             candidate.owner_address

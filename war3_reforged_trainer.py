@@ -9011,7 +9011,13 @@ class War3Trainer:
     ) -> list[ResourceCache]:
         if self._native_selection_unavailable:
             with self._process_memory() as memory:
-                return [self._classic_local_resource_cache(memory)]
+                groups = self._resource_property_groups(memory, warm_unit_owner_index=False)
+                caches = self._resource_caches_from_groups(
+                    groups, current_gold, current_lumber, current_food, current_food_cap,
+                )
+                if not caches:
+                    raise RuntimeError("3.0 resource property groups did not yield any resource caches")
+                return caches
         handlers = self._query_native_table_handlers(("Player", "GetPlayerState"))
         caches = []
         # Three complete players per command (15 ops); empty slots are explicit

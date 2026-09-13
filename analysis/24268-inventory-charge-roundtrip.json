@@ -1,0 +1,11 @@
+{
+  "pid": 32868,
+  "operation": "inventory_charges_roundtrip",
+  "ok": true,
+  "selected": 14,
+  "slot": 1,
+  "item_address": "0x1cf604033c8",
+  "before": 0,
+  "after": 1,
+  "restored": 0
+}

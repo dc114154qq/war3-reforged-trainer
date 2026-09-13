@@ -1,0 +1,107 @@
+{
+  "pid": 32868,
+  "entry": "0x7ffdab357df0",
+  "teb": "0x80002cd000",
+  "filename": "E:\\Warcraft III\\_retail_\\x86_64\\war3_loader.dll",
+  "scope": "Emulated copy only, artificial stack and arguments, no syscall or game write. The result is not an observed live file-open return status.",
+  "reason": [
+    "stopped before syscall/interrupt at 0x7ffe75c85c02"
+  ],
+  "captured_pages": 42,
+  "calls": [
+    {
+      "address": "0x7ffdab35a073",
+      "instruction": "call 0x7ffdab8763f0",
+      "rcx": "0x21",
+      "rdx": "0x66",
+      "r8": "0x70002ffa0",
+      "r9": "0x710000400"
+    },
+    {
+      "address": "0x7ffdab876fc0",
+      "instruction": "call 0x7ffdab4efeb0",
+      "rcx": "0x6",
+      "rdx": "0x710000400",
+      "r8": "0x1",
+      "r9": "0xd"
+    },
+    {
+      "address": "0x7ffdab876ff1",
+      "instruction": "call 0x7ffdacc16b40",
+      "rcx": "0x42",
+      "rdx": "0x70002faa8",
+      "r8": "0x710000460",
+      "r9": "0x66"
+    },
+    {
+      "address": "0x7ffdab8777c5",
+      "instruction": "call 0x7ffdabf69840",
+      "rcx": "0xd19c1e580ac4b338",
+      "rdx": "0x4d",
+      "r8": "0x5565fdbd1de14229",
+      "r9": "0x66"
+    },
+    {
+      "address": "0x7ffdab35a146",
+      "instruction": "call 0x7ffdab7dd830",
+      "rcx": "0x1",
+      "rdx": "0x70002ff98",
+      "r8": "0x4",
+      "r9": "0xd"
+    },
+    {
+      "address": "0x7ffdab7dd847",
+      "instruction": "call 0x7ffdaaddd610",
+      "rcx": "0x37",
+      "rdx": "0x5a",
+      "r8": "0x70002ff98",
+      "r9": "0x2"
+    },
+    {
+      "address": "0x7ffdab357f04",
+      "instruction": "call 0x7ffdac20e300",
+      "rcx": "0x5f7cd49af325f8ed",
+      "rdx": "0x710000020",
+      "r8": "0x59",
+      "r9": "0x100020"
+    },
+    {
+      "address": "0x7ffdac20e342",
+      "instruction": "call rsi",
+      "rcx": "0x710000000",
+      "rdx": "0x100020",
+      "r8": "0x710000100",
+      "r9": "0x710000020"
+    }
+  ],
+  "last_addresses": [
+    "0x7ffdac20e301",
+    "0x7ffdac20e305",
+    "0x7ffdac20e308",
+    "0x7ffdac20e310",
+    "0x7ffdac20e315",
+    "0x7ffdac20e31a",
+    "0x7ffdac20e322",
+    "0x7ffdac20e32c",
+    "0x7ffdac20e32f",
+    "0x7ffdac20e334",
+    "0x7ffdac20e339",
+    "0x7ffdac20e33c",
+    "0x7ffdac20e33f",
+    "0x7ffdac20e342",
+    "0x7ffe75b10f00",
+    "0x7ffe75b10f03",
+    "0x7ffe75b10f08",
+    "0x7ffe75c85bf8",
+    "0x7ffe75c85c00",
+    "0x7ffe75c85c02"
+  ],
+  "registers": {
+    "rip": "0x7ffe75c85c02",
+    "rax": "0x33",
+    "rcx": "0x710000000",
+    "rdx": "0x100020",
+    "r8": "0x710000100",
+    "r9": "0x710000020"
+  }
+}

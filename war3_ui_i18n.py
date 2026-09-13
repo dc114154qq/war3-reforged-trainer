@@ -35,10 +35,15 @@ def detect_ui_language(locale_name: str | None = None) -> str:
 
 
 _EN_TRANSLATIONS = {
+    "3.0 智力写入读回 ": "3.0 intelligence write readback ",
+    "当前选中单位没有英雄组件，不能写入智力": "The current selected unit has no hero component for intelligence writing",
     "3.0 选中组坐标写入读回不一致": "3.0 selected group position write readback mismatch",
     "3.0 坐标写入读回不一致：": "3.0 position write readback mismatch: ",
     "3.0 物品数量写入读回不一致": "3.0 item charge write readback mismatch",
     "3.0 英雄属性写入读回不一致：": "3.0 hero attribute write readback mismatch: ",
+    "3.0 英雄技能配置写入读回不一致": "3.0 hero ability configuration write readback mismatch",
+    "当前英雄技能栏为空，没有可替换的技能": "The current hero skill slot is empty",
+    "当前为空": "is currently empty",
     "3.0 资源写入读回不一致": "3.0 resource write readback mismatch",
     "Warcraft III 3.0 当前未启用旧版 native helper；该功能仍待 3.0 handler 适配：": "Warcraft III 3.0 legacy native helper is disabled; this feature still needs 3.0 handler support: ",
     "Warcraft III 3.0 当前未启用旧版 native helper；该操作尚未迁移到 3.0 经典链路": "Warcraft III 3.0 legacy native helper is disabled; this operation has not been migrated to the 3.0 classic path",

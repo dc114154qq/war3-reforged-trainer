@@ -1,0 +1,657 @@
+{
+  "pid": 32868,
+  "exports": [
+    {
+      "name": "ntdll.dll!LdrLoadDll",
+      "address": "0x7ffe75b4dfe0",
+      "same_local": true,
+      "remote": "4c8bdc49895b10565741564881ecd0000000488b05bf751b004833c448898424",
+      "local": "4c8bdc49895b10565741564881ecd0000000488b05bf751b004833c448898424"
+    },
+    {
+      "name": "ntdll.dll!LdrGetDllHandle",
+      "address": "0x7ffe75b30870",
+      "same_local": true,
+      "remote": "40535556574881ecb80000004c89442428488d0538c31600498bf94889442420",
+      "local": "40535556574881ecb80000004c89442428488d0538c31600498bf94889442420"
+    },
+    {
+      "name": "ntdll.dll!LdrInitializeThunk",
+      "address": "0x7ffe75bea480",
+      "same_local": false,
+      "remote": "e90f6bf2ff20488bd9e81a000000b201488bcbe858b909008bc8e8910ff5ffcc",
+      "local": "40534883ec20488bd9e81a000000b201488bcbe858b909008bc8e8910ff5ffcc"
+    },
+    {
+      "name": "ntdll.dll!LdrGetProcedureAddress",
+      "address": "0x7ffe75be5aa0",
+      "same_local": true,
+      "remote": "4883ec38488b4424384889442428c744242000000000e8e547f5ff4883c438c3",
+      "local": "4883ec38488b4424384889442428c744242000000000e8e547f5ff4883c438c3"
+    },
+    {
+      "name": "kernelbase.dll!LoadLibraryExW",
+      "address": "0x7ffe72e24110",
+      "same_local": true,
+      "remote": "48895c2410555657488bec4883ec6033f60f57c0897538418bd8488975d04889",
+      "local": "48895c2410555657488bec4883ec6033f60f57c0897538418bd8488975d04889"
+    },
+    {
+      "name": "kernelbase.dll!LoadLibraryExA",
+      "address": "0x7ffe72edb7e0",
+      "same_local": true,
+      "remote": "488bc448895808574883ec40488bfa0f57c0488bd10f57c9488d48e8418bd80f",
+      "local": "488bc448895808574883ec40488bfa0f57c0488bd10f57c9488d48e8418bd80f"
+    },
+    {
+      "name": "kernel32.dll!BaseThreadInitThunk",
+      "address": "0x7ffe74d5fce0",
+      "same_local": false,
+      "remote": "e96f12db00c97514498bc8488bc2e81dc304008bc8ff15951a0500ccff15c61c",
+      "local": "4883ec2885c97514498bc8488bc2e81dc304008bc8ff15951a0500ccff15c61c"
+    }
+  ],
+  "peb": "0x80002cc000",
+  "kernel_callback_table": "0x7ffe73975710",
+  "callbacks": [
+    {
+      "index": 0,
+      "target": "USER32.dll+0x209f0"
+    },
+    {
+      "index": 1,
+      "target": "USER32.dll+0x97ed0"
+    },
+    {
+      "index": 2,
+      "target": "USER32.dll+0x46290"
+    },
+    {
+      "index": 3,
+      "target": "USER32.dll+0x50ce0"
+    },
+    {
+      "index": 4,
+      "target": "USER32.dll+0x509e0"
+    },
+    {
+      "index": 5,
+      "target": "USER32.dll+0x980d0"
+    },
+    {
+      "index": 6,
+      "target": "USER32.dll+0x50c30"
+    },
+    {
+      "index": 7,
+      "target": "USER32.dll+0x1ee90"
+    },
+    {
+      "index": 8,
+      "target": "USER32.dll+0x1f160"
+    },
+    {
+      "index": 9,
+      "target": "USER32.dll+0x5acf0"
+    },
+    {
+      "index": 10,
+      "target": "USER32.dll+0x20a70"
+    },
+    {
+      "index": 11,
+      "target": "USER32.dll+0x55860"
+    },
+    {
+      "index": 12,
+      "target": "USER32.dll+0x55530"
+    },
+    {
+      "index": 13,
+      "target": "USER32.dll+0x1f070"
+    },
+    {
+      "index": 14,
+      "target": "USER32.dll+0x1f070"
+    },
+    {
+      "index": 15,
+      "target": "USER32.dll+0x98060"
+    },
+    {
+      "index": 16,
+      "target": "USER32.dll+0x59410"
+    },
+    {
+      "index": 17,
+      "target": "USER32.dll+0x4dbc0"
+    },
+    {
+      "index": 18,
+      "target": "USER32.dll+0x4b310"
+    },
+    {
+      "index": 19,
+      "target": "USER32.dll+0x525d0"
+    },
+    {
+      "index": 20,
+      "target": "USER32.dll+0x54f40"
+    },
+    {
+      "index": 21,
+      "target": "USER32.dll+0x4b690"
+    },
+    {
+      "index": 22,
+      "target": "USER32.dll+0x4b310"
+    },
+    {
+      "index": 23,
+      "target": "USER32.dll+0x981a0"
+    },
+    {
+      "index": 24,
+      "target": "USER32.dll+0x98260"
+    },
+    {
+      "index": 25,
+      "target": "USER32.dll+0x53b70"
+    },
+    {
+      "index": 26,
+      "target": "USER32.dll+0x205e0"
+    },
+    {
+      "index": 27,
+      "target": "USER32.dll+0x205e0"
+    },
+    {
+      "index": 28,
+      "target": "USER32.dll+0x20650"
+    },
+    {
+      "index": 29,
+      "target": "USER32.dll+0x20280"
+    },
+    {
+      "index": 30,
+      "target": "USER32.dll+0x5d3d0"
+    },
+    {
+      "index": 31,
+      "target": "USER32.dll+0x4a270"
+    },
+    {
+      "index": 32,
+      "target": "USER32.dll+0x4a270"
+    },
+    {
+      "index": 33,
+      "target": "USER32.dll+0x5a5a0"
+    },
+    {
+      "index": 34,
+      "target": "USER32.dll+0x56be0"
+    },
+    {
+      "index": 35,
+      "target": "USER32.dll+0x4a2e0"
+    },
+    {
+      "index": 36,
+      "target": "USER32.dll+0x1f070"
+    },
+    {
+      "index": 37,
+      "target": "USER32.dll+0x49c80"
+    },
+    {
+      "index": 38,
+      "target": "USER32.dll+0x98360"
+    },
+    {
+      "index": 39,
+      "target": "USER32.dll+0x51280"
+    },
+    {
+      "index": 40,
+      "target": "USER32.dll+0x46340"
+    },
+    {
+      "index": 41,
+      "target": "USER32.dll+0x5ba00"
+    },
+    {
+      "index": 42,
+      "target": "USER32.dll+0x1ffc0"
+    },
+    {
+      "index": 43,
+      "target": "USER32.dll+0x51fd0"
+    },
+    {
+      "index": 44,
+      "target": "USER32.dll+0x46390"
+    },
+    {
+      "index": 45,
+      "target": "USER32.dll+0x536c0"
+    },
+    {
+      "index": 46,
+      "target": "USER32.dll+0x4bc80"
+    },
+    {
+      "index": 47,
+      "target": "USER32.dll+0x463e0"
+    },
+    {
+      "index": 48,
+      "target": "USER32.dll+0x65a60"
+    },
+    {
+      "index": 49,
+      "target": "USER32.dll+0x97fd0"
+    },
+    {
+      "index": 50,
+      "target": "USER32.dll+0x4d150"
+    },
+    {
+      "index": 51,
+      "target": "USER32.dll+0x97a20"
+    },
+    {
+      "index": 52,
+      "target": "USER32.dll+0x97a20"
+    },
+    {
+      "index": 53,
+      "target": "USER32.dll+0x5d190"
+    },
+    {
+      "index": 54,
+      "target": "USER32.dll+0x56650"
+    },
+    {
+      "index": 55,
+      "target": "USER32.dll+0x97a20"
+    },
+    {
+      "index": 56,
+      "target": "USER32.dll+0x49a00"
+    },
+    {
+      "index": 57,
+      "target": "USER32.dll+0x4d050"
+    },
+    {
+      "index": 58,
+      "target": "USER32.dll+0x65ea0"
+    },
+    {
+      "index": 59,
+      "target": "USER32.dll+0x1f2d0"
+    },
+    {
+      "index": 60,
+      "target": "USER32.dll+0x97ba0"
+    },
+    {
+      "index": 61,
+      "target": "USER32.dll+0x68a20"
+    },
+    {
+      "index": 62,
+      "target": "USER32.dll+0x67210"
+    },
+    {
+      "index": 63,
+      "target": "USER32.dll+0x97c40"
+    },
+    {
+      "index": 64,
+      "target": "USER32.dll+0x1c80"
+    },
+    {
+      "index": 65,
+      "target": "USER32.dll+0x97ca0"
+    },
+    {
+      "index": 66,
+      "target": "USER32.dll+0x30d10"
+    },
+    {
+      "index": 67,
+      "target": "USER32.dll+0x97d10"
+    },
+    {
+      "index": 68,
+      "target": "USER32.dll+0x51590"
+    },
+    {
+      "index": 69,
+      "target": "USER32.dll+0x62a60"
+    },
+    {
+      "index": 70,
+      "target": "USER32.dll+0x97d60"
+    },
+    {
+      "index": 71,
+      "target": "USER32.dll+0x97df0"
+    },
+    {
+      "index": 72,
+      "target": "USER32.dll+0x1f450"
+    },
+    {
+      "index": 73,
+      "target": "USER32.dll+0x497c0"
+    },
+    {
+      "index": 74,
+      "target": "USER32.dll+0x19f80"
+    },
+    {
+      "index": 75,
+      "target": "USER32.dll+0x20380"
+    },
+    {
+      "index": 76,
+      "target": "USER32.dll+0x1d740"
+    },
+    {
+      "index": 77,
+      "target": "USER32.dll+0x68200"
+    },
+    {
+      "index": 78,
+      "target": "USER32.dll+0x657a0"
+    },
+    {
+      "index": 79,
+      "target": "USER32.dll+0x1f220"
+    },
+    {
+      "index": 80,
+      "target": "USER32.dll+0x1efd0"
+    },
+    {
+      "index": 81,
+      "target": "USER32.dll+0x1ef60"
+    },
+    {
+      "index": 82,
+      "target": "USER32.dll+0x97b10"
+    },
+    {
+      "index": 83,
+      "target": "USER32.dll+0x20210"
+    },
+    {
+      "index": 84,
+      "target": "USER32.dll+0x51830"
+    },
+    {
+      "index": 85,
+      "target": "USER32.dll+0x97c80"
+    },
+    {
+      "index": 86,
+      "target": "USER32.dll+0x97e40"
+    },
+    {
+      "index": 87,
+      "target": "USER32.dll+0x4cc10"
+    },
+    {
+      "index": 88,
+      "target": "USER32.dll+0x493b0"
+    },
+    {
+      "index": 89,
+      "target": "USER32.dll+0x4b040"
+    },
+    {
+      "index": 90,
+      "target": "USER32.dll+0x97a20"
+    },
+    {
+      "index": 91,
+      "target": "USER32.dll+0x97a20"
+    },
+    {
+      "index": 92,
+      "target": "USER32.dll+0x611e0"
+    },
+    {
+      "index": 93,
+      "target": "USER32.dll+0x52500"
+    },
+    {
+      "index": 94,
+      "target": "USER32.dll+0x5f580"
+    },
+    {
+      "index": 95,
+      "target": "USER32.dll+0x5ebb0"
+    },
+    {
+      "index": 96,
+      "target": "USER32.dll+0x50c30"
+    },
+    {
+      "index": 97,
+      "target": "USER32.dll+0x97a20"
+    },
+    {
+      "index": 98,
+      "target": "USER32.dll+0x1f3a0"
+    },
+    {
+      "index": 99,
+      "target": "USER32.dll+0x8b070"
+    },
+    {
+      "index": 100,
+      "target": "USER32.dll+0x8b0b0"
+    },
+    {
+      "index": 101,
+      "target": "USER32.dll+0x8b120"
+    },
+    {
+      "index": 102,
+      "target": "USER32.dll+0x98130"
+    },
+    {
+      "index": 103,
+      "target": "USER32.dll+0x54eb0"
+    },
+    {
+      "index": 104,
+      "target": "USER32.dll+0x54cb0"
+    },
+    {
+      "index": 105,
+      "target": "USER32.dll+0x5a0f0"
+    },
+    {
+      "index": 106,
+      "target": "USER32.dll+0x5d3d0"
+    },
+    {
+      "index": 107,
+      "target": "USER32.dll+0x57060"
+    },
+    {
+      "index": 108,
+      "target": "USER32.dll+0x5d3d0"
+    },
+    {
+      "index": 109,
+      "target": "USER32.dll+0x5e940"
+    },
+    {
+      "index": 110,
+      "target": "USER32.dll+0x5d3d0"
+    },
+    {
+      "index": 111,
+      "target": "USER32.dll+0x5ee90"
+    },
+    {
+      "index": 112,
+      "target": "USER32.dll+0x1f0e0"
+    },
+    {
+      "index": 113,
+      "target": "USER32.dll+0x5dc40"
+    },
+    {
+      "index": 114,
+      "target": "USER32.dll+0x1f070"
+    },
+    {
+      "index": 115,
+      "target": "USER32.dll+0x1f070"
+    },
+    {
+      "index": 116,
+      "target": "USER32.dll+0x4be70"
+    },
+    {
+      "index": 117,
+      "target": "USER32.dll+0x46290"
+    },
+    {
+      "index": 118,
+      "target": "USER32.dll+0x63e40"
+    },
+    {
+      "index": 119,
+      "target": "USER32.dll+0x98400"
+    },
+    {
+      "index": 120,
+      "target": "USER32.dll+0x97aa0"
+    },
+    {
+      "index": 121,
+      "target": "USER32.dll+0x623a0"
+    },
+    {
+      "index": 122,
+      "target": "USER32.dll+0x5c4b0"
+    },
+    {
+      "index": 123,
+      "target": "USER32.dll+0x51e40"
+    },
+    {
+      "index": 124,
+      "target": "USER32.dll+0x53dd0"
+    },
+    {
+      "index": 125,
+      "target": "USER32.dll+0x97f70"
+    },
+    {
+      "index": 126,
+      "target": "USER32.dll+0x51280"
+    },
+    {
+      "index": 127,
+      "target": "USER32.dll+0x46390"
+    }
+  ],
+  "callback_prologue_differences": [],
+  "mapping_export_checks": [
+    {
+      "name": "ntdll.dll!NtCreateSection",
+      "address": "0x7ffe75c85ed0",
+      "same_local": true,
+      "remote": "4c8bd1b84a000000f604250803fe7f0175030f05c3cd2ec30f1f840000000000",
+      "local": "4c8bd1b84a000000f604250803fe7f0175030f05c3cd2ec30f1f840000000000"
+    },
+    {
+      "name": "ntdll.dll!NtCreateSectionEx",
+      "address": "0x7ffe75c86e40",
+      "same_local": true,
+      "remote": "4c8bd1b8c6000000f604250803fe7f0175030f05c3cd2ec30f1f840000000000",
+      "local": "4c8bd1b8c6000000f604250803fe7f0175030f05c3cd2ec30f1f840000000000"
+    },
+    {
+      "name": "ntdll.dll!NtMapViewOfSection",
+      "address": "0x7ffe75c85a90",
+      "same_local": true,
+      "remote": "4c8bd1b828000000f604250803fe7f0175030f05c3cd2ec30f1f840000000000",
+      "local": "4c8bd1b828000000f604250803fe7f0175030f05c3cd2ec30f1f840000000000"
+    },
+    {
+      "name": "ntdll.dll!NtMapViewOfSectionEx",
+      "address": "0x7ffe75c87940",
+      "same_local": true,
+      "remote": "4c8bd1b81e010000f604250803fe7f0175030f05c3cd2ec30f1f840000000000",
+      "local": "4c8bd1b81e010000f604250803fe7f0175030f05c3cd2ec30f1f840000000000"
+    },
+    {
+      "name": "ntdll.dll!NtOpenFile",
+      "address": "0x7ffe75c85bf0",
+      "same_local": false,
+      "remote": "e921b3e8ff000000f604250803fe7f0175030f05c3cd2ec30f1f840000000000",
+      "local": "4c8bd1b833000000f604250803fe7f0175030f05c3cd2ec30f1f840000000000"
+    },
+    {
+      "name": "ntdll.dll!NtCreateFile",
+      "address": "0x7ffe75c86030",
+      "same_local": true,
+      "remote": "4c8bd1b855000000f604250803fe7f0175030f05c3cd2ec30f1f840000000000",
+      "local": "4c8bd1b855000000f604250803fe7f0175030f05c3cd2ec30f1f840000000000"
+    },
+    {
+      "name": "ntdll.dll!NtQueryVirtualMemory",
+      "address": "0x7ffe75c859f0",
+      "same_local": true,
+      "remote": "4c8bd1b823000000f604250803fe7f0175030f05c3cd2ec30f1f840000000000",
+      "local": "4c8bd1b823000000f604250803fe7f0175030f05c3cd2ec30f1f840000000000"
+    },
+    {
+      "name": "ntdll.dll!LdrResolveDelayLoadedAPI",
+      "address": "0x7ffe75be4780",
+      "same_local": true,
+      "remote": "488bc448895808488970104c8940185741544155415641574883ec504d8be94c",
+      "local": "488bc448895808488970104c8940185741544155415641574883ec504d8be94c"
+    },
+    {
+      "name": "ntdll.dll!LdrRegisterDllNotification",
+      "address": "0x7ffe75c24d80",
+      "same_local": true,
+      "remote": "40535556574883ec28498bf9498be8488bf285c9755c4d85c974574885d27452",
+      "local": "40535556574883ec28498bf9498be8488bf285c9755c4d85c974574885d27452"
+    },
+    {
+      "name": "ntdll.dll!KiUserCallbackDispatcher",
+      "address": "0x7ffe75c895a0",
+      "same_local": true,
+      "remote": "488b4c24208b542428448b44242c65488b0425600000004c8b48584b8b04c1e8",
+      "local": "488b4c24208b542428448b44242c65488b0425600000004c8b48584b8b04c1e8"
+    },
+    {
+      "name": "kernelbase.dll!CreateFileW",
+      "address": "0x7ffe72e7c660",
+      "same_local": true,
+      "remote": "40534883ec50448b942488000000418bc225b77f0000c7442430200000008944",
+      "local": "40534883ec50448b942488000000418bc225b77f0000c7442430200000008944"
+    },
+    {
+      "name": "kernelbase.dll!CreateFileMappingW",
+      "address": "0x7ffe72e5fc10",
+      "same_local": true,
+      "remote": "40555356574154415541564157488d6c24f14881ec980000004533ed0f57c033",
+      "local": "40555356574154415541564157488d6c24f14881ec980000004533ed0f57c033"
+    }
+  ]
+}

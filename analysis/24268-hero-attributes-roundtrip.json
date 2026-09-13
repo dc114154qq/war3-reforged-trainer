@@ -1,0 +1,25 @@
+{
+  "pid": 32868,
+  "operation": "hero_attributes_roundtrip",
+  "ok": true,
+  "before": {
+    "base_strength": 21,
+    "base_agility": 23,
+    "intelligence_total": 47
+  },
+  "target": {
+    "base_strength": 22,
+    "base_agility": 24,
+    "intelligence_total": 48
+  },
+  "after": {
+    "base_strength": 22,
+    "base_agility": 24,
+    "intelligence_total": 48
+  },
+  "restored": {
+    "base_strength": 21,
+    "base_agility": 23,
+    "intelligence_total": 47
+  }
+}

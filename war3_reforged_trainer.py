@@ -131,6 +131,11 @@ kernel32.ReleaseMutex.argtypes = (ctypes.c_void_p,)
 kernel32.ReleaseMutex.restype = ctypes.c_bool
 kernel32.CloseHandle.argtypes = (ctypes.c_void_p,)
 kernel32.CloseHandle.restype = ctypes.c_bool
+kernel32.VirtualProtectEx.argtypes = (
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_ulong,
+    ctypes.POINTER(ctypes.c_ulong),
+)
+kernel32.VirtualProtectEx.restype = ctypes.c_bool
 kernel32.LoadLibraryW.argtypes = (ctypes.c_wchar_p,)
 kernel32.LoadLibraryW.restype = ctypes.c_void_p
 kernel32.GetProcAddress.argtypes = (ctypes.c_void_p, ctypes.c_char_p)
@@ -1484,39 +1489,37 @@ class ProcessMemory:
         return struct.unpack("<Q", self.read(address, 8))[0]
 
     def write_f32(self, address: int, value: float) -> None:
-        data = struct.pack("<f", float(value))
-        written = ctypes.c_size_t()
-        ok = kernel32.WriteProcessMemory(
-            self.handle, ctypes.c_void_p(address), data, len(data), ctypes.byref(written)
-        )
-        if not ok or written.value != len(data):
-            raise ctypes.WinError(ctypes.get_last_error())
+        self.write_bytes(address, struct.pack("<f", float(value)))
 
     def write_i32(self, address: int, value: int) -> None:
-        data = struct.pack("<i", int(value))
-        written = ctypes.c_size_t()
-        ok = kernel32.WriteProcessMemory(
-            self.handle, ctypes.c_void_p(address), data, len(data), ctypes.byref(written)
-        )
-        if not ok or written.value != len(data):
-            raise ctypes.WinError(ctypes.get_last_error())
+        self.write_bytes(address, struct.pack("<i", int(value)))
 
     def write_u32(self, address: int, value: int) -> None:
-        data = struct.pack("<I", int(value))
-        written = ctypes.c_size_t()
-        ok = kernel32.WriteProcessMemory(
-            self.handle, ctypes.c_void_p(address), data, len(data), ctypes.byref(written)
-        )
-        if not ok or written.value != len(data):
-            raise ctypes.WinError(ctypes.get_last_error())
+        self.write_bytes(address, struct.pack("<I", int(value)))
 
     def write_bytes(self, address: int, data: bytes) -> None:
         written = ctypes.c_size_t()
-        ok = kernel32.WriteProcessMemory(
-            self.handle, ctypes.c_void_p(address), data, len(data), ctypes.byref(written)
-        )
-        if not ok or written.value != len(data):
-            raise ctypes.WinError(ctypes.get_last_error())
+        page = address & ~0xFFF
+        end = (address + len(data) + 0xFFF) & ~0xFFF
+        old_protect = ctypes.c_ulong()
+        changed = bool(kernel32.VirtualProtectEx(
+            self.handle, ctypes.c_void_p(page), end - page, PAGE_READWRITE,
+            ctypes.byref(old_protect),
+        ))
+        try:
+            ok = kernel32.WriteProcessMemory(
+                self.handle, ctypes.c_void_p(address), data, len(data), ctypes.byref(written)
+            )
+            if not ok or written.value != len(data):
+                raise ctypes.WinError(ctypes.get_last_error())
+        finally:
+            if changed:
+                restored = ctypes.c_ulong()
+                if not kernel32.VirtualProtectEx(
+                    self.handle, ctypes.c_void_p(page), end - page,
+                    old_protect.value, ctypes.byref(restored),
+                ):
+                    raise ctypes.WinError(ctypes.get_last_error())
 
     def scan_bytes(self, pattern: bytes, max_region_size: int = 256 * 1024 * 1024) -> list[tuple[int, int, int]]:
         hits: list[tuple[int, int, int]] = []
@@ -8272,6 +8275,19 @@ class War3Trainer:
             return replace(field, value_type="i32", value=target_total, native_write=True,
                            write_address=0, write_type="",
                            note=field.note + "；本次总智力写入已由游戏接口读回确认")
+        if getattr(self, "_native_selection_unavailable", False):
+            components = self._selected_components(pm, candidate.owner_address)
+            hero = components.get("hero")
+            if hero is None:
+                raise RuntimeError("当前选中单位没有英雄组件，不能写入智力")
+            target_total = self._coerce_hero_intelligence_target(value)
+            address = hero[1] + 0x118
+            pm.write_f32(address, float(target_total))
+            actual = int(round(pm.read_f32(address)))
+            if actual != target_total:
+                raise RuntimeError(f"3.0 智力写入读回 {actual}，不是 {target_total}")
+            return replace(field, value=float(actual), write_address=address,
+                           write_type="f32", note="3.0 hero component intelligence field readback verified")
         if not candidate.unit_address:
             raise RuntimeError("当前单位缺少运行时 unit 指针，不能调用内部 SetHeroInt")
         target_total = self._coerce_hero_intelligence_target(value)
@@ -11227,6 +11243,22 @@ class War3Trainer:
         # JASS handle. This also works after the selection cache was replaced.
         if not handle or not owner or not unit:
             return None
+        if getattr(self, "_native_selection_unavailable", False):
+            from war3_object_registry import ObjectRegistry24268
+            close_pm = pm is None
+            memory = pm or self._process_memory()
+            try:
+                registry = self._classic_object_registry or ObjectRegistry24268.attach(memory)
+                self._classic_object_registry = registry
+                candidate = self._candidate_from_identity(
+                    memory, handle, owner, unit, note, score,
+                )
+                if candidate is None:
+                    raise RuntimeError("Requested unit identity is stale")
+                return candidate
+            finally:
+                if close_pm:
+                    memory.close()
         self.persistent_native_init()
         results = self._run_native_helper_ops(0, (
             (self.NATIVE_HELPER_OP_IDENTITY_UNIT_SNAPSHOT, 0, unit, handle, owner),
@@ -12057,7 +12089,9 @@ class War3Trainer:
                     continue
                 instance = self._ability_instance_from_wrapper(pm, candidate, wrapper, component_rawcodes)
                 if instance is None or (instance.handle, instance.data_address) != (full, data):
-                    raise RuntimeError("Ability metadata differs from current component list")
+                    # Task and placeholder ability nodes share the owner list;
+                    # only a complete ability identity enters the editable list.
+                    continue
                 if required_rawcodes is None or instance.rawcode in required_rawcodes:
                     instances.append(replace(instance, slot=len(instances) + 1))
             return instances
@@ -12698,7 +12732,7 @@ class War3Trainer:
             skill_name_note = "英雄技能栏 rawcode；替换时由引擎从地图资源创建技能"
             skill_cache_note = "旧版候选/运行时缓存；单改这里通常不改变已学技能效果"
             for index in range(self.HERO_SKILL_SLOT_COUNT):
-                config_address = data + 0x204 + index * 4
+                config_address = data + 0x1BC + index * 4
                 try:
                     current_config_rawcode = pm.read_u32(config_address)
                 except OSError:
@@ -12708,7 +12742,7 @@ class War3Trainer:
                 ability_instances = self._ability_instances_from_candidate(pm, candidate)
             for index in range(self.HERO_SKILL_SLOT_COUNT):
                 number = index + 1
-                config_address = data + 0x204 + index * 4
+                config_address = data + 0x1BC + index * 4
                 cache_address = data + 0x1BC + index * 4
                 extra_writes = [(cache_address, "rawcode")]
                 self._append_unit_field(
@@ -13374,7 +13408,7 @@ class War3Trainer:
         configs: list[int] = []
         for index in range(self.HERO_SKILL_SLOT_COUNT):
             try:
-                configs.append(pm.read_u32(hero_data + 0x204 + index * 4))
+                configs.append(pm.read_u32(hero_data + 0x1BC + index * 4))
             except OSError:
                 configs.append(0)
         ability_instances = self._ability_instances_from_candidate(
@@ -13680,17 +13714,36 @@ class War3Trainer:
             return replace(field, value=new_rawcode, write_address=0, write_type="", extra_writes=(),
                            native_write=True,
                            note=f"引擎从地图资源替换技能；当前等级={results[1].arg1}")
+        if getattr(self, "_native_selection_unavailable", False):
+            components = self._selected_components(pm, candidate.owner_address)
+            hero = components.get("hero")
+            if hero is None:
+                raise RuntimeError("当前选中单位没有英雄组件，不能写入英雄技能")
+            hero_data = hero[1]
+            config_address = hero_data + 0x1BC + index * 4
+            old_rawcode = pm.read_u32(config_address)
+            if not old_rawcode:
+                raise RuntimeError(f"技能{index + 1}当前为空")
+            pm.write_u32(config_address, new_rawcode)
+            actual = pm.read_u32(config_address)
+            if actual != new_rawcode:
+                raise RuntimeError("3.0 英雄技能配置写入读回不一致")
+            return replace(
+                field, value=actual, address=config_address,
+                write_address=config_address, write_type="rawcode",
+                note="3.0 hero skill configuration readback verified; runtime ability replacement pending",
+            )
         components = self._selected_components(pm, candidate.owner_address)
         hero = components.get("hero")
         if hero is None:
             raise RuntimeError("当前选中单位没有英雄组件，不能写入英雄技能")
         _hero_wrapper, hero_data = hero
-        config_address = hero_data + 0x204 + index * 4
+        config_address = hero_data + 0x1BC + index * 4
         cache_address = hero_data + 0x1BC + index * 4
         configs: list[int] = []
         for slot_index in range(self.HERO_SKILL_SLOT_COUNT):
             try:
-                configs.append(pm.read_u32(hero_data + 0x204 + slot_index * 4))
+                configs.append(pm.read_u32(hero_data + 0x1BC + slot_index * 4))
             except OSError:
                 configs.append(0)
         old_rawcode = configs[index] if index < len(configs) else 0
@@ -14292,6 +14345,11 @@ class War3Trainer:
             f"manual_candidate handle=0x{handle:x} owner=0x{owner:x} unit=0x{unit:x}", 850)
         if candidate is None:
             raise RuntimeError("候选单位已经失效，请重新读取候选列表")
+        if getattr(self, "_native_selection_unavailable", False):
+            with self._process_memory(write=True) as memory:
+                return self._write_unit_fields_to_candidate(
+                    memory, candidate, [MemoryWriteSpec(key, 0, "", value)]
+                )[0]
         return self._write_unit_fields_to_candidate(None, candidate, [MemoryWriteSpec(key, 0, "", value)])[0]
 
     def write_unit_field_by_identity_win10(

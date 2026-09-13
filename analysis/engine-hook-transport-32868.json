@@ -1,0 +1,133 @@
+{
+  "pid": 32868,
+  "tid": 18796,
+  "hwnd": "0x30da0",
+  "dll_sha256": "300adc39030457c5e2c59948d23f26cb05ac20f1bb4b16129895fc606262f1a2",
+  "local_dll_attach": {
+    "magic": 0,
+    "version": 0,
+    "requested_pid": 0,
+    "reserved": 0,
+    "attach_pid": 39828,
+    "attach_tid": 1832,
+    "callback_pid": 0,
+    "callback_tid": 0,
+    "getmessage_count": 0,
+    "callwnd_count": 0,
+    "last_message": 0,
+    "last_error": 0
+  },
+  "hooks": [
+    {
+      "kind": 3,
+      "installed": true,
+      "install_error": 0,
+      "before": {
+        "magic": 606502914,
+        "version": 1,
+        "requested_pid": 32868,
+        "reserved": 0,
+        "attach_pid": 0,
+        "attach_tid": 0,
+        "callback_pid": 0,
+        "callback_tid": 0,
+        "getmessage_count": 0,
+        "callwnd_count": 0,
+        "last_message": 0,
+        "last_error": 0
+      },
+      "last_dispatch": {
+        "ok": true,
+        "error": 0
+      },
+      "after": {
+        "magic": 606502914,
+        "version": 1,
+        "requested_pid": 32868,
+        "reserved": 0,
+        "attach_pid": 0,
+        "attach_tid": 0,
+        "callback_pid": 0,
+        "callback_tid": 0,
+        "getmessage_count": 0,
+        "callwnd_count": 0,
+        "last_message": 0,
+        "last_error": 0
+      },
+      "module_listed_while_hook_installed": null,
+      "callback_observed": false,
+      "unhooked": true
+    },
+    {
+      "kind": 4,
+      "installed": true,
+      "install_error": 0,
+      "before": {
+        "magic": 606502914,
+        "version": 1,
+        "requested_pid": 32868,
+        "reserved": 0,
+        "attach_pid": 0,
+        "attach_tid": 0,
+        "callback_pid": 0,
+        "callback_tid": 0,
+        "getmessage_count": 0,
+        "callwnd_count": 0,
+        "last_message": 0,
+        "last_error": 0
+      },
+      "last_dispatch": {
+        "ok": true,
+        "error": 0
+      },
+      "after": {
+        "magic": 606502914,
+        "version": 1,
+        "requested_pid": 32868,
+        "reserved": 0,
+        "attach_pid": 0,
+        "attach_tid": 0,
+        "callback_pid": 0,
+        "callback_tid": 0,
+        "getmessage_count": 0,
+        "callwnd_count": 0,
+        "last_message": 0,
+        "last_error": 0
+      },
+      "module_listed_while_hook_installed": null,
+      "callback_observed": false,
+      "unhooked": true
+    }
+  ],
+  "mitigation_flags": {
+    "dynamic_code": {
+      "ok": true,
+      "flags": 0,
+      "error": 0
+    },
+    "extension_points": {
+      "ok": true,
+      "flags": 0,
+      "error": 0
+    },
+    "cfg": {
+      "ok": true,
+      "flags": 0,
+      "error": 0
+    },
+    "signature": {
+      "ok": true,
+      "flags": 0,
+      "error": 0
+    },
+    "image_load": {
+      "ok": true,
+      "flags": 0,
+      "error": 0
+    }
+  },
+  "captured_utc": "2026-09-13T11:54:23.096053+00:00",
+  "local_host": false,
+  "calls_game_functions": false,
+  "writes_game_objects": false
+}

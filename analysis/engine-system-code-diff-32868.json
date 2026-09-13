@@ -1,0 +1,52 @@
+[
+  {
+    "module": "ntdll.dll",
+    "base": "0x7ffe75b20000",
+    "section_rva": "0x1000",
+    "compared_bytes": 1501211,
+    "difference_bytes": 15,
+    "spans": [
+      {
+        "rva": "0xca480",
+        "length": 5,
+        "remote": "e90f6bf2ff20488bd9e81a0000",
+        "local": "40534883ec20488bd9e81a0000"
+      },
+      {
+        "rva": "0x165bf0",
+        "length": 5,
+        "remote": "e921b3e8ff000000f604250803",
+        "local": "4c8bd1b833000000f604250803"
+      },
+      {
+        "rva": "0x166ea0",
+        "length": 5,
+        "remote": "e931a1e8ff000000f604250803",
+        "local": "4c8bd1b8c9000000f604250803"
+      }
+    ]
+  },
+  {
+    "module": "kernelbase.dll",
+    "base": "0x7ffe72e00000",
+    "section_rva": "0x1000",
+    "compared_bytes": 1672899,
+    "difference_bytes": 10,
+    "spans": [
+      {
+        "rva": "0xec220",
+        "length": 21,
+        "remote": "e9ab4cc2020000cccccccccccccccccce95f4cc20220488bf1f7c2feff",
+        "local": "33d2e909000000cccccccccccccccccc40564883ec20488bf1f7c2feff"
+      }
+    ]
+  },
+  {
+    "module": "user32.dll",
+    "base": "0x7ffe738d0000",
+    "section_rva": "0x1000",
+    "compared_bytes": 666869,
+    "difference_bytes": 0,
+    "spans": []
+  }
+]

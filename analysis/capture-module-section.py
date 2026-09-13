@@ -42,11 +42,11 @@ try:
     assert struct.unpack_from('<I',header,offset+24+56)[0]==pe.OPTIONAL_HEADER.SizeOfImage
     for section in pe.sections:
         name=section.Name.rstrip(b'\0').decode()
-        if name not in ('.text','.rdata'): continue
+        if name not in ('.text','.rdata','.data'): continue
         assert section.VirtualAddress+section.Misc_VirtualSize<=info.size
         data=c.string_at(mapping+section.VirtualAddress,section.Misc_VirtualSize)
         output=ROOT/'analysis/native-bootstrap-24268'/f'section-{name[1:]}.bin'
-        with output.open('xb') as f: f.write(data)
+        output.write_bytes(data)
         report['sections'].append({'name':name,'rva':hex(section.VirtualAddress),'bytes':len(data),
                                    'sha256':hashlib.sha256(data).hexdigest()})
     report['header_sha256']=hashlib.sha256(header).hexdigest()

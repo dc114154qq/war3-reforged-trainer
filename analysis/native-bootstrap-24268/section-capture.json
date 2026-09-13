@@ -7,13 +7,19 @@
       "name": ".text",
       "rva": "0x1000",
       "bytes": 36036822,
-      "sha256": "597a67135a58f8662cab111d1d2551fe518c690b5fccc8a8eaa70c5971e29305"
+      "sha256": "b690c1f666021013d2c322c2a3571ecb7b2b1fc3beea726e4ff994a24c195d1b"
     },
     {
       "name": ".rdata",
       "rva": "0x2260000",
       "bytes": 12764066,
       "sha256": "2e0e663dd53bb4ed6c87acc93f478844df0c49ea8f2562d9d3c00b78ee2aceaa"
+    },
+    {
+      "name": ".data",
+      "rva": "0x2e8d000",
+      "bytes": 184204896,
+      "sha256": "a5d2876da623c70a3df4b87a3429138b6ad13c190f2d860099b80085506f0818"
     }
   ],
   "scope": "Locally mapped shared section; no game writes or page protection changes",

@@ -92,6 +92,9 @@ class SelectionTests(unittest.TestCase):
         trainer._classic_selection_cache = ()
         trainer._classic_object_registry = Mock()
         trainer._classic_object_registry.players.return_value = players
+        trainer._classic_object_registry.local_player_for_mode.return_value = players[0]
+        trainer._classic_thread_context = Mock()
+        trainer._classic_thread_context.read_mode.return_value.value = 0
         trainer._selection_player_pointer_candidates = Mock(return_value=players)
         trainer._build_unit_object_index = Mock(side_effect=AssertionError("Unexpected index scan"))
         return trainer
@@ -111,6 +114,7 @@ class SelectionTests(unittest.TestCase):
         memory.player(0x200000, 0)
         manager, _ = memory.player(0x200E10, 1)
         trainer = self.trainer([0x200000, 0x200E10])
+        trainer._classic_object_registry.local_player_for_mode.return_value = 0x200E10
         trainer._classic_object_registry.resolve_unit.return_value = (123, 0x900000)
         candidate = object()
         trainer._candidate_from_identity = Mock(return_value=candidate)
@@ -118,13 +122,16 @@ class SelectionTests(unittest.TestCase):
         self.assertEqual(trainer._classic_selection_layout, (0x200E10, manager, 0))
         trainer._build_unit_object_index.assert_not_called()
 
-    def test_multiple_player_lists_are_not_ranked_by_size(self):
+    def test_multiple_player_lists_use_actual_local_player_even_if_smaller(self):
         memory = Memory()
         memory.player(0x200000, 1)
         memory.player(0x200E10, 24, first_unit=0xA00000)
         trainer = self.trainer([0x200000, 0x200E10])
-        with self.assertRaisesRegex(RuntimeError, "多个玩家"):
-            trainer._classic_selection_candidates(memory)
+        trainer._classic_object_registry.resolve_unit.return_value = (123, 0x900000)
+        candidate = object()
+        trainer._candidate_from_identity = Mock(return_value=candidate)
+        self.assertEqual(trainer._classic_selection_candidates(memory), [(candidate, 123)])
+        self.assertEqual(trainer._classic_selection_layout[0], 0x200000)
         trainer._build_unit_object_index.assert_not_called()
 
     def test_replaced_manager_is_followed_through_player_field(self):

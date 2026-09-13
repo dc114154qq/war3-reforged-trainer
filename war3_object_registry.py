@@ -180,3 +180,19 @@ class ObjectRegistry24268:
                 or self._qword(memory, slot) != encoded):
             raise ObjectIdentityError("Player array changed while reading")
         return list(players)
+
+    def local_player_for_mode(self, memory, mode):
+        """Mirror GetLocalPlayer's exact predicate, including alternate mode."""
+        encoded = self._qword(memory, self.base + GAME_STATE_SLOT_RVA)
+        state = decode_game_state(encoded)
+        players = self.players(memory)
+        index_address = state + (0x262E if mode == 1 else 0x262C)
+        raw = _read(memory, index_address, 2)
+        index = struct.unpack("<H", raw)[0]
+        if index >= len(players):
+            raise ObjectIdentityError("Current game mode has no valid local player")
+        if (self._qword(memory, self.base + GAME_STATE_SLOT_RVA) != encoded
+                or _read(memory, index_address, 2) != raw
+                or self._qword(memory, state + 0x26A0 + index * 8) != players[index]):
+            raise ObjectIdentityError("Local player changed while reading")
+        return players[index]

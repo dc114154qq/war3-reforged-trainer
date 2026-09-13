@@ -10,7 +10,8 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from war3_reforged_trainer import ProcessMemory, War3Trainer
+from war3_reforged_trainer import ProcessMemory, War3Trainer, find_war3
+from dataclasses import asdict
 from war3_classic_selection import read_player_selection
 from war3_object_registry import (ObjectIdentityError, ROOT_RVA, RESOLVER_RVA,
                                   GAME_STATE_SLOT_RVA, decode_game_state)
@@ -34,9 +35,11 @@ def main():
         raise ValueError("Comparison report is from another process")
     expected = {int(r["unit"], 0): (int(r["full_handle"], 0), int(r["owner"], 0)) for r in previous["rows"]}
     trainer = object.__new__(War3Trainer)
+    trainer.hwnd, trainer.pid = find_war3(args.pid)
     trainer._classic_selection_layout = (args.player, 0, 0) if args.player is not None else None
     trainer._classic_selection_cache = ()
     trainer._classic_object_registry = None
+    trainer._classic_thread_context = None
     timings, samples = [], []
     with NoScanMemory(args.pid) as memory:
         for _ in range(4):
@@ -45,6 +48,8 @@ def main():
             timings.append((time.perf_counter() - start) * 1000)
             samples.append(tuple((c.unit_address, h, c.owner_address) for c, h in selected))
         selected_player = trainer._classic_selection_layout[0]
+        if args.player is not None and args.player != selected_player:
+            raise ValueError("Resolved local player differs from supplied expectation")
         selection = read_player_selection(memory, selected_player)
         registry = trainer._classic_object_registry
         encoded_state = memory.read_u64(registry.base + GAME_STATE_SLOT_RVA)
@@ -66,6 +71,8 @@ def main():
                   "encoded_game_state": hex(encoded_state), "game_state": hex(game_state),
                   "local_player_fields_u16": list(struct.unpack("<HH", memory.read(game_state + 0x262C, 4))),
                   "player": hex(selected_player), "player_supplied": args.player is not None,
+                  "player_resolution": "GetLocalPlayer mode predicate through game-frame TLS",
+                  "last_mode_snapshot": asdict(trainer._last_classic_mode),
                   "validated_player_count": len(registry.players(memory)),
                   "read_only": True, "memory_scans_forbidden": True,
                   "count": len(rows), "all_samples_equal": len(set(samples)) == 1,
@@ -76,7 +83,7 @@ def main():
                   "timings_ms": timings, "rows": rows,
                   "scope": "Actual candidate method including profile validation, module enumeration and "
                            "object lookup; when player_supplied=false includes game-state player discovery. "
-                           "Local player selection still relies on a unique nonempty canonical list. "
+                           "Local player is selected by the verified game mode predicate. "
                            "No helper, native execution, game writes or cross-device live test."}
     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({k: v for k, v in report.items() if k != "rows"}, indent=2))

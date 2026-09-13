@@ -2862,6 +2862,8 @@ class War3Trainer:
         self._classic_selection_layout: tuple[int, int, int] | None = None
         self._classic_selection_cache: tuple[tuple[UnitCandidate, int], ...] = ()
         self._classic_object_registry = None
+        self._classic_thread_context = None
+        self._last_classic_mode = None
         # This branch targets 3.0.0.24268. The bundled native helper still
         # carries the 2.0.4.23745 profile, so never probe it in the 3.0
         # product path. The classic selection backend is the entry path.
@@ -2947,6 +2949,8 @@ class War3Trainer:
             self._classic_selection_layout = None
             self._classic_selection_cache = ()
             self._classic_object_registry = None
+            self._classic_thread_context = None
+            self._last_classic_mode = None
             # This branch always targets 3.0; reconnecting must not re-enable
             # the bundled 2.0.4.23745 native helper.
             self._native_selection_unavailable = True
@@ -4069,52 +4073,29 @@ class War3Trainer:
         self,
         pm: ProcessMemory,
     ) -> list[tuple[UnitCandidate, int]]:
-        """Read canonical 3.0 player lists without ranking unrelated containers.
-
-        Players and owner identities come from the verified 3.0 game-state
-        array and engine registry. Once a player is
-        cached, an empty selection must stay empty rather than rediscovering a
-        different player's list or a remembered control group.
-        """
+        """Read the actual local player's canonical 3.0 selection and identities."""
         from war3_classic_selection import read_player_selection, SelectionReadError
         from war3_object_registry import ObjectRegistry24268
+        from war3_thread_context import GameThreadContext24268
 
         self._classic_selection_cache = ()
-        layout = self._classic_selection_layout
-        if layout is not None:
-            # Follow the owning player's real field each time; the cached
-            # manager can be replaced when game state changes.
-            selection = read_player_selection(pm, layout[0])
-        else:
-            if self._classic_object_registry is None:
-                self._classic_object_registry = ObjectRegistry24268.attach(pm)
-            players = self._classic_object_registry.players(pm)
-            nonempty = []
-            valid_lists = 0
-            for player in dict.fromkeys(players):
-                try:
-                    candidate_list = read_player_selection(pm, player)
-                except (OSError, SelectionReadError):
-                    continue
-                valid_lists += 1
-                if candidate_list.units:
-                    nonempty.append(candidate_list)
-            if len(nonempty) > 1:
-                raise RuntimeError("多个玩家存在选择列表，尚未确认本地玩家")
-            if not nonempty:
-                if not valid_lists:
-                    raise RuntimeError("3.0 player selection list was not found")
-                self._classic_selection_cache = ()
-                return []
-            selection = nonempty[0]
+        self._classic_selection_layout = None
+        self._last_classic_mode = None
+        if self._classic_object_registry is None:
+            self._classic_object_registry = ObjectRegistry24268.attach(pm)
+        if self._classic_thread_context is None:
+            self._classic_thread_context = GameThreadContext24268(
+                pm, self._classic_object_registry.base, self.hwnd, self.pid)
+        mode = self._classic_thread_context.read_mode(pm)
+        self._last_classic_mode = mode
+        player = self._classic_object_registry.local_player_for_mode(pm, mode.value)
+        selection = read_player_selection(pm, player)
 
         self._classic_selection_layout = (selection.player, selection.manager, 0)
         if not selection.units:
             self._classic_selection_cache = ()
             return []
 
-        if self._classic_object_registry is None:
-            self._classic_object_registry = ObjectRegistry24268.attach(pm)
         selected = []
         for unit in selection.units:
             handle, owner = self._classic_object_registry.resolve_unit(pm, unit)

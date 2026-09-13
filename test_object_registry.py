@@ -59,6 +59,23 @@ class RegistryFixture(Memory):
 
 
 class ObjectRegistryTests(unittest.TestCase):
+    def test_local_player_uses_exact_mode_predicate(self):
+        memory = RegistryFixture()
+        state, players = memory.player_array(2)
+        memory.put(state + 0x262C, struct.pack("<HH", 0, 1))
+        registry = ObjectRegistry24268(memory, memory.base)
+        self.assertEqual(registry.local_player_for_mode(memory, 0), players[0])
+        self.assertEqual(registry.local_player_for_mode(memory, 1), players[1])
+        self.assertEqual(registry.local_player_for_mode(memory, 2), players[0])
+
+    def test_invalid_mode_player_does_not_fall_back_to_other_index(self):
+        memory = RegistryFixture()
+        state, _ = memory.player_array(2)
+        memory.put(state + 0x262C, struct.pack("<HH", 0, 0xFEFE))
+        registry = ObjectRegistry24268(memory, memory.base)
+        with self.assertRaisesRegex(ObjectIdentityError, "no valid local player"):
+            registry.local_player_for_mode(memory, 1)
+
     def test_decoder_matches_live_observation(self):
         self.assertEqual(decode_game_state(0x8729A1FC670D744E), 0x2066166F980)
 

@@ -1,0 +1,10 @@
+{
+  "build": "3.0.0.24268",
+  "exe": "dist-3.0.0.24268-r12/War3ReforgedTrainer-3.0.0.24268.exe",
+  "sha256": "c9f54a24c07858b2f17365be56940dba4fd305f066e919e8a95b15b7df633296",
+  "startup_smoke": "responding 5s",
+  "direct_writeback_live": "resources and six item charges verified",
+  "direct_memory_batch": "item charges and hero attributes routed separately",
+  "native_batch_actions": "disabled until 3.0 execution entry",
+  "release_ready": false
+}

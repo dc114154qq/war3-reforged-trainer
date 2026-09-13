@@ -1,0 +1,80 @@
+{
+  "build": "3.0.0.24268",
+  "branch": "codex/war3-3.0.0.24268-adaptation",
+  "source": "C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\war3_reforged_trainer.py",
+  "methods": {
+    "_ability_instances_from_candidate": 11963,
+    "_classic_selection_candidates": 4069,
+    "create_local_unit": 6071,
+    "move_selected_group_to_mouse": 5586,
+    "read_resource_cache": 9128,
+    "set_selected_hero_attributes": 5405,
+    "set_selected_inventory_charges": 6437,
+    "set_selected_unit_ability_level": 6572,
+    "set_selected_unit_position": 5554,
+    "write_resource_cache": 9045
+  },
+  "capabilities": [
+    {
+      "feature": "24-unit selection",
+      "status": "validated",
+      "evidence": "classic-selection-live.json"
+    },
+    {
+      "feature": "resource read/write",
+      "status": "validated",
+      "evidence": "3.0 classic resource properties; live readback"
+    },
+    {
+      "feature": "coordinate write",
+      "status": "code-routed",
+      "evidence": "set_selected_unit_position"
+    },
+    {
+      "feature": "hero attribute write",
+      "status": "code-routed; live write pending",
+      "evidence": "set_selected_hero_attributes"
+    },
+    {
+      "feature": "inventory read",
+      "status": "validated",
+      "evidence": "3.0 slot-array + item wrapper validation"
+    },
+    {
+      "feature": "inventory charge write",
+      "status": "code-routed; live write pending",
+      "evidence": "set_selected_inventory_charges"
+    },
+    {
+      "feature": "existing ability enumeration",
+      "status": "validated read-only",
+      "evidence": "ability-instances-live.json"
+    },
+    {
+      "feature": "ability field read/write",
+      "status": "legacy native blocked",
+      "evidence": "3.0 handler table not reconstructed"
+    },
+    {
+      "feature": "ability add/remove/clone",
+      "status": "legacy native blocked",
+      "evidence": "old 2.0.4.23745 helper internals"
+    },
+    {
+      "feature": "unit clone/copy",
+      "status": "legacy native blocked",
+      "evidence": "old helper create path"
+    },
+    {
+      "feature": "mouse group move",
+      "status": "legacy native blocked",
+      "evidence": "group move op uses old handler"
+    },
+    {
+      "feature": "cross-device EXE",
+      "status": "not packaged",
+      "evidence": "3.0 branch incomplete"
+    }
+  ],
+  "release_ready": false
+}

@@ -4684,16 +4684,21 @@ class War3Trainer:
         deadline = time.monotonic() + (timeout_ms / 1000.0)
         last_status = self.NATIVE_HELPER_STATUS_PENDING
         while time.monotonic() < deadline:
-            message_result = ctypes.c_void_p()
-            sent = user32.SendMessageTimeoutW(
-                ctypes.c_void_p(self.hwnd),
-                WM_NULL,
-                None,
-                None,
-                SMTO_ABORTIFHUNG,
-                150,
-                ctypes.byref(message_result),
-            )
+            if getattr(self, "_native_helper_message_mode", "send") == "post":
+                sent = user32.PostThreadMessageW(
+                    int(self._native_helper_persistent_thread_id), WM_NULL, 0, 0,
+                )
+            else:
+                message_result = ctypes.c_void_p()
+                sent = user32.SendMessageTimeoutW(
+                    ctypes.c_void_p(self.hwnd),
+                    WM_NULL,
+                    None,
+                    None,
+                    SMTO_ABORTIFHUNG,
+                    150,
+                    ctypes.byref(message_result),
+                )
             data = self._read_native_helper_command(command_path)
             if data is None:
                 time.sleep(0.01)

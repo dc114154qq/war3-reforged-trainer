@@ -1,0 +1,12 @@
+{
+  "build": "3.0.0.24268",
+  "pid": 16700,
+  "variants": [
+    {"hook": "WH_CALLWNDPROC", "wake": "SendMessageTimeout(WM_NULL)", "timeout_ms": 10000, "status": 1},
+    {"hook": "WH_GETMESSAGE", "wake": "SendMessageTimeout(WM_NULL)", "timeout_ms": 5000, "status": 1},
+    {"hook": "WH_GETMESSAGE", "wake": "PostThreadMessage(WM_NULL)", "timeout_ms": 5000, "status": 1}
+  ],
+  "handlers_executed": false,
+  "game_writes": false,
+  "conclusion": "The 3.0 window-thread message hook entry did not execute the helper in any tested wake variant. This is an execution-entry result, not a handler-address result."
+}

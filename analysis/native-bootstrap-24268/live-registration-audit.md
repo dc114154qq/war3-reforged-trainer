@@ -36,3 +36,12 @@ window-thread message did not reach `War3HookProc`. Repeating the same command
 would reproduce the pending state. The old window-message execution entry is
 therefore not a valid 3.0 path yet; the next investigation needs a different
 verified game-thread entry or a 3.0-supported dispatch mechanism.
+
+As a bounded comparison, the same six-name registration was tried with
+`WH_GETMESSAGE` and `PostThreadMessage(WM_NULL)` instead of
+`WH_CALLWNDPROC`/`SendMessageTimeout`. It also remained pending for five
+seconds. This rules out the original send-vs-post mismatch as the explanation;
+both message-hook entry variants are currently nonfunctional on this 3.0
+process. The Python wait path now supports the post mode for future diagnostics,
+but the product default remains the original send mode until a working entry is
+found.

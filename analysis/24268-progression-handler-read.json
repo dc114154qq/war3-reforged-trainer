@@ -1,0 +1,26 @@
+[
+  {
+    "name": "GetHeroLevel",
+    "rva": "0xca6160",
+    "signature": "(Hunit;)I",
+    "read_error": "[WinError 299] \u4ec5\u5b8c\u6210\u90e8\u5206\u7684 ReadProcessMemory \u6216 WriteProcessMemory \u8bf7\u6c42\u3002"
+  },
+  {
+    "name": "SetHeroLevel",
+    "rva": "0xcf1fa0",
+    "signature": "(Hunit;IB)V",
+    "read_error": "[WinError 299] \u4ec5\u5b8c\u6210\u90e8\u5206\u7684 ReadProcessMemory \u6216 WriteProcessMemory \u8bf7\u6c42\u3002"
+  },
+  {
+    "name": "GetHeroXP",
+    "rva": "0xca64e0",
+    "signature": "(Hunit;)I",
+    "read_error": "[WinError 299] \u4ec5\u5b8c\u6210\u90e8\u5206\u7684 ReadProcessMemory \u6216 WriteProcessMemory \u8bf7\u6c42\u3002"
+  },
+  {
+    "name": "SetUnitScale",
+    "rva": "0xcfaa80",
+    "signature": "(Hunit;RRR)V",
+    "read_error": "[WinError 299] \u4ec5\u5b8c\u6210\u90e8\u5206\u7684 ReadProcessMemory \u6216 WriteProcessMemory \u8bf7\u6c42\u3002"
+  }
+]

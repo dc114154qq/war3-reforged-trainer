@@ -15763,8 +15763,10 @@ def run_gui() -> None:
         count = elephant_trainer().prewarm_elephant_functions()
         return f"大象功能已初始化：{count} 个 native 函数可用"
 
-    def elephant_batch(action: Callable[[], object], label: str) -> tuple[object, ...]:
+    def elephant_batch(action: Callable[[], object], label: str, *, direct_memory: bool = False) -> tuple[object, ...]:
         batch_trainer = elephant_trainer()
+        if (not direct_memory and getattr(batch_trainer, "_native_selection_unavailable", False)):
+            raise RuntimeError("3.0 当前只读；该大象功能等待 native 执行入口适配")
         state["elephant_batch_trainer"] = batch_trainer
         try:
             succeeded, failed, results, errors = (
@@ -16360,6 +16362,7 @@ def run_gui() -> None:
         results = elephant_batch(
             lambda: elephant_trainer().set_selected_inventory_charges(charges),
             "设置物品数量",
+            direct_memory=True,
         )
         return (
             f"已将 {sum(map(int, results))} 件背包物品的数量设为 {charges}"
@@ -16412,6 +16415,7 @@ def run_gui() -> None:
         results = elephant_batch(
             lambda: elephant_trainer().set_selected_hero_attributes(value),
             "设置英雄属性",
+            direct_memory=True,
         )
         return (
             f"已将 {len(results)} 个英雄的力量、敏捷、智力设置为 {value}"
@@ -16630,9 +16634,10 @@ def run_gui() -> None:
         action()
         return message
 
-    def elephant_batch_action(action: Callable[[], object], label: str) -> str:
+    def elephant_batch_action(action: Callable[[], object], label: str, *, direct_memory: bool = False) -> str:
         current = state.get("trainer")
-        if isinstance(current, War3Trainer) and getattr(current, "_native_selection_unavailable", False):
+        if (not direct_memory and isinstance(current, War3Trainer)
+                and getattr(current, "_native_selection_unavailable", False)):
             return "3.0 当前只读；该大象功能等待 native 执行入口适配"
         results = elephant_batch(action, label)
         return f"{label}：成功 {len(results)} 个{elephant_batch_suffix()}"

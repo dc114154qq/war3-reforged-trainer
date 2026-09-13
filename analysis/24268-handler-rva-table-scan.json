@@ -1,0 +1,36 @@
+{
+  "analysis/native-bootstrap-24268/loader-runtime-text.bin": {
+    "0xca6160": [],
+    "0xcf1fa0": [],
+    "0xc98620": [],
+    "0xcffd30": [],
+    "0xca73d0": []
+  },
+  "analysis/native-bootstrap-24268/loader-runtime-data.bin": {
+    "0xca6160": [],
+    "0xcf1fa0": [],
+    "0xc98620": [],
+    "0xcffd30": [],
+    "0xca73d0": []
+  },
+  "analysis/native-bootstrap-24268/section-data.bin": {
+    "0xca6160": [],
+    "0xcf1fa0": [],
+    "0xc98620": [],
+    "0xcffd30": [],
+    "0xca73d0": []
+  },
+  "analysis/native-bootstrap-24268/section-rdata.bin": {
+    "0xca6160": [],
+    "0xcf1fa0": [
+      "0x9d68f0",
+      "0x9d6900"
+    ],
+    "0xc98620": [],
+    "0xcffd30": [
+      "0x9d6f88",
+      "0x9d6f98"
+    ],
+    "0xca73d0": []
+  }
+}

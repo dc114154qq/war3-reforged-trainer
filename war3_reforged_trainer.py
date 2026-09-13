@@ -4094,13 +4094,20 @@ class War3Trainer:
                     unit = pm.read_u64(node + 0x10)
                 except OSError:
                     return None
-                if unit not in unit_index:
-                    return None
                 units.append(unit)
                 node = next_node
             return tuple(units)
 
         cached_units = read_cached_units()
+        if cached_units is not None and any(unit not in unit_index for unit in cached_units):
+            # A newly created unit can legitimately be absent from the cached
+            # object index. Refresh that bounded index once, while keeping the
+            # already located selection container; do not rediscover the
+            # selection layout or scan the whole address space again.
+            unit_index = self._build_unit_object_index(pm, force_refresh=True)
+            cached_units = read_cached_units()
+            if cached_units is not None and any(unit not in unit_index for unit in cached_units):
+                cached_units = None
         if cached_units is not None:
             units = cached_units
             player = self._classic_selection_layout[0]

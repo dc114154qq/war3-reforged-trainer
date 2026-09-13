@@ -56,3 +56,9 @@ war3_loader.dll 的 Authenticode 签名有效，签名主体 Blizzard Entertainm
 运行时 `.rdata` 的名称目录已提取为 `native-catalog.json`。它包含 GroupEnumUnitsSelected、GetUnitState、GetHeroStr、UnitAddAbility、BlzGetUnitAbilityByIndex 及附近签名字符串；这证明 3.0 仍保留需要的 JASS/native 目录。当前代码没有保存这些地址的绝对指针，也没有旧版直接引用，推测注册前经过加载器解码或间接表生成。目录本身还不是可调用 handler，不能拿名称地址冒充函数地址。
 
 进一步只读分析了 Windows 异常分发入口：`KiUserExceptionDispatcher` 的第一跳调用游戏/加载器回调，加载器异常路径建立 Fiber 并调用 TLS 取值；这些调用均只在 Unicorn 的模拟内存中推演，未调用真实函数。模拟结果不能证明完整保护算法，当前不修改异常处理链。
+
+## loader 运行时代码（2026-09-13）
+
+按已确认的 loader 模块基址 0x7fff0ea40000 和 PE `.text` 节，读取了完整 33874870 字节运行时代码，0 个缺页；哈希 `9c366fce157819e5b628a56d499fd6af64c356d29d57f9c6c2f56849b24d133b`，见 `loader-runtime.json`。入口 RVA 0x1351be0 和 0x1da6be0 的运行时代码显示状态值混淆、线程 Fiber/TLS 门控和转发调用；没有看到直接的选中单位 API。
+
+这使当前结论更明确：`war3_loader.dll` 是 3.0 的执行/完整性加载层，不应被当作经典版“大象”选择接口。3.0 仍有完整 JASS 名称目录，但 handler 表是在游戏线程/loader 上下文中生成。产品适配必须找到合法稳定的游戏线程 native 入口，再接入 24 单位快照；不通过 loader 门控、不绕过签名检查、不恢复全扫描。

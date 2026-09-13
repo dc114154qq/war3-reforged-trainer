@@ -1,0 +1,9 @@
+{
+  "pid": 23652,
+  "base": "0x7fff0ea40000",
+  "rva": "0x10000",
+  "bytes": 33874870,
+  "gaps": [],
+  "sha256": "9c366fce157819e5b628a56d499fd6af64c356d29d57f9c6c2f56849b24d133b",
+  "scope": "Known loader executable section only; read-only"
+}

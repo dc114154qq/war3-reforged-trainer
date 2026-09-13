@@ -1,0 +1,79 @@
+{
+  "pid": 32868,
+  "ok": true,
+  "selected": 14,
+  "elapsed_ms": 80.86679999905755,
+  "component_sets": [
+    [
+      "attack",
+      "hero",
+      "inventory",
+      "move"
+    ],
+    [
+      "attack",
+      "hero",
+      "inventory",
+      "move"
+    ],
+    [
+      "attack",
+      "hero",
+      "inventory",
+      "move"
+    ],
+    [
+      "attack",
+      "inventory",
+      "move"
+    ],
+    [
+      "attack",
+      "inventory",
+      "move"
+    ],
+    [
+      "attack",
+      "inventory",
+      "move"
+    ],
+    [
+      "attack",
+      "inventory",
+      "move"
+    ],
+    [
+      "attack",
+      "inventory",
+      "move"
+    ],
+    [
+      "attack",
+      "inventory",
+      "move"
+    ],
+    [
+      "attack",
+      "inventory",
+      "move"
+    ],
+    [
+      "attack",
+      "inventory",
+      "move"
+    ],
+    [
+      "attack",
+      "inventory",
+      "move"
+    ],
+    [
+      "attack",
+      "move"
+    ],
+    [
+      "attack",
+      "move"
+    ]
+  ]
+}

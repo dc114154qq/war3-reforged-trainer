@@ -34,20 +34,20 @@ def read_unit_component_nodes(memory, registry, owner):
             previous, node = node, following
         if memory.read_u64(owner + 0xD8) != head:
             raise RuntimeError("Unit component head changed while reading")
-        return identities, result
+        return head, identities, result
 
     last_error = None
     first_head = None
     for _attempt in range(4):
         try:
-            identities, result = traverse()
-            current_head = identities[0][3] if identities else None
+            current_head, identities, result = traverse()
             if first_head is None:
                 first_head = current_head
             elif current_head != first_head:
                 raise RuntimeError("Unit component head changed while retrying")
-            second_identities, second_result = traverse()
+            second_head, second_identities, second_result = traverse()
             if (identities != second_identities or result != second_result
+                    or current_head != second_head
                     or registry.resolve_unit(memory, unit) != (handle, owner)):
                 raise RuntimeError("Unit component identity changed while reading")
             return result

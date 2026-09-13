@@ -26,10 +26,11 @@ def run(output_path):
         if [ins.mnemonic for ins in decoded] != ["mov", "mov", "call", "ret"]:
             raise RuntimeError("Decoder instruction-boundary check failed")
         report["instructions"] = [ins.mnemonic for ins in decoded]
-        helper = base / "tools" / "war3_native_helper.dll"
-        library = ctypes.WinDLL(str(helper))
-        getattr(library, "War3HookProc")
-        report["helper_sha256"] = hashlib.sha256(helper.read_bytes()).hexdigest()
+        # 3.0 product bundle must not contain the retired 2.0 helper.
+        retired = base / "tools" / "war3_native_helper.dll"
+        if retired.exists():
+            raise RuntimeError("Retired 2.0 native helper is present in the 3.0 bundle")
+        report["retired_helper_present"] = False
         report["ok"] = True
     except Exception:
         report["error"] = traceback.format_exc()

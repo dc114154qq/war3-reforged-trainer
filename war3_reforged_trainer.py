@@ -11256,6 +11256,8 @@ class War3Trainer:
             try:
                 registry = self._classic_object_registry or ObjectRegistry24268.attach(memory)
                 self._classic_object_registry = registry
+                if registry.resolve_unit(memory, unit) != (handle, owner):
+                    raise RuntimeError("Requested unit identity is stale")
                 candidate = self._candidate_from_identity(
                     memory, handle, owner, unit, note, score,
                 )
@@ -14260,6 +14262,9 @@ class War3Trainer:
         specs = list(specs)
         if not specs:
             return []
+        if pm is None and getattr(self, "_native_selection_unavailable", False):
+            with self._process_memory(write=True) as memory:
+                return self._write_unit_fields_to_candidate(memory, candidate, specs)
         # Resolve and validate all requested fields before any mutation. Native
         # basic fields are batched once; their writability does not depend on an
         # external property address being available.
@@ -14320,12 +14325,19 @@ class War3Trainer:
             basic_readback = self._write_basic_unit_values_to_candidate(pm, candidate, **basic_values)
             snapshot = self._native_snapshot_for_candidate(basic_readback)
             if snapshot is None:
-                raise RuntimeError("No native snapshot after basic field write")
-            for index in basic_indices:
-                field, _spec = resolved[index]
-                _argument, attribute = self.NATIVE_BASIC_FIELD_ARGUMENTS[field.key]
-                written[index] = replace(field, value=getattr(snapshot, attribute),
-                                         write_address=0, write_type="", native_write=True)
+                if native_bound or not getattr(self, "_native_selection_unavailable", False):
+                    raise RuntimeError("No native snapshot after basic field write")
+                from war3_basic_fields import FIELDS
+                for index in basic_indices:
+                    field, _spec = resolved[index]
+                    address = getattr(basic_readback, FIELDS[field.key][2])
+                    written[index] = replace(field, value=pm.read_f32(address))
+            else:
+                for index in basic_indices:
+                    field, _spec = resolved[index]
+                    _argument, attribute = self.NATIVE_BASIC_FIELD_ARGUMENTS[field.key]
+                    written[index] = replace(field, value=getattr(snapshot, attribute),
+                                             write_address=0, write_type="", native_write=True)
         if component_requests:
             written.update(self._write_native_component_fields(candidate, component_requests))
         for index, (field, spec) in enumerate(resolved):
@@ -14441,6 +14453,24 @@ class War3Trainer:
             return candidate
 
         native = self._native_snapshot_for_candidate(candidate)
+        if getattr(self, "_native_selection_unavailable", False) and native is None:
+            from war3_object_registry import ObjectRegistry24268
+            from war3_basic_fields import write_basic_fields
+            close_pm = pm is None
+            memory = pm or self._process_memory(write=True)
+            try:
+                registry = self._classic_object_registry or ObjectRegistry24268.attach(memory)
+                self._classic_object_registry = registry
+                write_basic_fields(memory, registry, candidate, {
+                    "hp_current": target_hp, "hp_max": max_hp,
+                    "mp_current": target_mp, "mp_max": max_mp,
+                    "x": target_x, "y": target_y,
+                    "hp_regen": target_hp_regen, "mp_regen": target_mp_regen,
+                })
+                return candidate
+            finally:
+                if close_pm:
+                    memory.close()
         if native is None:
             candidate = self._candidate_from_display_identity(
                 pm, candidate.handle, candidate.owner_address, candidate.unit_address,

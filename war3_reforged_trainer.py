@@ -4648,18 +4648,19 @@ class War3Trainer:
             )
             if not tid or int(pid.value) != self.pid:
                 raise RuntimeError("Warcraft III 窗口线程已失效")
+            target_tid = int(getattr(self, "_native_helper_target_thread_id", tid))
             hook = user32.SetWindowsHookExW(
                 WH_CALLWNDPROC,
                 ctypes.c_void_p(proc),
                 ctypes.c_void_p(module),
-                int(tid),
+                target_tid,
             )
             if not hook:
                 raise ctypes.WinError(ctypes.get_last_error())
             self._native_helper_persistent_module = module
             self._native_helper_persistent_hook = hook
             self._native_helper_persistent_pid = self.pid
-            self._native_helper_persistent_thread_id = int(tid)
+            self._native_helper_persistent_thread_id = target_tid
             module = None
             hook = None
         finally:

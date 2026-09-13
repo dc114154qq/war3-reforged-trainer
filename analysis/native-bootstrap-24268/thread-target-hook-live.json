@@ -1,0 +1,14 @@
+{
+  "build": "3.0.0.24268",
+  "pid": 16700,
+  "window_thread": 37144,
+  "worker_thread_attempt": 5552,
+  "worker_thread_start": "0x7ff724894fb0",
+  "hook": "WH_GETMESSAGE",
+  "wake": "PostThreadMessage(WM_NULL)",
+  "result": "SetWindowsHookEx_error_87",
+  "handler_execution": false,
+  "game_writes": false,
+  "interpretation": "The selected worker has no usable user-message hook target. The earlier window thread remains the only valid message-hook target and did not dispatch the helper.",
+  "scope": "Read-only thread target experiment; no native handler was invoked."
+}

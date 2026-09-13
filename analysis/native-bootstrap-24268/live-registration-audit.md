@@ -45,3 +45,4 @@ both message-hook entry variants are currently nonfunctional on this 3.0
 process. The Python wait path now supports the post mode for future diagnostics,
 but the product default remains the original send mode until a working entry is
 found.
+`thread-target-hook-live.json` records the worker-thread result. Window thread 37144 is the only tested thread with a usable window-message target. Worker TID 5552 (start `0x7ff724894fb0`) rejected the thread-specific hook with WinError 87; its message queue is not a valid helper entry. The next investigation therefore targets the loader/game execution entry rather than another message-hook variant.

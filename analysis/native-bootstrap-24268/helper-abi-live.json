@@ -1,0 +1,231 @@
+{
+  "pid": 16700,
+  "build": "3.0.0.24268",
+  "table_count": 1826,
+  "helper_name_count": 55,
+  "present_count": 55,
+  "missing": [],
+  "present": {
+    "GetHandleId": {
+      "signature": "(Hhandle;)I",
+      "handler_rva": "0xca6010"
+    },
+    "CreateGroup": {
+      "signature": "()Hgroup;",
+      "handler_rva": "0xc95f40"
+    },
+    "DestroyGroup": {
+      "signature": "(Hgroup;)V",
+      "handler_rva": "0xc999d0"
+    },
+    "GroupRemoveUnit": {
+      "signature": "(Hgroup;Hunit;)B",
+      "handler_rva": "0xcb0e80"
+    },
+    "GroupEnumUnitsOfPlayer": {
+      "signature": "(Hgroup;Hplayer;Hboolexpr;)V",
+      "handler_rva": "0xcb0410"
+    },
+    "GroupEnumUnitsSelected": {
+      "signature": "(Hgroup;Hplayer;Hboolexpr;)V",
+      "handler_rva": "0xcb08a0"
+    },
+    "FirstOfGroup": {
+      "signature": "(Hgroup;)Hunit;",
+      "handler_rva": "0xc9bb90"
+    },
+    "GetWidgetLife": {
+      "signature": "(Hwidget;)R",
+      "handler_rva": "0xcafbe0"
+    },
+    "GetUnitState": {
+      "signature": "(Hunit;Hunitstate;)R",
+      "handler_rva": "0xcaf3b0"
+    },
+    "GetUnitX": {
+      "signature": "(Hunit;)R",
+      "handler_rva": "0xcafad0"
+    },
+    "GetUnitY": {
+      "signature": "(Hunit;)R",
+      "handler_rva": "0xcafb10"
+    },
+    "GetUnitMoveSpeed": {
+      "signature": "(Hunit;)R",
+      "handler_rva": "0xcae920"
+    },
+    "GetUnitTypeId": {
+      "signature": "(Hunit;)I",
+      "handler_rva": "0xcaf560"
+    },
+    "SetUnitPosition": {
+      "signature": "(Hunit;RR)V",
+      "handler_rva": "0xcfa150"
+    },
+    "SetUnitState": {
+      "signature": "(Hunit;Hunitstate;R)V",
+      "handler_rva": "0xcfaaf0"
+    },
+    "SetHeroStr": {
+      "signature": "(Hunit;IB)V",
+      "handler_rva": "0xcf2260"
+    },
+    "SetHeroAgi": {
+      "signature": "(Hunit;IB)V",
+      "handler_rva": "0xcf1e60"
+    },
+    "SetHeroInt": {
+      "signature": "(Hunit;IB)V",
+      "handler_rva": "0xcf1f00"
+    },
+    "GetHeroStr": {
+      "signature": "(Hunit;B)I",
+      "handler_rva": "0xca6440"
+    },
+    "GetHeroAgi": {
+      "signature": "(Hunit;B)I",
+      "handler_rva": "0xca6020"
+    },
+    "GetHeroInt": {
+      "signature": "(Hunit;B)I",
+      "handler_rva": "0xca60c0"
+    },
+    "UnitStripHeroLevel": {
+      "signature": "(Hunit;I)B",
+      "handler_rva": "0xd01d30"
+    },
+    "UnitModifySkillPoints": {
+      "signature": "(Hunit;I)B",
+      "handler_rva": "0xd017d0"
+    },
+    "GetHeroXP": {
+      "signature": "(Hunit;)I",
+      "handler_rva": "0xca64e0"
+    },
+    "SetHeroLevel": {
+      "signature": "(Hunit;IB)V",
+      "handler_rva": "0xcf1fa0"
+    },
+    "GetHeroLevel": {
+      "signature": "(Hunit;)I",
+      "handler_rva": "0xca6160"
+    },
+    "SuspendHeroXP": {
+      "signature": "(Hunit;B)V",
+      "handler_rva": "0xcfca70"
+    },
+    "IsSuspendedXP": {
+      "signature": "(Hunit;)B",
+      "handler_rva": "0xcb48f0"
+    },
+    "GetUnitAbilityLevel": {
+      "signature": "(Hunit;I)I",
+      "handler_rva": "0xcad7c0"
+    },
+    "UnitAddItemById": {
+      "signature": "(Hunit;I)Hitem;",
+      "handler_rva": "0xcffff0"
+    },
+    "UnitRemoveItem": {
+      "signature": "(Hunit;Hitem;)V",
+      "handler_rva": "0xd01a70"
+    },
+    "UnitItemInSlot": {
+      "signature": "(Hunit;I)Hitem;",
+      "handler_rva": "0xd01700"
+    },
+    "UnitInventorySize": {
+      "signature": "(Hunit;)I",
+      "handler_rva": "0xd015a0"
+    },
+    "GetUnitCurrentOrder": {
+      "signature": "(Hunit;)I",
+      "handler_rva": "0xcade50"
+    },
+    "GetOwningPlayer": {
+      "signature": "(Hunit;)Hplayer;",
+      "handler_rva": "0xca8970"
+    },
+    "UnitAddAbility": {
+      "signature": "(Hunit;I)B",
+      "handler_rva": "0xcffd30"
+    },
+    "UnitRemoveAbility": {
+      "signature": "(Hunit;I)B",
+      "handler_rva": "0xd01910"
+    },
+    "SetUnitAbilityLevel": {
+      "signature": "(Hunit;II)I",
+      "handler_rva": "0xcf83a0"
+    },
+    "IssueImmediateOrderById": {
+      "signature": "(Hunit;I)B",
+      "handler_rva": "0xcb7360"
+    },
+    "CreateItem": {
+      "signature": "(IRR)Hitem;",
+      "handler_rva": "0xc966b0"
+    },
+    "RemoveItem": {
+      "signature": "(Hitem;)V",
+      "handler_rva": "0xcbded0"
+    },
+    "GetItemTypeId": {
+      "signature": "(Hitem;)I",
+      "handler_rva": "0xca6e80"
+    },
+    "IsItemOwned": {
+      "signature": "(Hitem;)B",
+      "handler_rva": "0xcb3b10"
+    },
+    "GetItemCharges": {
+      "signature": "(Hitem;)I",
+      "handler_rva": "0xca68b0"
+    },
+    "SetItemCharges": {
+      "signature": "(Hitem;I)V",
+      "handler_rva": "0xcf28d0"
+    },
+    "Player": {
+      "signature": "(I)Hplayer;",
+      "handler_rva": "0xcbc600"
+    },
+    "GetLocalPlayer": {
+      "signature": "()Hplayer;",
+      "handler_rva": "0xca73d0"
+    },
+    "IsPlayerEnemy": {
+      "signature": "(Hplayer;Hplayer;)B",
+      "handler_rva": "0xcb4640"
+    },
+    "GetPlayerId": {
+      "signature": "(Hplayer;)I",
+      "handler_rva": "0xca8b50"
+    },
+    "BlzUnitHideAbility": {
+      "signature": "(Hunit;IB)V",
+      "handler_rva": "0xd010d0"
+    },
+    "BlzGetUnitAbility": {
+      "signature": "(Hunit;I)Hability;",
+      "handler_rva": "0xcad500"
+    },
+    "BlzGetUnitAbilityByIndex": {
+      "signature": "(Hunit;I)Hability;",
+      "handler_rva": "0xcad5f0"
+    },
+    "BlzGetAbilityId": {
+      "signature": "(Hability;)I",
+      "handler_rva": "0xca1400"
+    },
+    "BlzGetAbilityRealLevelField": {
+      "signature": "(Hability;Habilityreallevelfield;I)R",
+      "handler_rva": "0xca1c80"
+    },
+    "BlzSetAbilityRealLevelField": {
+      "signature": "(Hability;Habilityreallevelfield;IR)B",
+      "handler_rva": "0xce8c30"
+    }
+  },
+  "scope": "Read-only live registration table; no handler calls or writes."
+}

@@ -3,16 +3,16 @@
   "branch": "codex/war3-3.0.0.24268-adaptation",
   "source": "C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\war3_reforged_trainer.py",
   "methods": {
-    "_ability_instances_from_candidate": 11963,
+    "_ability_instances_from_candidate": 11974,
     "_classic_selection_candidates": 4069,
-    "create_local_unit": 6071,
-    "move_selected_group_to_mouse": 5586,
-    "read_resource_cache": 9128,
-    "set_selected_hero_attributes": 5405,
-    "set_selected_inventory_charges": 6437,
-    "set_selected_unit_ability_level": 6572,
-    "set_selected_unit_position": 5554,
-    "write_resource_cache": 9045
+    "create_local_unit": 6076,
+    "move_selected_group_to_mouse": 5591,
+    "read_resource_cache": 9139,
+    "set_selected_hero_attributes": 5410,
+    "set_selected_inventory_charges": 6442,
+    "set_selected_unit_ability_level": 6577,
+    "set_selected_unit_position": 5559,
+    "write_resource_cache": 9056
   },
   "capabilities": [
     {
@@ -38,7 +38,7 @@
     {
       "feature": "inventory read",
       "status": "validated",
-      "evidence": "3.0 slot-array + item wrapper validation"
+      "evidence": "3.0 slot-array pointer + 12-byte entries + item wrapper/rawcode validation"
     },
     {
       "feature": "inventory charge write",
@@ -48,7 +48,7 @@
     {
       "feature": "existing ability enumeration",
       "status": "validated read-only",
-      "evidence": "ability-instances-live.json"
+      "evidence": "ability-instances-live.json; 15/7/12 instances in live heroes"
     },
     {
       "feature": "ability field read/write",

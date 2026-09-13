@@ -1,0 +1,19 @@
+{
+  "build": "3.0.0.24268",
+  "pid": 16700,
+  "unit": "0x7ff442e7f8a8",
+  "hero_fields": {
+    "base_strength": 23,
+    "base_agility": 10,
+    "intelligence_total": 42.0
+  },
+  "typed_addresses": {
+    "base_strength": "i32",
+    "base_agility": "i32",
+    "intelligence_total": "f32"
+  },
+  "writeback_original_values": true,
+  "readback_same": true,
+  "game_value_changed": false,
+  "scope": "Direct typed external-memory write-back of original hero values; no native handler was called."
+}

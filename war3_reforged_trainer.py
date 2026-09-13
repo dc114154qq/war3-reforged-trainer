@@ -5392,9 +5392,9 @@ class War3Trainer:
                     raise RuntimeError("当前选中单位缺少可写英雄字段：" + ",".join(missing))
                 for key in requested:
                     field = by_key[key]
-                    if not field.write_address or field.write_type != "i32":
+                    if not field.write_address or field.write_type not in {"i32", "f32"}:
                         raise RuntimeError(f"英雄字段不可写：{key}")
-                    memory.write_i32(field.write_address, target)
+                    self._write_memory_value(memory, field.write_address, field.write_type, target)
                 refreshed = self._unit_fields_from_candidate(memory, candidate)
             actual = {field.key: int(field.value) for field in refreshed if field.key in requested}
             if any(actual.get(key) != target for key in requested):

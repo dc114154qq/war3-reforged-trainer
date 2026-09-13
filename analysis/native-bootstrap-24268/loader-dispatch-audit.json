@@ -1,0 +1,14 @@
+{
+  "build": "3.0.0.24268",
+  "loader": "war3_loader.dll",
+  "disk_sha256": "e32431e26f58d1201be3f48baed485114227864d8c6b871eae8e9528241ec8e9",
+  "relevant_user32_imports": ["EnumThreadWindows"],
+  "absent_relevant_imports": ["SetWindowsHookExW", "SendMessageW", "PostMessageW", "PostThreadMessageW", "GetMessageW", "PeekMessageW"],
+  "live_helper_variants": [
+    {"target": "window_thread_37144", "hook": "WH_CALLWNDPROC", "wake": "SendMessageTimeout(WM_NULL)", "result": "pending_timeout"},
+    {"target": "window_thread_37144", "hook": "WH_GETMESSAGE", "wake": "PostThreadMessage(WM_NULL)", "result": "pending_timeout"},
+    {"target": "worker_thread_5552", "hook": "WH_GETMESSAGE", "wake": "PostThreadMessage(WM_NULL)", "result": "SetWindowsHookEx_error_87"}
+  ],
+  "conclusion": "The 3.0 loader does not expose the ordinary window-message dispatch imports used by the helper. Its EnumThreadWindows import points toward an internal thread/window discovery path. Further work should identify that internal dispatch path from loader code; repeating external message hooks is not useful.",
+  "scope": "Read-only disk import analysis plus recorded helper entry observations; no loader calls or game writes."
+}

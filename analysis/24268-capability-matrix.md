@@ -5,10 +5,10 @@ Evidence status is per current branch and current process tests; “readback” 
 | Capability | Current path | Status |
 |---|---|---|
 | Player resources | Indexed player property chain | Verified read/write/readback on 28 slots |
-| Selection | Canonical CPlayer+0x168 list | Verified up to 24 schema; current live samples 13–14 |
+| Selection | Canonical CPlayer+0x168 list | Verified up to 24 schema; 13 unique live units on PID 32868 |
 | HP/MP/position fields | Verified unit property addresses | Verified direct field roundtrip |
 | Hero base attributes | Hero component fields | Verified direct field roundtrip |
-| Hero skill points | Hero component +0x104 | Verified direct field roundtrip |
+| Hero skill points | Hero component +0x104 | Verified direct field roundtrip; engine notification not independently proven |
 | Unit scale | Unit +0x290 | Verified 14-unit direct roundtrip |
 | Item charges | Inventory component and item charge field | Verified selected batch direct roundtrip |
 | Hero level | Engine Get/SetHeroLevel callback required | Not completed; cache-only write removed |
@@ -16,7 +16,7 @@ Evidence status is per current branch and current process tests; “readback” 
 | Unit cloning/creation | CreateUnit/clone engine callbacks | Not completed |
 | Add/remove abilities | UnitAddAbility/UnitRemoveAbility callbacks | Not completed |
 | Engine-level movement | SetUnitPosition/space-index update | Not completed; raw coordinate field not treated as proof |
-| Cross-device | Profile guards and no fixed heap addresses | Static guards present; second-device live proof pending |
+| Cross-device | Profile guards and no fixed heap addresses | Static guards present; live cross-device test intentionally deferred to final user acceptance |
 | 1.0.19 baseline | Separate release/tag | Preserved; 3.0 branch independent |
 
 The product must not claim the incomplete rows as successful operations.

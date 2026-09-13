@@ -11396,6 +11396,9 @@ class War3Trainer:
         return 0x100000000 <= value <= 0x7FFFFFFFFFFF
 
     def _panel_from_candidate(self, pm: ProcessMemory | None, candidate: UnitCandidate) -> VisibleUnitPanel:
+        if pm is None and self._native_snapshot_for_candidate(candidate) is None:
+            with self._process_memory() as panel_memory:
+                return self._panel_from_candidate(panel_memory, candidate)
         native = self._native_snapshot_for_candidate(candidate)
         actual_hp = int(round(native.hp if native is not None else pm.read_f32(candidate.hp_current_address)))
         actual_hp_max = int(round(native.hp_max if native is not None else pm.read_f32(candidate.hp_max_address)))
@@ -11417,6 +11420,9 @@ class War3Trainer:
         )
 
     def _position_from_candidate(self, pm: ProcessMemory, candidate: UnitCandidate) -> tuple[float, float] | None:
+        if pm is None and self._native_snapshot_for_candidate(candidate) is None:
+            with self._process_memory() as position_memory:
+                return self._position_from_candidate(position_memory, candidate)
         native = self._native_snapshot_for_candidate(candidate)
         if native is not None:
             return native.x, native.y
@@ -12540,6 +12546,9 @@ class War3Trainer:
         pm: ProcessMemory | None,
         candidate: UnitCandidate,
     ) -> list[UnitMemoryField]:
+        if pm is None and self._native_snapshot_for_candidate(candidate) is None:
+            with self._process_memory() as field_memory:
+                return self._unit_fields_from_candidate(field_memory, candidate)
         fields: list[UnitMemoryField] = []
         native = self._native_snapshot_for_candidate(candidate)
 

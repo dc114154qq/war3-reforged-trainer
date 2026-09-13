@@ -2948,7 +2948,9 @@ class War3Trainer:
             self._elephant_selection_override = None
             self._classic_selection_layout = None
             self._classic_selection_cache = ()
-            self._native_selection_unavailable = False
+            # This branch always targets 3.0; reconnecting must not re-enable
+            # the bundled 2.0.4.23745 native helper.
+            self._native_selection_unavailable = True
             self._classic_resource_cache = None
             self._start_persistent_bootstrap()
 

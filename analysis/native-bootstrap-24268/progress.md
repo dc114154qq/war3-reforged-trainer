@@ -72,3 +72,5 @@ war3_loader.dll 的 Authenticode 签名有效，签名主体 Blizzard Entertainm
 进一步只读取得 loader `.data`（RVA 0x20f0000，1142719 字节，0 缺页，哈希 `5e8b48688f7b42217531d38cdb34c6b692997334697fea6815b81ac0372364d9`）。它包含 loader 自身的大量上下文/对象表，并有 3 个指向游戏主模块的基址引用（0x7fff10bf6c70、0x7fff10bf6c78、0x7fff10bf7c40）。这些是有价值的 loader→game 上下文锚点，但还不是 native handler；仍只读分析，不调用表项。
 
 沿第一个上下文对象的有限三层指针关系后，目标进入 loader 的通用服务/缓存对象，出现 `pragma:no-cache` 等服务元数据，没有出现 Warcraft native 名称、选择对象或游戏对象表。该分支已判定为非目标，停止继续展开，避免把 loader 的网络/服务对象误当作游戏 native 上下文。
+
+对完整运行时 `.text` 做了原始字节检查，覆盖 `48/4c 8d/8b` 的常见 RIP-relative 指针形式，目标为五个已确认 native 名称字符串地址；命中数为 **0**。因此不是反汇编错位漏掉旧式直接引用，3.0 的名称目录确实通过非直接索引/解码路径使用。结果见 `native-name-riprefs.json`。

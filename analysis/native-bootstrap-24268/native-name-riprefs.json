@@ -1,0 +1,16 @@
+{
+  "build": "3.0.0.24268",
+  "text_sha256": "597a67135a58f8662cab111d1d2551fe518c690b5fccc8a8eaa70c5971e29305",
+  "checked_forms": [
+    "488d05",
+    "488b05",
+    "4c8d05",
+    "4c8b05",
+    "488d0d",
+    "488d15",
+    "4c8d0d",
+    "4c8d15"
+  ],
+  "hits": [],
+  "scope": "Raw byte check only; no handler execution or runtime writes"
+}

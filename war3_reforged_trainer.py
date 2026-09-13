@@ -5149,6 +5149,9 @@ class War3Trainer:
         pm: ProcessMemory,
         snapshot: Iterable[tuple[UnitCandidate, int]],
     ) -> tuple[UnitSelectionSummary, ...]:
+        if pm is None and snapshot:
+            with self._process_memory() as summary_memory:
+                return self._selected_summaries_from_snapshot(summary_memory, snapshot)
         snapshot = tuple(snapshot)
         if (
             snapshot
@@ -12420,6 +12423,11 @@ class War3Trainer:
         candidate: UnitCandidate,
         components: dict[str, tuple[int, int]] | None = None,
     ) -> list[InventoryItem]:
+        if pm is None and self._native_snapshot_for_candidate(candidate) is None:
+            with self._process_memory() as inventory_memory:
+                return self._inventory_items_from_candidate(
+                    inventory_memory, candidate, components=components,
+                )
         native = self._native_snapshot_for_candidate(candidate)
         if native is not None:
             return self._native_inventory_items(candidate)

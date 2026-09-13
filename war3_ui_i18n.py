@@ -35,6 +35,16 @@ def detect_ui_language(locale_name: str | None = None) -> str:
 
 
 _EN_TRANSLATIONS = {
+    "3.0 坐标写入读回不一致：": "3.0 position write readback mismatch: ",
+    "3.0 物品数量写入读回不一致": "3.0 item charge write readback mismatch",
+    "3.0 英雄属性写入读回不一致：": "3.0 hero attribute write readback mismatch: ",
+    "3.0 资源写入读回不一致": "3.0 resource write readback mismatch",
+    "Warcraft III 3.0 当前未启用旧版 native helper；该功能仍待 3.0 handler 适配：": "Warcraft III 3.0 legacy native helper is disabled; this feature still needs 3.0 handler support: ",
+    "Warcraft III 3.0 当前未启用旧版 native helper；该操作尚未迁移到 3.0 经典链路": "Warcraft III 3.0 legacy native helper is disabled; this operation has not been migrated to the 3.0 classic path",
+    "当前 3.0 单位没有经过校验的坐标字段": "The current 3.0 unit has no validated coordinate fields",
+    "当前输入的资源值与 3.0 本地玩家资源状态不一致": "The entered resource values do not match the 3.0 local player resource state",
+    "当前选中单位没有可写物品数量": "The current selected unit has no writable item charges",
+    "当前选中单位缺少可写英雄字段：": "The current selected unit lacks writable hero fields: ",
     "基础力量、敏捷必须是 0～1000000 的整数": "Base strength/agility must be an integer from 0 to 1000000",
     "输入目标基础力量（0～1000000 的整数）；通过游戏属性接口设置，并按本栏的读取方式确认。不是设置总力量；读回不等于目标时会报错。": "Enter target base strength (integer 0-1000000). Uses the game stat setter and this field's getter to verify. Does not set total strength; a readback mismatch is an error.",
     "输入目标基础敏捷（0～1000000 的整数）；通过游戏属性接口设置，并按本栏的读取方式确认。不是设置总敏捷；读回不等于目标时会报错。": "Enter target base agility (integer 0-1000000). Uses the game stat setter and this field's getter to verify. Does not set total agility; a readback mismatch is an error.",

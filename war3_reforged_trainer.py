@@ -2985,7 +2985,7 @@ class War3Trainer:
         thread.start()
 
     def _persistent_bootstrap_loop(self, pid: int, stop: threading.Event) -> None:
-        if self._native_selection_unavailable:
+        if getattr(self, "_native_selection_unavailable", False):
             try:
                 with self._process_memory() as memory:
                     selected = self._classic_selection_candidates(memory)
@@ -5040,10 +5040,12 @@ class War3Trainer:
         if self._elephant_selection_override is not None:
             return self._elephant_selection_override[0]
         try:
-            if self._native_selection_unavailable:
+            if getattr(self, "_native_selection_unavailable", False):
                 raise RuntimeError("3.0 native selection disabled after verified timeout")
             snapshots = self.persistent_native_selected_snapshots(timeout_ms=10000)
         except Exception:
+            if not hasattr(self, "_native_selection_unavailable"):
+                raise
             self._native_selection_unavailable = True
             with self._process_memory() as memory:
                 selected = self._classic_selection_candidates(memory)
@@ -5065,10 +5067,12 @@ class War3Trainer:
         if self._elephant_selection_override is not None:
             return self._elephant_selection_override[1]
         try:
-            if self._native_selection_unavailable:
+            if getattr(self, "_native_selection_unavailable", False):
                 raise RuntimeError("3.0 native selection disabled after verified timeout")
             snapshots = self.persistent_native_selected_snapshots(timeout_ms=30000)
         except Exception:
+            if not hasattr(self, "_native_selection_unavailable"):
+                raise
             self._native_selection_unavailable = True
             with self._process_memory() as memory:
                 selected = self._classic_selection_candidates(memory)
@@ -5082,10 +5086,12 @@ class War3Trainer:
 
     def _elephant_selected_handles(self, pm: ProcessMemory) -> tuple[int, ...]:
         try:
-            if self._native_selection_unavailable:
+            if getattr(self, "_native_selection_unavailable", False):
                 raise RuntimeError("3.0 native selection disabled after verified timeout")
             snapshots = self.persistent_native_selected_snapshots(timeout_ms=30000)
         except Exception:
+            if not hasattr(self, "_native_selection_unavailable"):
+                raise
             self._native_selection_unavailable = True
             with self._process_memory() as memory:
                 selected = self._classic_selection_candidates(memory)
@@ -5125,6 +5131,8 @@ class War3Trainer:
                     raise RuntimeError("3.0 native selection disabled after verified timeout")
                 persistent_snapshots = self.persistent_native_selected_snapshots()
             except Exception as native_error:
+                if not hasattr(self, "_native_selection_unavailable"):
+                    raise
                 self._native_selection_unavailable = True
                 try:
                     with self._process_memory() as memory:
@@ -5416,7 +5424,7 @@ class War3Trainer:
         target = int(value)
         if not 0 <= target <= 1_000_000_000:
             raise ValueError("英雄属性必须在 0 到 1000000000 之间")
-        if self._native_selection_unavailable:
+        if getattr(self, "_native_selection_unavailable", False):
             candidate, _handle = self._direct_selected_context()
             with self._process_memory(write=True) as memory:
                 fields = self._unit_fields_from_candidate(memory, candidate)
@@ -5568,7 +5576,7 @@ class War3Trainer:
             raise ValueError("单位坐标必须是有限数值")
         if abs(target_x) > 1_000_000.0 or abs(target_y) > 1_000_000.0:
             raise ValueError("单位坐标超出允许范围")
-        if self._native_selection_unavailable:
+        if getattr(self, "_native_selection_unavailable", False):
             candidate, _handle = self._direct_selected_context()
             if not candidate.x_address or not candidate.y_address:
                 raise RuntimeError("当前 3.0 单位没有经过校验的坐标字段")
@@ -6448,7 +6456,7 @@ class War3Trainer:
         target = int(charges)
         if not 1 <= target <= 1_000_000_000:
             raise ValueError("物品数量必须在 1 到 1000000000 之间")
-        if self._native_selection_unavailable:
+        if getattr(self, "_native_selection_unavailable", False):
             candidate, _handle = self._direct_selected_context()
             with self._process_memory(write=True) as memory:
                 items = self._inventory_items_from_candidate(memory, candidate)
@@ -9014,7 +9022,7 @@ class War3Trainer:
         self, current_gold: int | None = None, current_lumber: int | None = None,
         current_food: int | None = None, current_food_cap: int | None = None,
     ) -> list[ResourceCache]:
-        if self._native_selection_unavailable:
+        if getattr(self, "_native_selection_unavailable", False):
             with self._process_memory() as memory:
                 groups = self._resource_property_groups(memory, warm_unit_owner_index=False)
                 caches = self._resource_caches_from_groups(
@@ -9065,7 +9073,7 @@ class War3Trainer:
         sync_local_food_cap: bool = False,
     ) -> ResourceCache:
         del sync_local_food_used, sync_local_food_cap
-        if self._native_selection_unavailable:
+        if getattr(self, "_native_selection_unavailable", False):
             targets = [(address, value) for address, value in (
                 (cache.gold_address, None if target_gold is None else int(target_gold) * 10),
                 (cache.lumber_address, None if target_lumber is None else int(target_lumber) * 10),
@@ -9148,7 +9156,7 @@ class War3Trainer:
         current_food: int | None = None,
         current_food_cap: int | None = None,
     ) -> ResourceCache:
-        if self._native_selection_unavailable:
+        if getattr(self, "_native_selection_unavailable", False):
             with self._process_memory() as memory:
                 cache = self._classic_local_resource_cache(memory)
             if any(expected is not None and actual != int(expected) for actual, expected in (

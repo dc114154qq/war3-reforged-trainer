@@ -4070,135 +4070,68 @@ class War3Trainer:
         self,
         pm: ProcessMemory,
     ) -> list[tuple[UnitCandidate, int]]:
-        """Read the 3.0 classic-style selection list through bounded objects.
+        """Read canonical 3.0 player lists without ranking unrelated containers.
 
-        3.0 moved the selection container inside the player object. The
-        container still has the classic ``root/count`` linked-list shape, so
-        discovery is limited to validated player objects and their bounded
-        object fields. No global unit or address-space scan is used here.
+        Player discovery and owner resolution still use the legacy indexes.
+        They are not evidence of a scan-free 3.0 bootstrap. Once a player is
+        cached, an empty selection must stay empty rather than rediscovering a
+        different player's list or a remembered control group.
         """
+        from war3_classic_selection import read_player_selection, SelectionReadError
+
+        self._classic_selection_cache = ()
+        layout = self._classic_selection_layout
+        if layout is not None:
+            # Follow the owning player's real field each time; the cached
+            # manager can be replaced when game state changes.
+            selection = read_player_selection(pm, layout[0])
+        else:
+            players = self._selection_player_pointer_candidates(pm, discover=True)
+            nonempty = []
+            valid_lists = 0
+            for player in dict.fromkeys(players):
+                try:
+                    candidate_list = read_player_selection(pm, player)
+                except (OSError, SelectionReadError):
+                    continue
+                valid_lists += 1
+                if candidate_list.units:
+                    nonempty.append(candidate_list)
+            if len(nonempty) > 1:
+                raise RuntimeError("多个玩家存在选择列表，尚未确认本地玩家")
+            if not nonempty:
+                if not valid_lists:
+                    raise RuntimeError("3.0 player selection list was not found")
+                self._classic_selection_cache = ()
+                return []
+            selection = nonempty[0]
+
+        self._classic_selection_layout = (selection.player, selection.manager, 0)
+        if not selection.units:
+            self._classic_selection_cache = ()
+            return []
+
         unit_index = self._build_unit_object_index(pm, force_refresh=False)
-
-        def read_cached_units() -> tuple[int, ...] | None:
-            layout = self._classic_selection_layout
-            if layout is None:
-                return None
-            _player, container, manager_offset = layout
-            manager = container + manager_offset
-            try:
-                root = pm.read_u64(manager + 0x18)
-                count = pm.read_u32(manager + 0x20)
-            except OSError:
-                return None
-            if not 0 < count <= self.SELECTED_BATCH_MAX_UNITS or not self._sane_heap_ptr(root):
-                return None
-            node = root
-            units: list[int] = []
-            seen_nodes: set[int] = set()
-            for _index in range(int(count)):
-                if node in seen_nodes or not self._sane_heap_ptr(node):
-                    return None
-                seen_nodes.add(node)
-                try:
-                    next_node = pm.read_u64(node + 0x08)
-                    unit = pm.read_u64(node + 0x10)
-                except OSError:
-                    return None
-                units.append(unit)
-                node = next_node
-            return tuple(units)
-
-        cached_units = read_cached_units()
-        if cached_units is not None and any(unit not in unit_index for unit in cached_units):
-            # A newly created unit can legitimately be absent from the cached
-            # object index. Refresh that bounded index once, while keeping the
-            # already located selection container; do not rediscover the
-            # selection layout or scan the whole address space again.
+        if any(unit not in unit_index for unit in selection.units):
             unit_index = self._build_unit_object_index(pm, force_refresh=True)
-            cached_units = read_cached_units()
-            if cached_units is not None and any(unit not in unit_index for unit in cached_units):
-                cached_units = None
-        if cached_units is not None:
-            units = cached_units
-            player = self._classic_selection_layout[0]
-            count = len(units)
-            selected: list[tuple[UnitCandidate, int]] = []
-            for unit in units:
-                handle, owner = unit_index[unit]
-                candidate = self._candidate_from_identity(
-                    pm, handle, owner, unit,
-                    f"3.0 classic selection cache player=0x{player:x} count={count}",
-                    1000, 0,
-                )
-                if candidate is None:
-                    self._classic_selection_layout = None
-                    break
-                selected.append((candidate, handle))
-            else:
-                self._classic_selection_cache = tuple(selected)
-                return selected
-
-        players = self._selection_player_pointer_candidates(pm, discover=True)
-        ranked: list[tuple[int, int, int, int, tuple[int, ...]]] = []
-        layouts: list[tuple[int, int, int]] = []
-        for player in players:
-            for player_offset in range(0, 0x1000, 8):
-                try:
-                    container = pm.read_u64(player + player_offset)
-                except OSError:
-                    continue
-                if not self._sane_heap_ptr(container):
-                    continue
-                for manager_offset in range(0, 0x600, 8):
-                    manager = container + manager_offset
-                    try:
-                        root = pm.read_u64(manager + 0x18)
-                        count = pm.read_u32(manager + 0x20)
-                    except OSError:
-                        continue
-                    if not 0 < count <= self.SELECTED_BATCH_MAX_UNITS:
-                        continue
-                    if not self._sane_heap_ptr(root):
-                        continue
-                    node = root
-                    units: list[int] = []
-                    seen_nodes: set[int] = set()
-                    for _index in range(int(count)):
-                        if node in seen_nodes or not self._sane_heap_ptr(node):
-                            break
-                        seen_nodes.add(node)
-                        try:
-                            next_node = pm.read_u64(node + 0x08)
-                            unit = pm.read_u64(node + 0x10)
-                        except OSError:
-                            break
-                        if unit in unit_index:
-                            units.append(unit)
-                        node = next_node
-                    if len(units) != int(count):
-                        continue
-                    ranked.append((len(units), player, player_offset, manager_offset, tuple(units)))
-                    layouts.append((player, container, manager_offset))
-        if not ranked:
-            raise RuntimeError("3.0 classic selection container was not found")
-        ranked.sort(key=lambda item: (item[0], -item[1], -item[3]), reverse=True)
-        count, player, player_offset, manager_offset, units = ranked[0]
-        container = next(
-            container for candidate_player, container, candidate_manager_offset in layouts
-            if candidate_player == player and candidate_manager_offset == manager_offset
-        )
-        self._classic_selection_layout = (player, container, manager_offset)
-        selected: list[tuple[UnitCandidate, int]] = []
-        for unit in units:
-            handle, owner = unit_index[unit]
+        selected = []
+        for unit in selection.units:
+            identity = unit_index.get(unit)
+            if identity is None:
+                raise RuntimeError("3.0 selected unit identity is not resolved")
+            handle, owner = identity
             candidate = self._candidate_from_identity(
                 pm, handle, owner, unit,
-                f"3.0 classic selection list player=0x{player:x} count={count}",
+                f"3.0 classic selection player=0x{selection.player:x} count={len(selection.units)}",
                 1000, 0,
             )
             if candidate is None:
                 raise RuntimeError("3.0 classic selection identity validation failed")
             selected.append((candidate, handle))
+        # Identity reads may take time; don't publish a list from an earlier
+        # selection if the user has changed it while those reads were running.
+        if read_player_selection(pm, selection.player) != selection:
+            raise SelectionReadError("Selection changed during identity resolution")
         self._classic_selection_cache = tuple(selected)
         return selected
 

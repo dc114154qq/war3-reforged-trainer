@@ -1,0 +1,83 @@
+{
+  "pid": 16700,
+  "read_only": true,
+  "cold_ms": 937.8551999998308,
+  "warm_ms": 13.591299999461626,
+  "count": 14,
+  "unit_index_size": 646,
+  "identities_equal": true,
+  "list_matches": true,
+  "rows": [
+    {
+      "unit": "0x7ff442e0d178",
+      "owner": "0x2066d9b91b0",
+      "full_handle": "0x97d6000097b0"
+    },
+    {
+      "unit": "0x7ff442e0c820",
+      "owner": "0x2066d9b6400",
+      "full_handle": "0x979c00009776"
+    },
+    {
+      "unit": "0x7ff442e0bec8",
+      "owner": "0x2066d9b20d0",
+      "full_handle": "0x974600009720"
+    },
+    {
+      "unit": "0x7ff442e814b0",
+      "owner": "0x2066d3d2760",
+      "full_handle": "0x464a00004640"
+    },
+    {
+      "unit": "0x7ff442e81e08",
+      "owner": "0x2066d3d3220",
+      "full_handle": "0x46640000465a"
+    },
+    {
+      "unit": "0x7ff442e82760",
+      "owner": "0x2066d3d3ce0",
+      "full_handle": "0x467d00004673"
+    },
+    {
+      "unit": "0x7ff442e830b8",
+      "owner": "0x2066d3d48f8",
+      "full_handle": "0x46960000468c"
+    },
+    {
+      "unit": "0x7ff442e83a10",
+      "owner": "0x2066d3d5510",
+      "full_handle": "0x46af000046a5"
+    },
+    {
+      "unit": "0x7ff442e84368",
+      "owner": "0x2066d3d5d20",
+      "full_handle": "0x46c2000046b8"
+    },
+    {
+      "unit": "0x7ff442e84cc0",
+      "owner": "0x2066d3d6530",
+      "full_handle": "0x46d5000046cb"
+    },
+    {
+      "unit": "0x7ff442e85618",
+      "owner": "0x2066d3d6d40",
+      "full_handle": "0x46e8000046de"
+    },
+    {
+      "unit": "0x7ff442e85f70",
+      "owner": "0x2066d3d7800",
+      "full_handle": "0x4701000046f7"
+    },
+    {
+      "unit": "0x7ff442ed5630",
+      "owner": "0x2066d523200",
+      "full_handle": "0xd48900005af0"
+    },
+    {
+      "unit": "0x7ff442eda0f0",
+      "owner": "0x2066d52d340",
+      "full_handle": "0xe08000005bdd"
+    }
+  ],
+  "scope": "Production candidate method with known player address; initial legacy owner scan included. No bootstrap, helper, native call or writes. Does not establish JASS handles or local player discovery."
+}

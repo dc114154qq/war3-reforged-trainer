@@ -1,0 +1,60 @@
+{
+  "pid": 16700,
+  "captured_utc": "2026-09-13T06:59:06.922788+00:00",
+  "read_only": true,
+  "rows": [
+    {
+      "player": "0x2066dbfb018",
+      "manager": "0x2066dbfb7c0",
+      "count": 0,
+      "units": [],
+      "rawcodes": [],
+      "sample_count": 10,
+      "all_samples_equal": true,
+      "median_ms": 0.02609999955893727,
+      "max_ms": 0.12250000054336851
+    },
+    {
+      "player": "0x2066dbfbe28",
+      "manager": "0x2066dbfc5d0",
+      "count": 14,
+      "units": [
+        "0x7ff442e0d178",
+        "0x7ff442e0c820",
+        "0x7ff442e0bec8",
+        "0x7ff442e814b0",
+        "0x7ff442e81e08",
+        "0x7ff442e82760",
+        "0x7ff442e830b8",
+        "0x7ff442e83a10",
+        "0x7ff442e84368",
+        "0x7ff442e84cc0",
+        "0x7ff442e85618",
+        "0x7ff442e85f70",
+        "0x7ff442ed5630",
+        "0x7ff442eda0f0"
+      ],
+      "rawcodes": [
+        "Othr",
+        "H64V",
+        "Hjai",
+        "h618",
+        "o613",
+        "earc",
+        "earc",
+        "ogru",
+        "ogru",
+        "otau",
+        "h62H",
+        "h62H",
+        "osw1",
+        "hwat"
+      ],
+      "sample_count": 10,
+      "all_samples_equal": true,
+      "median_ms": 0.20190000032016542,
+      "max_ms": 0.22329999956127722
+    }
+  ],
+  "scope": "Known-address canonical list traversal only; timing excludes player discovery, identity resolution, UI and execution. Local player identity, 24-unit live selection and cross-device bootstrap are not established by this report."
+}

@@ -1,0 +1,12 @@
+VSVersionInfo(
+  ffi=FixedFileInfo(filevers=(3, 0, 0, 24268), prodvers=(3, 0, 0, 24268), mask=0x3f, flags=0x0, OS=0x40004, fileType=0x1, subtype=0x0, date=(0, 0)),
+  kids=[StringFileInfo([StringTable('080404B0', [
+    StringStruct('CompanyName', 'twomengxi.xyz'),
+    StringStruct('FileDescription', 'Warcraft III Reforged Trainer 3.0.0.24268 adaptation'),
+    StringStruct('FileVersion', '3.0.0.24268'),
+    StringStruct('InternalName', 'War3ReforgedTrainer-3.0.0.24268'),
+    StringStruct('OriginalFilename', 'War3ReforgedTrainer-3.0.0.24268.exe'),
+    StringStruct('ProductName', 'Warcraft III Reforged Trainer'),
+    StringStruct('ProductVersion', '3.0.0.24268'),
+  ])]), VarFileInfo([VarStruct('Translation', [2052, 1200])])],
+)

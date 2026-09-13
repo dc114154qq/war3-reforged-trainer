@@ -38,7 +38,7 @@ from war3_ui_i18n import detect_ui_language, translate_ui_text
 from war3_native_profile import PROFILE_ID as NATIVE_PROFILE_ID, NATIVE_INDEX
 
 
-APP_VERSION = "1.0.19"
+APP_VERSION = "3.0.0.24268"
 PRODUCT_READ_MODE = "normal"
 PRODUCT_EDITION_LABEL = "普通读取版"
 WIN10_COMPAT_REVISION = "backup-r7-live-regions-external-native"

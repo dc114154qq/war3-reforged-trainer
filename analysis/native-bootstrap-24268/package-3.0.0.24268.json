@@ -1,0 +1,21 @@
+{
+  "build": "3.0.0.24268",
+  "branch": "codex/war3-3.0.0.24268-adaptation",
+  "spec": "War3ReforgedTrainer-3.0.0.24268.spec",
+  "exe": "dist-3.0.0.24268/War3ReforgedTrainer-3.0.0.24268.exe",
+  "sha256": "79aefb6491ee0441108d840aecf9e9f97a06d1a704b1763c51a073a752e3ff32",
+  "pe_timestamp": "0x6aa668e8",
+  "embedded_binaries": [
+    "tools\\war3_native_helper.dll",
+    "tools\\war3_native_helper.3.0-live.dll",
+    "capstone\\lib\\capstone.dll"
+  ],
+  "validation": {
+    "pyinstaller_build": true,
+    "archive_contains_both_helpers": true,
+    "focused_tests": "38 passed, 16 subtests passed",
+    "gameplay_acceptance": false,
+    "native_execution_acceptance": false
+  },
+  "scope": "Independent 3.0 packaging smoke artifact; not a completed feature release."
+}

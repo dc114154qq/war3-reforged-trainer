@@ -1,0 +1,8 @@
+{
+  "build": "3.0.0.24268",
+  "exe": "dist-3.0.0.24268-r8/War3ReforgedTrainer-3.0.0.24268.exe",
+  "sha256": "f8fbad88f706b353a354a5cc1f6777197748c2fe4648c3ded7922b2119a86b7d",
+  "startup_smoke": "responding 5s",
+  "focused_tests": "67 targeted read tests passed",
+  "gameplay_acceptance": false
+}

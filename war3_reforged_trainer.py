@@ -5252,7 +5252,8 @@ class War3Trainer:
                         f"(0x{candidate.unit_address:x}): {exc}"
                     )
 
-        if len(snapshot) > 1 and hasattr(self, "_native_helper_lock"):
+        if (len(snapshot) > 1 and hasattr(self, "_native_helper_lock")
+                and not getattr(self, "_native_selection_unavailable", False)):
             with self._native_helper_batch_transaction():
                 process_snapshot()
         else:
@@ -15923,8 +15924,6 @@ def run_gui() -> None:
 
     def elephant_batch(action: Callable[[], object], label: str, *, direct_memory: bool = False) -> tuple[object, ...]:
         batch_trainer = elephant_trainer()
-        if (not direct_memory and getattr(batch_trainer, "_native_selection_unavailable", False)):
-            raise RuntimeError("3.0 当前只读；该大象功能等待 native 执行入口适配")
         state["elephant_batch_trainer"] = batch_trainer
         try:
             succeeded, failed, results, errors = (
@@ -16793,10 +16792,6 @@ def run_gui() -> None:
         return message
 
     def elephant_batch_action(action: Callable[[], object], label: str, *, direct_memory: bool = False) -> str:
-        current = state.get("trainer")
-        if (not direct_memory and isinstance(current, War3Trainer)
-                and getattr(current, "_native_selection_unavailable", False)):
-            return "3.0 当前只读；该大象功能等待 native 执行入口适配"
         results = elephant_batch(action, label)
         return f"{label}：成功 {len(results)} 个{elephant_batch_suffix()}"
 

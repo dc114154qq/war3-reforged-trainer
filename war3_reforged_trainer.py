@@ -5529,6 +5529,20 @@ class War3Trainer:
             raise ValueError("单位坐标必须是有限数值")
         if abs(target_x) > 1_000_000.0 or abs(target_y) > 1_000_000.0:
             raise ValueError("单位坐标超出允许范围")
+        if self._native_selection_unavailable:
+            candidate, _handle = self._direct_selected_context()
+            if not candidate.x_address or not candidate.y_address:
+                raise RuntimeError("当前 3.0 单位没有经过校验的坐标字段")
+            with self._process_memory(write=True) as memory:
+                memory.write_f32(candidate.x_address, target_x)
+                memory.write_f32(candidate.y_address, target_y)
+                actual_x = memory.read_f32(candidate.x_address)
+                actual_y = memory.read_f32(candidate.y_address)
+            if abs(actual_x - target_x) > 0.01 or abs(actual_y - target_y) > 0.01:
+                raise RuntimeError(
+                    f"3.0 坐标写入读回不一致：({actual_x:g},{actual_y:g})"
+                )
+            return actual_x, actual_y
         x_bits, y_bits = self._float_bits(target_x), self._float_bits(target_y)
         result = self._run_bound_unit_value_action("SetUnitPosition", self.NATIVE_HELPER_OP_JASS_SET_UNIT_POSITION,
                                                    x_bits, y_bits)

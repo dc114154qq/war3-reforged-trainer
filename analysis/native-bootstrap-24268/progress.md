@@ -62,3 +62,9 @@ war3_loader.dll 的 Authenticode 签名有效，签名主体 Blizzard Entertainm
 按已确认的 loader 模块基址 0x7fff0ea40000 和 PE `.text` 节，读取了完整 33874870 字节运行时代码，0 个缺页；哈希 `9c366fce157819e5b628a56d499fd6af64c356d29d57f9c6c2f56849b24d133b`，见 `loader-runtime.json`。入口 RVA 0x1351be0 和 0x1da6be0 的运行时代码显示状态值混淆、线程 Fiber/TLS 门控和转发调用；没有看到直接的选中单位 API。
 
 这使当前结论更明确：`war3_loader.dll` 是 3.0 的执行/完整性加载层，不应被当作经典版“大象”选择接口。3.0 仍有完整 JASS 名称目录，但 handler 表是在游戏线程/loader 上下文中生成。产品适配必须找到合法稳定的游戏线程 native 入口，再接入 24 单位快照；不通过 loader 门控、不绕过签名检查、不恢复全扫描。
+
+## 运行时 `.data` 表检查
+
+按主模块共享 Section 句柄 0x320 只读取得 `.data`（RVA 0x2e8d000，184204896 字节）；非零字节约 452543。数据中有 14385 个指向 `.rdata` 范围的 64 位内部表引用，说明 3.0 确实维护大量运行时目录/对象表；但五个已知 native 名称的字符串地址没有直接绝对指针，名称经过索引或编码。原始 `section-data.bin` 保留在本机分析目录，不进入 Git。
+
+当前源码的旧 `war3_bootstrap_query` 依赖 2.0.4 的名称哈希、context slot 和固定 resolver profile；证据已证明这些不能直接移植到 3.0。下一步必须从 `.data` 表的已知目录边界和运行时线程调用上下文恢复 3.0 表项，随后才能重建 `PERSISTENT_NATIVE_NAMES` 的 handler 返回。不要把 `.rdata` 名称地址、`.data` 任意指针或旧版固定 RVA 当作 callable handler。

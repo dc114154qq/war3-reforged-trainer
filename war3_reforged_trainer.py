@@ -11276,6 +11276,16 @@ class War3Trainer:
         include_inventory: bool = True,
         include_abilities: bool = True,
     ) -> UnitSelectionSummary:
+        if pm is None and self._native_snapshot_for_candidate(candidate) is None:
+            # Read-only 3.0 selection identities are produced without keeping
+            # a ProcessMemory object alive. Reopen the read handle for the
+            # summary fields instead of dereferencing None during GUI startup.
+            with self._process_memory() as summary_memory:
+                return self._selection_summary_from_candidate(
+                    summary_memory, candidate, refs, known_hits, region_base,
+                    components=components, include_inventory=include_inventory,
+                    include_abilities=include_abilities,
+                )
         native = self._native_snapshot_for_candidate(candidate)
         if native is not None:
             memory = self._native_unit_field_memory(candidate)

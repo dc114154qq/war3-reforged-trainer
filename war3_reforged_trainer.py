@@ -5398,6 +5398,25 @@ class War3Trainer:
         target = int(value)
         if not 0 <= target <= 1_000_000_000:
             raise ValueError("英雄属性必须在 0 到 1000000000 之间")
+        if self._native_selection_unavailable:
+            candidate, _handle = self._direct_selected_context()
+            with self._process_memory(write=True) as memory:
+                fields = self._unit_fields_from_candidate(memory, candidate)
+                by_key = {field.key: field for field in fields}
+                requested = ("base_strength", "base_agility", "intelligence_total")
+                missing = [key for key in requested if key not in by_key]
+                if missing:
+                    raise RuntimeError("当前选中单位缺少可写英雄字段：" + ",".join(missing))
+                for key in requested:
+                    field = by_key[key]
+                    if not field.write_address or field.write_type != "i32":
+                        raise RuntimeError(f"英雄字段不可写：{key}")
+                    memory.write_i32(field.write_address, target)
+                refreshed = self._unit_fields_from_candidate(memory, candidate)
+            actual = {field.key: int(field.value) for field in refreshed if field.key in requested}
+            if any(actual.get(key) != target for key in requested):
+                raise RuntimeError(f"3.0 英雄属性写入读回不一致：{actual}")
+            return target
         candidate, unit_handle = self._direct_selected_context()
         results = self._run_native_helper_ops(unit_handle, (
             (self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY, 0, candidate.unit_address,

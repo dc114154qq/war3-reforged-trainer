@@ -1,0 +1,75 @@
+{
+  "pid": 23652,
+  "read_only": true,
+  "unit_index_count": 646,
+  "candidate_count": 8,
+  "mapped_count": 8,
+  "validated_count": 8,
+  "elapsed_seconds": 8.558,
+  "rows": [
+    {
+      "slot": "0xf760bd3728",
+      "handle": "0x236e0000236e",
+      "mapped": true,
+      "unit": "0x2df7a30d360",
+      "owner": "0x2df187f15e8",
+      "candidate_valid": true
+    },
+    {
+      "slot": "0xf7607ce708",
+      "handle": "0x20bc000020bc",
+      "mapped": true,
+      "unit": "0x2df7a2fb1b8",
+      "owner": "0x2df187e2158",
+      "candidate_valid": true
+    },
+    {
+      "slot": "0xf7607cc4d8",
+      "handle": "0x20bc000020bc",
+      "mapped": true,
+      "unit": "0x2df7a2fb1b8",
+      "owner": "0x2df187e2158",
+      "candidate_valid": true
+    },
+    {
+      "slot": "0xf72a33e53c",
+      "handle": "0x2aa000002aa0",
+      "mapped": true,
+      "unit": "0x2df7a32f150",
+      "owner": "0x2df1883cbd0",
+      "candidate_valid": true
+    },
+    {
+      "slot": "0xf72a33e46c",
+      "handle": "0x2aa000002aa0",
+      "mapped": true,
+      "unit": "0x2df7a32f150",
+      "owner": "0x2df1883cbd0",
+      "candidate_valid": true
+    },
+    {
+      "slot": "0xf72a33b4fc",
+      "handle": "0x2aa000002aa0",
+      "mapped": true,
+      "unit": "0x2df7a32f150",
+      "owner": "0x2df1883cbd0",
+      "candidate_valid": true
+    },
+    {
+      "slot": "0xf72a33b42c",
+      "handle": "0x2aa000002aa0",
+      "mapped": true,
+      "unit": "0x2df7a32f150",
+      "owner": "0x2df1883cbd0",
+      "candidate_valid": true
+    },
+    {
+      "slot": "0xf729dc2ccc",
+      "handle": "0x2aa000002aa0",
+      "mapped": true,
+      "unit": "0x2df7a32f150",
+      "owner": "0x2df1883cbd0",
+      "candidate_valid": true
+    }
+  ]
+}

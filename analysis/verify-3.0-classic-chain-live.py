@@ -25,6 +25,7 @@ def main() -> None:
         index = trainer._build_unit_object_index(memory, force_refresh=True)
         reverse = {handle: (unit, owner) for unit, (handle, owner) in index.items()}
         addresses = trainer._discover_selected_handle_addresses(memory)
+        seen: set[tuple[int, int, int]] = set()
         for address in addresses:
             handle = memory.read_u64(address)
             mapped = reverse.get(handle)
@@ -41,6 +42,9 @@ def main() -> None:
                 )
                 row.update({"unit": hex(unit), "owner": hex(owner),
                             "candidate_valid": candidate is not None})
+                identity = (handle, owner, unit)
+                row["duplicate_identity"] = identity in seen
+                seen.add(identity)
             rows.append(row)
     report = {
         "pid": trainer.pid,
@@ -49,6 +53,10 @@ def main() -> None:
         "candidate_count": len(rows),
         "mapped_count": sum(1 for row in rows if row["mapped"]),
         "validated_count": sum(1 for row in rows if row.get("candidate_valid")),
+        "unique_validated_count": sum(
+            1 for row in rows
+            if row.get("candidate_valid") and not row.get("duplicate_identity")
+        ),
         "elapsed_seconds": round(time.perf_counter() - started, 3),
         "rows": rows,
     }

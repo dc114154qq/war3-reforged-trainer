@@ -2858,6 +2858,16 @@ class War3Trainer:
         self._last_selected_summaries: tuple[UnitSelectionSummary, ...] = ()
         self._last_persistent_native_snapshots: tuple[PersistentNativeUnitSnapshot, ...] = ()
         self._elephant_selection_override: tuple[UnitCandidate, int] | None = None
+        # 3.0 keeps the classic linked selection container inside the player
+        # object, but its offset is no longer the old fixed CPlayer offset.
+        # Cache the dynamically validated container after the first bounded
+        # discovery so later operations stay on the fast path.
+        self._classic_selection_layout: tuple[int, int, int] | None = None
+        self._classic_selection_cache: tuple[tuple[UnitCandidate, int], ...] = ()
+        # This branch targets 3.0.0.24268. The bundled native helper still
+        # carries the 2.0.4.23745 profile, so never probe it in the 3.0
+        # product path. The classic selection backend is the entry path.
+        self._native_selection_unavailable = True
         self._start_persistent_bootstrap()
 
     def close(self) -> None:
@@ -2935,6 +2945,9 @@ class War3Trainer:
             self._last_selected_summaries = ()
             self._last_persistent_native_snapshots = ()
             self._elephant_selection_override = None
+            self._classic_selection_layout = None
+            self._classic_selection_cache = ()
+            self._native_selection_unavailable = False
             self._start_persistent_bootstrap()
 
     def _close_native_helper_persistent(self) -> None:
@@ -2968,6 +2981,19 @@ class War3Trainer:
         thread.start()
 
     def _persistent_bootstrap_loop(self, pid: int, stop: threading.Event) -> None:
+        if self._native_selection_unavailable:
+            try:
+                with self._process_memory() as memory:
+                    selected = self._classic_selection_candidates(memory)
+                    self._last_selected_summaries = self._selected_summaries_from_snapshot(
+                        memory, selected,
+                    )
+                stop.wait()
+            except Exception:
+                # The first explicit read will retry the bounded discovery and
+                # surface the detailed failure to the UI.
+                return
+            return
         native_ready = False
         while not stop.is_set() and int(getattr(self, "pid", 0)) == pid:
             bootstrap_complete = False
@@ -2978,8 +3004,17 @@ class War3Trainer:
                     native_ready = True
             except Exception:
                 native_ready = False
-                stop.wait(1.0)
-                continue
+                try:
+                    with self._process_memory() as memory:
+                        selected = self._classic_selection_candidates(memory)
+                        self._last_selected_summaries = self._selected_summaries_from_snapshot(
+                            memory, selected,
+                        )
+                    stop.wait()
+                    return
+                except Exception:
+                    stop.wait(1.0)
+                    continue
             try:
                 native_selection = self.persistent_native_selected_snapshots(
                     timeout_ms=5000,
@@ -4021,6 +4056,135 @@ class War3Trainer:
         self._last_persistent_native_snapshots = snapshots
         return snapshots
 
+    def _classic_selection_candidates(
+        self,
+        pm: ProcessMemory,
+    ) -> list[tuple[UnitCandidate, int]]:
+        """Read the 3.0 classic-style selection list through bounded objects.
+
+        3.0 moved the selection container inside the player object. The
+        container still has the classic ``root/count`` linked-list shape, so
+        discovery is limited to validated player objects and their bounded
+        object fields. No global unit or address-space scan is used here.
+        """
+        unit_index = self._build_unit_object_index(pm, force_refresh=False)
+
+        def read_cached_units() -> tuple[int, ...] | None:
+            layout = self._classic_selection_layout
+            if layout is None:
+                return None
+            _player, container, manager_offset = layout
+            manager = container + manager_offset
+            try:
+                root = pm.read_u64(manager + 0x18)
+                count = pm.read_u32(manager + 0x20)
+            except OSError:
+                return None
+            if not 0 < count <= self.SELECTED_BATCH_MAX_UNITS or not self._sane_heap_ptr(root):
+                return None
+            node = root
+            units: list[int] = []
+            seen_nodes: set[int] = set()
+            for _index in range(int(count)):
+                if node in seen_nodes or not self._sane_heap_ptr(node):
+                    return None
+                seen_nodes.add(node)
+                try:
+                    next_node = pm.read_u64(node + 0x08)
+                    unit = pm.read_u64(node + 0x10)
+                except OSError:
+                    return None
+                if unit not in unit_index:
+                    return None
+                units.append(unit)
+                node = next_node
+            return tuple(units)
+
+        cached_units = read_cached_units()
+        if cached_units is not None:
+            units = cached_units
+            player = self._classic_selection_layout[0]
+            count = len(units)
+            selected: list[tuple[UnitCandidate, int]] = []
+            for unit in units:
+                handle, owner = unit_index[unit]
+                candidate = self._candidate_from_identity(
+                    pm, handle, owner, unit,
+                    f"3.0 classic selection cache player=0x{player:x} count={count}",
+                    1000, 0,
+                )
+                if candidate is None:
+                    self._classic_selection_layout = None
+                    break
+                selected.append((candidate, handle))
+            else:
+                self._classic_selection_cache = tuple(selected)
+                return selected
+
+        players = self._selection_player_pointer_candidates(pm, discover=True)
+        ranked: list[tuple[int, int, int, int, tuple[int, ...]]] = []
+        layouts: list[tuple[int, int, int]] = []
+        for player in players:
+            for player_offset in range(0, 0x1000, 8):
+                try:
+                    container = pm.read_u64(player + player_offset)
+                except OSError:
+                    continue
+                if not self._sane_heap_ptr(container):
+                    continue
+                for manager_offset in range(0, 0x600, 8):
+                    manager = container + manager_offset
+                    try:
+                        root = pm.read_u64(manager + 0x18)
+                        count = pm.read_u32(manager + 0x20)
+                    except OSError:
+                        continue
+                    if not 0 < count <= self.SELECTED_BATCH_MAX_UNITS:
+                        continue
+                    if not self._sane_heap_ptr(root):
+                        continue
+                    node = root
+                    units: list[int] = []
+                    seen_nodes: set[int] = set()
+                    for _index in range(int(count)):
+                        if node in seen_nodes or not self._sane_heap_ptr(node):
+                            break
+                        seen_nodes.add(node)
+                        try:
+                            next_node = pm.read_u64(node + 0x08)
+                            unit = pm.read_u64(node + 0x10)
+                        except OSError:
+                            break
+                        if unit in unit_index:
+                            units.append(unit)
+                        node = next_node
+                    if len(units) != int(count):
+                        continue
+                    ranked.append((len(units), player, player_offset, manager_offset, tuple(units)))
+                    layouts.append((player, container, manager_offset))
+        if not ranked:
+            raise RuntimeError("3.0 classic selection container was not found")
+        ranked.sort(key=lambda item: (item[0], -item[1], -item[3]), reverse=True)
+        count, player, player_offset, manager_offset, units = ranked[0]
+        container = next(
+            container for candidate_player, container, candidate_manager_offset in layouts
+            if candidate_player == player and candidate_manager_offset == manager_offset
+        )
+        self._classic_selection_layout = (player, container, manager_offset)
+        selected: list[tuple[UnitCandidate, int]] = []
+        for unit in units:
+            handle, owner = unit_index[unit]
+            candidate = self._candidate_from_identity(
+                pm, handle, owner, unit,
+                f"3.0 classic selection list player=0x{player:x} count={count}",
+                1000, 0,
+            )
+            if candidate is None:
+                raise RuntimeError("3.0 classic selection identity validation failed")
+            selected.append((candidate, handle))
+        self._classic_selection_cache = tuple(selected)
+        return selected
+
     def _parse_persistent_native_snapshots(
         self, result: NativeHelperOpResult,
     ) -> tuple[PersistentNativeUnitSnapshot, ...]:
@@ -4848,7 +5012,17 @@ class War3Trainer:
     def _elephant_selected_candidate(self, pm: ProcessMemory) -> UnitCandidate:
         if self._elephant_selection_override is not None:
             return self._elephant_selection_override[0]
-        snapshots = self.persistent_native_selected_snapshots(timeout_ms=10000)
+        try:
+            if self._native_selection_unavailable:
+                raise RuntimeError("3.0 native selection disabled after verified timeout")
+            snapshots = self.persistent_native_selected_snapshots(timeout_ms=10000)
+        except Exception:
+            self._native_selection_unavailable = True
+            with self._process_memory() as memory:
+                selected = self._classic_selection_candidates(memory)
+            if not selected:
+                raise RuntimeError("游戏当前没有可操作的选中单位")
+            return selected[0][0]
         if not snapshots:
             raise RuntimeError("游戏当前没有可操作的选中单位")
         snapshot = snapshots[0]
@@ -4863,14 +5037,35 @@ class War3Trainer:
     def _elephant_selected_handle(self, pm: ProcessMemory) -> int:
         if self._elephant_selection_override is not None:
             return self._elephant_selection_override[1]
-        snapshots = self.persistent_native_selected_snapshots(timeout_ms=30000)
+        try:
+            if self._native_selection_unavailable:
+                raise RuntimeError("3.0 native selection disabled after verified timeout")
+            snapshots = self.persistent_native_selected_snapshots(timeout_ms=30000)
+        except Exception:
+            self._native_selection_unavailable = True
+            with self._process_memory() as memory:
+                selected = self._classic_selection_candidates(memory)
+            if not selected:
+                raise RuntimeError("游戏当前没有可操作的选中单位")
+            return int(selected[0][1])
         unit_handle = int(snapshots[0].handle) if snapshots else 0
         if not unit_handle:
             raise RuntimeError("游戏当前没有可操作的选中单位")
         return unit_handle
 
     def _elephant_selected_handles(self, pm: ProcessMemory) -> tuple[int, ...]:
-        snapshots = self.persistent_native_selected_snapshots(timeout_ms=30000)
+        try:
+            if self._native_selection_unavailable:
+                raise RuntimeError("3.0 native selection disabled after verified timeout")
+            snapshots = self.persistent_native_selected_snapshots(timeout_ms=30000)
+        except Exception:
+            self._native_selection_unavailable = True
+            with self._process_memory() as memory:
+                selected = self._classic_selection_candidates(memory)
+            handles = tuple(dict.fromkeys(int(handle) for _candidate, handle in selected))
+            if not handles:
+                raise RuntimeError("游戏当前没有可操作的选中单位")
+            return handles
         handles = tuple(dict.fromkeys(int(snapshot.handle) for snapshot in snapshots if snapshot.handle))
         if not handles:
             raise RuntimeError("游戏当前没有可操作的选中单位")
@@ -4898,7 +5093,20 @@ class War3Trainer:
         persistent_snapshots: Iterable[PersistentNativeUnitSnapshot] | None = None,
     ) -> list[tuple[UnitCandidate, int]]:
         if persistent_snapshots is None:
-            persistent_snapshots = self.persistent_native_selected_snapshots()
+            try:
+                if getattr(self, "_native_selection_unavailable", False):
+                    raise RuntimeError("3.0 native selection disabled after verified timeout")
+                persistent_snapshots = self.persistent_native_selected_snapshots()
+            except Exception as native_error:
+                self._native_selection_unavailable = True
+                try:
+                    with self._process_memory() as memory:
+                        return self._classic_selection_candidates(memory)
+                except Exception as classic_error:
+                    raise RuntimeError(
+                        "native selection unavailable and 3.0 classic selection failed: "
+                        f"native={native_error}; classic={classic_error}"
+                    ) from classic_error
         else:
             persistent_snapshots = tuple(persistent_snapshots)
         if not persistent_snapshots:

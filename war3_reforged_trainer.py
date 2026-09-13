@@ -11476,6 +11476,34 @@ class War3Trainer:
                         continue
                     yield name, wrapper, data
 
+    def _iter_indexed_owner_component_wrappers(
+        self,
+        pm: ProcessMemory,
+        owner: int,
+    ) -> Iterable[tuple[str, int, int]]:
+        """Read the 3.0 component vector without searching process regions.
+
+        The vector starts at owner+0x158 and uses 0x158-byte wrapper slots.
+        Components are optional; a missing hero shifts later slots, which is
+        why we validate the tag/owner/data at every bounded slot.
+        """
+        if not owner:
+            return
+        for offset in range(0x158, 0x1200, 0x158):
+            wrapper = owner + offset
+            try:
+                tag = pm.read_u64(wrapper + 0x18)
+                name = self.COMPONENT_NAMES.get(tag)
+                if name is None or pm.read_u64(wrapper + 0x50) != owner:
+                    continue
+                data = pm.read_u64(wrapper + 0x90)
+                if not self._sane_heap_ptr(data) or not self._looks_like_vtable(pm.read_u64(wrapper)) \
+                        or not self._looks_like_vtable(pm.read_u64(data)):
+                    continue
+            except OSError:
+                continue
+            yield name, wrapper, data
+
     def _components_from_unit_object(
         self,
         pm: ProcessMemory,
@@ -11558,6 +11586,11 @@ class War3Trainer:
             self._selected_components_cache[cache_key] = dict(direct)
             return direct
         wrapper_components: dict[str, tuple[int, int]] = {}
+        for name, wrapper, data in self._iter_indexed_owner_component_wrappers(pm, owner):
+            wrapper_components.setdefault(name, (wrapper, data))
+        if wrapper_components and set(wrapper_components) >= set(direct):
+            self._selected_components_cache[cache_key] = dict(wrapper_components)
+            return dict(wrapper_components)
         for name, wrapper, data in self._iter_owner_component_wrappers(pm, owner):
             wrapper_components.setdefault(name, (wrapper, data))
 
@@ -12136,6 +12169,36 @@ class War3Trainer:
         if not wanted:
             return {}
         found: dict[int, int] = {}
+        # 3.0 inventory entries contain the full object handle. Resolve it
+        # through the verified engine registry before considering any legacy
+        # owner-local or process-region search.
+        registry = getattr(self, "_classic_object_registry", None)
+        if registry is not None:
+            for handle in tuple(wanted):
+                try:
+                    owner_address = registry.resolve_handle(pm, handle)
+                    if (
+                        pm.read_u64(owner_address + 0x18) == self.ITEM_OWNER_TAG
+                        and pm.read_u64(owner_address + 0x20) == handle
+                    ):
+                        item = pm.read_u64(owner_address + 0x90)
+                        if (
+                            self._sane_heap_ptr(item)
+                            and self._looks_like_vtable(pm.read_u64(item))
+                            and pm.read_u64(item + 0x18) == handle
+                            and self._looks_like_item_rawcode(pm.read_u32(item + 0x70))
+                            and pm.read_u32(item + 0x70) == pm.read_u32(item + 0x178)
+                        ):
+                            found[handle] = item
+                            self._item_object_cache[handle] = item
+                            wanted.remove(handle)
+                except (OSError, RuntimeError):
+                    continue
+            # A verified 3.0 registry is authoritative. Falling through to
+            # legacy region scans would reintroduce stale-handle ambiguity.
+            return found
+        if not wanted:
+            return found
         for handle in list(wanted):
             item = self._item_object_cache.get(handle, 0)
             if not item:

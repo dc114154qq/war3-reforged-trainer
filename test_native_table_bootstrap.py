@@ -182,6 +182,24 @@ def test_actual_dispatch_accepts_zero_handler_and_reaches_profile_validation(nat
     assert native.dispatch(str(tmp_path)+'\\', kind, 1) == 1306  # ERROR_REVISION_MISMATCH
 
 
+def test_real_warcraft_3_0_image_is_rejected_by_legacy_23745_profile(native):
+    image = Path(r'E:\Warcraft III\_retail_\x86_64\Warcraft III.exe')
+    if not image.exists():
+        pytest.skip('local 3.0 image is unavailable')
+    data = bytearray(image.read_bytes()[:4096])
+    api = ctypes.WinDLL('kernel32', use_last_error=True)
+    api.VirtualAlloc.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_uint, ctypes.c_uint]
+    api.VirtualAlloc.restype = ctypes.c_void_p
+    api.VirtualFree.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_uint]
+    base = api.VirtualAlloc(None, len(data), 0x3000, 0x04)
+    assert base
+    try:
+        ctypes.memmove(base, bytes(data), len(data))
+        assert native.validate_captured_image(base) != 0
+    finally:
+        assert api.VirtualFree(base, 0, 0x8000)
+
+
 def make_trainer():
     trainer = module.War3Trainer.__new__(module.War3Trainer)
     trainer._persistent_bootstrap_lock = threading.RLock()

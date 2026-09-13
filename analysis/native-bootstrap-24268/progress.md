@@ -82,3 +82,5 @@ war3_loader.dll 的 Authenticode 签名有效，签名主体 Blizzard Entertainm
 工作区旧的 24 单位选择研究工具也已审计：其选择 vtable、ClientSdk 调用点、单位集合和订单 dispatch 都是固定旧构建 RVA（例如 0x023d18d8、0x0123f430），测试协议版本 27，不能直接迁移到 3.0.0.24268。它可提供容量/事务设计参考，但不能作为当前游戏的地址证据；本适配分支继续采用 3.0 独立 profile。
 
 3.0 `.rdata` 中能看到 `Selection`、`CUnit`、`CPlayer` 等类型字符串，但没有 `CGroup` 名称；同时存在大量连续的代码指针运行时段。仅凭字符串或 vtable 候选无法证明当前选择对象布局，暂不执行旧式私有对象扫描，也不把候选 vtable 接入产品。
+
+新增旧 profile 防误用回归：在本机真实 `Warcraft III.exe` 3.0.0.24268 的 PE 头上运行生产 C 校验器，旧 2.0.4.23745 profile 明确拒绝；`test_native_table_bootstrap.py` 现为 **31 passed**。这保证适配工作未完成前不会把旧 native 地址链误用于新版游戏。

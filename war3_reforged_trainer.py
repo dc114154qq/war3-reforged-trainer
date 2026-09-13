@@ -5372,6 +5372,18 @@ class War3Trainer:
         target = int(level)
         if not 1 <= target <= 100000:
             raise ValueError("英雄等级必须在 1 到 100000 之间")
+        if getattr(self, "_native_selection_unavailable", False):
+            candidate, _handle = self._direct_selected_context()
+            with self._process_memory(write=True) as memory:
+                components = self._selected_components(memory, candidate.owner_address)
+                hero = components.get("hero")
+                if hero is None:
+                    raise RuntimeError("当前单位没有英雄组件")
+                address = hero[1] + 0x100
+                memory.write_i32(address, target)
+                if memory.read_i32(address) != target:
+                    raise RuntimeError("3.0 英雄等级写入读回不一致")
+            return target
         self._run_bound_hero_progress(self.NATIVE_HELPER_OP_SET_BOUND_HERO_LEVEL, target)
         return target
 
@@ -5426,6 +5438,21 @@ class War3Trainer:
         delta = int(amount)
         if not 1 <= delta <= 1_000_000:
             raise ValueError("增加技能点数必须在 1 到 1000000 之间")
+        if getattr(self, "_native_selection_unavailable", False):
+            candidate, _handle = self._direct_selected_context()
+            with self._process_memory(write=True) as memory:
+                components = self._selected_components(memory, candidate.owner_address)
+                hero = components.get("hero")
+                if hero is None:
+                    raise RuntimeError("当前单位没有英雄组件")
+                address = hero[1] + 0x104
+                value = memory.read_i32(address) + delta
+                if value < 0 or value > 1_000_000:
+                    raise ValueError("技能点结果超出范围")
+                memory.write_i32(address, value)
+                if memory.read_i32(address) != value:
+                    raise RuntimeError("3.0 技能点写入读回不一致")
+            return delta
         self._run_bound_hero_progress(self.NATIVE_HELPER_OP_ADD_BOUND_HERO_SKILL_POINTS, delta)
         return delta
 

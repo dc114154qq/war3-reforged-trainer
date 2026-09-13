@@ -35,6 +35,10 @@ def detect_ui_language(locale_name: str | None = None) -> str:
 
 
 _EN_TRANSLATIONS = {
+    "3.0 英雄等级写入读回不一致": "3.0 hero level write readback mismatch",
+    "3.0 技能点写入读回不一致": "3.0 skill points write readback mismatch",
+    "当前单位没有英雄组件": "The current unit has no hero component",
+    "技能点结果超出范围": "Skill points result is outside supported bounds",
     "3.0 智力写入读回 ": "3.0 intelligence write readback ",
     "当前选中单位没有英雄组件，不能写入智力": "The current selected unit has no hero component for intelligence writing",
     "3.0 选中组坐标写入读回不一致": "3.0 selected group position write readback mismatch",

@@ -3,16 +3,16 @@
   "branch": "codex/war3-3.0.0.24268-adaptation",
   "source": "C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\war3_reforged_trainer.py",
   "methods": {
-    "_ability_instances_from_candidate": 12060,
+    "_ability_instances_from_candidate": 12080,
     "_classic_selection_candidates": 4107,
-    "create_local_unit": 6042,
-    "move_selected_group_to_mouse": 5557,
-    "read_resource_cache": 9192,
-    "set_selected_hero_attributes": 5376,
-    "set_selected_inventory_charges": 6408,
-    "set_selected_unit_ability_level": 6543,
-    "set_selected_unit_position": 5525,
-    "write_resource_cache": 9109
+    "create_local_unit": 6046,
+    "move_selected_group_to_mouse": 5561,
+    "read_resource_cache": 9196,
+    "set_selected_hero_attributes": 5380,
+    "set_selected_inventory_charges": 6412,
+    "set_selected_unit_ability_level": 6547,
+    "set_selected_unit_position": 5529,
+    "write_resource_cache": 9113
   },
   "capabilities": [
     {
@@ -22,8 +22,8 @@
     },
     {
       "feature": "resource read/write",
-      "status": "read validated; live write pending",
-      "evidence": "3.0 indexed player properties; test_indexed_resources.py"
+      "status": "read and original-value writeback live validated",
+      "evidence": "direct-writeback-live.json; test_indexed_resources.py"
     },
     {
       "feature": "coordinate write",
@@ -42,8 +42,8 @@
     },
     {
       "feature": "inventory charge write",
-      "status": "code-routed; live write pending",
-      "evidence": "set_selected_inventory_charges"
+      "status": "six existing items original-value writeback live validated",
+      "evidence": "direct-writeback-live.json; set_selected_inventory_charges"
     },
     {
       "feature": "existing ability enumeration",
@@ -72,8 +72,8 @@
     },
     {
       "feature": "cross-device EXE",
-      "status": "not packaged",
-      "evidence": "3.0 branch incomplete"
+      "status": "independent smoke package; cross-device acceptance pending",
+      "evidence": "package-3.0.0.24268-r12.json"
     }
   ],
   "release_ready": false

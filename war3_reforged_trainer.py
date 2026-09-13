@@ -6566,27 +6566,6 @@ class War3Trainer:
         target_level = int(level)
         if not ability_rawcode or not 1 <= target_level <= 100000:
             raise ValueError("请提供有效技能 ID，等级必须在 1 到 100000 之间")
-        if self._native_selection_unavailable:
-            candidate, _handle = self._direct_selected_context()
-            with self._process_memory(write=True) as memory:
-                instances = self._ability_instances_from_candidate(
-                    memory, candidate, required_rawcodes={ability_rawcode},
-                )
-                matches = [item for item in instances if item.rawcode == ability_rawcode]
-                if len(matches) != 1:
-                    raise RuntimeError(
-                        f"当前单位没有唯一的技能实例：{format_rawcode(ability_rawcode)}"
-                    )
-                instance = matches[0]
-                level_address = instance.data_address + 0x8
-                current = memory.read_i32(level_address)
-                if not 0 <= current <= 100000:
-                    raise RuntimeError("3.0 技能等级字段校验失败")
-                memory.write_i32(level_address, target_level)
-                actual = memory.read_i32(level_address)
-            if actual != target_level:
-                raise RuntimeError(f"3.0 技能等级写入后读回 {actual}，目标为 {target_level}")
-            return actual
         actual = int(self._run_bound_ability_actions(((3, ability_rawcode, target_level, 0),))[0].arg1)
         if actual != target_level:
             raise RuntimeError(f"技能等级写入后读回 {actual}，目标为 {target_level}")

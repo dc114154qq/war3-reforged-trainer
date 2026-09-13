@@ -1,0 +1,11 @@
+{
+  "build": "3.0.0.24268",
+  "loader": "war3_loader.dll",
+  "imports": {
+    "WINMM.dll!timeSetEvent": "0x20c0228",
+    "KERNEL32.dll!CreateWaitableTimerA": "0x20c0228"
+  },
+  "observation": "Both names share one IAT RVA in the protected loader import layout. No ordinary independent RIP-relative call-site was found in the captured loader .text.",
+  "conclusion": "The import table is obfuscated/overlapped and cannot identify a timer callback or dispatch entry by normal import-call analysis. No timer function was called or altered.",
+  "scope": "Read-only PE/import and captured-runtime byte analysis."
+}

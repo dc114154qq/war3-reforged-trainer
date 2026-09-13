@@ -4526,6 +4526,11 @@ class War3Trainer:
 
     @contextmanager
     def _native_helper_transaction(self, *, wait_ms: int = 300000) -> Iterator[None]:
+        if getattr(self, "_native_selection_unavailable", False):
+            raise RuntimeError(
+                "Warcraft III 3.0 当前未启用旧版 native helper；"
+                "该操作尚未迁移到 3.0 经典链路"
+            )
         if (
             self._native_helper_batch_hook is not None
             and self._native_helper_batch_thread_id == threading.get_ident()

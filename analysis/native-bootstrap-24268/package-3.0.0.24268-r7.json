@@ -4,5 +4,8 @@
   "sha256": "0cd648710e2b2b7b89708fa51e058f53ac53e338af2277afb3770716624dc4e9",
   "startup_smoke": "responding 5s",
   "focused_tests": "32 passed targeted",
-  "gameplay_acceptance": false
+  "gameplay_acceptance": false,
+  "write_behavior": "3.0 ability/item field write controls are explicitly read-only and do not call the legacy helper; direct resource/charge memory routes remain separately guarded and require live acceptance.",
+  "unsupported_actions": ["ability field write", "item field write", "ability add/remove", "unit clone", "group move", "native elephant actions"],
+  "release_ready": false
 }

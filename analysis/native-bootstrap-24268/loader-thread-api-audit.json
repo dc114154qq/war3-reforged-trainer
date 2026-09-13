@@ -1,0 +1,12 @@
+{
+  "build": "3.0.0.24268",
+  "loader": "war3_loader.dll",
+  "thread_related_imports": {
+    "WINMM.dll": ["timeSetEvent"],
+    "KERNEL32.dll": ["CreateWaitableTimerA"],
+    "USER32.dll": ["EnumThreadWindows"]
+  },
+  "absent_direct_dispatch_imports": ["CreateThread", "QueueUserAPC", "FlsGetValue", "TlsGetValue", "PostThreadMessageW", "SendMessageW", "SetWindowsHookExW", "GetMessageW", "PeekMessageW"],
+  "conclusion": "The loader's worker scheduling is timer/waitable-timer and private code driven. The only USER32 thread import is EnumThreadWindows; ordinary external message-hook delivery is not its dispatch mechanism.",
+  "scope": "Disk import audit only; no loader calls, hooks, writes or native execution."
+}

@@ -8890,15 +8890,19 @@ class War3Trainer:
 
     def _classic_local_resource_cache(self, pm: ProcessMemory) -> ResourceCache:
         """Resolve the local player's resource properties on the 3.0 path."""
-        layout = self._classic_selection_layout
-        if layout is None:
-            # Locate the bounded selection container once; this also gives us
-            # the player object used to disambiguate resource groups.
-            self._classic_selection_candidates(pm)
-            layout = self._classic_selection_layout
-        if layout is None:
-            raise RuntimeError("3.0 local player selection layout is unavailable")
-        player = layout[0]
+        from war3_object_registry import ObjectRegistry24268
+        from war3_thread_context import GameThreadContext24268
+        if self._classic_object_registry is None:
+            self._classic_object_registry = ObjectRegistry24268.attach(pm)
+        if self._classic_thread_context is None:
+            self._classic_thread_context = GameThreadContext24268(
+                pm, self._classic_object_registry.base, self.hwnd, self.pid)
+        mode = self._classic_thread_context.read_mode(pm)
+        player = self._classic_object_registry.local_player_for_mode(pm, mode.value)
+        direct = self._indexed_resource_cache_for_player(pm, player)
+        if direct is not None:
+            self._classic_resource_cache = direct
+            return direct
         if self._classic_resource_cache is not None:
             cached = self._classic_resource_cache
             try:
@@ -8930,12 +8934,95 @@ class War3Trainer:
         self._classic_resource_cache = cache
         return self._read_resource_cache_addresses(pm, cache)
 
+    def _indexed_resource_cache_for_player(
+        self, pm: ProcessMemory, player: int,
+    ) -> ResourceCache | None:
+        """Read 3.0 player properties through the verified object registry.
+
+        The property list belongs to the player owner, so this path does not
+        search private memory for resource tags.  Each property is checked by
+        its tag, owner back-link, packed kind and value field.
+        """
+        registry = self._classic_object_registry
+        if registry is None:
+            return None
+        try:
+            full_handle = pm.read_u64(player + 0x18)
+            owner = registry.resolve_handle(pm, full_handle)
+            if pm.read_u64(owner + 0x18) != self.PLAYER_COMPONENT_TAG:
+                return None
+            prop_list = pm.read_u64(owner + 0xA0)
+            size = pm.read_u64(owner + 0xA8)
+        except OSError:
+            return None
+        if not self._sane_heap_ptr(prop_list) or not 0 < size <= 0x4000 or size % 8:
+            return None
+        properties: dict[int, tuple[int, int]] = {}
+        for offset in range(0, int(size), 8):
+            try:
+                prop = pm.read_u64(prop_list + offset)
+                if not self._sane_heap_ptr(prop):
+                    continue
+                if pm.read_u64(prop + 0x18) != self.RESOURCE_PROP_TAG:
+                    continue
+                if pm.read_u64(prop + 0x50) != owner:
+                    continue
+                packed_kind = pm.read_u64(prop + 0x20)
+                kind_low = packed_kind & 0xFFFFFFFF
+                kind_high = packed_kind >> 32
+                if kind_low != kind_high or kind_low > 0x1000:
+                    continue
+                value = pm.read_i32(prop + 0xD0)
+                properties[int(kind_low)] = (prop + 0xD0, value)
+            except OSError:
+                continue
+        player_id = properties.get(1 + 0x28 * 0)
+        # The property block is indexed by player slot; infer the block start
+        # from the selected player by testing the exact 0x28 stride.
+        starts = [kind for kind in properties if kind >= 1 and (kind - 1) % 0x28 == 0]
+        if len(starts) != 1:
+            return None
+        start = starts[0]
+        def field(delta: int):
+            return properties.get(start + delta, (0, 0))
+        gold_address, gold10 = field(2)
+        lumber_address, lumber10 = field(3)
+        # In 3.0 the two food fields follow the old block, but their semantic
+        # order is used (+5), cap (+6); the 2.0 reader had these reversed.
+        used_address, food_used = field(5)
+        cap_address, food_cap = field(6)
+        limit_address, food_limit = field(7)
+        if not gold_address or not lumber_address or not used_address or not cap_address \
+                or not 0 <= gold10 <= 100_000_000 \
+                or not 0 <= lumber10 <= 100_000_000:
+            return None
+        return ResourceCache(
+            gold_address=gold_address, lumber_address=lumber_address,
+            gold=gold10 // 10, lumber=lumber10 // 10,
+            food_used_address=used_address, food_cap_address=cap_address,
+            food_limit_address=limit_address, food_used=food_used,
+            food_cap=food_cap, food_limit=food_limit,
+            block_start_kind=start, source="3.0 indexed player properties",
+            owner_key=owner, player_value=(start - 1) // 0x28, score=1000,
+        )
+
     def list_resource_caches(
         self, current_gold: int | None = None, current_lumber: int | None = None,
         current_food: int | None = None, current_food_cap: int | None = None,
     ) -> list[ResourceCache]:
         if getattr(self, "_native_selection_unavailable", False):
             with self._process_memory() as memory:
+                from war3_object_registry import ObjectRegistry24268
+                registry = self._classic_object_registry or ObjectRegistry24268.attach(memory)
+                self._classic_object_registry = registry
+                direct_caches = []
+                for player in registry.players(memory):
+                    cache = self._indexed_resource_cache_for_player(memory, player)
+                    if cache is not None:
+                        direct_caches.append(self._read_resource_cache_addresses(memory, cache))
+                if direct_caches:
+                    self._resource_candidates_by_start = {}
+                    return direct_caches
                 groups = self._resource_property_groups(memory, warm_unit_owner_index=False)
                 caches = self._resource_caches_from_groups(
                     groups, current_gold, current_lumber, current_food, current_food_cap,
@@ -8974,7 +9061,7 @@ class War3Trainer:
         return replace(cache, gold=gold, lumber=lumber, food_used=food_used, food_cap=food_cap, food_limit=food_limit)
 
     def read_resource_cache_addresses(self, cache: ResourceCache) -> ResourceCache:
-        if cache.source != "persistent native player state":
+        if cache.source not in ("persistent native player state", "3.0 indexed player properties"):
             raise RuntimeError("历史资源地址缓存已禁用，请重新读取本地玩家 native 状态")
         return self._native_resource_cache_for_player(cache.player_value)
 
@@ -9012,7 +9099,7 @@ class War3Trainer:
                     raise RuntimeError("3.0 资源写入读回不一致")
             self._classic_resource_cache = refreshed
             return refreshed
-        if cache.source != "persistent native player state":
+        if cache.source not in ("persistent native player state", "3.0 indexed player properties"):
             raise RuntimeError("历史资源地址写入已禁用，请重新读取本地玩家 native 状态")
         targets = [(state, int(value)) for state, value in (
             (1, target_gold), (2, target_lumber), (5, target_food_used), (4, target_food_cap)) if value is not None]

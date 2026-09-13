@@ -2237,6 +2237,30 @@ def find_war3(pid: int | None = None) -> tuple[int, int]:
                     continue
             if ready:
                 matches = ready
+                # Prefer the client that is actually in a map with selected
+                # units. A newly launched client can pass PE checks later than
+                # the active client but still have no live game state yet.
+                try:
+                    from war3_classic_selection import read_player_selection
+                    scored = []
+                    for match in matches:
+                        selected_count = 0
+                        try:
+                            with ProcessMemory(match[1]) as memory:
+                                registry = ObjectRegistry24268.attach(memory)
+                                for mode in (0, 1):
+                                    try:
+                                        player = registry.local_player_for_mode(memory, mode)
+                                        selected_count = max(selected_count, len(read_player_selection(memory, player).units))
+                                    except (OSError, RuntimeError, ValueError):
+                                        continue
+                        except (OSError, RuntimeError, ValueError):
+                            pass
+                        scored.append((selected_count, start_key(match), match))
+                    if scored:
+                        matches = [row[2] for row in sorted(scored, reverse=True)]
+                except Exception:
+                    pass
         except Exception:
             pass
     hwnd, found_pid, _title = matches[0]

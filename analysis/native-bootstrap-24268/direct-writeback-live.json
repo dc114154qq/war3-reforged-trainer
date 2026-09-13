@@ -1,0 +1,19 @@
+{
+  "build": "3.0.0.24268",
+  "pid": 16700,
+  "read_only_native": true,
+  "resource_writeback": {
+    "before": {"gold": 0, "lumber": 0, "food_used": 26, "food_cap": 100},
+    "after": {"gold": 0, "lumber": 0, "food_used": 26, "food_cap": 100},
+    "same": true,
+    "game_value_changed": false
+  },
+  "inventory_charge_writeback": {
+    "item_count": 6,
+    "rawcodes": ["I60X", "I60I", "I60A", "I602", "rin1", "lgdh"],
+    "all_six_addresses_writable": true,
+    "all_six_readback_equal": true,
+    "game_value_changed": false
+  },
+  "scope": "Direct external memory write-back of original values only. No gameplay value was changed; no native handler was called. Real target-value writes still require user acceptance."
+}

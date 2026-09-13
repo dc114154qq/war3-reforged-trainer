@@ -12710,6 +12710,25 @@ class War3Trainer:
             used_instance_wrappers = set()
 
         for instance in ability_instances:
+            if native is None:
+                try:
+                    instance_level = pm.read_i32(instance.data_address + 0x8)
+                except OSError:
+                    instance_level = -1
+                if 0 <= instance_level <= 100000:
+                    fields.append(
+                        UnitMemoryField(
+                            key=f"ability_{instance.slot:02d}_level",
+                            label=f"能力{instance.slot:02d}等级",
+                            value_type="i32",
+                            value=instance_level,
+                            address=instance.data_address + 0x8,
+                            category="能力实例",
+                            write_address=instance.data_address + 0x8,
+                            write_type="i32",
+                            note="3.0 经典能力实例等级字段；写入后应重新读取校验",
+                        )
+                    )
             if instance.wrapper_address in used_instance_wrappers:
                 continue
             mirror = (

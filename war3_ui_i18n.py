@@ -651,6 +651,7 @@ _EN_TRANSLATIONS.update(
     "无法在底部面板找到魔法数字": "Unable to find magic number in bottom panel",
     "OCR 无法稳定识别数值：": "OCR cannot stably recognize numerical values:",
     "缺少 native helper DLL：tools\\war3_native_helper.dll": "Missing native helper DLL: tools\\war3_native_helper.dll",
+    "缺少 3.0 live native helper DLL": "Missing 3.0 live native helper DLL",
     "选中单位在操作期间发生变化，请重新执行": "The selected unit changes during the operation, please re-execute",
     "未能从技能效果函数中定位 SBuffData 构造函数": "Unable to locate SBuffData constructor from skill effect function",
     "运行时假单位施法路径已禁用": "Fake unit casting path disabled at runtime",

@@ -1,0 +1,37 @@
+[
+  {
+    "name": "CreateUnit",
+    "handler": "0x7ff723668620",
+    "rva": "0xc98620",
+    "signature": "(Hplayer;IRRR)Hunit;",
+    "read_error": "OSError(22, '\u4ec5\u5b8c\u6210\u90e8\u5206\u7684 ReadProcessMemory \u6216 WriteProcessMemory \u8bf7\u6c42\u3002', None, 299)"
+  },
+  {
+    "name": "UnitAddAbility",
+    "handler": "0x7ff7236cfd30",
+    "rva": "0xcffd30",
+    "signature": "(Hunit;I)B",
+    "read_error": "OSError(22, '\u4ec5\u5b8c\u6210\u90e8\u5206\u7684 ReadProcessMemory \u6216 WriteProcessMemory \u8bf7\u6c42\u3002', None, 299)"
+  },
+  {
+    "name": "UnitAddItemById",
+    "handler": "0x7ff7236cfff0",
+    "rva": "0xcffff0",
+    "signature": "(Hunit;I)Hitem;",
+    "read_error": "OSError(22, '\u4ec5\u5b8c\u6210\u90e8\u5206\u7684 ReadProcessMemory \u6216 WriteProcessMemory \u8bf7\u6c42\u3002', None, 299)"
+  },
+  {
+    "name": "GetHeroLevel",
+    "handler": "0x7ff723676160",
+    "rva": "0xca6160",
+    "signature": "(Hunit;)I",
+    "read_error": "OSError(22, '\u4ec5\u5b8c\u6210\u90e8\u5206\u7684 ReadProcessMemory \u6216 WriteProcessMemory \u8bf7\u6c42\u3002', None, 299)"
+  },
+  {
+    "name": "SetHeroLevel",
+    "handler": "0x7ff7236c1fa0",
+    "rva": "0xcf1fa0",
+    "signature": "(Hunit;IB)V",
+    "read_error": "OSError(22, '\u4ec5\u5b8c\u6210\u90e8\u5206\u7684 ReadProcessMemory \u6216 WriteProcessMemory \u8bf7\u6c42\u3002', None, 299)"
+  }
+]

@@ -1510,6 +1510,15 @@ class ProcessMemory:
         if not ok or written.value != len(data):
             raise ctypes.WinError(ctypes.get_last_error())
 
+    def write_u64(self, address: int, value: int) -> None:
+        data = struct.pack("<Q", int(value) & 0xFFFFFFFFFFFFFFFF)
+        written = ctypes.c_size_t()
+        ok = kernel32.WriteProcessMemory(
+            self.handle, ctypes.c_void_p(address), data, len(data), ctypes.byref(written)
+        )
+        if not ok or written.value != len(data):
+            raise ctypes.WinError(ctypes.get_last_error())
+
     def write_bytes(self, address: int, data: bytes) -> None:
         written = ctypes.c_size_t()
         ok = kernel32.WriteProcessMemory(
@@ -13722,16 +13731,35 @@ class War3Trainer:
             if not old_rawcode:
                 raise RuntimeError(f"技能{index + 1}当前为空")
             cache_address = hero_data + 0x1D4 + index * 4
+            instances = [
+                item for item in self._ability_instances_from_candidate(pm, candidate)
+                if item.rawcode == old_rawcode
+            ]
+            if len(instances) != 1:
+                raise RuntimeError(
+                    f"技能{index + 1}没有唯一的实时 ability 实例，拒绝只改配置"
+                )
+            instance = instances[0]
+            old_tag = pm.read_u64(instance.wrapper_tag_address)
+            new_tag = ((new_rawcode & 0xFFFFFFFF) << 32) | (old_tag & 0xFFFFFFFF)
+            pm.write_u64(instance.wrapper_tag_address, new_tag)
+            pm.write_u32(instance.rawcode_address, new_rawcode)
+            if instance.mirror_rawcode_address:
+                pm.write_u32(instance.mirror_rawcode_address, new_rawcode)
             pm.write_u32(config_address, new_rawcode)
             pm.write_u32(cache_address, new_rawcode)
             actual = pm.read_u32(config_address)
             cache_actual = pm.read_u32(cache_address)
-            if actual != new_rawcode or cache_actual != new_rawcode:
+            runtime_rawcode = pm.read_u32(instance.rawcode_address)
+            runtime_mirror = pm.read_u32(instance.mirror_rawcode_address)
+            if (actual != new_rawcode or cache_actual != new_rawcode
+                    or runtime_rawcode != new_rawcode or runtime_mirror != new_rawcode
+                    or pm.read_u64(instance.wrapper_tag_address) != new_tag):
                 raise RuntimeError("3.0 英雄技能配置写入读回不一致")
             return replace(
                 field, value=actual, address=config_address,
                 write_address=config_address, write_type="rawcode",
-                note="3.0 hero skill configuration readback verified; runtime ability replacement pending",
+                note="3.0 hero runtime ability and configuration readback verified",
             )
         components = self._selected_components(pm, candidate.owner_address)
         hero = components.get("hero")

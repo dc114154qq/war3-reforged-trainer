@@ -1,0 +1,9 @@
+{
+  "pid": 32868,
+  "operation": "hero_skill_runtime_roundtrip",
+  "ok": false,
+  "field": "skill1_name",
+  "before": 1094070860,
+  "target": 1095725926,
+  "traceback": "Traceback (most recent call last):\n  File \"<stdin>\", line 17, in <module>\n  File \"C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\war3_reforged_trainer.py\", line 14378, in write_unit_field_by_identity\n    return self._write_unit_fields_to_candidate(\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\war3_reforged_trainer.py\", line 14337, in _write_unit_fields_to_candidate\n    written[index] = self._write_hero_skill_name_field(pm, candidate, field, spec.value)\n                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\war3_reforged_trainer.py\", line 13739, in _write_hero_skill_name_field\n    raise RuntimeError(\nRuntimeError: \u6280\u80fd1\u6ca1\u6709\u552f\u4e00\u7684\u5b9e\u65f6 ability \u5b9e\u4f8b\uff0c\u62d2\u7edd\u53ea\u6539\u914d\u7f6e\n"
+}

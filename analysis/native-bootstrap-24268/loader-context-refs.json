@@ -1,0 +1,92 @@
+{
+  "build": "3.0.0.24268",
+  "loader_text_sha256": "9c366fce157819e5b628a56d499fd6af64c356d29d57f9c6c2f56849b24d133b",
+  "targets": [
+    "0x7fff10bf6c70",
+    "0x7fff10bf6c78",
+    "0x7fff10bf7c40"
+  ],
+  "references": [
+    {
+      "offset": "0x7fff0ea63360",
+      "target": "0x7fff10bf7c30",
+      "bytes": "488b05c9481902"
+    },
+    {
+      "offset": "0x7fff0f590b1c",
+      "target": "0x7fff10bf7c30",
+      "bytes": "488b0d0d716601"
+    },
+    {
+      "offset": "0x7fff0f5913b3",
+      "target": "0x7fff10bf7c40",
+      "bytes": "488d1586686601"
+    },
+    {
+      "offset": "0x7fff0f594167",
+      "target": "0x7fff10bf7c40",
+      "bytes": "488d3dd23a6601"
+    },
+    {
+      "offset": "0x7fff0f5dbe86",
+      "target": "0x7fff10bf7c40",
+      "bytes": "488d0db3bd6101"
+    },
+    {
+      "offset": "0x7fff0f6f4850",
+      "target": "0x7fff10bf7c30",
+      "bytes": "488905d9335001"
+    },
+    {
+      "offset": "0x7fff0fceabbc",
+      "target": "0x7fff10bf6c50",
+      "bytes": "4889058dc0f000"
+    },
+    {
+      "offset": "0x7fff0fceb1e7",
+      "target": "0x7fff10bf6c60",
+      "bytes": "48890572baf000"
+    },
+    {
+      "offset": "0x7fff0fceca07",
+      "target": "0x7fff10bf6c58",
+      "bytes": "4889054aa2f000"
+    },
+    {
+      "offset": "0x7fff0fd10e26",
+      "target": "0x7fff10bf7c40",
+      "bytes": "488d0d136eee00"
+    },
+    {
+      "offset": "0x7fff0fe6ba48",
+      "target": "0x7fff10bf7c20",
+      "bytes": "488b05d1c1d800"
+    },
+    {
+      "offset": "0x7fff0fe6ba73",
+      "target": "0x7fff10bf7c20",
+      "bytes": "488905a6c1d800"
+    },
+    {
+      "offset": "0x7fff105398da",
+      "target": "0x7fff10bf6c78",
+      "bytes": "4c8b0d97d36b00"
+    },
+    {
+      "offset": "0x7fff10539bbd",
+      "target": "0x7fff10bf6c70",
+      "bytes": "4c8b0dacd06b00"
+    },
+    {
+      "offset": "0x7fff10539d74",
+      "target": "0x7fff10bf6c90",
+      "bytes": "488d0515cf6b00"
+    },
+    {
+      "offset": "0x7fff10539d7d",
+      "target": "0x7fff10bf6c68",
+      "bytes": "488d05e4ce6b00"
+    }
+  ],
+  "scope": "Raw reference evidence; no loader call"
+}

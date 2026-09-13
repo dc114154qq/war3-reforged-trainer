@@ -1,0 +1,36 @@
+{
+  "pid": 32868,
+  "timestamp": "0x6aa4de70",
+  "image_size": "0xe155000",
+  "handlers": [
+    {
+      "name": "GetHeroLevel",
+      "rva": "0xca6160",
+      "file_offset": "0xca5560",
+      "sha256": "57c59f98eb1a3588db153aff96529ca7fb6e366e4fd1bdeb17593e0a0e34278b",
+      "bytes": "244b64265c866200dc654409c982ab0c825a1a7ed90536e1c2ab8e774d24506cbbdc212b7ec2d51aa4a5a98ba2948aab04e032c24894a7925516d72f1f38f135"
+    },
+    {
+      "name": "SetHeroLevel",
+      "rva": "0xcf1fa0",
+      "file_offset": "0xcf13a0",
+      "sha256": "6d3e37b2ea81510a4b9ab5491a539fd8dd41d46d9a5f34930a6ad2fc4761d760",
+      "bytes": "c3f92ae91d669c1ca12cfc25b54ad99f738d531927526b063faf83c7b6e3b1689d0c8a612abf0191bd75f799d47328e5fc7cdb58ce28fe2bcced376d2575d59c"
+    },
+    {
+      "name": "CreateUnit",
+      "rva": "0xc98620",
+      "file_offset": "0xc97a20",
+      "sha256": "c785c7670e3f2e719dffe1bbf02744969cbd58f03d39555b08b2132c06e364d0",
+      "bytes": "c05b097d5fcdea7a8931ac23dc8685c3f59bafedfc8686fc64531f529d3010dcf2eef098163a7705584bde844b64f6a9fc5f3c3adafd442f431356310452962e"
+    },
+    {
+      "name": "UnitAddAbility",
+      "rva": "0xcffd30",
+      "file_offset": "0xcff130",
+      "sha256": "318344a286806d18a85ebafcb2cda1d1949b39953ead1818c4a325b300c5d9b7",
+      "bytes": "42f7c6ae272130d06caf14e7435f39805e8b0d86d83579507b0227e68802981621e48d07c5e63723f73b8e7306e3fb0c6c7af3e437ffa4170cf15b723bcdd520"
+    }
+  ],
+  "conclusion": "Disk bytes equal runtime protected-page bytes; handlers are encrypted/encoded storage, not ordinary callable x64 code."
+}

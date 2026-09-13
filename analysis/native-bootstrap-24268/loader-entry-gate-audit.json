@@ -1,0 +1,22 @@
+{
+  "build": "3.0.0.24268",
+  "runtime_text_sha256": "9c366fce157819e5b628a56d499fd6af64c356d29d57f9c6c2f56849b24d133b",
+  "entries": [
+    {
+      "loader_rva": "0x1351be0",
+      "role": "thread-start gate wrapper",
+      "observed_parameters": "rcx/rdx/r8",
+      "internal_calls": ["0x56c0e0", "0xe2330"],
+      "behavior": "state-value checks, then forwards thread-related arguments into loader dispatch"
+    },
+    {
+      "loader_rva": "0x1da6be0",
+      "role": "initialization/exception gate wrapper",
+      "observed_parameters": "ecx/rdx/r8",
+      "internal_calls": ["0x1e852f0", "0x10df3b0"],
+      "behavior": "state-value checks, TLS/stack guard, then forwards into loader dispatch"
+    }
+  ],
+  "reference_shape": "Neither entry has a direct internal CALL reference in captured loader .text; both are reached as entry targets from patched system/loader paths.",
+  "scope": "Offline disassembly only; no entry invoked, no thread gate changed, no game writes."
+}

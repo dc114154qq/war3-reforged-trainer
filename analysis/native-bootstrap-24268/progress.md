@@ -22,3 +22,13 @@
 先确认新构建的线程启动/窗口 hook 执行链及进程内实际代码视图，再恢复可验证的 native 注册锚点、context/hash/resolver 和对象布局。不要反复尝试相同超时命令，不通过放宽旧 profile 指纹来制造支持。研究工具读取指定模块或分配诊断参数不属于产品备用读取；成品仍以完整纯 native 链路为目标。
 
 目前没有对 3.0 游戏执行单位、技能、物品或资源写入，也未声称跨电脑通过。当前用户已经提供 24 单位混选测试环境，不需要再次要求其选中 12 个单位。
+
+## 线程入口来源已定位
+
+只读对比发现游戏中的 LdrInitializeThunk 和 BaseThreadInitThunk 前五字节均为跳转，与本机 ntdll/kernel32 原入口不同。沿有限跳转追踪，两者分别到达 war3_loader.dll 内 RVA 0x1351be0 与 0x1da6be0。RtlUserThreadStart 原始入口未改。证据见 execution-entry.json。
+
+war3_loader.dll 的 Authenticode 签名有效，签名主体 Blizzard Entertainment, Inc.；磁盘 SHA256 E32431E26F58D1201BE3F48BAED485114227864D8C6B871EAE8E9528241EC8E9。3.0 主程序显式导入该模块的 ordinal 1，该 DLL 也只导出 ordinal 1，无命名的选择单位接口。旧 23745 崩溃记录中未找到 war3_loader.dll，但旧安装目录已经不可用，不能据此确定首次引入版本。
+
+新增隔离 Unicorn 跟踪：仅按执行路径读取有限的代码/常量页面，在模拟器内运行线程入口，所有写入均在模拟内存；真实游戏中不调用这些函数。跟踪到通过 PEB 混淆的私有跳板调用 NtQueryVirtualMemory，查询对象是传入的新线程入口地址；在 OS 调用前停止。此证据表明其线程入口路径检查内存信息，尚不能推出完整允许规则，更不能宣称没有内部游戏数据入口。
+
+后续以此明确入口继续审计；不要再次重复无效 LoadLibrary/窗口 hook 超时测试。需要区分加载器职责与选中单位数据来源，仍优先寻找能稳定取得完整选择列表的实际 native 调用链。

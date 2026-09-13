@@ -1,0 +1,98 @@
+{
+  "pid": 24284,
+  "loader_base": "0x7fff11490000",
+  "entry": "0x7fff13236be0",
+  "scope": "Emulation only; OS calls not executed",
+  "halt": [
+    "External call reached 0x7fffeb3459f0; stopped before execution"
+  ],
+  "registers": {
+    "rip": "0x7fffeb3459f0",
+    "rax": "0x7fffeb3459f0",
+    "rcx": "0xffffffffffffffff",
+    "rdx": "0x720000000",
+    "r8": "0x0",
+    "r9": "0x700017eb0"
+  },
+  "pages": [
+    {
+      "address": "0x7fff13236000",
+      "sha256": "da4e22293b7ab83047c5a99dbb202190d94be63eaec048b79e75b99947fe5cfc"
+    },
+    {
+      "address": "0x7fff13580000",
+      "sha256": "f412894b5f731468ae304306022e41d934a42ab28f29a012951a30c20ca5739c"
+    },
+    {
+      "address": "0x7fff1363b000",
+      "sha256": "f07c98b866116093fa9a70df45ef2697f45ef014cbf1f0e784354e383c23f566"
+    },
+    {
+      "address": "0x7fff13315000",
+      "sha256": "30e5f1c7d0ab59f205420483d47c5a12e81c0f5b24bba29360995e86943284ad"
+    },
+    {
+      "address": "0x7fff1363e000",
+      "sha256": "e56514ae1fad8135145137227080bb0ec284988e1571961e2c53365a0d654edf"
+    },
+    {
+      "address": "0x7fff117d0000",
+      "sha256": "a4a7a260956010253355731a4f4b3d76dfc09e86432679f68a747021cee8a747"
+    },
+    {
+      "address": "0x7fff135c8000",
+      "sha256": "740428ea3a16b8bfee7985393921921baf4d2eff3b0fba9e41187ff5a2d3cf1e"
+    },
+    {
+      "address": "0x7fff117d1000",
+      "sha256": "10849818b51e5163b12831ac060edc2b529900b76d339c198aa4595aee7b70b1"
+    },
+    {
+      "address": "0x7fff117d2000",
+      "sha256": "d288447c0acbebb82c6fa04acb8a11fc5e6957b816a392e002815058c9b90b54"
+    },
+    {
+      "address": "0x7fff1358d000",
+      "sha256": "2e99ec6609d14c047ff6ad794a52d0520c7339cb850c64f36879a0111bd5db5e"
+    },
+    {
+      "address": "0x7fff134ee000",
+      "sha256": "0d5d83212c2e5d254669353aaf1a1b009b6999d36eaf77d4f18dea3cd730b028"
+    },
+    {
+      "address": "0x7fff13550000",
+      "sha256": "3c91a7a4b82b1012b82b4534b8f0b0ef6a57f1d87ae70f4b76f8b68cb2fb4112"
+    },
+    {
+      "address": "0x29237eb0000",
+      "sha256": "8a2d13806ad390b60b50192e8a9a8558a81bd7bd456c417ca84991728b443e92"
+    },
+    {
+      "address": "0x96145c1000",
+      "sha256": "b518f416715cd329bf7fb3381b4854829cda6925a4b6857a90ba867d5dd78eca"
+    },
+    {
+      "address": "0x7fffeb345000",
+      "sha256": "3aa50efcd7db5dfe9efa39b779c6cee13a96d348fcb41782cb42271c57044d4d"
+    }
+  ],
+  "calls": [
+    "0x7fff13236c74: call 0x7fff133152f0",
+    "0x7fff133153f2: call 0x7fff117d0720",
+    "0x7fff117d19dc: call 0x7fff134ee220"
+  ],
+  "last_addresses": [
+    "0x29237eb0392",
+    "0x29237eb039b",
+    "0x29237eb03a2",
+    "0x29237eb03a6",
+    "0x29237eb03a7",
+    "0x29237eb03a8",
+    "0x29237eb03b1",
+    "0x29237eb03b5",
+    "0x29237eb03b6",
+    "0x29237eb03ba",
+    "0x29237eb03bd",
+    "0x7fffeb3459f0"
+  ]
+}

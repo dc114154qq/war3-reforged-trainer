@@ -7,3 +7,4 @@
 *.exe
 module-text.json
 _deps/
+_pages/

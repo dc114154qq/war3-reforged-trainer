@@ -1,27 +1,27 @@
 {
-  "pid": 23652,
-  "handle": "0x320",
+  "pid": 16700,
+  "handle": "0x360",
   "read_only": true,
   "sections": [
     {
       "name": ".text",
       "rva": "0x1000",
       "bytes": 36036822,
-      "sha256": "b690c1f666021013d2c322c2a3571ecb7b2b1fc3beea726e4ff994a24c195d1b"
+      "sha256": "5d3059c95762df1a6c7031a9bf67334dd1b00e17835843b98a64dfe75d883f75"
     },
     {
       "name": ".rdata",
       "rva": "0x2260000",
       "bytes": 12764066,
-      "sha256": "2e0e663dd53bb4ed6c87acc93f478844df0c49ea8f2562d9d3c00b78ee2aceaa"
+      "sha256": "c3d7a4d9db8fddf9ad0cf42e7cc2427fa509a6c056e8210f39b6761043d26919"
     },
     {
       "name": ".data",
       "rva": "0x2e8d000",
       "bytes": 184204896,
-      "sha256": "a5d2876da623c70a3df4b87a3429138b6ad13c190f2d860099b80085506f0818"
+      "sha256": "827c736ec22d24bf726ad5c1a4d43100f1593d36b98e65132b2fe6c5f270b1ba"
     }
   ],
   "scope": "Locally mapped shared section; no game writes or page protection changes",
-  "header_sha256": "b5258c6c25cf82a735798fbebae931036426c9c9cd7f1c25163388c7bcc25042"
+  "header_sha256": "4f342a33d8c44c9b7e5eaaafb7f0b02cd6f5d46fba1f21edae88fdfa7dca43c7"
 }

@@ -1,0 +1,15 @@
+{
+  "build": "3.0.0.24268",
+  "pid": 16700,
+  "read_only": true,
+  "classic_selection_count": 14,
+  "classic_selection_layout": {
+    "player": "0x2066dbfb018",
+    "container": "0x2066dbfc5d0",
+    "manager_offset": "0x0"
+  },
+  "loader_text_sha256": "9c366fce157819e5b628a56d499fd6af64c356d29d57f9c6c2f56849b24d133b",
+  "loader_data_sha256": "7202d86e30c31e5a51f6388821b408f8e3aa951ecd24767a13bc01327e130711",
+  "scope": "New process after restart; section capture and selection mapping were read-only",
+  "native_context": "not initialized in the observed state; no handler inferred"
+}

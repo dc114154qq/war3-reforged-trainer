@@ -1,45 +1,45 @@
 {
-  "pid": 23652,
+  "pid": 16700,
   "scope": "Section metadata only; no game writes or address-space scans",
   "sections": [
     {
-      "handle": "0x320",
+      "handle": "0x360",
       "access": "0xf000f",
       "size": 236277760,
       "attributes": "0x8000000"
     },
     {
-      "handle": "0x428",
+      "handle": "0x7c4",
       "access": "0xf0007",
       "size": 131072,
       "attributes": "0x800000"
     },
     {
-      "handle": "0x7d0",
+      "handle": "0x7f0",
+      "access": "0xf0007",
+      "size": 11280,
+      "attributes": "0x800000"
+    },
+    {
+      "handle": "0x80c",
       "access": "0xf0007",
       "size": 131072,
       "attributes": "0x800000"
     },
     {
-      "handle": "0x810",
+      "handle": "0x828",
       "access": "0xf0007",
       "size": 131072,
       "attributes": "0x800000"
     },
     {
-      "handle": "0x81c",
+      "handle": "0x834",
       "access": "0xf0007",
       "size": 131072,
       "attributes": "0x800000"
     },
     {
-      "handle": "0x824",
-      "access": "0xf0007",
-      "size": 131072,
-      "attributes": "0x800000"
-    },
-    {
-      "handle": "0x838",
+      "handle": "0x844",
       "access": "0xf0007",
       "size": 131072,
       "attributes": "0x800000"
@@ -51,49 +51,31 @@
       "attributes": "0x800000"
     },
     {
-      "handle": "0x84c",
-      "access": "0xf0007",
-      "size": 131072,
-      "attributes": "0x800000"
-    },
-    {
-      "handle": "0x850",
-      "access": "0xf0007",
-      "size": 131072,
-      "attributes": "0x800000"
-    },
-    {
       "handle": "0x858",
       "access": "0xf0007",
       "size": 131072,
       "attributes": "0x800000"
     },
     {
-      "handle": "0x864",
+      "handle": "0x868",
       "access": "0xf0007",
       "size": 131072,
       "attributes": "0x800000"
     },
     {
-      "handle": "0x87c",
+      "handle": "0x86c",
       "access": "0xf0007",
       "size": 131072,
       "attributes": "0x800000"
     },
     {
-      "handle": "0x880",
+      "handle": "0x884",
       "access": "0xf0007",
       "size": 131072,
       "attributes": "0x800000"
     },
     {
-      "handle": "0x890",
-      "access": "0xf0007",
-      "size": 131072,
-      "attributes": "0x800000"
-    },
-    {
-      "handle": "0x894",
+      "handle": "0x88c",
       "access": "0xf0007",
       "size": 131072,
       "attributes": "0x800000"
@@ -101,98 +83,146 @@
     {
       "handle": "0x8a4",
       "access": "0xf0007",
-      "size": 11280,
+      "size": 131072,
       "attributes": "0x800000"
     },
     {
-      "handle": "0x8b0",
+      "handle": "0x8ac",
       "access": "0xf0007",
       "size": 131072,
       "attributes": "0x800000"
     },
     {
-      "handle": "0x9c0",
+      "handle": "0x8b8",
+      "access": "0xf0007",
+      "size": 131072,
+      "attributes": "0x800000"
+    },
+    {
+      "handle": "0x8c0",
+      "access": "0xf0007",
+      "size": 131072,
+      "attributes": "0x800000"
+    },
+    {
+      "handle": "0x8c4",
+      "access": "0xf0007",
+      "size": 131072,
+      "attributes": "0x800000"
+    },
+    {
+      "handle": "0x9bc",
       "access": "0xf0005",
       "size": 1574998,
       "attributes": "0x800000"
     },
     {
-      "handle": "0xafc",
+      "handle": "0xad0",
       "access": "0xf001f",
       "size": 524288,
       "attributes": "0x8000000"
     },
     {
-      "handle": "0xbb0",
+      "handle": "0xb9c",
       "access": "0xf001f",
       "size": 524288,
       "attributes": "0x8000000"
     },
     {
-      "handle": "0xbb8",
+      "handle": "0xba0",
       "access": "0xf0007",
       "size": 268435456,
       "attributes": "0x800000"
     },
     {
-      "handle": "0xcdc",
+      "handle": "0xc9c",
       "access": "0xf001f",
       "size": 524288,
       "attributes": "0x8000000"
     },
     {
-      "handle": "0xd6c",
+      "handle": "0xd38",
       "access": "0xf001f",
       "size": 524288,
       "attributes": "0x8000000"
     },
     {
-      "handle": "0xf38",
+      "handle": "0xf10",
       "access": "0xf001f",
       "size": 45056,
       "attributes": "0x8000000"
     },
     {
-      "handle": "0xf40",
+      "handle": "0xf18",
       "access": "0xf001f",
       "size": 4096,
       "attributes": "0x8000000"
     },
     {
-      "handle": "0x106c",
+      "handle": "0x10d8",
+      "access": "0xf0007",
+      "size": 4096,
+      "attributes": "0x800000"
+    },
+    {
+      "handle": "0x12b8",
+      "access": "0xf0007",
+      "size": 20480,
+      "attributes": "0x8000000"
+    },
+    {
+      "handle": "0x131c",
+      "access": "0xf0005",
+      "size": 20119552,
+      "attributes": "0x800000"
+    },
+    {
+      "handle": "0x141c",
+      "access": "0xf0007",
+      "size": 315392,
+      "attributes": "0x8000000"
+    },
+    {
+      "handle": "0x145c",
+      "access": "0xf0007",
+      "size": 73728,
+      "attributes": "0x8000000"
+    },
+    {
+      "handle": "0x1520",
+      "access": "0xf001f",
+      "size": 4096,
+      "attributes": "0x8000000"
+    },
+    {
+      "handle": "0x1528",
       "access": "0xf001f",
       "size": 524288,
       "attributes": "0x8000000"
     },
     {
-      "handle": "0x109c",
+      "handle": "0x1540",
       "access": "0xf0007",
       "size": 181223424,
       "attributes": "0x8000000"
     },
     {
-      "handle": "0x1214",
+      "handle": "0x168c",
       "access": "0xf0007",
       "size": 4096,
       "attributes": "0x8000000"
     },
     {
-      "handle": "0x121c",
+      "handle": "0x172c",
       "access": "0xf0007",
       "size": 32768,
       "attributes": "0x8000000"
     },
     {
-      "handle": "0x1574",
+      "handle": "0x1a48",
       "access": "0xf0007",
       "size": 1048576,
       "attributes": "0x800000"
-    },
-    {
-      "handle": "0x1738",
-      "access": "0xf001f",
-      "size": 4096,
-      "attributes": "0x8000000"
     }
   ]
 }

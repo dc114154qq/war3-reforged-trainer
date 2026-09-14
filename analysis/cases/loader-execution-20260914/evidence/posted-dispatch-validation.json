@@ -1,0 +1,39 @@
+{
+  "previous_turn": "progress: current-native creation and level evidence, removal failure retained",
+  "changes": [
+    "Actual PostMessageW + WH_GETMESSAGE mode with PM_REMOVE and nonce gating; sent mode retained.",
+    "GameThreadContext exact profile reads retry only WinError299 three times, max20ms sleep, fail closed on mismatch.",
+    "Code-read evidence rejects uniform bytes; diverse bytes remain authenticity-unverified.",
+    "Full bounded code observation span validated against mapping and executable section.",
+    "Hero setter diagnostic validates ABI arguments before process access."
+  ],
+  "observations": [
+    "Current target remains PID38352.",
+    "Second temporary handle1050705 returned GetUnitTypeId=0 in posted query before any removal; this turn issued no unit create or remove call.",
+    "Original hero1050669 still returns Hpal.",
+    "Posted full native selection returned 15 units; group and all diagnostic mappings freed.",
+    "Inside-thread byte probe produced repeated address-low-byte patterns (90/60/70); prior transport ok is not authentic code proof.",
+    "Existing text and disk RemoveUnit bytes remain undecoded; no recovered implementation claimed."
+  ],
+  "verified": [
+    "164 tests and 13 subtests passed in 2.87s.",
+    "Posted constant local host and sent constant local host succeeded.",
+    "Posted deliberate access fault was caught with query_completed=false; callback, unwind table and image cleanup verified."
+  ],
+  "residual": [
+    "Removal finalization timing/root cause not established; no claim posted mode fixes it.",
+    "3.0 product native actions still need integration and semantic verification.",
+    "No new EXE or cross-device acceptance."
+  ],
+  "successful_commands": [
+    "python -m pytest -q test_24268_context_retry.py test_24268_dispatch_delivery.py test_24268_lifecycle_protocol.py test_24268_native_preflight.py test_24268_selection_protocol.py test_game_thread_dispatch_cleanup.py test_24268_executor_readiness.py test_24268_product_boundary.py test_classic_player_selection.py --tb=short --maxfail=2",
+    "clang -shared -O2 -fexceptions -fasync-exceptions -fno-stack-protector -fno-builtin -nostdlib analysis/engine_hook_probe.c -o analysis/engine-posted-v1.dll -Wl,/entry:DllMain,/nodefaultlib,/alternatename:__C_specific_handler=ProbeSpecificHandler -luser32 -lkernel32",
+    "python analysis/verify-native-selection-24268.py --pid 38352 --image analysis/engine-posted-v1.dll --output analysis/cases/loader-execution-20260914/evidence/posted-native-selection-retry-38352.json --allow-image-noaccess --delivery-mode posted"
+  ],
+  "failures": [
+    "One tool orchestration syntax error; command had not run.",
+    "Wrong inferred path for execution-handler-audit; located real file under analysis.",
+    "Initial posted full-selection preflight WinError299; fixed narrow retry and reran successfully."
+  ],
+  "next": "Port current-build native registration and execution into reusable product transport; keep semantic cleanup/identity gates, without historical bootstrap."
+}

@@ -31,3 +31,11 @@ def test_wrong_image_or_region_rejected(kw):
 @pytest.mark.parametrize('address',[0x100000,0x10fff8,0x110ff8,0x111000])
 def test_noncode_and_boundary_crossing_rejected(address):
     with pytest.raises(ValueError): check(region(),True,address)
+
+@pytest.mark.parametrize('span',[0,4097,-1])
+def test_invalid_observation_span(span):
+    with pytest.raises(ValueError):classify_entry(0x110010,0x100000,[(0x110000,0x111000)],region(),True,span)
+
+def test_observation_must_fit_whole_mapping_and_section():
+    with pytest.raises(ValueError):classify_entry(0x110f00,0x100000,[(0x110000,0x111000)],region(),True,384)
+    assert classify_entry(0x110010,0x100000,[(0x110000,0x111000)],region(),True,384)=='readable-executable'

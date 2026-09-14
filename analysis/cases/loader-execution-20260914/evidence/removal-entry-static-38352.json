@@ -1,0 +1,17 @@
+{
+  "RemoveUnit": {
+    "address": "0x7ff73a88e690",
+    "signature": "(Hunit;)V",
+    "error": "[WinError 299] \u4ec5\u5b8c\u6210\u90e8\u5206\u7684 ReadProcessMemory \u6216 WriteProcessMemory \u8bf7\u6c42\u3002"
+  },
+  "GetUnitTypeId": {
+    "address": "0x7ff73a87f560",
+    "signature": "(Hunit;)I",
+    "error": "[WinError 299] \u4ec5\u5b8c\u6210\u90e8\u5206\u7684 ReadProcessMemory \u6216 WriteProcessMemory \u8bf7\u6c42\u3002"
+  },
+  "IsUnitInGroup": {
+    "address": "0x7ff73a885870",
+    "signature": "(Hunit;Hgroup;)B",
+    "error": "[WinError 299] \u4ec5\u5b8c\u6210\u90e8\u5206\u7684 ReadProcessMemory \u6216 WriteProcessMemory \u8bf7\u6c42\u3002"
+  }
+}

@@ -57,12 +57,30 @@ class LocalPlayerMode:
     elapsed_ms: float
 
 
+def verify_context_code(memory, game_base):
+    """Retry only partial-copy observations, never mismatches or other failures.
+
+    Every retry starts the entire exact-byte profile check again. This is a
+    bounded startup observation (at most 20ms sleep), not a fallback reader.
+    """
+    for attempt in range(3):
+        try:
+            for rva, code in CONTEXT_CODE_CHECKS:
+                if _read(memory, game_base + rva, len(code)) != code:
+                    raise ObjectIdentityError("Game context accessor differs from verified profile")
+            return
+        except OSError as exc:
+            if getattr(exc, 'winerror', None) != 299:
+                raise
+            if attempt == 2:
+                raise ObjectIdentityError("Game context exact-byte verification remained unreadable after 3 attempts") from exc
+            time.sleep(0.01)
+
+
 class GameThreadContext24268:
     def __init__(self, memory, game_base, hwnd, pid):
         self.base, self.hwnd, self.pid = game_base, hwnd, pid
-        for rva, code in CONTEXT_CODE_CHECKS:
-            if _read(memory, game_base + rva, len(code)) != code:
-                raise ObjectIdentityError("Game context accessor differs from verified profile")
+        verify_context_code(memory, game_base)
         self.kernel = ctypes.WinDLL("kernel32", use_last_error=True)
         self.user = ctypes.WinDLL("user32", use_last_error=True)
         self.user.GetWindowThreadProcessId.argtypes = (ctypes.c_void_p, ctypes.POINTER(ctypes.c_ulong))

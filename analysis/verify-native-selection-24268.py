@@ -18,7 +18,7 @@ from war3_selection_protocol import SIGNATURES, build_work, decode_work
 from war3_native_preflight import inspect_entries
 
 
-def run(pid, image, preflight_only, allow_image_noaccess=False, probe_local_player=False):
+def run(pid, image, preflight_only, allow_image_noaccess=False, probe_local_player=False, delivery_mode="sent"):
     hwnd, pid = find_war3(pid)
     with ProcessMemory(pid) as memory:
         registry = ObjectRegistry24268.attach(memory)
@@ -48,7 +48,7 @@ def run(pid, image, preflight_only, allow_image_noaccess=False, probe_local_play
         if probe_local_player:
             evidence = dispatch['inspect'](pid, hwnd, mode.thread_id, image.resolve(),
                 query_mode='native', tls_index=mode.tls_index,
-                native_address=entries['GetLocalPlayer'].handler)
+                native_address=entries['GetLocalPlayer'].handler,delivery_mode=delivery_mode)
             state = evidence.get('after_send', {})
             result['dispatch'] = evidence
             result['player_handle'] = state.get('query_result')
@@ -59,7 +59,7 @@ def run(pid, image, preflight_only, allow_image_noaccess=False, probe_local_play
                 and 0 < int(state.get('query_result', '0'), 16) <= 0xffffffff))
         evidence = dispatch['inspect'](pid, hwnd, mode.thread_id, image.resolve(),
                                        query_mode='selection', tls_index=mode.tls_index,
-                                       work_payload=payload)
+                                       work_payload=payload,delivery_mode=delivery_mode)
         result['dispatch'] = evidence
         if not (evidence.get('callback_verified') and evidence.get('query_completed')
                 and evidence.get('work_freed') and evidence.get('block_freed')
@@ -78,10 +78,11 @@ def main():
     parser.add_argument('--preflight-only', action='store_true')
     parser.add_argument('--allow-image-noaccess', action='store_true', help='Diagnostic opt-in for registered entries inside verified executable image sections; does not change protection')
     parser.add_argument('--probe-local-player', action='store_true', help='Call only GetLocalPlayer, without group allocation or game-data writes')
+    parser.add_argument('--delivery-mode',choices=['sent','posted'],default='sent')
     args = parser.parse_args()
     start = time.perf_counter()
     try:
-        result = run(args.pid, args.image, args.preflight_only, args.allow_image_noaccess, args.probe_local_player)
+        result = run(args.pid, args.image, args.preflight_only, args.allow_image_noaccess, args.probe_local_player, args.delivery_mode)
     except Exception:
         result = dict(ok=False, pid=args.pid, error=traceback.format_exc())
     result['elapsed_ms'] = (time.perf_counter() - start) * 1000

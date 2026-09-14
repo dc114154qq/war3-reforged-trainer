@@ -1,0 +1,244 @@
+{
+  "pid": 38352,
+  "preflight_only": false,
+  "player_object": "0x2259b21cb88",
+  "tls_index": 22,
+  "thread_id": 35668,
+  "work_size": 480,
+  "mappings": {
+    "GetLocalPlayer": {
+      "address": "0x7ff73a8773d0",
+      "kind": "image-noaccess-diagnostic-only",
+      "protection": "0x1",
+      "allocation": "0x7ff739bd0000",
+      "code_hex": null
+    },
+    "CreateGroup": {
+      "address": "0x7ff73a865f40",
+      "kind": "image-noaccess-diagnostic-only",
+      "protection": "0x1",
+      "allocation": "0x7ff739bd0000",
+      "code_hex": null
+    },
+    "GroupEnumUnitsSelected": {
+      "address": "0x7ff73a8808a0",
+      "kind": "image-noaccess-diagnostic-only",
+      "protection": "0x1",
+      "allocation": "0x7ff739bd0000",
+      "code_hex": null
+    },
+    "FirstOfGroup": {
+      "address": "0x7ff73a86bb90",
+      "kind": "image-noaccess-diagnostic-only",
+      "protection": "0x1",
+      "allocation": "0x7ff739bd0000",
+      "code_hex": null
+    },
+    "GroupRemoveUnit": {
+      "address": "0x7ff73a880e80",
+      "kind": "image-noaccess-diagnostic-only",
+      "protection": "0x1",
+      "allocation": "0x7ff739bd0000",
+      "code_hex": null
+    },
+    "DestroyGroup": {
+      "address": "0x7ff73a8699d0",
+      "kind": "image-noaccess-diagnostic-only",
+      "protection": "0x1",
+      "allocation": "0x7ff739bd0000",
+      "code_hex": null
+    },
+    "GetUnitTypeId": {
+      "address": "0x7ff73a87f560",
+      "kind": "image-noaccess-diagnostic-only",
+      "protection": "0x1",
+      "allocation": "0x7ff739bd0000",
+      "code_hex": null
+    },
+    "GetHeroLevel": {
+      "address": "0x7ff73a876160",
+      "kind": "image-noaccess-diagnostic-only",
+      "protection": "0x1",
+      "allocation": "0x7ff739bd0000",
+      "code_hex": null
+    }
+  },
+  "probe_local_player": false,
+  "signatures": {
+    "GetLocalPlayer": "()Hplayer;",
+    "CreateGroup": "()Hgroup;",
+    "GroupEnumUnitsSelected": "(Hgroup;Hplayer;Hboolexpr;)V",
+    "FirstOfGroup": "(Hgroup;)Hunit;",
+    "GroupRemoveUnit": "(Hgroup;Hunit;)B",
+    "DestroyGroup": "(Hgroup;)V",
+    "GetUnitTypeId": "(Hunit;)I",
+    "GetHeroLevel": "(Hunit;)I"
+  },
+  "dispatch": {
+    "pid": 38352,
+    "hwnd": "0x8d09a8",
+    "expected_callback_tid": 35668,
+    "image": "C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\analysis\\engine-posted-v1.dll",
+    "image_sha256": "ff1ccdcd893bf7740925457c6ae8a51c1010eb1cb39ae756a92b653546c10efe",
+    "calls_game_handlers": true,
+    "query_mode": "selection",
+    "delivery_mode": "posted",
+    "image_base": "0x7ffe841f0000",
+    "command_address": "0x22600770000",
+    "work_address": "0x22600780000",
+    "install_thread": {
+      "tid": 24620,
+      "created": true,
+      "completed": true
+    },
+    "after_install": {
+      "hook": 526191609,
+      "target_tid": 35668,
+      "message": 50075,
+      "nonce": 3930887440483825412,
+      "stage": 2,
+      "last_error": 0,
+      "callback_tid": 0,
+      "callback_count": 0,
+      "detached": 0,
+      "active": 0,
+      "query_result": "0x0",
+      "tls_value": "0x0",
+      "query_stage": 0,
+      "exception_code": "0x0",
+      "unwind_registered": 1,
+      "unwind_removed": 0
+    },
+    "post": {
+      "enqueued": true,
+      "error": 0
+    },
+    "after_send": {
+      "hook": 526191609,
+      "target_tid": 35668,
+      "message": 50075,
+      "nonce": 3930887440483825412,
+      "stage": 3,
+      "last_error": 0,
+      "callback_tid": 35668,
+      "callback_count": 1,
+      "detached": 1,
+      "active": 0,
+      "query_result": "0xf",
+      "tls_value": "0x225ddb3ea60",
+      "query_stage": 2,
+      "exception_code": "0x0",
+      "unwind_registered": 1,
+      "unwind_removed": 0
+    },
+    "after_cleanup": {
+      "hook": 526191609,
+      "target_tid": 35668,
+      "message": 50075,
+      "nonce": 3930887440483825412,
+      "stage": 3,
+      "last_error": 0,
+      "callback_tid": 35668,
+      "callback_count": 1,
+      "detached": 1,
+      "active": 0,
+      "query_result": "0xf",
+      "tls_value": "0x225ddb3ea60",
+      "query_stage": 2,
+      "exception_code": "0x0",
+      "unwind_registered": 1,
+      "unwind_removed": 1
+    },
+    "callback_verified": true,
+    "query_completed": true,
+    "work_result_hex": "d073873af77f0000405f863af77f0000a008883af77f000090bb863af77f0000800e883af77f0000d099863af77f000060f5873af77f00006061873af77f0000080010000000000051081000000000000f0000000000000001000000000000002d081000000000006c6170480100000048081000000000006f6f66680000000049081000000000006f6f66680000000043081000000000006f6f66680000000042081000000000006f6f6668000000003d081000000000006f6f66680000000046081000000000006f6f6668000000004b081000000000006f6f66680000000031081000000000006f6f6668000000002f081000000000006f6f66680000000028081000000000006f6f66680000000026081000000000006f6f6668000000002b081000000000006f6f6668000000002c081000000000006f6f66680000000023081000000000006f6f666800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+    "safe_to_release": true,
+    "work_freed": true,
+    "block_freed": true,
+    "image_unmap_status": "0x0"
+  },
+  "selection": {
+    "player": 1048584,
+    "count": 15,
+    "rows": [
+      {
+        "handle": 1050669,
+        "rawcode": 1215324524,
+        "level": 1
+      },
+      {
+        "handle": 1050696,
+        "rawcode": 1751543663,
+        "level": 0
+      },
+      {
+        "handle": 1050697,
+        "rawcode": 1751543663,
+        "level": 0
+      },
+      {
+        "handle": 1050691,
+        "rawcode": 1751543663,
+        "level": 0
+      },
+      {
+        "handle": 1050690,
+        "rawcode": 1751543663,
+        "level": 0
+      },
+      {
+        "handle": 1050685,
+        "rawcode": 1751543663,
+        "level": 0
+      },
+      {
+        "handle": 1050694,
+        "rawcode": 1751543663,
+        "level": 0
+      },
+      {
+        "handle": 1050699,
+        "rawcode": 1751543663,
+        "level": 0
+      },
+      {
+        "handle": 1050673,
+        "rawcode": 1751543663,
+        "level": 0
+      },
+      {
+        "handle": 1050671,
+        "rawcode": 1751543663,
+        "level": 0
+      },
+      {
+        "handle": 1050664,
+        "rawcode": 1751543663,
+        "level": 0
+      },
+      {
+        "handle": 1050662,
+        "rawcode": 1751543663,
+        "level": 0
+      },
+      {
+        "handle": 1050667,
+        "rawcode": 1751543663,
+        "level": 0
+      },
+      {
+        "handle": 1050668,
+        "rawcode": 1751543663,
+        "level": 0
+      },
+      {
+        "handle": 1050659,
+        "rawcode": 1751543663,
+        "level": 0
+      }
+    ],
+    "temporary_group_destroyed": true
+  },
+  "ok": true,
+  "elapsed_ms": 992.8561000015179
+}

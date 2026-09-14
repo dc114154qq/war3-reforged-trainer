@@ -112,7 +112,7 @@ typedef struct ProbeHookCommand {
     volatile LONG callback_count, detached, active;
     void (WINAPI *sleep_ms)(DWORD);
     volatile LONG stop_requested;
-    DWORD reserved;
+    DWORD hook_kind;
     LPVOID (WINAPI *get_tls)(DWORD);
     BOOLEAN (WINAPI *add_table)(PRUNTIME_FUNCTION,DWORD,DWORD64);
     BOOLEAN (WINAPI *delete_table)(PRUNTIME_FUNCTION);
@@ -162,9 +162,18 @@ static LRESULT CALLBACK ProbeLocalCallback(int code, WPARAM w, LPARAM l) {
     if (!cmd) return 0;
     InterlockedIncrement(&cmd->active);
     if (code >= 0 && l) {
-        const CWPSTRUCT *message = (const CWPSTRUCT *)l;
-        if (message->hwnd == cmd->window && message->message == cmd->message &&
-            message->wParam == cmd->nonce) {
+        HWND hwnd;
+        UINT message;
+        WPARAM nonce;
+        if (cmd->hook_kind == WH_GETMESSAGE) {
+            const MSG *msg=(const MSG *)l;
+            hwnd=msg->hwnd;message=msg->message;nonce=msg->wParam;
+        } else {
+            const CWPSTRUCT *msg=(const CWPSTRUCT *)l;
+            hwnd=msg->hwnd;message=msg->message;nonce=msg->wParam;
+        }
+        if (hwnd == cmd->window && message == cmd->message && nonce == cmd->nonce &&
+            cmd->stage == 2 && (cmd->hook_kind != WH_GETMESSAGE || w == PM_REMOVE)) {
             cmd->callback_tid = cmd->current_tid();
             InterlockedIncrement(&cmd->callback_count);
             __try {
@@ -193,7 +202,7 @@ __declspec(dllexport) DWORD WINAPI ProbeInstallLocalHook(ProbeHookCommand *cmd) 
     g_dispatch = cmd;
     cmd->unwind_registered = cmd->add_table(cmd->unwind_table, cmd->unwind_count, cmd->image_base);
     if (!cmd->unwind_registered) { cmd->last_error = cmd->get_error(); cmd->stage = 2; return 0; }
-    cmd->hook = cmd->set_hook(WH_CALLWNDPROC, ProbeLocalCallback, NULL, cmd->target_tid);
+    cmd->hook = cmd->set_hook(cmd->hook_kind == WH_GETMESSAGE ? WH_GETMESSAGE : WH_CALLWNDPROC, ProbeLocalCallback, NULL, cmd->target_tid);
     if (!cmd->hook) cmd->last_error = cmd->get_error();
     cmd->stage = 2;
     /* Hooks belong to the installing thread; keep it alive through dispatch. */
@@ -224,3 +233,22 @@ __declspec(dllexport) DWORD WINAPI ProbeUninstallLocalHook(ProbeHookCommand *cmd
 #endif
 
 #include "engine_unit_lifecycle.h"
+
+/* Bounded code observation in the already-verified game thread; no protection changes. */
+typedef struct CodeReadWork {
+    const volatile unsigned char *source;
+    void *expected_tls;
+    uint32_t count,copied;
+    unsigned char bytes[384];
+} CodeReadWork;
+_Static_assert(sizeof(CodeReadWork)==408,"CodeReadWork ABI");
+__declspec(dllexport) const uint32_t probe_coderead_abi[3]={0x24268006u,216u,408u};
+__declspec(dllexport) uint64_t ProbeCodeReadQuery(void) {
+    CodeReadWork *w=(CodeReadWork *)g_dispatch->work;
+    uint32_t i;
+    if (!w || !w->source || w->count>384 || g_dispatch->tls_value!=w->expected_tls) return 0;
+    for (i=0;i<w->count;++i) { w->bytes[i]=w->source[i];w->copied=i+1; }
+    return w->copied;
+}
+
+__declspec(dllexport) const uint32_t probe_delivery_abi[3]={0x24268007u,216u,108u};

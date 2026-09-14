@@ -54,7 +54,13 @@ def query_completed(state):
     return state.get('query_stage') == 2 and state.get('exception_code') == '0x0'
 
 
-def inspect(pid,hwnd,tid,image,query_mode="none",tls_index=0,native_address=0,work_payload=b""):
+def inspect(pid,hwnd,tid,image,query_mode="none",tls_index=0,native_address=0,work_payload=b"",delivery_mode="sent"):
+    if delivery_mode not in ('sent','posted'):raise ValueError('Unknown delivery mode')
+    if query_mode == 'code_read':
+        if len(work_payload)!=408:raise ValueError('Code read requires 408 bytes')
+        address,tls,count,copied=struct.unpack_from('<2Q2I',work_payload)
+        if not 0x10000<=address<0x800000000000 or not 0x10000<=tls<0x800000000000 or not 1<=count<=384 or copied or any(work_payload[24:]):
+            raise ValueError('Invalid bounded code-read payload')
     if query_mode in ("unit", "unit_void"):
         if len(work_payload)!=16: raise ValueError("Unit query work requires two qwords")
         handler, unit=struct.unpack('<2Q',work_payload)
@@ -64,6 +70,10 @@ def inspect(pid,hwnd,tid,image,query_mode="none",tls_index=0,native_address=0,wo
     if query_mode == "unit_lifecycle": lifecycle.validate_work(work_payload)
     if query_mode == "hero_level":
         if len(work_payload) != 40: raise ValueError("Hero level work requires five qwords")
+        setter,getter,unit,level,eye=struct.unpack('<5Q',work_payload)
+        if (not all(0x10000<=p<0x800000000000 for p in (setter,getter)) or setter==getter
+            or not 0<unit<=0xffffffff or not 1<=level<=100000 or eye not in (0,1)):
+            raise ValueError('Invalid hero-level ABI arguments')
     if query_mode in ("selection", "selection_fixture"):
         validate_work(work_payload, fixture=query_mode == "selection_fixture")
     pe=pefile.PE(str(image));exports={s.name:s.address for s in pe.DIRECTORY_ENTRY_EXPORT.symbols}
@@ -79,9 +89,17 @@ def inspect(pid,hwnd,tid,image,query_mode="none",tls_index=0,native_address=0,wo
         marker=exports.get(b'probe_membership_abi')
         if marker is None or pe.get_data(marker,len(lifecycle.MEMBERSHIP_ABI)) != lifecycle.MEMBERSHIP_ABI:
             raise ValueError('Membership probe ABI differs; rebuild the probe')
+    if query_mode == 'code_read':
+        marker=exports.get(b'probe_coderead_abi')
+        if marker is None or pe.get_data(marker,12)!=struct.pack('<3I',0x24268006,216,408):
+            raise ValueError('Code-read ABI differs; rebuild the probe')
+    if delivery_mode == 'posted':
+        marker=exports.get(b'probe_delivery_abi')
+        if marker is None or pe.get_data(marker,12)!=struct.pack('<3I',0x24268007,216,108):
+            raise ValueError('Posted-message probe ABI differs; rebuild the probe')
     install_rva=exports[b'ProbeInstallLocalHook'];uninstall_rva=exports[b'ProbeUninstallLocalHook']
     report={'pid':pid,'hwnd':hex(hwnd),'expected_callback_tid':tid,'image':str(image),
-            'image_sha256':hashlib.sha256(image.read_bytes()).hexdigest(),'calls_game_handlers':query_mode in ('native','selection','unit','hero_level','unit_lifecycle','unit_membership','unit_void'),'query_mode':query_mode}
+            'image_sha256':hashlib.sha256(image.read_bytes()).hexdigest(),'calls_game_handlers':query_mode in ('native','selection','unit','hero_level','unit_lifecycle','unit_membership','unit_void'),'query_mode':query_mode,'delivery_mode':delivery_mode}
     handle=file=section=block=thread=work=None;view=P();safe=True
     try:
         p['enable_debug_privilege']();handle=p['open_process'](0x43a,False,pid)
@@ -108,12 +126,13 @@ def inspect(pid,hwnd,tid,image,query_mode="none",tls_index=0,native_address=0,wo
         nonce=int.from_bytes(os.urandom(8),'little') & 0x7fffffffffffffff
         if query_mode in ('fault','selection_fixture'):nonce=1
         payload=struct.pack('<7QIIQ6IQII', hwnd, *addresses, 0, tid, message, nonce,
-            0, 0, 0, 0, 0, 0, sleep_address, 0, 0)
+            0, 0, 0, 0, 0, 0, sleep_address, 0, 3 if delivery_mode == "posted" else 4)
         query = (view.value+exports[b'ProbeSelectionFixtureQuery'] if query_mode=='selection_fixture' else
                  view.value+exports[b'ProbeSelectionQuery'] if query_mode=='selection' else
                  view.value+exports[b'ProbeMembershipQuery'] if query_mode=='unit_membership' else
                  view.value+exports[b'ProbeUnitLifecycleQuery'] if query_mode=='unit_lifecycle' else
                  view.value+exports[b'ProbeSetHeroLevelRoundtrip'] if query_mode=='hero_level' else
+                 view.value+exports[b'ProbeCodeReadQuery'] if query_mode=='code_read' else
                  view.value+exports[b'ProbeUnitVoidQuery'] if query_mode=='unit_void' else
                  view.value+exports[b'ProbeUnitQuery'] if query_mode=='unit' else
                  view.value+exports[b'ProbeConstantQuery'] if query_mode=='constant' else
@@ -150,8 +169,16 @@ def inspect(pid,hwnd,tid,image,query_mode="none",tls_index=0,native_address=0,wo
         delivered=False
         if state['stage']==2 and state['hook']:
             reply=Z();c.set_last_error(0)
-            delivered=bool(h['send'](hwnd,message,nonce,0,3,1500,c.byref(reply)))
-            report['send']={'completed':delivered,'error':c.get_last_error()}
+            if delivery_mode == 'posted':
+                post=p['api'](h['u'],'PostMessageW',c.c_int,P,U,Z,c.c_ssize_t)
+                delivered=bool(post(hwnd,message,nonce,0))
+                report['post']={'enqueued':delivered,'error':c.get_last_error()}
+                deadline=time.monotonic()+1.5
+                while delivered and state['stage']!=3 and time.monotonic()<deadline:
+                    time.sleep(.005);state=fields(handle,block)
+            else:
+                delivered=bool(h['send'](hwnd,message,nonce,0,3,1500,c.byref(reply)))
+                report['send']={'completed':delivered,'error':c.get_last_error()}
         state=fields(handle,block);report['after_send']=state
         stop=c.c_ulong(1);written=Z()
         if not p['write'](handle,block+104,c.byref(stop),4,c.byref(written)):
@@ -187,6 +214,7 @@ def main():
     target.add_argument('--pid',type=int);target.add_argument('--local-host',type=Path)
     ap.add_argument('--image',type=Path,required=True);ap.add_argument('--output',type=Path,required=True)
     ap.add_argument("--query-mode",choices=["none","constant","fault","selection_fixture","selection"],default="none")
+    ap.add_argument('--delivery-mode',choices=['sent','posted'],default='sent')
     args=ap.parse_args();child=None
     try:
         if args.local_host:
@@ -194,7 +222,7 @@ def main():
             pid,tid,hwnd=map(int,child.stdout.readline().split());assert pid==child.pid
         else:
             hwnd,pid=h['find_war3'](args.pid);owner=U();tid=h['window_thread'](hwnd,c.byref(owner));assert owner.value==pid
-        r=inspect(pid,hwnd,tid,args.image.resolve(),query_mode=args.query_mode);r.update(captured_utc=datetime.now(timezone.utc).isoformat(),local_host=bool(child))
+        r=inspect(pid,hwnd,tid,args.image.resolve(),query_mode=args.query_mode,delivery_mode=args.delivery_mode);r.update(captured_utc=datetime.now(timezone.utc).isoformat(),local_host=bool(child))
         tmp=args.output.with_suffix('.tmp');tmp.write_text(json.dumps(r,indent=2),encoding='utf-8');os.replace(tmp,args.output)
         print(json.dumps(r))
         if child:assert r.get('callback_verified') and r.get('image_unmap_status')=='0x0' and r.get('block_freed')

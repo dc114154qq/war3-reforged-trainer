@@ -1,0 +1,84 @@
+{
+  "pid": 38352,
+  "read_only": true,
+  "unit_index_count": 144,
+  "candidate_count": 8,
+  "mapped_count": 8,
+  "validated_count": 8,
+  "unique_validated_count": 1,
+  "elapsed_seconds": 8.612,
+  "rows": [
+    {
+      "slot": "0xa19e21dad4",
+      "handle": "0x3d3000003d30",
+      "mapped": true,
+      "unit": "0x22595ff4038",
+      "owner": "0x2259b0850d8",
+      "candidate_valid": true,
+      "duplicate_identity": false
+    },
+    {
+      "slot": "0xa19e21dad0",
+      "handle": "0x3d3000003d30",
+      "mapped": true,
+      "unit": "0x22595ff4038",
+      "owner": "0x2259b0850d8",
+      "candidate_valid": true,
+      "duplicate_identity": true
+    },
+    {
+      "slot": "0xa19e21d9b4",
+      "handle": "0x3d3000003d30",
+      "mapped": true,
+      "unit": "0x22595ff4038",
+      "owner": "0x2259b0850d8",
+      "candidate_valid": true,
+      "duplicate_identity": true
+    },
+    {
+      "slot": "0xa19e21d9b0",
+      "handle": "0x3d3000003d30",
+      "mapped": true,
+      "unit": "0x22595ff4038",
+      "owner": "0x2259b0850d8",
+      "candidate_valid": true,
+      "duplicate_identity": true
+    },
+    {
+      "slot": "0xa19e146ca4",
+      "handle": "0x3d3000003d30",
+      "mapped": true,
+      "unit": "0x22595ff4038",
+      "owner": "0x2259b0850d8",
+      "candidate_valid": true,
+      "duplicate_identity": true
+    },
+    {
+      "slot": "0xa19e146ca0",
+      "handle": "0x3d3000003d30",
+      "mapped": true,
+      "unit": "0x22595ff4038",
+      "owner": "0x2259b0850d8",
+      "candidate_valid": true,
+      "duplicate_identity": true
+    },
+    {
+      "slot": "0xa19e146b84",
+      "handle": "0x3d3000003d30",
+      "mapped": true,
+      "unit": "0x22595ff4038",
+      "owner": "0x2259b0850d8",
+      "candidate_valid": true,
+      "duplicate_identity": true
+    },
+    {
+      "slot": "0xa19e146b80",
+      "handle": "0x3d3000003d30",
+      "mapped": true,
+      "unit": "0x22595ff4038",
+      "owner": "0x2259b0850d8",
+      "candidate_valid": true,
+      "duplicate_identity": true
+    }
+  ]
+}

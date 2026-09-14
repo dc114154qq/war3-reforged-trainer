@@ -39,6 +39,7 @@ def main():
                        (UC_X86_REG_R8, data + 0x100), (UC_X86_REG_R9, data + 0x20)):
         uc.reg_write(reg, value)
     trace, calls, reason, pages = collections.deque(maxlen=20), [], [], set()
+    decisions, pending_branch = [], []
     md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_64)
     with ProcessMemory(args.pid) as memory:
         registry = ObjectRegistry24268.attach(memory)
@@ -72,7 +73,18 @@ def main():
 
         def instruction(uc, address, size, user):
             trace.append(address)
+            if pending_branch:
+                pending_branch[0]["next_address"] = hex(address)
+                pending_branch.clear()
             raw = bytes(uc.mem_read(address, size))
+            conditional = (0x70 <= raw[0] <= 0x7f or
+                           len(raw) >= 2 and raw[0] == 0x0f and 0x80 <= raw[1] <= 0x8f)
+            if conditional and len(decisions) < 4096:
+                decoded = next(md.disasm(raw, address), None)
+                branch = dict(address=hex(address), instruction=(decoded.mnemonic + " " + decoded.op_str)
+                              if decoded else raw.hex())
+                decisions.append(branch)
+                pending_branch.append(branch)
             if raw[:2] in (b"\x0f\x05", b"\x0f\x34") or raw[:1] in (b"\xcd", b"\xcc"):
                 reason.append(f"stopped before syscall/interrupt at {address:#x}")
                 uc.emu_stop()
@@ -94,11 +106,15 @@ def main():
                       scope="Emulated copy only, artificial stack and arguments, no syscall or game write. "
                             "The result is not an observed live file-open return status.",
                       reason=reason, captured_pages=len(pages), calls=calls[-15:],
+                      returned_to_sentinel=uc.reg_read(UC_X86_REG_RIP) == stop,
+                      decisions=decisions, decision_limit_reached=len(decisions) == 4096,
                       last_addresses=[hex(a) for a in trace],
                       registers={name: hex(uc.reg_read(reg)) for name, reg in (
                           ("rip", UC_X86_REG_RIP), ("rax", UC_X86_REG_RAX), ("rcx", UC_X86_REG_RCX),
                           ("rdx", UC_X86_REG_RDX), ("r8", UC_X86_REG_R8), ("r9", UC_X86_REG_R9))})
-    args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf8")
+    temporary = args.output.with_suffix(".tmp")
+    temporary.write_text(json.dumps(report, indent=2) + "\n", encoding="utf8")
+    temporary.replace(args.output)
     print(json.dumps({k: report[k] for k in ("filename", "reason", "registers")} if args.quiet else report, indent=2))
 
 

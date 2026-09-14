@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "name": "loader-execution-20260914",
+  "type": "war3-runtime-research",
+  "created_at": "2026-09-14T01:37:56.475110+00:00",
+  "timezone": "Asia/Shanghai",
+  "status": "open",
+  "services": [],
+  "cleanup": [
+    "Both probe hooks removed",
+    "E:\\Warcraft III\\_retail_\\x86_64\\war3_probe1.dll removed"
+  ],
+  "target_pid": 22844
+}

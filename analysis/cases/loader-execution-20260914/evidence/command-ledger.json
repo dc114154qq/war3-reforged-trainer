@@ -1,0 +1,33 @@
+[
+  {
+    "status": "failed_before_execution",
+    "command": "clang ... -Wl,/entry:DllMain,/nodefaultlib ... (unquoted PowerShell argument)",
+    "error": "PowerShell ParserError: Missing argument in parameter list"
+  },
+  {
+    "status": "passed",
+    "command": "clang -shared -O2 -fno-stack-protector -fno-builtin -nostdlib analysis/engine_hook_probe.c -o analysis/engine-hook-probe-minimal.dll '-Wl,/entry:DllMain,/nodefaultlib' -luser32 -lkernel32",
+    "result": "analysis/engine-hook-probe-minimal-build.log"
+  },
+  {
+    "status": "passed",
+    "command": "python analysis/verify-engine-hook-transport.py --local-host analysis/engine-hook-probe-host.exe --dll analysis/engine-hook-probe-minimal.dll --output analysis/engine-hook-local-minimal.json --duration 0.5",
+    "result": "both callbacks observed; unhooked"
+  },
+  {
+    "status": "executed_negative_result",
+    "command": "python analysis/verify-engine-hook-transport.py --pid 22844 --dll \"E:\\Warcraft III\\_retail_\\x86_64\\war3_probe1.dll\" --output analysis/engine-hook-22844-minimal-game-directory.json --duration 1",
+    "precondition": "Temporary exact copy of engine-hook-probe-minimal.dll; refuse existing destination",
+    "result": "callbacks false; module not listed; unhooked; temporary file removed"
+  },
+  {
+    "status": "executed_emulation_only",
+    "command": "python analysis/trace-loader-open-file.py 22844 \"E:\\Warcraft III\\_retail_\\x86_64\\war3_probe1.dll\" --output analysis/open-file-22844-equalname-probe.json --quiet",
+    "result": "stopped before syscall; not an actual file-open result"
+  },
+  {
+    "status": "passed",
+    "command": "python -m pytest -q --tb=short test_loader_cfg_boundaries.py",
+    "result": "7 passed; analysis/loader-cfg-boundaries.log"
+  }
+]

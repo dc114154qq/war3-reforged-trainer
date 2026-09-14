@@ -1,0 +1,186 @@
+{
+  "schema": 1,
+  "created_utc": "2026-09-14T01:37:56.852580+00:00",
+  "base_commit": "415876dc9ba825a24598326025b4ba57ed607e24",
+  "target_pid_at_capture": 22844,
+  "requested_build": "3.0.0.24268",
+  "archive": "evidence/capture.zip",
+  "archive_sha256": "dc90f61591bfbe6e846b2ef0c897f89c939adef902f7fa7cc0dd50c9ac717c1c",
+  "artifacts": [
+    {
+      "path": "analysis/engine-hook-probe-current.dll",
+      "bytes": 135680,
+      "sha256": "e963d1340b35489cf21e0d225e78aff12ad9d459472fc3e7d19867af22a73d54",
+      "file_mtime_utc": "2026-09-14T01:24:39.530842+00:00"
+    },
+    {
+      "path": "analysis/engine-hook-probe-minimal.dll",
+      "bytes": 3584,
+      "sha256": "836a326e94f7c49ae6752822348c5df2342a9e9a4dc0a47e8dd81c511620a8e1",
+      "file_mtime_utc": "2026-09-14T01:35:07.410010+00:00"
+    },
+    {
+      "path": "analysis/engine-hook-probe-host.exe",
+      "bytes": 141312,
+      "sha256": "214dcb0c6e56cfd12de2a14ee3de6f146ca32137db8df1f4c76ba13f3f52b025",
+      "file_mtime_utc": "2026-09-13T11:53:44.380002+00:00"
+    },
+    {
+      "path": "analysis/engine-hook-probe-current-build.log",
+      "bytes": 110,
+      "sha256": "4398a4687563e82751f2eb9847d966aa78d59ddb4e7dcbea85b9315e21869cd8",
+      "file_mtime_utc": "2026-09-14T01:24:39.523606+00:00"
+    },
+    {
+      "path": "analysis/engine-hook-probe-minimal-build.log",
+      "bytes": 110,
+      "sha256": "67c41ef5df0dbc9b9e7ca98ae9661dd24e690f0aba86f5aa8d6c3d62092c20f3",
+      "file_mtime_utc": "2026-09-14T01:35:07.408015+00:00"
+    },
+    {
+      "path": "analysis/engine-hook-local-current.json",
+      "bytes": 3878,
+      "sha256": "907f31d5a087a1020e1002eae3207a9ec55351367c43a217331bfeb93e185f19",
+      "file_mtime_utc": "2026-09-14T01:24:40.682927+00:00"
+    },
+    {
+      "path": "analysis/engine-hook-22844-current.json",
+      "bytes": 3059,
+      "sha256": "9934344692ac6137e4bbbfdaf9a78f1d645f1b0b5aed5d52d15c6ed4e074d671",
+      "file_mtime_utc": "2026-09-14T01:25:03.462677+00:00"
+    },
+    {
+      "path": "analysis/engine-hook-22844-game-directory.json",
+      "bytes": 3059,
+      "sha256": "a2a78a9c83f7788aa1cb10ca61e00f1eaba7b1334d3e5100b72b050570842ef4",
+      "file_mtime_utc": "2026-09-14T01:30:56.831184+00:00"
+    },
+    {
+      "path": "analysis/engine-hook-local-minimal.json",
+      "bytes": 3877,
+      "sha256": "c74d5944a8f46de72e06ef0803c117c4af1df80d30d06b250957aefbaa140661",
+      "file_mtime_utc": "2026-09-14T01:35:08.323247+00:00"
+    },
+    {
+      "path": "analysis/engine-hook-22844-minimal-game-directory.json",
+      "bytes": 3059,
+      "sha256": "063ddb891992b40377ac186e10dcd6ce3211461c26773eb5d3e07520934fcf6d",
+      "file_mtime_utc": "2026-09-14T01:35:45.523732+00:00"
+    },
+    {
+      "path": "analysis/loading-entry-22844.json",
+      "bytes": 2926,
+      "sha256": "5abeb1a9b59a361c41bd61554e638e6b1ecfdadcabd6066e1c4f341f95b50eb3",
+      "file_mtime_utc": "2026-09-14T01:26:02.547900+00:00"
+    },
+    {
+      "path": "analysis/window-callback-candidates-22844.json",
+      "bytes": 25962,
+      "sha256": "b13625b6717e81fab4f3992baa71d83cf060ea9cc098ddbfdfbda2822700be01",
+      "file_mtime_utc": "2026-09-14T01:32:10.069666+00:00"
+    },
+    {
+      "path": "analysis/window-callback-code-22844.json",
+      "bytes": 112,
+      "sha256": "97e700f743ce1ce8e9bcaf450d95a5e2a92b00d5f280950f3e4e2d68c367de16",
+      "file_mtime_utc": "2026-09-14T01:32:49.839532+00:00"
+    },
+    {
+      "path": "analysis/open-file-22844-probe-emulated.json",
+      "bytes": 2564,
+      "sha256": "88424eba611a71eaf8d233d7af4c454b1540efda7461b2cb0d791bfc8ba0e052",
+      "file_mtime_utc": "2026-09-14T01:27:26.576975+00:00"
+    },
+    {
+      "path": "analysis/open-file-22844-loader-emulated.json",
+      "bytes": 2645,
+      "sha256": "5d081e2e1d93a67f46a97438f7a5ddb5304a7901d2cbab4dcf38004f01fe2166",
+      "file_mtime_utc": "2026-09-14T01:27:27.075579+00:00"
+    },
+    {
+      "path": "analysis/open-file-22844-probe-decisions.json",
+      "bytes": 554097,
+      "sha256": "d55c27850775e0406a1ef6a137043a2926e29fa0bea9dadb387522664e689f3e",
+      "file_mtime_utc": "2026-09-14T01:28:45.680765+00:00"
+    },
+    {
+      "path": "analysis/open-file-22844-loader-decisions.json",
+      "bytes": 554046,
+      "sha256": "8abe37ab604e5cd8200454d137f0fc3f789a3d58266ac19d7692ce8ec21cebd3",
+      "file_mtime_utc": "2026-09-14T01:28:46.214180+00:00"
+    },
+    {
+      "path": "analysis/open-file-22844-equalname-probe.json",
+      "bytes": 554045,
+      "sha256": "2b567ea220b591ecb6723746f24b9aeba218f010b104ab54736a461341bfb78e",
+      "file_mtime_utc": "2026-09-14T01:30:10.333391+00:00"
+    },
+    {
+      "path": "analysis/loader-entry-cfg.json",
+      "bytes": 76541,
+      "sha256": "be8682c29b374885f6672cb899bfa7dac5b96f81e7c673727848f139fbd7e5e7",
+      "file_mtime_utc": "2026-09-14T01:18:39.537937+00:00"
+    },
+    {
+      "path": "analysis/loader-first-call-disk.json",
+      "bytes": 8268,
+      "sha256": "965dd6aad54e8b45f0062058736a5d7fda6bfc5e7db5a9bf48ddbd476a2e93dc",
+      "file_mtime_utc": "2026-09-14T01:22:56.949800+00:00"
+    },
+    {
+      "path": "analysis/loader-cfg-boundaries.log",
+      "bytes": 100,
+      "sha256": "0cd3c807521251f03fc12059102b1e1b04be2dbdece624503f9b9f9c1c405d16",
+      "file_mtime_utc": "2026-09-14T01:19:44.385834+00:00"
+    },
+    {
+      "path": "analysis/engine_hook_probe.c",
+      "bytes": 3126,
+      "sha256": "0a72686dbf6a30544daa95988e4ad22648b32a13845c78df341bc5b41ec9d1f9",
+      "file_mtime_utc": "2026-09-14T01:35:06.663654+00:00"
+    },
+    {
+      "path": "analysis/engine_hook_probe_host.c",
+      "bytes": 808,
+      "sha256": "02434d05505111e43789e180a3e515a2be2daaaa6263748a617b6c1e8f72d9c0",
+      "file_mtime_utc": "2026-09-13T11:52:06.405991+00:00"
+    },
+    {
+      "path": "analysis/verify-engine-hook-transport.py",
+      "bytes": 7673,
+      "sha256": "ce81db9df7808727993a47ad0953d3586897edcb215ad2577c8c295e2f51174e",
+      "file_mtime_utc": "2026-09-13T11:53:39.962366+00:00"
+    },
+    {
+      "path": "analysis/trace-loader-roots.py",
+      "bytes": 4826,
+      "sha256": "2b94d09fa3b9f0e9c329fc3766c0ba9d9f6d47b4c4a1d5b007929b0d2fb7f786",
+      "file_mtime_utc": "2026-09-14T01:18:37.898582+00:00"
+    },
+    {
+      "path": "analysis/trace-loader-first-call.py",
+      "bytes": 5119,
+      "sha256": "84af1659ca6580de9733fd028adae80bc7b4900dc05fc88c7e5f7725fc79a45d",
+      "file_mtime_utc": "2026-09-14T01:22:54.997183+00:00"
+    },
+    {
+      "path": "analysis/trace-loader-open-file.py",
+      "bytes": 6437,
+      "sha256": "4b85c3f44f433f275e9dee248a66397b3f0d81e65967f4e6b4efe73801994e50",
+      "file_mtime_utc": "2026-09-14T01:28:45.110016+00:00"
+    },
+    {
+      "path": "test_loader_cfg_boundaries.py",
+      "bytes": 2507,
+      "sha256": "865cedc21494e7b8268be93df2c670b9a21a0db80be3a9cd2130a07d2f64d705",
+      "file_mtime_utc": "2026-09-14T01:19:41.732505+00:00"
+    },
+    {
+      "path": "analysis/current-e-drive-target.json",
+      "bytes": 148,
+      "sha256": "96765228d043cbbb6d9a10d1fe114e62dad79e34480d08671072a791f049e5a4",
+      "file_mtime_utc": "2026-09-14T01:23:24.373254+00:00"
+    }
+  ],
+  "archive_verified": true
+}

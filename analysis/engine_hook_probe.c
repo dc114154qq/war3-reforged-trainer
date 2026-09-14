@@ -1,7 +1,6 @@
 /* Transport diagnostic only: no game addresses, handlers, commands or writes. */
 #include <windows.h>
 #include <stdint.h>
-#include <stdio.h>
 
 typedef struct ProbeTelemetry {
     uint32_t magic, version, requested_pid, reserved;
@@ -11,6 +10,17 @@ typedef struct ProbeTelemetry {
 } ProbeTelemetry;
 
 __declspec(dllexport) ProbeTelemetry probe_local_state;
+
+/* Avoid CRT initialization while testing whether callbacks arrive at all. */
+static void mapping_name(wchar_t *name, DWORD pid) {
+    static const wchar_t prefix[] = L"Local\\War3EngineHookProbe-";
+    wchar_t digits[10];
+    unsigned pos = 0, count = 0;
+    while (prefix[pos]) { name[pos] = prefix[pos]; ++pos; }
+    do { digits[count++] = (wchar_t)(L'0' + pid % 10); pid /= 10; } while (pid);
+    while (count) name[pos++] = digits[--count];
+    name[pos] = 0;
+}
 
 static void record_callback(int kind, UINT message) {
     wchar_t name[80];
@@ -22,7 +32,7 @@ static void record_callback(int kind, UINT message) {
     probe_local_state.last_message = message;
     if (kind == WH_GETMESSAGE) InterlockedIncrement(&probe_local_state.getmessage_count);
     else InterlockedIncrement(&probe_local_state.callwnd_count);
-    swprintf_s(name, 80, L"Local\\War3EngineHookProbe-%lu", pid);
+    mapping_name(name, pid);
     mapping = OpenFileMappingW(FILE_MAP_WRITE, FALSE, name);
     if (!mapping) { probe_local_state.last_error = GetLastError(); return; }
     shared = (ProbeTelemetry *)MapViewOfFile(mapping, FILE_MAP_WRITE, 0, 0, sizeof(*shared));

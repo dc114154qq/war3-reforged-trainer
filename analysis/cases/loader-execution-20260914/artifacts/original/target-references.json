@@ -1,0 +1,16 @@
+[
+  {
+    "path": "E:\\Warcraft III\\_retail_\\x86_64\\Warcraft III.exe",
+    "bytes": 52885712,
+    "sha256": "bd2a0dc256289de45287bb60f3725b88f1235216d5177984377fe1ca22840a12",
+    "copied": false,
+    "note": "Original input retained in place; no target files patched"
+  },
+  {
+    "path": "E:\\Warcraft III\\_retail_\\x86_64\\war3_loader.dll",
+    "bytes": 39284944,
+    "sha256": "e32431e26f58d1201be3f48baed485114227864d8c6b871eae8e9528241ec8e9",
+    "copied": false,
+    "note": "Original input retained in place; no target files patched"
+  }
+]

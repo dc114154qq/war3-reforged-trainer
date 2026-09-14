@@ -14232,7 +14232,19 @@ class War3Trainer:
 
         old_charges = snapshot.charges
         old_flags = pm.read_u32(snapshot.item_address + self.ITEM_CHARGES_FLAG_OFFSET)
-        self._set_item_charges_via_native_handler(pm, candidate, snapshot, new_charges)
+        if getattr(self, "_native_selection_unavailable", False):
+            pm.write_i32(snapshot.charges_address, new_charges)
+            if pm.read_i32(snapshot.charges_address) != new_charges:
+                raise RuntimeError("物品数量直接写入读回不一致")
+        else:
+            try:
+                self._set_item_charges_via_native_handler(pm, candidate, snapshot, new_charges)
+            except (RuntimeError, TimeoutError) as exc:
+                self._native_selection_unavailable = True
+                self._native_fallback_reason = f"item charge native failure: {exc}"
+                pm.write_i32(snapshot.charges_address, new_charges)
+                if pm.read_i32(snapshot.charges_address) != new_charges:
+                    raise RuntimeError("物品数量回退写入读回不一致") from exc
         time.sleep(0.05)
 
         final_snapshot = next(

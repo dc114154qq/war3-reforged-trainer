@@ -1,0 +1,51 @@
+{
+  "previous_goal_turn": "progress: skill level tail fault recovered narrowly and live verified",
+  "product_changes": [
+    "Current native item creation, complete inventory snapshot and charge updates added to standalone bridge.",
+    "GUI creates items or sets charges using one selection batch, not one full batch per unit.",
+    "Item creation reports stored versus ground outcomes without overwriting original occupied slots.",
+    "Diagnostic action uses an empty inventory slot only, skips units with no inventory/full inventory/already-owned item type; removes newly created item and requires zero item type and unchanged original slots.",
+    "Native exception, stage/error, completed and changed counts retained in error reports.",
+    "Exact work ABI5960 bytes and transport bound8192; complete selected-unit/slot identities checked."
+  ],
+  "live_verified": {
+    "pid": 38352,
+    "count": 15,
+    "inventory_units": 1,
+    "no_inventory_units": 14,
+    "created_item": "phea",
+    "charges_written": 7,
+    "changed": 1,
+    "diagnostic_skipped": 14,
+    "elapsed_ms": 329.4991000002483,
+    "restored": true,
+    "original_item": "stwp,charges1,unchanged handle and slot",
+    "fault": null,
+    "image_and_work_released": true
+  },
+  "code_verified": [
+    "361 passed,23 subtests passed in13.83s.",
+    "Compiled product C tests cover24 mixed units, ground creation for no/full inventory, charge writes, creation failure, wrong type cleanup, failed charge cleanup, removal failure, and preserving existing objects.",
+    "Actual GUI handlers tested to submit once.",
+    "Final stronger decoder revalidated saved live work buffer."
+  ],
+  "artifact": {
+    "path": "tools\\war3_bridge_24268.dll",
+    "sha256": "c4661f0ea423e5b2afd56f1045b9b0afb658869da18aefdca1c36fb648ccedb2",
+    "test_exports_present": false,
+    "item_export": true
+  },
+  "commands_successful": [
+    "tools/build_engine_bridge.ps1",
+    "tools/build_engine_bridge.ps1 -Fixture -OutputDirectory ./analysis",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q test_24268_product_item.py test_24268_product_ability.py test_24268_product_hero.py test_24268_native_table_blocks.py test_native_table_live.py test_24268_context_retry.py test_24268_dispatch_delivery.py test_24268_lifecycle_protocol.py test_24268_native_preflight.py test_24268_selection_protocol.py test_game_thread_dispatch_cleanup.py test_24268_executor_readiness.py test_24268_product_boundary.py test_classic_player_selection.py test_indexed_resources.py --tb=short --maxfail=2"
+  ],
+  "residual": [
+    "Ground/full-inventory creation tested in compiled fixture, not live this turn.",
+    "Direct batch write to pre-existing real equipment was not executed; only temporary-item native charge write tested live.",
+    "Powerups, auto-consumed items and every custom item type not accepted by this single potion test.",
+    "Full unit clone preserving inventory/skills and remaining elephant features unfinished.",
+    "No EXE release or cross-device acceptance claimed; goal remains active."
+  ],
+  "next": "Reuse verified current item/ability native operations to restore inventory and skills in full unit cloning, preserving per-object identity and failure cleanup."
+}

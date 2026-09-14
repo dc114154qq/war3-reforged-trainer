@@ -1,0 +1,5479 @@
+{
+  "pid": 38352,
+  "item": "phea",
+  "before": {
+    "rows": [
+      {
+        "handle": 1050669,
+        "rawcode": 1215324524,
+        "level": 1,
+        "inventory_size": 6,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 1050670,
+            "rawcode": 1937012592,
+            "charges": 1
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 1050670,
+            "rawcode": 1937012592,
+            "charges": 1
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 1,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050696,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 1,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050697,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 1,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050691,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 1,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050690,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 1,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050685,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 1,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050694,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 1,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050699,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 1,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050673,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 1,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050671,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 1,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050664,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 1,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050662,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 1,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050667,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 1,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050668,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 1,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050659,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 1,
+        "created_slot": 4294967295
+      }
+    ],
+    "count": 15,
+    "changed": 0,
+    "skipped": 0,
+    "stored": 0,
+    "ground": 0
+  },
+  "result": {
+    "rows": [
+      {
+        "handle": 1050669,
+        "rawcode": 1215324524,
+        "level": 1,
+        "inventory_size": 6,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 1050670,
+            "rawcode": 1937012592,
+            "charges": 1
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 1050670,
+            "rawcode": 1937012592,
+            "charges": 1
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 1050739,
+        "created_type": 1885889889,
+        "created_charges": 7,
+        "status": 5,
+        "created_slot": 1
+      },
+      {
+        "handle": 1050696,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 6,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050697,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 6,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050691,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 6,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050690,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 6,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050685,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 6,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050694,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 6,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050699,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 6,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050673,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 6,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050671,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 6,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050664,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 6,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050662,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 6,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050667,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 6,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050668,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 6,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050659,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 6,
+        "created_slot": 4294967295
+      }
+    ],
+    "count": 15,
+    "changed": 1,
+    "skipped": 14,
+    "stored": 0,
+    "ground": 0
+  },
+  "ok": true,
+  "execution": {
+    "pid": 38352,
+    "operation": "item",
+    "request": {
+      "action": 3,
+      "rawcode": 1885889889,
+      "charges": 7
+    },
+    "ok": true,
+    "mappings": {
+      "GetLocalPlayer": {
+        "address": "0x7ff73a8773d0",
+        "kind": "readable-executable",
+        "protection": "0x20",
+        "allocation": "0x7ff739bd0000",
+        "code_hex": "40534883ec2066660f1f840000000000"
+      },
+      "CreateGroup": {
+        "address": "0x7ff73a865f40",
+        "kind": "readable-executable",
+        "protection": "0x20",
+        "allocation": "0x7ff739bd0000",
+        "code_hex": "48895c240848896c2410488974241857"
+      },
+      "GroupEnumUnitsSelected": {
+        "address": "0x7ff73a8808a0",
+        "kind": "readable-executable",
+        "protection": "0x20",
+        "allocation": "0x7ff739bd0000",
+        "code_hex": "48895c240848896c2410488974241848"
+      },
+      "FirstOfGroup": {
+        "address": "0x7ff73a86bb90",
+        "kind": "readable-executable",
+        "protection": "0x20",
+        "allocation": "0x7ff739bd0000",
+        "code_hex": "4883ec28e817fac4ff4885c0741e488d"
+      },
+      "GroupRemoveUnit": {
+        "address": "0x7ff73a880e80",
+        "kind": "readable-executable",
+        "protection": "0x20",
+        "allocation": "0x7ff739bd0000",
+        "code_hex": "48895c2408574883ec208bfae81fa7c3"
+      },
+      "DestroyGroup": {
+        "address": "0x7ff73a8699d0",
+        "kind": "readable-executable",
+        "protection": "0x20",
+        "allocation": "0x7ff739bd0000",
+        "code_hex": "4883ec28e8d71bc5ff4885c07411488b"
+      },
+      "GetUnitTypeId": {
+        "address": "0x7ff73a87f560",
+        "kind": "readable-executable",
+        "protection": "0x20",
+        "allocation": "0x7ff739bd0000",
+        "code_hex": "4883ec28e8a7e7c3ff4885c075054883"
+      },
+      "GetHeroLevel": {
+        "address": "0x7ff73a876160",
+        "kind": "readable-executable",
+        "protection": "0x20",
+        "allocation": "0x7ff739bd0000",
+        "code_hex": "48895c2408574883ec20e8a17bc4ff48"
+      },
+      "UnitAddItemById": {
+        "address": "0x7ff73a8cfff0",
+        "kind": "image-noaccess-diagnostic-only",
+        "protection": "0x1",
+        "allocation": "0x7ff739bd0000",
+        "code_hex": null
+      },
+      "UnitItemInSlot": {
+        "address": "0x7ff73a8d1700",
+        "kind": "readable-executable",
+        "protection": "0x20",
+        "allocation": "0x7ff739bd0000",
+        "code_hex": "48895c2408574883ec208bfae8ffc5be"
+      },
+      "UnitInventorySize": {
+        "address": "0x7ff73a8d15a0",
+        "kind": "readable-executable",
+        "protection": "0x20",
+        "allocation": "0x7ff739bd0000",
+        "code_hex": "40534883ec20e865c7beff488bd84885"
+      },
+      "GetItemTypeId": {
+        "address": "0x7ff73a876e80",
+        "kind": "readable-executable",
+        "protection": "0x20",
+        "allocation": "0x7ff739bd0000",
+        "code_hex": "4883ec28e80749c4ff4885c075054883"
+      },
+      "GetItemCharges": {
+        "address": "0x7ff73a8768b0",
+        "kind": "readable-executable",
+        "protection": "0x20",
+        "allocation": "0x7ff739bd0000",
+        "code_hex": "4883ec28e8d74ec4ff4885c075054883"
+      },
+      "SetItemCharges": {
+        "address": "0x7ff73a8c28d0",
+        "kind": "image-noaccess-diagnostic-only",
+        "protection": "0x1",
+        "allocation": "0x7ff739bd0000",
+        "code_hex": null
+      },
+      "RemoveItem": {
+        "address": "0x7ff73a88ded0",
+        "kind": "image-noaccess-diagnostic-only",
+        "protection": "0x1",
+        "allocation": "0x7ff739bd0000",
+        "code_hex": null
+      },
+      "UnitRemoveItem": {
+        "address": "0x7ff73a8d1a70",
+        "kind": "readable-executable",
+        "protection": "0x20",
+        "allocation": "0x7ff739bd0000",
+        "code_hex": "48895c2408574883ec208bfae88fc2be"
+      }
+    },
+    "preflight_ms": 261.326600000757,
+    "dispatch": {
+      "pid": 38352,
+      "hwnd": "0x8d09a8",
+      "expected_callback_tid": 35668,
+      "image": "C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\tools\\war3_bridge_24268.dll",
+      "image_sha256": "c4661f0ea423e5b2afd56f1045b9b0afb658869da18aefdca1c36fb648ccedb2",
+      "calls_game_handlers": true,
+      "query_mode": "item",
+      "delivery_mode": "posted",
+      "image_base": "0x7ffe56660000",
+      "command_address": "0x22600770000",
+      "work_address": "0x22600780000",
+      "install_thread": {
+        "tid": 27440,
+        "created": true,
+        "completed": true
+      },
+      "after_install": {
+        "hook": 69537811,
+        "target_tid": 35668,
+        "message": 50113,
+        "nonce": 135056219023752916,
+        "stage": 2,
+        "last_error": 0,
+        "callback_tid": 0,
+        "callback_count": 0,
+        "detached": 0,
+        "active": 0,
+        "query_result": "0x0",
+        "tls_value": "0x0",
+        "query_stage": 0,
+        "exception_code": "0x0",
+        "unwind_registered": 1,
+        "unwind_removed": 0
+      },
+      "post": {
+        "enqueued": true,
+        "error": 0
+      },
+      "after_send": {
+        "hook": 69537811,
+        "target_tid": 35668,
+        "message": 50113,
+        "nonce": 135056219023752916,
+        "stage": 3,
+        "last_error": 0,
+        "callback_tid": 35668,
+        "callback_count": 1,
+        "detached": 1,
+        "active": 0,
+        "query_result": "0xf",
+        "tls_value": "0x225ddb3ea60",
+        "query_stage": 2,
+        "exception_code": "0x0",
+        "unwind_registered": 1,
+        "unwind_removed": 0
+      },
+      "after_cleanup": {
+        "hook": 69537811,
+        "target_tid": 35668,
+        "message": 50113,
+        "nonce": 135056219023752916,
+        "stage": 3,
+        "last_error": 0,
+        "callback_tid": 35668,
+        "callback_count": 1,
+        "detached": 1,
+        "active": 0,
+        "query_result": "0xf",
+        "tls_value": "0x225ddb3ea60",
+        "query_stage": 2,
+        "exception_code": "0x0",
+        "unwind_registered": 1,
+        "unwind_removed": 1
+      },
+      "callback_verified": true,
+      "query_completed": true,
+      "fault": null,
+      "recovered_tail_faults": 0,
+      "work_result_hex": "d073873af77f0000405f863af77f0000a008883af77f000090bb863af77f0000800e883af77f0000d099863af77f000060f5873af77f00006061873af77f0000080010000000000072081000000000000f0000000000000001000000000000002d081000000000006c6170480100000048081000000000006f6f66680000000049081000000000006f6f66680000000043081000000000006f6f66680000000042081000000000006f6f6668000000003d081000000000006f6f66680000000046081000000000006f6f6668000000004b081000000000006f6f66680000000031081000000000006f6f6668000000002f081000000000006f6f66680000000028081000000000006f6f66680000000026081000000000006f6f6668000000002b081000000000006f6f6668000000002c081000000000006f6f66680000000023081000000000006f6f666800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000f0ff8c3af77f000000178d3af77f0000a0158d3af77f0000806e873af77f0000b068873af77f0000d0288c3af77f0000d0de883af77f0000701a8d3af77f000060eab3dd2502000061656870030000000700000001000000000000000f0000000e000000000000002e08100000000000707774730100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002e08100000000000707774730100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000007308100000000000616568700700000006000000050000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000006000000ffffffff00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000006000000ffffffff00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000006000000ffffffff00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000006000000ffffffff00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000006000000ffffffff00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000006000000ffffffff00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000006000000ffffffff00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000006000000ffffffff00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000006000000ffffffff00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000006000000ffffffff00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000006000000ffffffff00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000006000000ffffffff00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000006000000ffffffff00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000006000000ffffffff00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "safe_to_release": true,
+      "work_freed": true,
+      "block_freed": true,
+      "image_unmap_status": "0x0"
+    },
+    "item_status": {
+      "changed": 1,
+      "error": 0,
+      "completed": 15,
+      "skipped": 14
+    },
+    "result": {
+      "rows": [
+        {
+          "handle": 1050669,
+          "rawcode": 1215324524,
+          "level": 1,
+          "inventory_size": 6,
+          "before": [
+            {
+              "slot": 0,
+              "handle": 1050670,
+              "rawcode": 1937012592,
+              "charges": 1
+            },
+            {
+              "slot": 1,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 2,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 3,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 4,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 5,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            }
+          ],
+          "after": [
+            {
+              "slot": 0,
+              "handle": 1050670,
+              "rawcode": 1937012592,
+              "charges": 1
+            },
+            {
+              "slot": 1,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 2,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 3,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 4,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 5,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            }
+          ],
+          "created": 1050739,
+          "created_type": 1885889889,
+          "created_charges": 7,
+          "status": 5,
+          "created_slot": 1
+        },
+        {
+          "handle": 1050696,
+          "rawcode": 1751543663,
+          "level": 0,
+          "inventory_size": 0,
+          "before": [
+            {
+              "slot": 0,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 1,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 2,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 3,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 4,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 5,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            }
+          ],
+          "after": [
+            {
+              "slot": 0,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 1,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 2,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 3,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 4,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 5,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            }
+          ],
+          "created": 0,
+          "created_type": 0,
+          "created_charges": 0,
+          "status": 6,
+          "created_slot": 4294967295
+        },
+        {
+          "handle": 1050697,
+          "rawcode": 1751543663,
+          "level": 0,
+          "inventory_size": 0,
+          "before": [
+            {
+              "slot": 0,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 1,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 2,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 3,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 4,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 5,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            }
+          ],
+          "after": [
+            {
+              "slot": 0,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 1,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 2,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 3,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 4,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 5,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            }
+          ],
+          "created": 0,
+          "created_type": 0,
+          "created_charges": 0,
+          "status": 6,
+          "created_slot": 4294967295
+        },
+        {
+          "handle": 1050691,
+          "rawcode": 1751543663,
+          "level": 0,
+          "inventory_size": 0,
+          "before": [
+            {
+              "slot": 0,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 1,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 2,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 3,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 4,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 5,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            }
+          ],
+          "after": [
+            {
+              "slot": 0,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 1,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 2,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 3,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 4,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 5,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            }
+          ],
+          "created": 0,
+          "created_type": 0,
+          "created_charges": 0,
+          "status": 6,
+          "created_slot": 4294967295
+        },
+        {
+          "handle": 1050690,
+          "rawcode": 1751543663,
+          "level": 0,
+          "inventory_size": 0,
+          "before": [
+            {
+              "slot": 0,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 1,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 2,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 3,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 4,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 5,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            }
+          ],
+          "after": [
+            {
+              "slot": 0,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 1,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 2,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 3,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 4,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 5,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            }
+          ],
+          "created": 0,
+          "created_type": 0,
+          "created_charges": 0,
+          "status": 6,
+          "created_slot": 4294967295
+        },
+        {
+          "handle": 1050685,
+          "rawcode": 1751543663,
+          "level": 0,
+          "inventory_size": 0,
+          "before": [
+            {
+              "slot": 0,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 1,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 2,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 3,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 4,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 5,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            }
+          ],
+          "after": [
+            {
+              "slot": 0,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 1,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 2,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 3,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 4,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 5,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            }
+          ],
+          "created": 0,
+          "created_type": 0,
+          "created_charges": 0,
+          "status": 6,
+          "created_slot": 4294967295
+        },
+        {
+          "handle": 1050694,
+          "rawcode": 1751543663,
+          "level": 0,
+          "inventory_size": 0,
+          "before": [
+            {
+              "slot": 0,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 1,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 2,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 3,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 4,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 5,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            }
+          ],
+          "after": [
+            {
+              "slot": 0,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 1,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 2,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 3,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 4,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 5,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            }
+          ],
+          "created": 0,
+          "created_type": 0,
+          "created_charges": 0,
+          "status": 6,
+          "created_slot": 4294967295
+        },
+        {
+          "handle": 1050699,
+          "rawcode": 1751543663,
+          "level": 0,
+          "inventory_size": 0,
+          "before": [
+            {
+              "slot": 0,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 1,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 2,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 3,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 4,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 5,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            }
+          ],
+          "after": [
+            {
+              "slot": 0,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 1,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 2,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 3,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 4,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 5,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            }
+          ],
+          "created": 0,
+          "created_type": 0,
+          "created_charges": 0,
+          "status": 6,
+          "created_slot": 4294967295
+        },
+        {
+          "handle": 1050673,
+          "rawcode": 1751543663,
+          "level": 0,
+          "inventory_size": 0,
+          "before": [
+            {
+              "slot": 0,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 1,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 2,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 3,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 4,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 5,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            }
+          ],
+          "after": [
+            {
+              "slot": 0,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 1,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 2,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 3,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 4,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 5,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            }
+          ],
+          "created": 0,
+          "created_type": 0,
+          "created_charges": 0,
+          "status": 6,
+          "created_slot": 4294967295
+        },
+        {
+          "handle": 1050671,
+          "rawcode": 1751543663,
+          "level": 0,
+          "inventory_size": 0,
+          "before": [
+            {
+              "slot": 0,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 1,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 2,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 3,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 4,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 5,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            }
+          ],
+          "after": [
+            {
+              "slot": 0,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 1,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 2,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 3,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 4,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 5,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            }
+          ],
+          "created": 0,
+          "created_type": 0,
+          "created_charges": 0,
+          "status": 6,
+          "created_slot": 4294967295
+        },
+        {
+          "handle": 1050664,
+          "rawcode": 1751543663,
+          "level": 0,
+          "inventory_size": 0,
+          "before": [
+            {
+              "slot": 0,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 1,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 2,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 3,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 4,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 5,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            }
+          ],
+          "after": [
+            {
+              "slot": 0,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 1,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 2,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 3,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 4,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 5,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            }
+          ],
+          "created": 0,
+          "created_type": 0,
+          "created_charges": 0,
+          "status": 6,
+          "created_slot": 4294967295
+        },
+        {
+          "handle": 1050662,
+          "rawcode": 1751543663,
+          "level": 0,
+          "inventory_size": 0,
+          "before": [
+            {
+              "slot": 0,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 1,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 2,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 3,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 4,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 5,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            }
+          ],
+          "after": [
+            {
+              "slot": 0,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 1,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 2,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 3,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 4,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 5,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            }
+          ],
+          "created": 0,
+          "created_type": 0,
+          "created_charges": 0,
+          "status": 6,
+          "created_slot": 4294967295
+        },
+        {
+          "handle": 1050667,
+          "rawcode": 1751543663,
+          "level": 0,
+          "inventory_size": 0,
+          "before": [
+            {
+              "slot": 0,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 1,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 2,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 3,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 4,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 5,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            }
+          ],
+          "after": [
+            {
+              "slot": 0,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 1,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 2,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 3,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 4,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 5,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            }
+          ],
+          "created": 0,
+          "created_type": 0,
+          "created_charges": 0,
+          "status": 6,
+          "created_slot": 4294967295
+        },
+        {
+          "handle": 1050668,
+          "rawcode": 1751543663,
+          "level": 0,
+          "inventory_size": 0,
+          "before": [
+            {
+              "slot": 0,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 1,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 2,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 3,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 4,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 5,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            }
+          ],
+          "after": [
+            {
+              "slot": 0,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 1,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 2,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 3,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 4,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 5,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            }
+          ],
+          "created": 0,
+          "created_type": 0,
+          "created_charges": 0,
+          "status": 6,
+          "created_slot": 4294967295
+        },
+        {
+          "handle": 1050659,
+          "rawcode": 1751543663,
+          "level": 0,
+          "inventory_size": 0,
+          "before": [
+            {
+              "slot": 0,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 1,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 2,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 3,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 4,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 5,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            }
+          ],
+          "after": [
+            {
+              "slot": 0,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 1,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 2,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 3,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 4,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            },
+            {
+              "slot": 5,
+              "handle": 0,
+              "rawcode": 0,
+              "charges": 0
+            }
+          ],
+          "created": 0,
+          "created_type": 0,
+          "created_charges": 0,
+          "status": 6,
+          "created_slot": 4294967295
+        }
+      ],
+      "count": 15,
+      "changed": 1,
+      "skipped": 14,
+      "stored": 0,
+      "ground": 0
+    },
+    "elapsed_ms": 329.4991000002483
+  },
+  "after": {
+    "rows": [
+      {
+        "handle": 1050669,
+        "rawcode": 1215324524,
+        "level": 1,
+        "inventory_size": 6,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 1050670,
+            "rawcode": 1937012592,
+            "charges": 1
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 1050670,
+            "rawcode": 1937012592,
+            "charges": 1
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 1,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050696,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 1,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050697,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 1,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050691,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 1,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050690,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 1,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050685,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 1,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050694,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 1,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050699,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 1,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050673,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 1,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050671,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 1,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050664,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 1,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050662,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 1,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050667,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 1,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050668,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 1,
+        "created_slot": 4294967295
+      },
+      {
+        "handle": 1050659,
+        "rawcode": 1751543663,
+        "level": 0,
+        "inventory_size": 0,
+        "before": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "after": [
+          {
+            "slot": 0,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 1,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 2,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 3,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 4,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          },
+          {
+            "slot": 5,
+            "handle": 0,
+            "rawcode": 0,
+            "charges": 0
+          }
+        ],
+        "created": 0,
+        "created_type": 0,
+        "created_charges": 0,
+        "status": 1,
+        "created_slot": 4294967295
+      }
+    ],
+    "count": 15,
+    "changed": 0,
+    "skipped": 0,
+    "stored": 0,
+    "ground": 0
+  },
+  "restored": true
+}

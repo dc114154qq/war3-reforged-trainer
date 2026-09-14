@@ -104,6 +104,9 @@ def dispatch(pid,hwnd,tid,image,tls_index,work_payload,kind="hero"):
     elif kind=='ability':
         from war3_ability_protocol import ABI as expected_abi,validate_work as validate_ability
         validate_ability(work_payload);marker_name=b'ability_batch_abi';query_name=b'BridgeAbilityQuery'
+    elif kind=='item':
+        from war3_item_protocol import ABI as expected_abi,validate_work as validate_item
+        validate_item(work_payload);marker_name=b'item_batch_abi';query_name=b'BridgeItemQuery'
     else:raise ValueError('Unknown current-engine batch kind')
     owner=U()
     if window_thread(hwnd,c.byref(owner))!=tid or owner.value!=pid:
@@ -150,7 +153,7 @@ def dispatch(pid,hwnd,tid,image,tls_index,work_payload,kind="hero"):
             view.value+directory.VirtualAddress,view.value,query,0,0,
             resolve(memory,'ntdll','__C_specific_handler'),directory.Size//12,tls_index,0,0,0,0)
         if work_payload:
-            if len(work_payload) > 4096:raise ValueError('Diagnostic work block exceeds bound')
+            if len(work_payload) > 8192:raise ValueError('Diagnostic work block exceeds bound')
             work=p['alloc'](handle,None,len(work_payload),0x3000,4)
             if not work:raise c.WinError(c.get_last_error())
             buf=c.create_string_buffer(bytes(work_payload));n=Z()

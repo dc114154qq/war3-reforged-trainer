@@ -5450,6 +5450,10 @@ class War3Trainer:
             raise ValueError("技能 ID 无效")
         return self._engine_instance_24268().ability_batch(ability, action, level)
 
+    def item_batch_24268(self, action: int = 0, rawcode: int | str = 0, charges: int = -1) -> dict:
+        code = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF if rawcode else 0
+        return self._engine_instance_24268().item_batch(action, code, charges)
+
     def get_selected_hero_level(self) -> int:
         if getattr(self, "_native_selection_unavailable", False):
             return int(self.hero_progress_24268()["rows"][0]["after"])
@@ -6551,6 +6555,8 @@ class War3Trainer:
         item_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
         if not item_rawcode:
             raise ValueError("物品 ID 无效")
+        if getattr(self, "_native_selection_unavailable", False):
+            return int(self.item_batch_24268(1, item_rawcode)["rows"][0]["created"])
         return int(self._run_bound_item_create(item_rawcode).arg0)
 
     def _run_bound_item_create(self, rawcode: int) -> NativeHelperOpResult:
@@ -6587,19 +6593,8 @@ class War3Trainer:
         if not 1 <= target <= 1_000_000_000:
             raise ValueError("物品数量必须在 1 到 1000000000 之间")
         if getattr(self, "_native_selection_unavailable", False):
-            candidate, _handle = self._direct_selected_context()
-            with self._process_memory(write=True) as memory:
-                items = self._inventory_items_from_candidate(memory, candidate)
-                writable = [item for item in items if item.item_address and item.charges_address]
-                if not writable:
-                    raise RuntimeError("当前选中单位没有可写物品数量")
-                for item in writable:
-                    memory.write_i32(item.charges_address, target)
-                refreshed = self._inventory_items_from_candidate(memory, candidate)
-            by_slot = {item.slot: item for item in refreshed}
-            if any(item.slot not in by_slot or by_slot[item.slot].charges != target for item in writable):
-                raise RuntimeError("3.0 物品数量写入读回不一致")
-            return len(writable)
+            result = self.item_batch_24268(2, 0, target)
+            return sum(bool(item['handle']) for row in result['rows'] for item in row['after'])
         return self._run_bound_inventory_batch(1, target)
 
     def duplicate_selected_inventory_items(self) -> int:
@@ -16134,6 +16129,10 @@ def run_gui() -> None:
         rawcode = elephant_item_rawcode.get().strip()
         if not rawcode:
             raise ValueError("请填写物品 ID")
+        trainer = elephant_trainer()
+        if getattr(trainer, "_native_selection_unavailable", False):
+            result = trainer.item_batch_24268(1, rawcode)
+            return f"已创建 {result['count']} 件物品：入包 {result['stored']} 件，落地 {result['ground']} 件"
         results = elephant_batch(
             lambda: elephant_trainer().add_item_to_selected_unit(rawcode),
             f"添加物品 {rawcode}",
@@ -16653,6 +16652,10 @@ def run_gui() -> None:
 
     def elephant_set_inventory_charges() -> str:
         charges = parse_int(elephant_item_charges.get(), "物品数量")
+        trainer = elephant_trainer()
+        if getattr(trainer, "_native_selection_unavailable", False):
+            result = trainer.item_batch_24268(2, 0, charges)
+            return f"已核对 {result['count']} 个单位的背包，修改 {result['changed']} 件物品次数"
         results = elephant_batch(
             lambda: elephant_trainer().set_selected_inventory_charges(charges),
             "设置物品数量",

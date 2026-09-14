@@ -16,7 +16,7 @@ class EngineExecutionError(RuntimeError):
         super().__init__(message+'; engine24268='+json.dumps(dict(pid=report.get('pid'),
             phase=state.get('query_stage'),exception=state.get('exception_code'),
             retained=report.get('dispatch',{}).get('allocations_retained',False),
-            ability_status=report.get('ability_status')),ensure_ascii=False))
+            ability_status=report.get('ability_status'),item_status=report.get('item_status')),ensure_ascii=False))
 
 class Engine24268:
     def __init__(self,pid,hwnd,memory_factory,image=None,report_sink=None):
@@ -41,6 +41,18 @@ class Engine24268:
         names=tuple(n for n,_ in SIGNATURES+ABILITIES)
         return self._execute('ability',names,lambda entries,tls:build(entries,tls,rawcode,action,level),decode,
                              dict(rawcode=rawcode,action=action,level=level))
+
+    def item_batch(self,action=0,rawcode=0,charges=-1):
+        from war3_item_protocol import SIGNATURES as ITEMS,build_work as build,decode_work as decode
+        if any(isinstance(v,bool) or not isinstance(v,int) for v in (action,rawcode,charges)):
+            raise ValueError('Item arguments must be integers')
+        if (action not in (0,1,2,3) or not 0<=rawcode<=0xffffffff or (action in (1,3) and not rawcode)
+            or (action in (0,2) and rawcode) or not -1<=charges<=1000000000
+            or (action in (2,3) and charges<1) or (action==0 and charges!=-1)):
+            raise ValueError('Invalid item operation')
+        names=tuple(n for n,_ in SIGNATURES+ITEMS)
+        return self._execute('item',names,lambda entries,tls:build(entries,tls,action,rawcode,charges),decode,
+                             dict(action=action,rawcode=rawcode,charges=charges))
 
     def _execute(self,kind,names,builder,decoder,request):
         with self.lock:
@@ -68,6 +80,11 @@ class Engine24268:
                         if len(raw)==832:
                             changed,error,completed=struct.unpack_from('<3I',raw,532)
                             report['ability_status']=dict(changed=changed,error=error,completed=completed)
+                    if kind=='item' and evidence.get('work_result_hex'):
+                        raw=bytes.fromhex(evidence['work_result_hex'])
+                        if len(raw)==5960:
+                            changed,error,completed,skipped=struct.unpack_from('<4I',raw,564)
+                            report['item_status']=dict(changed=changed,error=error,completed=completed,skipped=skipped)
                     if not (evidence.get('callback_verified') and evidence.get('query_completed') and evidence.get('work_freed')
                         and evidence.get('block_freed') and evidence.get('image_unmap_status')=='0x0'
                         and evidence['after_send']['tls_value']==hex(mode.tls)):

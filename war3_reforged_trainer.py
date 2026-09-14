@@ -1463,14 +1463,33 @@ class ProcessMemory:
         return list(out)
 
     def read(self, address: int, size: int) -> bytes:
-        buf = ctypes.create_string_buffer(size)
-        got = ctypes.c_size_t()
-        ok = kernel32.ReadProcessMemory(
-            self.handle, ctypes.c_void_p(address), buf, size, ctypes.byref(got)
-        )
-        if not ok:
-            raise ctypes.WinError(ctypes.get_last_error())
-        return buf.raw[: got.value]
+        if size < 0:
+            raise ValueError("read size must be non-negative")
+        if size == 0:
+            return b""
+        # 3.0 frequently places adjacent objects at a readable-region edge.
+        # ReadProcessMemory may return ERROR_PARTIAL_COPY for a request that
+        # crosses that edge even when every requested field is valid. Split at
+        # page boundaries and preserve the exact-read contract for callers.
+        result = bytearray()
+        current = int(address)
+        remaining = int(size)
+        while remaining:
+            chunk_size = min(remaining, 0x1000 - (current & 0xFFF))
+            buf = ctypes.create_string_buffer(chunk_size)
+            got = ctypes.c_size_t()
+            ok = kernel32.ReadProcessMemory(
+                self.handle, ctypes.c_void_p(current), buf, chunk_size, ctypes.byref(got)
+            )
+            if got.value:
+                result.extend(buf.raw[: got.value])
+                current += got.value
+                remaining -= got.value
+            if not ok and got.value == 0:
+                raise ctypes.WinError(ctypes.get_last_error())
+            if got.value != chunk_size:
+                raise ctypes.WinError(ctypes.get_last_error() or ERROR_PARTIAL_COPY)
+        return bytes(result)
 
     def read_i32(self, address: int) -> int:
         return struct.unpack("<i", self.read(address, 4))[0]
@@ -2063,20 +2082,29 @@ class Win10ProcessMemory(ProcessMemory):
         raise exc
 
     def _read_exact(self, address: int, size: int) -> bytes:
-        last_received = 0
-        last_error = 0
-        for attempt in range(1, self.EXACT_RETRIES + 1):
-            data, received, error, _ok = self._read_once(address, size)
-            if received == size:
-                return data
-            last_received = received
-            last_error = error
-            self._log_read_failure(address, size, received, error, attempt, "exact")
-            if error != ERROR_PARTIAL_COPY or attempt == self.EXACT_RETRIES:
-                break
-            self._regions_cache = None
-            time.sleep(0.002 * attempt)
-        self._raise_read_error(address, size, last_received, last_error)
+        result = bytearray()
+        current = int(address)
+        remaining = int(size)
+        while remaining:
+            request = min(remaining, 0x1000 - (current & 0xFFF))
+            data = b""
+            received = 0
+            error = 0
+            for attempt in range(1, self.EXACT_RETRIES + 1):
+                data, received, error, _ok = self._read_once(current, request)
+                if received == request:
+                    break
+                self._log_read_failure(current, request, received, error, attempt, "exact-page")
+                if error != ERROR_PARTIAL_COPY or attempt == self.EXACT_RETRIES:
+                    break
+                self._regions_cache = None
+                time.sleep(0.002 * attempt)
+            if received != request:
+                self._raise_read_error(current, request, received, error)
+            result.extend(data)
+            current += request
+            remaining -= request
+        return bytes(result)
 
     def _read_tolerant(self, address: int, size: int) -> bytes:
         data, received, error, _ok = self._read_once(address, size)

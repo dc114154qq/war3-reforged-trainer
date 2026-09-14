@@ -1,0 +1,17 @@
+{
+  "ok": true,
+  "url": "https://twomengxi.xyz/releases.json",
+  "http_status": 200,
+  "tag": "v2.0.0",
+  "name": "v2.0.0 测试版",
+  "assets": [
+    {
+      "name": "War3ReforgedTrainer-v2.0.0-test.exe",
+      "url": "/downloads/War3ReforgedTrainer-v2.0.0-test.exe?sha256=08e0862394c480e4c540675192ef835ff15c0736d3168447745f0518be2e0cb7",
+      "size": 18736105,
+      "sha256": "08e0862394c480e4c540675192ef835ff15c0736d3168447745f0518be2e0cb7"
+    }
+  ],
+  "release_count": 33,
+  "attempt": 14
+}

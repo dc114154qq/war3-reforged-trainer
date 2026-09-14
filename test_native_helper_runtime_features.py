@@ -175,7 +175,7 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
         trainer._selected_candidates_from_selection_manager.assert_not_called()
 
     def test_persistent_snapshot_has_no_process_scan_dependency(self):
-        source = (Path(__file__).parent / "tools" / "war3_native_helper.c").read_text(
+        source = (Path(__file__).parent / "analysis" / "fixtures" / "legacy-native-helper.c").read_text(
             encoding="utf-8"
         )
         start = source.index("static DWORD war3_persistent_selected_snapshot(")

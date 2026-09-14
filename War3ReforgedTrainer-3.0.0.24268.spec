@@ -5,6 +5,7 @@ a = Analysis(
     pathex=[],
     binaries=[
         ('tools/capstone.dll', 'capstone/lib'),
+        ('tools/war3_engine_24268.dll', 'tools'),
     ],
     datas=[('assets/app_icon.png', 'assets')],
     hiddenimports=['capstone', 'war3_runtime_check'],
@@ -21,4 +22,5 @@ exe = EXE(
     target_arch=None, codesign_identity=None, entitlements_file=None,
     icon='assets/app_icon.ico', version='tools/war3-3.0-version-info.txt',
 )
+
 

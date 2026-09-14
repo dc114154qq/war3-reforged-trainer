@@ -5562,16 +5562,30 @@ class War3Trainer:
         target = float(scale)
         if not 0.01 <= target <= 100.0:
             raise ValueError("单位大小必须在 0.01 到 100 之间")
+        target = coerce_finite_float32(target)
         if getattr(self, "_native_selection_unavailable", False):
             candidate, _handle = self._direct_selected_context()
             with self._process_memory(write=True) as memory:
+                from war3_object_registry import ObjectRegistry24268
+                registry = self._classic_object_registry or ObjectRegistry24268.attach(memory)
+                self._classic_object_registry = registry
+                identity = (candidate.handle, candidate.owner_address)
+
+                def check_identity():
+                    if registry.resolve_unit(memory, candidate.unit_address) != identity:
+                        raise RuntimeError("3.0 scale unit identity changed")
+
+                check_identity()
                 address = candidate.unit_address + 0x290
-                if abs(memory.read_f32(address) - 1.0) > 0.001 and not math.isfinite(memory.read_f32(address)):
-                    raise RuntimeError("3.0 单位缩放字段校验失败")
+                current = memory.read_f32(address)
+                if not math.isfinite(current) or current <= 0:
+                    raise RuntimeError("3.0 scale field is invalid")
+                check_identity()
                 memory.write_f32(address, target)
                 actual = memory.read_f32(address)
-                if abs(actual - target) > 0.001:
-                    raise RuntimeError("3.0 单位缩放写入读回不一致")
+                check_identity()
+                if not math.isfinite(actual) or actual != target:
+                    raise RuntimeError("3.0 scale readback differs from request")
             return actual
         expected = self._float_bits(target)
         result = self._run_bound_unit_value_action("SetUnitScale", self.NATIVE_HELPER_OP_JASS_UNIT_SCALE, expected)

@@ -1,0 +1,26 @@
+{
+  "change": "scale finite-value, float32 and registry identity validation",
+  "product_tests": 24,
+  "combined_tests_passed": 103,
+  "test_exit_code": 0,
+  "test_log": "scale-product-regression.log",
+  "live_test": "not executed",
+  "limitations": [
+    "No engine-rendering verification",
+    "No atomic synchronization with game object destruction",
+    "Skill replacement and cloning still incomplete"
+  ],
+  "successful_commands": [
+    "git status --short -uno; focused symbol lookup and basic-field source inspection",
+    "AST extraction of set_selected_unit_scale",
+    "atomic scale-method edit",
+    "python -m pytest -q test_24268_scale_write.py test_native_unit_transform.py --tb=short --maxfail=2",
+    "git diff --check; focused trainer diff"
+  ],
+  "skills_reused": [
+    "l-gameassist",
+    "l-reverse",
+    "seagull-lab"
+  ],
+  "skill_reads_this_turn": []
+}

@@ -1,0 +1,70 @@
+{
+  "recorded_utc": "2026-09-14T01:44:20.285536+00:00",
+  "archive": "analysis\\cases\\loader-execution-20260914\\evidence\\thread-loader-capture.zip",
+  "archive_sha256": "72fe8a88b13cd3a3d29733d416be432caeacc27593e910c084a828113940a70b",
+  "artifacts": [
+    {
+      "path": "analysis/verify-loader-thread.py",
+      "sha256": "91a28e33e36f5c837c7c60af62c3a8a9b35d36a0795dfd34dac06ffa035246dc",
+      "bytes": 11545
+    },
+    {
+      "path": "test_loader_thread_diagnostic.py",
+      "sha256": "22097657579f7963775cc995cd2bcb60738a8dbb37653ec25d898e5f1af02361",
+      "bytes": 2204
+    },
+    {
+      "path": "analysis/loader-thread-diagnostic-tests.log",
+      "sha256": "1f492fbba1309e1813179af785cd324088a97336217c3efb50016ed42e1be7db",
+      "bytes": 101
+    },
+    {
+      "path": "analysis/loader-thread-local.json",
+      "sha256": "8a109140af2377710ff1a50210453ee15df0a3164ce9d61b4b266cd5d71ac3a4",
+      "bytes": 1332
+    },
+    {
+      "path": "analysis/loader-thread-22844.json",
+      "sha256": "c9696035520875d3f381962f9d39d027bbe6de3b9ab17a73b07c6050cd918e5c",
+      "bytes": 751
+    },
+    {
+      "path": "analysis/loader-thread-local-marked.json",
+      "sha256": "85202f3957acac5c1cddf5c4c171e93a951d71bf8863aa42b2c3d4c04feddc8f",
+      "bytes": 1625
+    },
+    {
+      "path": "analysis/loader-thread-22844-marked.json",
+      "sha256": "e8bd3f9c91237381c34232ae7227989d86c1e840ca1822ed7d60b1f3721108b0",
+      "bytes": 1041
+    }
+  ],
+  "verified": true,
+  "target_pid": 22844,
+  "derived_state": "entry_not_observed",
+  "facts": [
+    "Local direct LoadLibraryW probe loaded and unloaded with matching attach PID",
+    "Local marked entry reached stage 2 and returned module handle",
+    "Game direct loader thread completed with exit code 0; module not listed",
+    "Game marked entry thread completed with stage 0; module not listed",
+    "All path and marker allocations freed; temporary game-directory DLL removed",
+    "13 diagnostic semantic tests passed"
+  ],
+  "limits": [
+    "Stage 0 means entry not observed, not proof of the exact instruction blocking thread startup",
+    "loader_last_error zero is initialization only when stage != 2; no valid LoadLibrary result observed",
+    "No game handler called; trainer operations still incomplete"
+  ],
+  "commands": [
+    "python analysis/verify-loader-thread.py --local-host analysis/engine-hook-probe-host.exe --dll analysis/engine-hook-probe-minimal.dll --output analysis/loader-thread-local.json",
+    "python analysis/verify-loader-thread.py --pid 22844 --dll \"E:\\Warcraft III\\_retail_\\x86_64\\war3_probe1.dll\" --output analysis/loader-thread-22844.json",
+    "python analysis/verify-loader-thread.py --local-host analysis/engine-hook-probe-host.exe --dll analysis/engine-hook-probe-minimal.dll --output analysis/loader-thread-local-marked.json --entry-marker",
+    "python analysis/verify-loader-thread.py --pid 22844 --dll \"E:\\Warcraft III\\_retail_\\x86_64\\war3_probe1.dll\" --output analysis/loader-thread-22844-marked.json --entry-marker",
+    "python -m pytest -q --tb=short test_loader_thread_diagnostic.py"
+  ],
+  "replay_preconditions": [
+    "Resolve current target PID; 22844 refers to this capture only",
+    "Game-directory probe temporarily copied with no-overwrite check and removed after completed diagnostics",
+    "Do not free memory or remove DLL path while a load thread is pending"
+  ]
+}

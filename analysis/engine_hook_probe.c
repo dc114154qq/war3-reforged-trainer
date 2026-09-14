@@ -129,6 +129,12 @@ EXCEPTION_DISPOSITION ProbeSpecificHandler(PEXCEPTION_RECORD e,void *f,PCONTEXT 
     return ((ProbeHandler)g_dispatch->specific_handler)(e,f,c,d);
 }
 __declspec(dllexport) uint64_t ProbeConstantQuery(void) { return 0x24268001; }
+__declspec(dllexport) uint64_t ProbeUnitQuery(void) {
+    uint64_t *pair = (uint64_t *)g_dispatch->work;
+    typedef uint64_t (*UnitQuery)(uint64_t);
+    return ((UnitQuery)pair[0])(pair[1]);
+}
+
 __declspec(dllexport) uint64_t ProbeFaultQuery(void) { return *(volatile uint64_t *)g_dispatch->nonce; }
 
 

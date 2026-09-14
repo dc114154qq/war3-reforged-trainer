@@ -54,7 +54,7 @@ def inspect(pid,hwnd,tid,image,query_mode="none",tls_index=0,native_address=0,wo
     pe=pefile.PE(str(image));exports={s.name:s.address for s in pe.DIRECTORY_ENTRY_EXPORT.symbols}
     install_rva=exports[b'ProbeInstallLocalHook'];uninstall_rva=exports[b'ProbeUninstallLocalHook']
     report={'pid':pid,'hwnd':hex(hwnd),'expected_callback_tid':tid,'image':str(image),
-            'image_sha256':hashlib.sha256(image.read_bytes()).hexdigest(),'calls_game_handlers':query_mode in ('native','selection'),'query_mode':query_mode}
+            'image_sha256':hashlib.sha256(image.read_bytes()).hexdigest(),'calls_game_handlers':query_mode in ('native','selection','unit'),'query_mode':query_mode}
     handle=file=section=block=thread=work=None;view=P();safe=True
     try:
         p['enable_debug_privilege']();handle=p['open_process'](0x43a,False,pid)
@@ -84,6 +84,7 @@ def inspect(pid,hwnd,tid,image,query_mode="none",tls_index=0,native_address=0,wo
             0, 0, 0, 0, 0, 0, sleep_address, 0, 0)
         query = (view.value+exports[b'ProbeSelectionFixtureQuery'] if query_mode=='selection_fixture' else
                  view.value+exports[b'ProbeSelectionQuery'] if query_mode=='selection' else
+                 view.value+exports[b'ProbeUnitQuery'] if query_mode=='unit' else
                  view.value+exports[b'ProbeConstantQuery'] if query_mode=='constant' else
                  view.value+exports[b'ProbeFaultQuery'] if query_mode=='fault' else native_address if query_mode=='native' else 0)
         directory=pe.OPTIONAL_HEADER.DATA_DIRECTORY[3]

@@ -2917,12 +2917,11 @@ class War3Trainer:
         self._classic_object_registry = None
         self._classic_thread_context = None
         self._last_classic_mode = None
-        # Enable the 3.0 route only when its dedicated executor is present.
-        # The 1.0.19 helper is never accepted as a substitute.
-        bundle_base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
-        self._native_selection_unavailable = not (
-            bundle_base / "tools" / "war3_engine_24268.dll"
-        ).is_file()
+        # File presence is not proof of a working 24268 executor. The current
+        # DLL still contains the historical bootstrap profile; indexed objects
+        # are the primary path, not a fallback after a 30-second native timeout.
+        self._native_selection_unavailable = True
+        self._native_fallback_reason = "24268 executor handshake not validated; indexed primary path"
         self._classic_resource_cache: ResourceCache | None = None
         self._start_persistent_bootstrap()
 
@@ -3006,10 +3005,9 @@ class War3Trainer:
             self._classic_object_registry = None
             self._classic_thread_context = None
             self._last_classic_mode = None
-            bundle_base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
-            self._native_selection_unavailable = not (
-                bundle_base / "tools" / "war3_engine_24268.dll"
-            ).is_file()
+            # A reconnect invalidates execution readiness regardless of DLL presence.
+            self._native_selection_unavailable = True
+            self._native_fallback_reason = "24268 executor handshake not validated; indexed primary path"
             self._classic_resource_cache = None
             self._start_persistent_bootstrap()
 
@@ -3033,6 +3031,11 @@ class War3Trainer:
             previous.set()
         stop = threading.Event()
         self._persistent_bootstrap_stop = stop
+        if getattr(self, "_native_selection_unavailable", False):
+            # Do not spawn a retry loop for an unvalidated build/transport.
+            stop.set()
+            self._persistent_bootstrap_thread = None
+            return
         pid = int(self.pid)
         thread = threading.Thread(
             target=self._persistent_bootstrap_loop,
@@ -4041,6 +4044,8 @@ class War3Trainer:
         return calls
 
     def persistent_native_init(self, *, timeout_ms: int = 30000) -> int:
+        if getattr(self, "_native_selection_unavailable", False):
+            raise RuntimeError("24268 native executor is not validated; legacy bootstrap was not dispatched")
         with self._persistent_bootstrap_lock:
             if getattr(self, "_persistent_native_initialized", False):
                 return len(self.PERSISTENT_NATIVE_NAMES)

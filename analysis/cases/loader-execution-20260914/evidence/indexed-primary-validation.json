@@ -1,0 +1,20 @@
+{
+  "change": "Gate unvalidated historical bootstrap; use indexed primary immediately on startup and reconnect",
+  "skills_loaded": [
+    "l-gameassist",
+    "l-reverse",
+    "seagull-lab",
+    "war3-save-reverse"
+  ],
+  "tests_command": "python -m pytest -q test_24268_executor_readiness.py test_24268_product_boundary.py test_indexed_resources.py test_classic_player_selection.py --tb=short --maxfail=2",
+  "tests_output": ".......................                              [100%]\n23 passed, 20 subtests passed in 12.04s\n",
+  "live_evidence": "indexed-primary-live-38352.json",
+  "live_script": "War3Trainer(38352); mock native transport to raise; twice read_resource_cache/list_resource_caches/_classic_selection_candidates; close",
+  "live_mutations": false,
+  "remaining": [
+    "3.0 native executor handshake and invocation",
+    "engine-semantic clone and skill creation tests",
+    "cross-device acceptance"
+  ],
+  "scope": "No packaging; baseline untouched; unrelated analysis modifications preserved"
+}

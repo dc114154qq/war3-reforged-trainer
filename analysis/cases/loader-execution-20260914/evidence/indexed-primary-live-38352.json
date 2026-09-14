@@ -1,0 +1,21 @@
+{
+  "pid": 38352,
+  "game_mutations": false,
+  "constructor_ms": 1.1355999995430466,
+  "bootstrap_thread_absent": true,
+  "local_resource_ms_0": 16.40620000034687,
+  "all_resources_ms_0": 37.280299999110866,
+  "selection_ms_0": 27.0712999990792,
+  "selection_count": 15,
+  "local_resource_ms_1": 15.938799999275943,
+  "all_resources_ms_1": 31.700799998361617,
+  "selection_ms_1": 28.354999998555286,
+  "resources": {
+    "gold": 997469,
+    "lumber": 999839,
+    "groups": 28,
+    "source": "3.0 indexed player properties"
+  },
+  "native_transport_calls": 0,
+  "ok": true
+}

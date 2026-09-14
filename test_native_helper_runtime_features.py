@@ -493,7 +493,7 @@ class NativeHelperRuntimeFeatureTests(unittest.TestCase):
 
     def test_python_and_c_helper_protocol_versions_match(self):
         helper_source = (
-            Path(__file__).with_name("tools") / "war3_native_helper.c"
+            Path(__file__).parent / "analysis" / "fixtures" / "legacy-native-helper.c"
         ).read_text(encoding="utf-8")
         self.assertIn(
             f"#define WAR3_NATIVE_VERSION {trainer_module.War3Trainer.NATIVE_HELPER_VERSION}u",

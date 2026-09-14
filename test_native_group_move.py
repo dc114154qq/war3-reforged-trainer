@@ -60,7 +60,7 @@ class NativeGroupMoveTests(unittest.TestCase):
         cls.addClassCleanup(cls.directory.cleanup)
         root = Path(cls.directory.name)
         source = root / "group_test.c"
-        helper = Path(__file__).with_name("tools") / "war3_native_helper.c"
+        helper = Path(__file__).parent / "analysis" / "fixtures" / "legacy-native-helper.c"
         source.write_text(HARNESS.replace("HELPER_SOURCE", helper.as_posix()), encoding="utf-8")
         library = root / "group_test.dll"
         subprocess.run([compiler, "-shared", "-O2", "-Wno-microsoft-goto", str(source),

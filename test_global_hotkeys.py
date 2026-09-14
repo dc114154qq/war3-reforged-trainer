@@ -81,7 +81,7 @@ class GlobalHotkeyManagerTests(unittest.TestCase):
 
     def test_free_anti_resale_notice_is_next_to_pid(self):
         source = Path(trainer.__file__).read_text(encoding="utf-8")
-        pid_entry = 'ttk.Entry(top, textvariable=pid_var, width=10, state="readonly").pack(side="left")'
+        pid_entry = 'ttk.Entry(top, textvariable=pid_var, width=10).pack(side="left")'
         notice = "大象功能灵感来源于经典版大象修改器，本软件完全免费，谨防倒卖"
         self.assertLess(source.index(pid_entry), source.index(notice))
 

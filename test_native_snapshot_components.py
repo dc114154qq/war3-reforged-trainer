@@ -80,7 +80,7 @@ def native(tmp_path_factory):
                            'static void prepare_components(void);\n__declspec(dllexport) unsigned collect(')
     harness=harness.replace('error = war3_persistent_selected_snapshot(',
                             'prepare_components();\n    error = war3_persistent_selected_snapshot(')
-    source.write_text(harness.replace('HELPER_SOURCE',(Path(__file__).parent/'tools/war3_native_helper.c').as_posix())
+    source.write_text(harness.replace('HELPER_SOURCE',(Path(__file__).parent/'analysis/fixtures/legacy-native-helper.c').as_posix())
                       +COMPONENTS,encoding='utf8')
     subprocess.run([compiler,'-shared','-O2','-Wno-microsoft-goto',str(source),'-o',str(library),
                     '-luser32','-lkernel32'],check=True,capture_output=True,timeout=60)

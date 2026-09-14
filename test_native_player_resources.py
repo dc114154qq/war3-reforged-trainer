@@ -60,7 +60,7 @@ def native(tmp_path_factory):
     assert compiler, 'Native resource tests require clang'
     root = tmp_path_factory.mktemp('player-resource-c')
     source, dll = root/'player.c', root/'player.dll'
-    source.write_text(HARNESS.replace('HELPER_SOURCE', (Path(__file__).parent/'tools/war3_native_helper.c').as_posix())
+    source.write_text(HARNESS.replace('HELPER_SOURCE', (Path(__file__).parent/'analysis/fixtures/legacy-native-helper.c').as_posix())
                       + PLAYER_HARNESS, encoding='utf8')
     subprocess.run([compiler, '-shared', '-O2', '-Wno-microsoft-goto', str(source), '-o', str(dll),
                     '-luser32', '-lkernel32'], check=True, capture_output=True, timeout=60)

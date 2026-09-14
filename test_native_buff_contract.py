@@ -95,7 +95,7 @@ def native(tmp_path_factory):
     compiler=shutil.which('clang')
     if not compiler:pytest.skip('clang required')
     root=tmp_path_factory.mktemp('buff');source=root/'test.c';dll=root/'test.dll'
-    source.write_text(HARNESS.replace('HELPER_SOURCE',(ROOT/'tools/war3_native_helper.c').as_posix())+ACTIONS+BUFF,encoding='utf8')
+    source.write_text(HARNESS.replace('HELPER_SOURCE',(ROOT/'analysis/fixtures/legacy-native-helper.c').as_posix())+ACTIONS+BUFF,encoding='utf8')
     build=subprocess.run([compiler,'-shared','-O2','-Wno-microsoft-goto',str(source),'-o',str(dll),'-luser32','-lkernel32'],capture_output=True,text=True,timeout=60)
     assert build.returncode==0,build.stderr
     lib=ctypes.CDLL(str(dll));lib.buff_test.argtypes=[ctypes.c_wchar_p,ctypes.c_uint,ctypes.POINTER(ctypes.c_uint)]
@@ -130,3 +130,4 @@ def test_roar_entry_uses_native_transaction_without_controller_memory():
     assert t._apply_direct_roar_buff_to_selected_unit_locked('ANht')==1
     assert t._run_native_helper_ops.call_args.args==(c.native_snapshot.handle,(
         (136,0,c.unit_address,c.handle,c.owner_address),(157,0x414e6874,5,0,0)))
+

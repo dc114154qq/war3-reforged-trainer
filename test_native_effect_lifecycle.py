@@ -184,7 +184,7 @@ def native(tmp_path_factory):
     if not compiler: pytest.skip('clang required')
     root=tmp_path_factory.mktemp('effect_lifecycle');source=root/'test.c';dll=root/'test.dll'
     harness=HARNESS.replace('#include "HELPER_SOURCE"',TIMER_API+'\n#include "HELPER_SOURCE"')
-    source.write_text(harness.replace('HELPER_SOURCE',(Path(__file__).parent/'tools/war3_native_helper.c').as_posix())+ACTIONS+DIRECT+LIFECYCLE,encoding='utf8')
+    source.write_text(harness.replace('HELPER_SOURCE',(Path(__file__).parent/'analysis/fixtures/legacy-native-helper.c').as_posix())+ACTIONS+DIRECT+LIFECYCLE,encoding='utf8')
     build=subprocess.run([compiler,'-shared','-O2','-Wno-microsoft-goto',str(source),'-o',str(dll),'-luser32','-lkernel32'],capture_output=True,text=True,timeout=60)
     assert build.returncode==0,build.stderr
     lib=ctypes.CDLL(str(dll));lib.lifecycle_test.argtypes=[ctypes.c_wchar_p]+[ctypes.c_uint]*5+[ctypes.POINTER(ctypes.c_uint64)]
@@ -314,7 +314,7 @@ int wmain(int argc,wchar_t **argv) {
 }
 '''
     source=tmp_path/'pump.c';exe=tmp_path/'pump.exe'
-    source.write_text(harness.replace('HELPER_SOURCE',(Path(__file__).parent/'tools/war3_native_helper.c').as_posix())+ACTIONS+DIRECT+LIFECYCLE+main,encoding='utf8')
+    source.write_text(harness.replace('HELPER_SOURCE',(Path(__file__).parent/'analysis/fixtures/legacy-native-helper.c').as_posix())+ACTIONS+DIRECT+LIFECYCLE+main,encoding='utf8')
     build=subprocess.run([compiler,'-O2','-Wno-microsoft-goto',str(source),'-o',str(exe),'-luser32','-lkernel32'],capture_output=True,text=True,timeout=60)
     assert build.returncode==0,build.stderr
     run=subprocess.run([str(exe),str(tmp_path)+'\\'],capture_output=True,timeout=10)

@@ -99,7 +99,7 @@ def native(tmp_path_factory):
         pytest.skip('clang required')
     directory = tmp_path_factory.mktemp('native-table')
     source, library = directory/'test.c', directory/'test.dll'
-    source.write_text(HARNESS.replace('HELPER_SOURCE', (Path(__file__).parent/'tools/war3_native_helper.c').as_posix()))
+    source.write_text(HARNESS.replace('HELPER_SOURCE', (Path(__file__).parent/'analysis/fixtures/legacy-native-helper.c').as_posix()))
     subprocess.run([compiler, '-shared', '-O2', '-Wno-microsoft-goto', str(source), '-o', str(library),
                     '-luser32', '-lkernel32'], check=True, capture_output=True, timeout=60)
     lib = ctypes.CDLL(str(library))

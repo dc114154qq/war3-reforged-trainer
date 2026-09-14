@@ -138,7 +138,7 @@ def dispatcher(tmp_path_factory):
     root = tmp_path_factory.mktemp('unit-fields')
     source, library = root/'test.c', root/'test.dll'
     harness = HARNESS.replace('static uint8_t object[0x20]', 'static uint8_t object[0x600]')
-    source.write_text(harness.replace('HELPER_SOURCE', (Path(__file__).parent/'tools/war3_native_helper.c').as_posix())
+    source.write_text(harness.replace('HELPER_SOURCE', (Path(__file__).parent/'analysis/fixtures/legacy-native-helper.c').as_posix())
                       + FIELDS_HARNESS, encoding='utf8')
     subprocess.run([compiler,'-shared','-O2','-Wno-microsoft-goto',str(source),'-o',str(library),
                     '-luser32','-lkernel32'],check=True,capture_output=True,timeout=60)

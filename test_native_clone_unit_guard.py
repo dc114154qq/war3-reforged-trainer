@@ -204,7 +204,7 @@ def native(tmp_path_factory):
     compiler=shutil.which('clang')
     if not compiler:pytest.skip('clang required')
     root=tmp_path_factory.mktemp('clone-guard');source=root/'test.c';libpath=root/'test.dll'
-    source.write_text(HARNESS.replace('HELPER_SOURCE',(Path(__file__).parent/'tools/war3_native_helper.c').as_posix())+CLONE,encoding='utf8')
+    source.write_text(HARNESS.replace('HELPER_SOURCE',(Path(__file__).parent/'analysis/fixtures/legacy-native-helper.c').as_posix())+CLONE,encoding='utf8')
     r=subprocess.run([compiler,'-shared','-O2','-Wno-microsoft-goto',str(source),'-o',str(libpath),'-luser32','-lkernel32'],capture_output=True,text=True,timeout=60)
     assert r.returncode==0,r.stderr
     lib=ctypes.CDLL(str(libpath));lib.clone_test.argtypes=[ctypes.c_wchar_p,*([ctypes.c_uint]*3),ctypes.POINTER(ctypes.c_uint)];lib.clone_test.restype=ctypes.c_uint

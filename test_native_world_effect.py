@@ -118,7 +118,7 @@ def native(tmp_path_factory):
     compiler=shutil.which('clang')
     if not compiler:pytest.skip('clang required')
     root=tmp_path_factory.mktemp('world');source=root/'test.c';dll=root/'test.dll'
-    source.write_text(HARNESS.replace('HELPER_SOURCE',(Path(__file__).parent/'tools/war3_native_helper.c').as_posix())+ACTIONS+WORLD,encoding='utf8')
+    source.write_text(HARNESS.replace('HELPER_SOURCE',(Path(__file__).parent/'analysis/fixtures/legacy-native-helper.c').as_posix())+ACTIONS+WORLD,encoding='utf8')
     build=subprocess.run([compiler,'-shared','-O2','-Wno-microsoft-goto',str(source),'-o',str(dll),'-luser32','-lkernel32'],capture_output=True,text=True,timeout=60)
     assert build.returncode==0,build.stderr
     lib=ctypes.CDLL(str(dll));lib.world_test.argtypes=[ctypes.c_wchar_p]+[ctypes.c_uint]*4+[ctypes.POINTER(ctypes.c_uint64)];lib.world_test.restype=ctypes.c_uint

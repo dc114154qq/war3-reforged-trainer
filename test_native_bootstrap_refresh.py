@@ -112,7 +112,7 @@ def refresh_native(tmp_path_factory):
     if not compiler:pytest.skip('clang required')
     root=tmp_path_factory.mktemp('bootstrap-refresh');source=root/'test.c';library=root/'test.dll'
     harness=HARNESS.replace('#include "HELPER_SOURCE"',PREFIX+'\n#include "HELPER_SOURCE"\n#undef GetModuleHandleW')
-    source.write_text(harness.replace('HELPER_SOURCE',(Path(__file__).parent/'tools/war3_native_helper.c').as_posix())+REFRESH,encoding='utf8')
+    source.write_text(harness.replace('HELPER_SOURCE',(Path(__file__).parent/'analysis/fixtures/legacy-native-helper.c').as_posix())+REFRESH,encoding='utf8')
     subprocess.run([compiler,'-shared','-O2','-Wno-microsoft-goto',str(source),'-o',str(library),'-luser32','-lkernel32'],check=True,capture_output=True,timeout=60)
     lib=ctypes.CDLL(str(library));lib.refresh_test.argtypes=[ctypes.c_void_p,*([ctypes.c_uint]*3),ctypes.POINTER(ctypes.c_uint64)]
     lib.refresh_test.restype=ctypes.c_uint

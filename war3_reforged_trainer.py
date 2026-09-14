@@ -4498,6 +4498,12 @@ class War3Trainer:
                         timeout_ms=timeout_ms,
                     )
         except Exception as exc:
+            if isinstance(exc, TimeoutError):
+                # A stalled 3.0 executor must not be reused for later writes.
+                # Mark this trainer session unavailable so read-only callers
+                # can use the indexed/classic fallback and mutators fail fast.
+                self._native_selection_unavailable = True
+                self._native_fallback_reason = f"engine executor timeout: {exc}"
             self._write_native_helper_failure_log(unit_address, exc)
             raise
 

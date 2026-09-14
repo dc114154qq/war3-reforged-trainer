@@ -1,0 +1,99 @@
+{
+  "recorded_utc": "2026-09-14T01:51:53.764519+00:00",
+  "pid": 22844,
+  "artifacts": [
+    {
+      "path": "analysis/trace-current-startup.py",
+      "bytes": 10675,
+      "sha256": "eb867a683eeb7cf6f28a80bd22b08b315422f3addc901f6058ca078cc05a0cf8"
+    },
+    {
+      "path": "analysis/startup-roots-22844.json",
+      "bytes": 1970,
+      "sha256": "3fdfa7cfc893f88840986e38100cb244a9d0cbe8b8806eea4cb15418a21a05ba"
+    },
+    {
+      "path": "analysis/base-thread-startup-22844.json",
+      "bytes": 6166,
+      "sha256": "daf15ad819afc995f1010abf5e1f15e4457d19ad490b3664d49c4954dce58927"
+    },
+    {
+      "path": "analysis/base-thread-startup-22844.pages.zip",
+      "bytes": 42390,
+      "sha256": "9a07cba77c8fa7fa3c5bd4532eae9d7b9a25bda1ab9f26e1b0dd70d5f163de03"
+    },
+    {
+      "path": "analysis/ldr-thread-startup-22844.json",
+      "bytes": 15432,
+      "sha256": "eaa1ea03c23ee9112427bb0f8bb13a7cc63068aac98aa0dde4eb908b2f9d771a"
+    },
+    {
+      "path": "analysis/ldr-thread-startup-22844.pages.zip",
+      "bytes": 174264,
+      "sha256": "e872bcf636a97cbf418195c4ef6d768ecd85953c80edca1aafc73a51340095c7"
+    },
+    {
+      "path": "analysis/base-thread-current-image-22844.json",
+      "bytes": 9719,
+      "sha256": "acbce951d33fea26fa2c05ee4426cb36bb54ef01dd677dc65f850aa25fdc87ca"
+    },
+    {
+      "path": "analysis/base-thread-current-image-22844.pages.zip",
+      "bytes": 90605,
+      "sha256": "b6ed5ff5a9ca19d2300ee8c58702b21d13d9b9aa5f4eb57324b07afbddddd74b"
+    },
+    {
+      "path": "analysis/base-thread-loadlibrary-22844.json",
+      "bytes": 9728,
+      "sha256": "bf5cf6f1e4c606db2bc636b0245d7ff50a3fc2480f494f278f08efc7b9457d59"
+    },
+    {
+      "path": "analysis/base-thread-loadlibrary-22844.pages.zip",
+      "bytes": 90339,
+      "sha256": "507eb73a36d5130c6b8147b1bb4e0cacf4e09e0f450c19900042a22aba69df5d"
+    },
+    {
+      "path": "analysis/startup-emulator-fault-22844.json",
+      "bytes": 1722,
+      "sha256": "ad96e6457302f5f6bd47b987eaf808a597b1db0d798afb816af829002823618b"
+    },
+    {
+      "path": "analysis/unicorn-rdpid-repro.json",
+      "bytes": 367,
+      "sha256": "614b916cf6c505bb450f65b11ee7c16351f9b75d59b2f7e9f2a0242ef13f2797"
+    },
+    {
+      "path": "analysis/ldr-thread-rdpid-stop-22844.json",
+      "bytes": 15504,
+      "sha256": "706f74f674b0a9469acd051d38816398a1932449dc0015a0b1102b9db24a165b"
+    },
+    {
+      "path": "analysis/ldr-thread-rdpid-stop-22844.pages.zip",
+      "bytes": 174070,
+      "sha256": "d048cfc34f536015642ee99a5fce8af2ed9e75f897409c98a7688df3e6078017"
+    }
+  ],
+  "verified": true,
+  "archive_sha256": "5e722f15a95de3eccf26e35507c038bbcacab60f75f667b840d7972387d6a71a",
+  "observations": [
+    "Current BaseThreadInitThunk redirects to loader+0x1da6be0; LdrInitializeThunk to loader+0x1351be0",
+    "Synthetic startup at BaseThread gate reaches memory query before candidate entry",
+    "When using dynamically resolved LoadLibraryW at 0x7ffeab8adc00 and actual read-only memory-query output, emulation reaches that entry; no live LoadLibrary call executed",
+    "Ldr startup trace stops at RDPID; isolated Unicorn RDPID repro fails while MOV control passes"
+  ],
+  "invalidated_hypotheses": [
+    "Earlier emulator memory-read fault was not evidence of a game policy or necessarily a missing TEB field",
+    "Manual image address 0x7ffeab89dc00 was not LoadLibraryW; its trace is retained only as a generic image-address experiment"
+  ],
+  "failures": [
+    "Initial Capstone CS_ERR_DETAIL configuration fixed by enabling detail",
+    "Unsupported-instruction callback size can be oversized; cap instruction read at 15 bytes",
+    "Exact live entry suppression cause remains unresolved"
+  ],
+  "commands": [
+    "python analysis/trace-current-startup.py --pid 22844 --roots analysis/startup-roots-22844.json --symbol BaseThreadInitThunk --output analysis/base-thread-startup-22844.json",
+    "python analysis/trace-current-startup.py --pid 22844 --roots analysis/startup-roots-22844.json --symbol BaseThreadInitThunk --procedure-va 0x7ffeab8adc00 --query-current --output analysis/base-thread-loadlibrary-22844.json",
+    "python analysis/trace-current-startup.py --pid 22844 --roots analysis/startup-roots-22844.json --symbol LdrInitializeThunk --output analysis/ldr-thread-rdpid-stop-22844.json"
+  ],
+  "replay_limit": "Addresses and pages refer to this process instance; verify prefix before use. Synthetic CPU/TEB context is not actual thread startup proof."
+}

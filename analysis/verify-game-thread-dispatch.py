@@ -51,6 +51,8 @@ def query_completed(state):
 
 
 def inspect(pid,hwnd,tid,image,query_mode="none",tls_index=0,native_address=0,work_payload=b""):
+    if query_mode in ("selection", "selection_fixture") and not work_payload:
+        raise ValueError("selection query requires an initialized SelectionWork payload; refusing to dispatch with null work")
     pe=pefile.PE(str(image));exports={s.name:s.address for s in pe.DIRECTORY_ENTRY_EXPORT.symbols}
     install_rva=exports[b'ProbeInstallLocalHook'];uninstall_rva=exports[b'ProbeUninstallLocalHook']
     report={'pid':pid,'hwnd':hex(hwnd),'expected_callback_tid':tid,'image':str(image),

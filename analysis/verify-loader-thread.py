@@ -35,6 +35,10 @@ wait = api(k, 'WaitForSingleObject', U, P, U)
 exit_code = api(k, 'GetExitCodeThread', c.c_int, P, c.POINTER(U))
 protect = api(k, 'VirtualProtectEx', c.c_int, P, P, Z, U, c.POINTER(U))
 flush = api(k, 'FlushInstructionCache', c.c_int, P, P, Z)
+resume_thread = api(k, 'ResumeThread', U, P)
+get_context = api(k, 'GetThreadContext', c.c_int, P, P)
+nt = c.WinDLL('ntdll')
+query_thread = api(nt, 'NtQueryInformationThread', c.c_long, P, U, P, U, P)
 get_module = api(k, 'GetModuleHandleExW', c.c_int, U, P, c.POINTER(P))
 current_process = api(k, 'GetCurrentProcess', P)
 
@@ -62,13 +66,47 @@ def entrypoint(memory, name):
     return address, {'module': filename.value, 'rva': hex(local - module.value)}
 
 
-def invoke(handle, entry, argument, timeout):
+def capture_thread_start(process, thread):
+    info = c.create_string_buffer(48)
+    status = query_thread(thread, 0, info, 48, None)
+    if status < 0:
+        raise RuntimeError('Thread basic info query failed: ' + hex(status & 0xffffffff))
+    teb = struct.unpack_from('<Q', info.raw, 8)[0]
+    storage = c.create_string_buffer(0x4d0 + 15)
+    context = (c.addressof(storage) + 15) & ~15
+    c.c_uint32.from_address(context + 0x30).value = 0x10001f
+    if not get_context(thread, context):
+        raise c.WinError(c.get_last_error())
+    raw = c.string_at(context, 0x4d0)
+    report = {'teb': hex(teb), 'context_bytes': raw.hex(),
+              'registers': {name: hex(struct.unpack_from('<Q', raw, offset)[0]) for name, offset in
+                 [('rax', 0x78), ('rcx', 0x80), ('rdx', 0x88), ('rsp', 0x98), ('r8', 0xb8), ('rip', 0xf8)]}}
+    try:
+        report['teb_bytes'] = bytes_at(process, teb, 0x2000).hex()
+    except OSError as exc:
+        report['teb_error'] = str(exc)
+    return report
+
+
+def invoke(handle, entry, argument, timeout, capture_startup=False):
     tid = U()
-    thread = create_thread(handle, None, 0, entry, argument, 0, c.byref(tid))
+    thread = create_thread(handle, None, 0, entry, argument, 4 if capture_startup else 0, c.byref(tid))
     if not thread:
         return {'created': False, 'error': c.get_last_error(), 'completed': False}
     result = {'created': True, 'tid': tid.value, 'completed': False}
     try:
+        if capture_startup:
+            try:
+                result['startup'] = capture_thread_start(handle, thread)
+                result['startup']['entry_matches_requested'] = int(result['startup']['registers']['rcx'], 16) == entry
+                result['startup']['argument_matches_requested'] = int(result['startup']['registers']['rdx'], 16) == argument
+            except Exception as exc:
+                result['capture_error'] = str(exc)
+            finally:
+                result['previous_suspend_count'] = resume_thread(thread)
+            if result['previous_suspend_count'] == 0xffffffff:
+                result['resume_error'] = c.get_last_error()
+                return result  # Caller retains allocations; never frees under a suspended thread.
         status = wait(thread, timeout)
         result['wait_status'] = hex(status)
         result['completed'] = status == 0
@@ -97,7 +135,7 @@ ENTRY_CODE = bytes.fromhex(
 )
 
 
-def marked_load(handle, path, load_address, error_address, timeout):
+def marked_load(handle, path, load_address, error_address, timeout, capture_startup=False):
     code = block = None
     pending = False
     result = {'created': False, 'completed': False, 'stage': None}
@@ -116,7 +154,7 @@ def marked_load(handle, path, load_address, error_address, timeout):
             raise c.WinError(c.get_last_error())
         if not flush(handle, code, len(ENTRY_CODE)):
             raise c.WinError(c.get_last_error())
-        result.update(invoke(handle, code, block, timeout))
+        result.update(invoke(handle, code, block, timeout, capture_startup))
         pending = result['created'] and not result['completed']
         values = struct.unpack('<QQQIIQII', bytes_at(handle, block, 48))
         result.update(stage=values[3], module_result=hex(values[5]), loader_last_error=values[6],
@@ -151,7 +189,7 @@ def classify_load(result, module):
     return 'loaded' if module else 'module_not_loaded'
 
 
-def inspect(pid, dll, timeout, marker=False):
+def inspect(pid, dll, timeout, marker=False, capture_startup=False):
     # Probe export must be present; do not load unrelated libraries through this tool.
     data = dll.read_bytes()
     pe = pefile.PE(data=data)
@@ -184,9 +222,9 @@ def inspect(pid, dll, timeout, marker=False):
             raise c.WinError(c.get_last_error())
         if marker:
             error_address, report['last_error_entry'] = entrypoint(memory, 'GetLastError')
-            result = marked_load(handle, allocation, load_address, error_address, timeout)
+            result = marked_load(handle, allocation, load_address, error_address, timeout, capture_startup)
         else:
-            result = invoke(handle, load_address, allocation, timeout)
+            result = invoke(handle, load_address, allocation, timeout, capture_startup)
         report['load_thread'] = result
         argument_in_use = result['created'] and not result['completed']
         if argument_in_use:
@@ -223,6 +261,7 @@ def main():
     ap.add_argument('--output', type=Path, required=True)
     ap.add_argument('--timeout-ms', type=int, default=3000)
     ap.add_argument('--entry-marker', action='store_true', help='Capture entry stage and immediate loader last error')
+    ap.add_argument('--capture-startup', action='store_true', help='Capture suspended diagnostic thread, then resume it')
     args = ap.parse_args()
     child = None
     try:
@@ -233,7 +272,7 @@ def main():
             assert pid == child.pid
         else:
             pid = args.pid
-        report = inspect(pid, args.dll.resolve(), args.timeout_ms, args.entry_marker)
+        report = inspect(pid, args.dll.resolve(), args.timeout_ms, args.entry_marker, args.capture_startup)
         report['captured_utc'] = datetime.now(timezone.utc).isoformat()
         report['local_host'] = bool(child)
         temporary = args.output.with_suffix('.tmp')

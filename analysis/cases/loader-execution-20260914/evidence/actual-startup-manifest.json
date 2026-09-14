@@ -1,0 +1,88 @@
+{
+  "recorded_utc": "2026-09-14T02:04:07.338785+00:00",
+  "archive": "analysis\\cases\\loader-execution-20260914\\evidence\\actual-startup-capture.zip",
+  "artifacts": [
+    {
+      "path": "analysis/trace-current-startup.py",
+      "bytes": 13615,
+      "sha256": "852d5fa125da9d566b4b8bc999bf3d4a8521fc3142db4c786daeaf888571d92c"
+    },
+    {
+      "path": "analysis/verify-loader-thread.py",
+      "bytes": 13846,
+      "sha256": "8ec57f62ae0b719c5ae2562edf20a96b0d357fed00a34c8ec177e2051803268b"
+    },
+    {
+      "path": "test_loader_thread_diagnostic.py",
+      "bytes": 3478,
+      "sha256": "6491390ad3f74740b070bf10a6d2016cd92280fb9a996cd8203d7563af90de15"
+    },
+    {
+      "path": "analysis/loader-startup-capture-tests.log",
+      "bytes": 101,
+      "sha256": "2b36256e32be77cca462b70069b1fa668c17e0972f8c869e7ac2f45cdba9bdfc"
+    },
+    {
+      "path": "analysis/loader-local-startup-context.json",
+      "bytes": 20903,
+      "sha256": "c56dfd288103f815009bb50a018b8fe333da4f64713c10b042a9baf542d4c584"
+    },
+    {
+      "path": "analysis/loader-local-startup-context.log",
+      "bytes": 20523,
+      "sha256": "21fa6d44a045b842d97895693871d207ed9805b4ee01ef61769cfea08b81125d"
+    },
+    {
+      "path": "analysis/loader-game-startup-context.json",
+      "bytes": 20322,
+      "sha256": "a5824c5c73dc8dfa55d645d3796e726cdc8bbe7ae1e847388379265881f9ffe7"
+    },
+    {
+      "path": "analysis/loader-game-startup-context.log",
+      "bytes": 20049,
+      "sha256": "827fa7fb3e2244fbc1e5f64c368d286a645bfe095e114f577afcf3a5c5c1d4d5"
+    },
+    {
+      "path": "analysis/ldr-startup-deep-22844.json",
+      "bytes": 37701,
+      "sha256": "2b294cf0748bbf0605251c0ec5aba9d002cb725085951d099334d034c99a2cbc"
+    },
+    {
+      "path": "analysis/ldr-startup-deep-22844.pages.zip",
+      "bytes": 517261,
+      "sha256": "3aab5d8aaa599b59c5ecc29cfbc50eb9fe0d16fed0e54e4a8b285b9eb4080bf8"
+    },
+    {
+      "path": "analysis/ldr-startup-context-changes-22844.json",
+      "bytes": 37738,
+      "sha256": "453e0bc5cc1d9d6d163a0f0f2d8c4b88c8b10cc1f33e4d586f1fa3f3c1841661"
+    },
+    {
+      "path": "analysis/ldr-startup-context-changes-22844.pages.zip",
+      "bytes": 516845,
+      "sha256": "451c8d1e1e4689d452d8d90ace29ed54a2a672a3529a1a7f425cb88cc86734e0"
+    }
+  ],
+  "archive_sha256": "73a7151d1852391d587d879284dcd5ad197758c1b83a40608a660b2322aa650b",
+  "verified": true,
+  "facts": [
+    "Optimized decode cache uses both address and bytes; self-modified copies not stale",
+    "195k emulated instructions reached original Windows Ldr initialization / NtQuerySystemInformation; synthetic context unchanged",
+    "Local and game diagnostic threads captured initially suspended; both RCX/RDX match requested function and parameter; RIP points to RtlUserThreadStart",
+    "Both resumed exactly once; local marker reaches 2, game marker remains 0 and thread exits",
+    "Only newly created diagnostic threads suspended, not existing game threads",
+    "All allocations freed and temporary game-directory probe removed",
+    "15 diagnostic tests passed, including capture/resume failure handling"
+  ],
+  "limits": [
+    "Captured context precedes loader startup; not proof of where actual thread exits",
+    "Previous emulation synthetic TEB/context did not reproduce target failure",
+    "No game function invoked; engine adaptation incomplete"
+  ],
+  "next": "Replay saved actual thread CONTEXT/TEB instead of synthetic state; any missing pages now freed must remain explicit gaps",
+  "commands": [
+    "python analysis/verify-loader-thread.py --local-host analysis/engine-hook-probe-host.exe --dll analysis/engine-hook-probe-minimal.dll --output analysis/loader-local-startup-context.json --entry-marker --capture-startup",
+    "python analysis/verify-loader-thread.py --pid 22844 --dll \"E:\\Warcraft III\\_retail_\\x86_64\\war3_probe1.dll\" --output analysis/loader-game-startup-context.json --entry-marker --capture-startup",
+    "python -m pytest -q --tb=short test_loader_thread_diagnostic.py"
+  ]
+}

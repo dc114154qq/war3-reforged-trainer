@@ -20,16 +20,20 @@ from war3_reforged_trainer import ProcessMemory
 from avx_copy_model import apply as apply_avx_copy
 
 
-def run(pid, root_file, symbol, output, procedure_va=None, query_current=False, cpu_scenario=None, model_avx=False):
+def run(pid, root_file, symbol, output, procedure_va=None, query_current=False, cpu_scenario=None, model_avx=False, timeout_ms=3000, instruction_limit=100000):
     roots = json.loads(root_file.read_text(encoding='utf-8'))
     if roots['pid'] != pid:
         raise ValueError('Capture PID does not match')
     row = roots['roots'][symbol]
     entry = int(row['address'], 16)
+    if not 1 <= timeout_ms <= 60000 or not 1 <= instruction_limit <= 2000000:
+        raise ValueError('Invalid bounded execution budget')
     uc = Uc(UC_ARCH_X86, UC_MODE_64)
     stack, context, procedure, parameter, teb, sentinel = (0x700000000 + n * 0x100000 for n in range(6))
     for address in (stack, context, procedure, parameter, teb, sentinel):
         uc.mem_map(address, 0x20000)
+    synthetic_pages = {address + offset for address in (stack, context, procedure, parameter, teb, sentinel)
+                       for offset in range(0, 0x20000, 4096)}
     rsp = stack + 0x18000 - 8
     uc.mem_write(rsp, struct.pack('<Q', sentinel))
     uc.mem_write(procedure, bytes.fromhex('31c0c3'))
@@ -53,11 +57,14 @@ def run(pid, root_file, symbol, output, procedure_va=None, query_current=False, 
         struct.pack_into('<Q', ctx, 0xf8, int(roots['roots']['BaseThreadInitThunk']['address'], 16))
         uc.mem_write(context, bytes(ctx))
         uc.reg_write(UC_X86_REG_RCX, context)
+    context_before = bytes(uc.mem_read(context, 0x4d0))
     report = {'pid': pid, 'symbol': symbol, 'entry': hex(entry),
               'scope': 'Copied current pages; synthetic TEB, stack, context and thread procedure. No live return inference.',
               'stop': 'budget_or_timeout', 'instructions': 0, 'calls_executed_in_target': 0,
               'procedure': hex(procedure), 'synthetic_teb': hex(teb)}
     recent, calls, pages = deque(maxlen=24), deque(maxlen=24), {}
+    decode_cache = {}
+    report['budget'] = {'timeout_ms': timeout_ms, 'instruction_limit': instruction_limit}
     md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_64)
     md.detail = True
     with ProcessMemory(pid) as memory:
@@ -106,7 +113,7 @@ def run(pid, root_file, symbol, output, procedure_va=None, query_current=False, 
 
         def ensure_copy_memory(address, size):
             for page in range(address & ~4095, (address + size - 1 & ~4095) + 1, 4096):
-                if not any(begin <= page and page + 4095 <= end for begin, end, permissions in uc.mem_regions()):
+                if page not in synthetic_pages and page not in pages:
                     if not unmapped(uc, 0, page, 4096, 0, None):
                         raise ValueError('Vector copy page unavailable')
 
@@ -144,7 +151,14 @@ def run(pid, root_file, symbol, output, procedure_va=None, query_current=False, 
             # or sentinel-sized). Decode independently, never trust that length.
             ensure_copy_memory(address, 15)
             raw = bytes(vm.mem_read(address, 15))
-            ins = next(md.disasm(raw, address), None)
+            key = (address, raw)  # Code can self-modify in the emulated copy.
+            ins = decode_cache.get(key)
+            if ins is None:
+                ins = next(md.disasm(raw, address), None)
+                if len(decode_cache) >= 8192:
+                    decode_cache.clear()
+                if ins is not None:
+                    decode_cache[key] = ins
             if ins is None:
                 report['stop'] = 'decode_failed'
                 vm.emu_stop()
@@ -178,13 +192,19 @@ def run(pid, root_file, symbol, output, procedure_va=None, query_current=False, 
         uc.hook_add(UC_HOOK_MEM_UNMAPPED, unmapped)
         uc.hook_add(UC_HOOK_CODE, instruction)
         try:
-            uc.emu_start(entry, sentinel, timeout=3000000, count=100000)
+            uc.emu_start(entry, sentinel, timeout=timeout_ms * 1000, count=instruction_limit)
         except (UcError, capstone.CsError, ValueError) as exc:
             report['emulator_error'] = str(exc)
             if report['stop'] == 'budget_or_timeout':
                 report['stop'] = 'emulator_error'
         if uc.reg_read(UC_X86_REG_RIP) == sentinel:
             report['stop'] = 'returned_to_synthetic_caller'
+    context_after = bytes(uc.mem_read(context, 0x4d0))
+    report['context_changes'] = [
+        {'offset': hex(offset), 'before': hex(struct.unpack_from('<Q', context_before, offset)[0]),
+         'after': hex(struct.unpack_from('<Q', context_after, offset)[0])}
+        for offset in range(0, 0x4d0, 8)
+        if context_before[offset:offset+8] != context_after[offset:offset+8]]
     report['registers'] = {name: hex(uc.reg_read(reg)) for name, reg in (
         ('rip', UC_X86_REG_RIP), ('rax', UC_X86_REG_RAX), ('rcx', UC_X86_REG_RCX),
         ('rdx', UC_X86_REG_RDX), ('r8', UC_X86_REG_R8), ('r9', UC_X86_REG_R9),
@@ -215,5 +235,7 @@ if __name__ == '__main__':
     ap.add_argument('--query-current', action='store_true')
     ap.add_argument('--cpu-scenario', type=lambda x: int(x, 0))
     ap.add_argument('--model-avx-moves', action='store_true')
+    ap.add_argument('--timeout-ms', type=int, default=3000)
+    ap.add_argument('--instruction-limit', type=int, default=100000)
     a = ap.parse_args()
-    run(a.pid, a.roots, a.symbol, a.output, a.procedure_va, a.query_current, a.cpu_scenario, a.model_avx_moves)
+    run(a.pid, a.roots, a.symbol, a.output, a.procedure_va, a.query_current, a.cpu_scenario, a.model_avx_moves, a.timeout_ms, a.instruction_limit)

@@ -43,3 +43,28 @@ def test_failed_thread_creation_has_no_wait(monkeypatch):
  wait=Mock();monkeypatch.setattr(m,'wait',wait)
  assert not m.invoke(10,20,30,300)['created']
  wait.assert_not_called()
+
+
+def test_capture_failure_still_resumes_before_wait(monkeypatch):
+ calls=[]
+ monkeypatch.setattr(m,'create_thread',Mock(return_value=5))
+ monkeypatch.setattr(m,'capture_thread_start',Mock(side_effect=ValueError('capture fixture')))
+ monkeypatch.setattr(m,'resume_thread',lambda h: calls.append('resume') or 1)
+ monkeypatch.setattr(m,'wait',lambda h,t: calls.append('wait') or 0)
+ monkeypatch.setattr(m,'exit_code',Mock(return_value=0))
+ monkeypatch.setattr(m,'close',Mock())
+ r=m.invoke(10,20,30,300,capture_startup=True)
+ assert calls==['resume','wait'] and r['completed']
+ assert 'capture fixture' in r['capture_error']
+
+
+def test_resume_failure_is_pending_not_completed(monkeypatch):
+ monkeypatch.setattr(m,'create_thread',Mock(return_value=5))
+ monkeypatch.setattr(m,'capture_thread_start',Mock(return_value={'registers':{'rcx':'0x14','rdx':'0x1e'}}))
+ monkeypatch.setattr(m,'resume_thread',Mock(return_value=0xffffffff))
+ wait=Mock();monkeypatch.setattr(m,'wait',wait)
+ close=Mock();monkeypatch.setattr(m,'close',close)
+ r=m.invoke(10,20,30,300,capture_startup=True)
+ assert r['created'] and not r['completed']
+ assert m.classify_load(r,None)=='pending_load_thread_no_forced_cleanup'
+ wait.assert_not_called();close.assert_called_once_with(5)

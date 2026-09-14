@@ -1,0 +1,13 @@
+{
+  "ok": true,
+  "frozen": true,
+  "decoder": "C:\\Users\\14186\\AppData\\Local\\Temp\\_MEI397802\\capstone\\lib\\capstone.dll",
+  "decoder_sha256": "76958e18380023a68fd1714fa2e01c594cc6db1955a07ad6937b66e66dc5d6c3",
+  "instructions": [
+    "mov",
+    "mov",
+    "call",
+    "ret"
+  ],
+  "retired_helper_present": false
+}

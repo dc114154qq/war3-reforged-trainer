@@ -1,0 +1,32 @@
+{
+  "ok": true,
+  "source_commit": "b92957081d216e64102a4d82cff75ac1d432945c",
+  "branch": "codex/war3-3.0.0.24268-adaptation",
+  "release_version": "2.0.0",
+  "test_release": true,
+  "game_target": "Warcraft III 3.0.0.24268",
+  "exe": "C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\dist-2.0.0-test-3.0.0.24268\\War3ReforgedTrainer-v2.0.0-test.exe",
+  "exe_bytes": 18736105,
+  "exe_sha256": "08e0862394c480e4c540675192ef835ff15c0736d3168447745f0518be2e0cb7",
+  "file_version": "2.0.0.0",
+  "prerelease_flag": true,
+  "embedded_main_matches_source": true,
+  "embedded_protocols_match_source": true,
+  "bridge_matches_tools_binary": true,
+  "bridge_sha256": "816fcf704854d8138b6af73009041c6f002e36d90954e9231eb235f78b2eed4d",
+  "retired_helper_bundled": false,
+  "runtime_self_test": {
+    "ok": true,
+    "frozen": true,
+    "decoder": "C:\\Users\\14186\\AppData\\Local\\Temp\\_MEI397802\\capstone\\lib\\capstone.dll",
+    "decoder_sha256": "76958e18380023a68fd1714fa2e01c594cc6db1955a07ad6937b66e66dc5d6c3",
+    "instructions": [
+      "mov",
+      "mov",
+      "call",
+      "ret"
+    ],
+    "retired_helper_present": false
+  },
+  "startup_responding": true
+}

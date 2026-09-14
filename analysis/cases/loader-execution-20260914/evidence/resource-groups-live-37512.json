@@ -1,0 +1,263 @@
+{
+  "pid": 37512,
+  "ok": true,
+  "count": 28,
+  "elapsed_ms": 41.298,
+  "sources": [
+    "3.0 indexed player properties"
+  ],
+  "groups": [
+    {
+      "player_value": 0,
+      "owner_key": 1992447846144,
+      "gold": 997469,
+      "lumber": 999839,
+      "food_used": 109,
+      "food_cap": 72,
+      "source": "3.0 indexed player properties"
+    },
+    {
+      "player_value": 1,
+      "owner_key": 1992447846832,
+      "gold": 997439,
+      "lumber": 999701,
+      "food_used": 40,
+      "food_cap": 41,
+      "source": "3.0 indexed player properties"
+    },
+    {
+      "player_value": 2,
+      "owner_key": 1992447847520,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used": 0,
+      "food_cap": 0,
+      "source": "3.0 indexed player properties"
+    },
+    {
+      "player_value": 3,
+      "owner_key": 1992447848208,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used": 0,
+      "food_cap": 0,
+      "source": "3.0 indexed player properties"
+    },
+    {
+      "player_value": 4,
+      "owner_key": 1992447848896,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used": 0,
+      "food_cap": 0,
+      "source": "3.0 indexed player properties"
+    },
+    {
+      "player_value": 5,
+      "owner_key": 1992447849584,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used": 0,
+      "food_cap": 0,
+      "source": "3.0 indexed player properties"
+    },
+    {
+      "player_value": 6,
+      "owner_key": 1992447850272,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used": 0,
+      "food_cap": 0,
+      "source": "3.0 indexed player properties"
+    },
+    {
+      "player_value": 7,
+      "owner_key": 1992447850960,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used": 0,
+      "food_cap": 0,
+      "source": "3.0 indexed player properties"
+    },
+    {
+      "player_value": 8,
+      "owner_key": 1992447851648,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used": 0,
+      "food_cap": 0,
+      "source": "3.0 indexed player properties"
+    },
+    {
+      "player_value": 9,
+      "owner_key": 1992447852336,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used": 0,
+      "food_cap": 0,
+      "source": "3.0 indexed player properties"
+    },
+    {
+      "player_value": 10,
+      "owner_key": 1992447853024,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used": 0,
+      "food_cap": 0,
+      "source": "3.0 indexed player properties"
+    },
+    {
+      "player_value": 11,
+      "owner_key": 1992447853712,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used": 0,
+      "food_cap": 0,
+      "source": "3.0 indexed player properties"
+    },
+    {
+      "player_value": 12,
+      "owner_key": 1992447854400,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used": 0,
+      "food_cap": 0,
+      "source": "3.0 indexed player properties"
+    },
+    {
+      "player_value": 13,
+      "owner_key": 1992447855088,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used": 0,
+      "food_cap": 0,
+      "source": "3.0 indexed player properties"
+    },
+    {
+      "player_value": 14,
+      "owner_key": 1992447855776,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used": 0,
+      "food_cap": 0,
+      "source": "3.0 indexed player properties"
+    },
+    {
+      "player_value": 15,
+      "owner_key": 1992447856464,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used": 0,
+      "food_cap": 0,
+      "source": "3.0 indexed player properties"
+    },
+    {
+      "player_value": 16,
+      "owner_key": 1992447857152,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used": 0,
+      "food_cap": 0,
+      "source": "3.0 indexed player properties"
+    },
+    {
+      "player_value": 17,
+      "owner_key": 1992447857840,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used": 0,
+      "food_cap": 0,
+      "source": "3.0 indexed player properties"
+    },
+    {
+      "player_value": 18,
+      "owner_key": 1992447858528,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used": 0,
+      "food_cap": 0,
+      "source": "3.0 indexed player properties"
+    },
+    {
+      "player_value": 19,
+      "owner_key": 1992447859216,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used": 0,
+      "food_cap": 0,
+      "source": "3.0 indexed player properties"
+    },
+    {
+      "player_value": 20,
+      "owner_key": 1992447859904,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used": 0,
+      "food_cap": 0,
+      "source": "3.0 indexed player properties"
+    },
+    {
+      "player_value": 21,
+      "owner_key": 1992447860592,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used": 0,
+      "food_cap": 0,
+      "source": "3.0 indexed player properties"
+    },
+    {
+      "player_value": 22,
+      "owner_key": 1992447861280,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used": 0,
+      "food_cap": 0,
+      "source": "3.0 indexed player properties"
+    },
+    {
+      "player_value": 23,
+      "owner_key": 1992447861968,
+      "gold": 999999,
+      "lumber": 999999,
+      "food_used": 0,
+      "food_cap": 0,
+      "source": "3.0 indexed player properties"
+    },
+    {
+      "player_value": 24,
+      "owner_key": 1992447862656,
+      "gold": 0,
+      "lumber": 0,
+      "food_used": 150,
+      "food_cap": 0,
+      "source": "3.0 indexed player properties"
+    },
+    {
+      "player_value": 25,
+      "owner_key": 1992447863344,
+      "gold": 0,
+      "lumber": 0,
+      "food_used": 0,
+      "food_cap": 0,
+      "source": "3.0 indexed player properties"
+    },
+    {
+      "player_value": 26,
+      "owner_key": 1992447864032,
+      "gold": 0,
+      "lumber": 0,
+      "food_used": 0,
+      "food_cap": 0,
+      "source": "3.0 indexed player properties"
+    },
+    {
+      "player_value": 27,
+      "owner_key": 1992447864720,
+      "gold": 0,
+      "lumber": 0,
+      "food_used": 0,
+      "food_cap": 0,
+      "source": "3.0 indexed player properties"
+    }
+  ]
+}

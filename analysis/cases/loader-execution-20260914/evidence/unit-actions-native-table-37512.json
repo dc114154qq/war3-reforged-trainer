@@ -1,0 +1,64 @@
+{
+  "pid": 37512,
+  "mode": 0,
+  "thread_id": 38260,
+  "tls": "0x1cfae6eea00",
+  "entries": {
+    "SetUnitInvulnerable": {
+      "signature": "(Hunit;B)V",
+      "handler": "0x7ff73a8c9be0"
+    },
+    "BlzIsUnitInvulnerable": {
+      "signature": "(Hunit;)B",
+      "handler": "0x7ff73a885b30"
+    },
+    "SetUnitPathing": {
+      "signature": "(Hunit;B)V",
+      "handler": "0x7ff73a8ca090"
+    },
+    "PauseUnit": {
+      "signature": "(Hunit;B)V",
+      "handler": "0x7ff73a88b5b0"
+    },
+    "IsUnitPaused": {
+      "signature": "(Hunit;)B",
+      "handler": "0x7ff73a886550"
+    },
+    "UnitResetCooldown": {
+      "signature": "(Hunit;)V",
+      "handler": "0x7ff73a8d1bf0"
+    },
+    "KillUnit": {
+      "signature": "(Hunit;)V",
+      "handler": "0x7ff73a888740"
+    },
+    "RemoveUnit": {
+      "signature": "(Hunit;)V",
+      "handler": "0x7ff73a88e690"
+    },
+    "SetUnitExploded": {
+      "signature": "(Hunit;B)V",
+      "handler": "0x7ff73a8c9110"
+    },
+    "SetUnitScale": {
+      "signature": "(Hunit;RRR)V",
+      "handler": "0x7ff73a8caa80"
+    },
+    "SetUnitPosition": {
+      "signature": "(Hunit;RR)V",
+      "handler": "0x7ff73a8ca150"
+    },
+    "GetUnitX": {
+      "signature": "(Hunit;)R",
+      "handler": "0x7ff73a87fad0"
+    },
+    "GetUnitY": {
+      "signature": "(Hunit;)R",
+      "handler": "0x7ff73a87fb10"
+    },
+    "GroupRemoveUnit": {
+      "signature": "(Hgroup;Hunit;)B",
+      "handler": "0x7ff73a880e80"
+    }
+  }
+}

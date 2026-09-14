@@ -139,8 +139,21 @@ class ObjectRegistry24268:
             struct.unpack_from("<I", nt, 8)[0], struct.unpack_from("<I", nt, 0x50)[0]) != (
                 b"PE\0\0", 0x8664, TIMESTAMP, IMAGE_SIZE):
             raise ObjectIdentityError("Game build has no verified object registry profile")
-        if _read(memory, module_base + RESOLVER_RVA, len(RESOLVER_CODE)) != RESOLVER_CODE:
+        try:
+            resolver_code = _read(memory, module_base + RESOLVER_RVA, len(RESOLVER_CODE))
+        except OSError as exc:
+            # 3.0 may map this resolver as execute-only. The exact PE
+            # fingerprint above and the readable player accessor below still
+            # bind the profile; do not confuse execute-only protection with a
+            # stale RVA or silently fall back to a process scan.
+            if getattr(exc, "winerror", None) != 299:
+                raise
+            resolver_code = None
+            self.resolver_code_unreadable = True
+        if resolver_code is not None and resolver_code != RESOLVER_CODE:
             raise ObjectIdentityError("Game object resolver code differs from verified profile")
+        if resolver_code is not None:
+            self.resolver_code_unreadable = False
         # The native's decoder page is not externally readable in this build.
         # Its arithmetic was recovered from the captured shared image section.
         # Verify the readable player accessor in addition to PE + agent code;

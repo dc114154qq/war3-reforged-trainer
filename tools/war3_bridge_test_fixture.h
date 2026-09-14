@@ -65,3 +65,12 @@ __declspec(dllexport) uint64_t BridgeAbilityTestRun(AbilityWork *w,int count,int
     return BridgeAbilityQuery();
 }
 __declspec(dllexport) int BridgeAbilityTestStat(int kind) {return kind==0 ? ability_adds : kind==1 ? ability_removes : ability_sets;}
+
+__declspec(dllexport) int BridgeTestKnownAbilityTail(uint64_t handler,uint32_t code,uint32_t flags,
+    uint32_t parameters,uint64_t instruction,uint64_t access,uint64_t address,uint64_t r15) {
+    return BridgeKnownAbilityTail(handler,code,flags,parameters,instruction,access,address,r15);
+}
+
+__declspec(dllexport) int32_t BridgeTestTailReadback(int32_t actual,int32_t target) {
+    return BridgeAcceptAbilityTailReadback(actual,target);
+}

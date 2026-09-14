@@ -1,0 +1,50 @@
+{
+  "previous_turn": "progress: add/remove integrated; setter failure narrowed and retained",
+  "observations": [
+    "Actual fault is SetUnitAbilityLevel+0x4bc (RVA0xcf885c) reading address0 with r15=0.",
+    "Existing section at fault site has movzx eax,byte ptr[r15] following conditional check, then reads ability level for normal return.",
+    "Post-fault native query confirmed ability had already reached level2 before cleanup.",
+    "Current Inc/Dec native signatures located, but no invocation or working alternative claimed."
+  ],
+  "implementation": [
+    "Capture fault instruction/address/access/registers in bridge telemetry without changing command ABI.",
+    "Catch only the observed 24268 setter-relative tail access violation: matching instruction, read0, r15=0, continuable flags, expected handler range.",
+    "Do not patch game memory/code, change RIP or resume into guessed instructions. Unwind that matching call and require GetUnitAbilityLevel exactly equals requested target before reporting success.",
+    "Other faults propagate to existing failure path; unmatched readback remains failure.",
+    "Successful known-tail recoveries are counted and saved in engine24268-recovery archive/latest logs."
+  ],
+  "live_verified": {
+    "pid": 38352,
+    "scope": "15 selected hero/nonhero units; AOcr absent before test",
+    "same_callback_roundtrip": "0 -> add1 -> set2 -> remove0 on every unit",
+    "product_separate_calls": "add1 -> set2 -> independent query2 -> set3 -> independent query3 -> set1 -> independent query1 -> remove0 -> independent query0",
+    "setter_elapsed_ms": [
+      285.9,
+      293.2,
+      304.1
+    ],
+    "final_build": "ability-final-build-recovery-log-38352.json confirms restoration and recovery log content",
+    "game_responding": true
+  },
+  "code_tests": "301 passed,16 subtests passed in 14.30s; includes compiled narrow fault predicate negative cases and exact readback gate",
+  "commands_successful": [
+    "tools/build_engine_bridge.ps1",
+    "tools/build_engine_bridge.ps1 -Fixture -OutputDirectory ./analysis",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q test_24268_product_ability.py test_24268_product_hero.py test_24268_native_table_blocks.py test_native_table_live.py test_24268_context_retry.py test_24268_dispatch_delivery.py test_24268_lifecycle_protocol.py test_24268_native_preflight.py test_24268_selection_protocol.py test_game_thread_dispatch_cleanup.py test_24268_executor_readiness.py test_24268_product_boundary.py test_classic_player_selection.py --tb=short --maxfail=2"
+  ],
+  "evidence": [
+    "ability-level-fault-registers-38352.json",
+    "ability-setter-fault-site.json",
+    "ability-inc-dec-entries.json",
+    "ability-tail-effect-38352.json",
+    "ability-tail-recovered-roundtrip-38352.json",
+    "ability-product-up-down-38352.json",
+    "ability-final-build-recovery-log-38352.json"
+  ],
+  "residual": [
+    "Only current build and AOcr skill mutation tested live here; other map-defined/special skills and devices still need validation.",
+    "No complete clone, item operations or remaining elephant-feature acceptance claimed.",
+    "No EXE release this turn; goal stays active."
+  ],
+  "next": "Port item creation/charges and inventory handling onto current bridge, then reuse verified skill operations for full unit clone."
+}

@@ -10,6 +10,37 @@ typedef struct AbilityWork {
 } AbilityWork;
 _Static_assert(sizeof(AbilityWork)==832,"AbilityWork ABI");
 __declspec(dllexport) const uint32_t ability_batch_abi[3]={0x24268011u,216u,832u};
+/* 24268 evidence: SetUnitAbilityLevel+0x4bc faults reading [r15=0]
+   AFTER its level mutation. Do not patch the game or resume at a guessed RIP.
+   Unwind only that exact tail fault, then require native readback == target. */
+static int BridgeKnownAbilityTail(uint64_t handler,uint32_t code,uint32_t flags,
+                                 uint32_t parameters,uint64_t instruction,
+                                 uint64_t access,uint64_t address,uint64_t r15) {
+    return handler>=0x10000 && handler<0x800000000000ULL-0x4bc &&
+        code==EXCEPTION_ACCESS_VIOLATION && !(flags&EXCEPTION_NONCONTINUABLE) && parameters>=2 &&
+        instruction==handler+0x4bc && access==0 && address==0 && r15==0;
+}
+static LONG BridgeAbilityTailFilter(EXCEPTION_POINTERS *info,AbilityWork *w) {
+    EXCEPTION_RECORD *e=info->ExceptionRecord;
+    if (BridgeKnownAbilityTail((uint64_t)(uintptr_t)w->set_level,e->ExceptionCode,e->ExceptionFlags,
+        e->NumberParameters,(uint64_t)(uintptr_t)e->ExceptionAddress,
+        e->ExceptionInformation[0],e->ExceptionInformation[1],info->ContextRecord->R15)) {
+        BridgeExceptionFilter(info);
+        return EXCEPTION_EXECUTE_HANDLER;
+    }
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+static int32_t BridgeAcceptAbilityTailReadback(int32_t actual,int32_t target) {
+    if (actual==target && target>0) {++bridge_recovered_faults;return actual;}
+    return -1;
+}
+static int32_t BridgeSetAbilityLevelChecked(AbilityWork *w,uint64_t unit,int32_t level) {
+    __try {return w->set_level(unit,w->rawcode,level);}
+    __except(BridgeAbilityTailFilter(GetExceptionInformation(),w)) {
+        int32_t actual=w->get_level(unit,w->rawcode);
+        return BridgeAcceptAbilityTailReadback(actual,level);
+    }
+}
 __declspec(dllexport) uint64_t BridgeAbilityQuery(void) {
     AbilityWork *w=(AbilityWork *)g_dispatch->work;
     uint64_t count,unit;
@@ -43,7 +74,7 @@ __declspec(dllexport) uint64_t BridgeAbilityQuery(void) {
                 w->error=200+i;current=w->get_level(unit,w->rawcode);w->error=0;
                 if (current!=(int32_t)w->target) {
                     w->error=300+i;
-                    if (w->set_level(unit,w->rawcode,(int32_t)w->target)!=(int32_t)w->target) {w->error=26;return count;}
+                    if (BridgeSetAbilityLevelChecked(w,unit,(int32_t)w->target)!=(int32_t)w->target) {w->error=26;return count;}
                     w->error=0;
                     if (before>0) ++w->changed;
                 }
@@ -54,6 +85,8 @@ __declspec(dllexport) uint64_t BridgeAbilityQuery(void) {
             }
             w->intermediate[i]=w->get_level(unit,w->rawcode);
         } __finally {
+            /* Preserve the actual post-call level even when the setter faults. */
+            if (w->error>=300 && w->error<324) w->intermediate[i]=w->get_level(unit,w->rawcode);
             /* Diagnostic action restores only an ability that was absent. */
             if (w->action==4 && !before && w->get_level(unit,w->rawcode)>0) {
                 if (!w->remove(unit,w->rawcode)) w->error=28;

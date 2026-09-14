@@ -94,3 +94,38 @@ def test_failure_message_contains_real_ability_stage():
     from war3_engine_24268 import EngineExecutionError
     error=EngineExecutionError('failed',{'pid':1,'ability_status':{'changed':1,'error':300,'completed':0}})
     assert '300' in str(error) and 'ability_status' in str(error)
+
+def test_fault_register_record_retains_actual_access_details():
+    record=struct.pack('<4I10Q',0x24268012,1,0xc0000005,0,*range(0x100000,0x10000a))
+    decoded=transport.decode_fault(record)
+    assert decoded['instruction']=='0x100000' and decoded['address']=='0x100001'
+    assert decoded['rcx']=='0x100002' and decoded['code']=='0xc0000005'
+
+def test_absent_fault_is_not_fabricated():
+    assert transport.decode_fault(bytes(96)) is None
+
+@pytest.mark.parametrize('data',[b'',bytes(95),struct.pack('<4I10Q',1,1,1,1,*([0]*10))])
+def test_bad_fault_telemetry_is_rejected(data):
+    with pytest.raises(ValueError):transport.decode_fault(data)
+
+@pytest.mark.parametrize('index,value',[(0,0),(1,0xc0000094),(2,1),(3,1),(4,0x5004bd),(5,1),(5,8),(6,8),(7,8)])
+def test_compiled_tail_gate_rejects_other_faults(fixture,index,value):
+    fn=fixture.BridgeTestKnownAbilityTail
+    fn.argtypes=[c.c_uint64,c.c_uint32,c.c_uint32,c.c_uint32,c.c_uint64,c.c_uint64,c.c_uint64,c.c_uint64];fn.restype=c.c_int
+    args=[0x500000,0xc0000005,0,2,0x5004bc,0,0,0]
+    assert fn(*args)==1
+    args[index]=value
+    assert fn(*args)==0
+
+@pytest.mark.parametrize('actual,target,expected',[(2,2,2),(1,2,-1),(3,2,-1),(0,0,-1),(-1,2,-1)])
+def test_compiled_tail_recovery_requires_exact_readback(fixture,actual,target,expected):
+    f=fixture.BridgeTestTailReadback;f.argtypes=[c.c_int,c.c_int];f.restype=c.c_int
+    assert f(actual,target)==expected
+
+def test_recovered_fault_is_saved_not_silently_erased(tmp_path,monkeypatch):
+    monkeypatch.setattr(product.sys,'frozen',True,raising=False)
+    monkeypatch.setattr(product.sys,'executable',str(tmp_path/'trainer.exe'))
+    report={'ok':True,'dispatch':{'recovered_tail_faults':15,'fault':{'instruction':'0x123','address':'0x0'}}}
+    path=Path(product.record_engine_recovery(1234,report))
+    text=path.read_text(encoding='utf-8-sig')
+    assert 'verified_tail_fault_recovery' in text and 'recovered_tail_faults' in text and '0x123' in text

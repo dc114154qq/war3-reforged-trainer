@@ -1871,6 +1871,15 @@ def record_operation_failure(pid: int, operation: str, exc: BaseException) -> st
         logger.close()
 
 
+def record_engine_recovery(pid: int, report: dict) -> str:
+    logger = Win10ReadLogger(pid, prefix="engine24268-recovery")
+    try:
+        logger.log("verified_tail_fault_recovery", report=report)
+        return str(logger.archive_path)
+    finally:
+        logger.close()
+
+
 class Win10ProcessMemory(ProcessMemory):
     EXACT_READ_LIMIT = 0x1000
     SCAN_CHUNK_SIZE = 0x10000
@@ -5427,7 +5436,8 @@ class War3Trainer:
         from war3_engine_24268 import Engine24268
         engine = getattr(self, "_engine24268", None)
         if engine is None or (engine.pid, engine.hwnd) != (self.pid, self.hwnd):
-            engine = Engine24268(self.pid, self.hwnd, ProcessMemory)
+            engine = Engine24268(self.pid, self.hwnd, ProcessMemory,
+                                 report_sink=lambda report: record_engine_recovery(self.pid, report))
             self._engine24268 = engine
         return engine
 

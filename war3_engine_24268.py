@@ -19,8 +19,9 @@ class EngineExecutionError(RuntimeError):
             ability_status=report.get('ability_status')),ensure_ascii=False))
 
 class Engine24268:
-    def __init__(self,pid,hwnd,memory_factory,image=None):
+    def __init__(self,pid,hwnd,memory_factory,image=None,report_sink=None):
         self.pid,self.hwnd,self.memory_factory=pid,hwnd,memory_factory
+        self.report_sink=report_sink
         self.image=Path(image) if image is not None else Path(getattr(sys,'_MEIPASS',Path(__file__).resolve().parent))/'tools/war3_bridge_24268.dll'
         self.lock=threading.RLock();self.last_report={};self.quarantined=False
 
@@ -72,7 +73,12 @@ class Engine24268:
                         and evidence['after_send']['tls_value']==hex(mode.tls)):
                         raise EngineExecutionError('Current-engine batch execution or cleanup failed; not retried',report)
                     result=decoder(bytes.fromhex(evidence['work_result_hex']),int(evidence['after_send']['query_result'],16))
-                    report['result']=result;report['ok']=True;return result
+                    report['result']=result;report['ok']=True
+                    if evidence.get('recovered_tail_faults') and self.report_sink is not None:
+                        try:report['recovery_log']=self.report_sink(report)
+                        except Exception as exc:
+                            raise EngineExecutionError('Operation verified but recovery log failed; do not repeat the write',report) from exc
+                    return result
             except EngineExecutionError:raise
             except Exception as exc:
                 report['error']=str(exc);raise EngineExecutionError(str(exc),report) from exc

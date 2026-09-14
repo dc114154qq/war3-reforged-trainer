@@ -86,6 +86,14 @@ def can_release(completed, delivered, state):
         and (not state.get('unwind_registered') or state.get('unwind_removed')))
 
 
+def decode_fault(data):
+    if len(data)!=96:raise ValueError('Incomplete bridge fault record')
+    magic,version,code,access,*regs=struct.unpack('<4I10Q',data)
+    if not magic:return None
+    if magic!=0x24268012 or version!=1:raise ValueError('Bridge fault ABI differs')
+    return dict(code=hex(code),access=access,**dict(zip(
+        ('instruction','address','rcx','rdx','r8','r9','rax','rbx','rsp','rbp'),map(hex,regs))))
+
 def query_completed(state):
     return state.get('query_stage') == 2 and state.get('exception_code') == '0x0'
 
@@ -187,6 +195,10 @@ def dispatch(pid,hwnd,tid,image,tls_index,work_payload,kind="hero"):
         safe=can_release(completed, delivered, state)
         report['callback_verified']=bool(safe and state['callback_tid']==tid and state['callback_count']==1)
         report['query_completed']=query_completed(state)
+        if b'bridge_fault' in exports:
+            report['fault']=decode_fault(bytes_at(handle,view.value+exports[b'bridge_fault'],96))
+        if b'bridge_recovered_faults' in exports:
+            report['recovered_tail_faults']=struct.unpack('<I',bytes_at(handle,view.value+exports[b'bridge_recovered_faults'],4))[0]
         if work:report['work_result_hex']=p['bytes_at'](handle,work,len(work_payload)).hex()
     except Exception as exc:
         report['error']=repr(exc)

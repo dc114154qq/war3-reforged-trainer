@@ -1,0 +1,334 @@
+{
+  "pid": 38352,
+  "ok": false,
+  "error": "Traceback (most recent call last):\n  File \"<stdin>\", line 8, in <module>\n  File \"C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\war3_reforged_trainer.py\", line 5441, in ability_batch_24268\n    return self._engine_instance_24268().ability_batch(ability, action, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\war3_engine_24268.py\", line 41, in ability_batch\n    return self._execute('ability',names,lambda entries,tls:build(entries,tls,rawcode,action,level),decode,\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\war3_engine_24268.py\", line 73, in _execute\n    raise EngineExecutionError('Current-engine batch execution or cleanup failed; not retried',report)\nwar3_engine_24268.EngineExecutionError: Current-engine batch execution or cleanup failed; not retried; engine24268={\"pid\": 38352, \"phase\": 3, \"exception\": \"0xc0000005\", \"retained\": false, \"ability_status\": {\"changed\": 1, \"error\": 300, \"completed\": 0}}\n",
+  "execution": {
+    "pid": 38352,
+    "operation": "ability",
+    "request": {
+      "rawcode": 1095721842,
+      "action": 4,
+      "level": 2
+    },
+    "ok": false,
+    "mappings": {
+      "GetLocalPlayer": {
+        "address": "0x7ff73a8773d0",
+        "kind": "readable-executable",
+        "protection": "0x20",
+        "allocation": "0x7ff739bd0000",
+        "code_hex": "40534883ec2066660f1f840000000000"
+      },
+      "CreateGroup": {
+        "address": "0x7ff73a865f40",
+        "kind": "readable-executable",
+        "protection": "0x20",
+        "allocation": "0x7ff739bd0000",
+        "code_hex": "48895c240848896c2410488974241857"
+      },
+      "GroupEnumUnitsSelected": {
+        "address": "0x7ff73a8808a0",
+        "kind": "readable-executable",
+        "protection": "0x20",
+        "allocation": "0x7ff739bd0000",
+        "code_hex": "48895c240848896c2410488974241848"
+      },
+      "FirstOfGroup": {
+        "address": "0x7ff73a86bb90",
+        "kind": "readable-executable",
+        "protection": "0x20",
+        "allocation": "0x7ff739bd0000",
+        "code_hex": "4883ec28e817fac4ff4885c0741e488d"
+      },
+      "GroupRemoveUnit": {
+        "address": "0x7ff73a880e80",
+        "kind": "readable-executable",
+        "protection": "0x20",
+        "allocation": "0x7ff739bd0000",
+        "code_hex": "48895c2408574883ec208bfae81fa7c3"
+      },
+      "DestroyGroup": {
+        "address": "0x7ff73a8699d0",
+        "kind": "readable-executable",
+        "protection": "0x20",
+        "allocation": "0x7ff739bd0000",
+        "code_hex": "4883ec28e8d71bc5ff4885c07411488b"
+      },
+      "GetUnitTypeId": {
+        "address": "0x7ff73a87f560",
+        "kind": "readable-executable",
+        "protection": "0x20",
+        "allocation": "0x7ff739bd0000",
+        "code_hex": "4883ec28e8a7e7c3ff4885c075054883"
+      },
+      "GetHeroLevel": {
+        "address": "0x7ff73a876160",
+        "kind": "readable-executable",
+        "protection": "0x20",
+        "allocation": "0x7ff739bd0000",
+        "code_hex": "48895c2408574883ec20e8a17bc4ff48"
+      },
+      "UnitAddAbility": {
+        "address": "0x7ff73a8cfd30",
+        "kind": "image-noaccess-diagnostic-only",
+        "protection": "0x1",
+        "allocation": "0x7ff739bd0000",
+        "code_hex": null
+      },
+      "UnitRemoveAbility": {
+        "address": "0x7ff73a8d1910",
+        "kind": "image-noaccess-diagnostic-only",
+        "protection": "0x1",
+        "allocation": "0x7ff739bd0000",
+        "code_hex": null
+      },
+      "SetUnitAbilityLevel": {
+        "address": "0x7ff73a8c83a0",
+        "kind": "image-noaccess-diagnostic-only",
+        "protection": "0x1",
+        "allocation": "0x7ff739bd0000",
+        "code_hex": null
+      },
+      "GetUnitAbilityLevel": {
+        "address": "0x7ff73a87d7c0",
+        "kind": "readable-executable",
+        "protection": "0x20",
+        "allocation": "0x7ff739bd0000",
+        "code_hex": "48895c24084889742410574883ec408b"
+      }
+    },
+    "preflight_ms": 124.69280000004801,
+    "dispatch": {
+      "pid": 38352,
+      "hwnd": "0x8d09a8",
+      "expected_callback_tid": 35668,
+      "image": "C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\tools\\war3_bridge_24268.dll",
+      "image_sha256": "5f0a5ba6321eb50d6f3c35e87b5298fd8840ca2302757b11b6c386c5d155b4be",
+      "calls_game_handlers": true,
+      "query_mode": "ability",
+      "delivery_mode": "posted",
+      "image_base": "0x7ffe841f0000",
+      "command_address": "0x22600770000",
+      "work_address": "0x22600780000",
+      "install_thread": {
+        "tid": 7804,
+        "created": true,
+        "completed": true
+      },
+      "after_install": {
+        "hook": 993791191,
+        "target_tid": 35668,
+        "message": 50124,
+        "nonce": 594292593373395135,
+        "stage": 2,
+        "last_error": 0,
+        "callback_tid": 0,
+        "callback_count": 0,
+        "detached": 0,
+        "active": 0,
+        "query_result": "0x0",
+        "tls_value": "0x0",
+        "query_stage": 0,
+        "exception_code": "0x0",
+        "unwind_registered": 1,
+        "unwind_removed": 0
+      },
+      "post": {
+        "enqueued": true,
+        "error": 0
+      },
+      "after_send": {
+        "hook": 993791191,
+        "target_tid": 35668,
+        "message": 50124,
+        "nonce": 594292593373395135,
+        "stage": 3,
+        "last_error": 0,
+        "callback_tid": 35668,
+        "callback_count": 1,
+        "detached": 1,
+        "active": 0,
+        "query_result": "0x0",
+        "tls_value": "0x225ddb3ea60",
+        "query_stage": 3,
+        "exception_code": "0xc0000005",
+        "unwind_registered": 1,
+        "unwind_removed": 0
+      },
+      "after_cleanup": {
+        "hook": 993791191,
+        "target_tid": 35668,
+        "message": 50124,
+        "nonce": 594292593373395135,
+        "stage": 3,
+        "last_error": 0,
+        "callback_tid": 35668,
+        "callback_count": 1,
+        "detached": 1,
+        "active": 0,
+        "query_result": "0x0",
+        "tls_value": "0x225ddb3ea60",
+        "query_stage": 3,
+        "exception_code": "0xc0000005",
+        "unwind_registered": 1,
+        "unwind_removed": 1
+      },
+      "callback_verified": true,
+      "query_completed": false,
+      "fault": {
+        "code": "0xc0000005",
+        "access": 0,
+        "instruction": "0x7ff73a8c885c",
+        "address": "0x0",
+        "rcx": "0xa1039fe2c8",
+        "rdx": "0x0",
+        "r8": "0x81120",
+        "r9": "0x8111f",
+        "rax": "0x0",
+        "rbx": "0x2259617b888",
+        "rsp": "0xa1039fe220",
+        "rbp": "0xa1039fe280"
+      },
+      "work_result_hex": "d073873af77f0000405f863af77f0000a008883af77f000090bb863af77f0000800e883af77f0000d099863af77f000060f5873af77f00006061873af77f000008001000000000005b081000000000000f0000000000000001000000000000002d081000000000006c6170480100000048081000000000006f6f66680000000049081000000000006f6f66680000000043081000000000006f6f66680000000042081000000000006f6f6668000000003d081000000000006f6f66680000000046081000000000006f6f6668000000004b081000000000006f6f66680000000031081000000000006f6f6668000000002f081000000000006f6f66680000000028081000000000006f6f66680000000026081000000000006f6f6668000000002b081000000000006f6f6668000000002c081000000000006f6f66680000000023081000000000006f6f66680000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000030fd8c3af77f000010198d3af77f0000a0838c3af77f0000c0d7873af77f000060eab3dd2502000072634f410400000002000000010000002c01000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "safe_to_release": true,
+      "work_freed": true,
+      "block_freed": true,
+      "image_unmap_status": "0x0"
+    },
+    "ability_status": {
+      "changed": 1,
+      "error": 300,
+      "completed": 0
+    },
+    "elapsed_ms": 156.81190000032075
+  },
+  "after": {
+    "rows": [
+      {
+        "handle": 1050669,
+        "rawcode": 1215324524,
+        "level": 1,
+        "before": 0,
+        "after": 0,
+        "intermediate": 0
+      },
+      {
+        "handle": 1050696,
+        "rawcode": 1751543663,
+        "level": 0,
+        "before": 0,
+        "after": 0,
+        "intermediate": 0
+      },
+      {
+        "handle": 1050697,
+        "rawcode": 1751543663,
+        "level": 0,
+        "before": 0,
+        "after": 0,
+        "intermediate": 0
+      },
+      {
+        "handle": 1050691,
+        "rawcode": 1751543663,
+        "level": 0,
+        "before": 0,
+        "after": 0,
+        "intermediate": 0
+      },
+      {
+        "handle": 1050690,
+        "rawcode": 1751543663,
+        "level": 0,
+        "before": 0,
+        "after": 0,
+        "intermediate": 0
+      },
+      {
+        "handle": 1050685,
+        "rawcode": 1751543663,
+        "level": 0,
+        "before": 0,
+        "after": 0,
+        "intermediate": 0
+      },
+      {
+        "handle": 1050694,
+        "rawcode": 1751543663,
+        "level": 0,
+        "before": 0,
+        "after": 0,
+        "intermediate": 0
+      },
+      {
+        "handle": 1050699,
+        "rawcode": 1751543663,
+        "level": 0,
+        "before": 0,
+        "after": 0,
+        "intermediate": 0
+      },
+      {
+        "handle": 1050673,
+        "rawcode": 1751543663,
+        "level": 0,
+        "before": 0,
+        "after": 0,
+        "intermediate": 0
+      },
+      {
+        "handle": 1050671,
+        "rawcode": 1751543663,
+        "level": 0,
+        "before": 0,
+        "after": 0,
+        "intermediate": 0
+      },
+      {
+        "handle": 1050664,
+        "rawcode": 1751543663,
+        "level": 0,
+        "before": 0,
+        "after": 0,
+        "intermediate": 0
+      },
+      {
+        "handle": 1050662,
+        "rawcode": 1751543663,
+        "level": 0,
+        "before": 0,
+        "after": 0,
+        "intermediate": 0
+      },
+      {
+        "handle": 1050667,
+        "rawcode": 1751543663,
+        "level": 0,
+        "before": 0,
+        "after": 0,
+        "intermediate": 0
+      },
+      {
+        "handle": 1050668,
+        "rawcode": 1751543663,
+        "level": 0,
+        "before": 0,
+        "after": 0,
+        "intermediate": 0
+      },
+      {
+        "handle": 1050659,
+        "rawcode": 1751543663,
+        "level": 0,
+        "before": 0,
+        "after": 0,
+        "intermediate": 0
+      }
+    ],
+    "rawcode": 1095721842,
+    "action": 0,
+    "changed": 0,
+    "count": 15
+  },
+  "restored": true
+}

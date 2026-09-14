@@ -35,6 +35,25 @@ typedef EXCEPTION_DISPOSITION (*BridgeHandler)(PEXCEPTION_RECORD,void *,PCONTEXT
 EXCEPTION_DISPOSITION BridgeSpecificHandler(PEXCEPTION_RECORD e,void *f,PCONTEXT c,PDISPATCHER_CONTEXT d) {
     return ((BridgeHandler)g_dispatch->specific_handler)(e,f,c,d);
 }
+typedef struct BridgeFault {
+    uint32_t magic,version,code,access;
+    uint64_t instruction,address,rcx,rdx,r8,r9,rax,rbx,rsp,rbp;
+} BridgeFault;
+_Static_assert(sizeof(BridgeFault)==96,"BridgeFault ABI");
+__declspec(dllexport) BridgeFault bridge_fault;
+__declspec(dllexport) uint32_t bridge_recovered_faults;
+static LONG BridgeExceptionFilter(EXCEPTION_POINTERS *info) {
+    EXCEPTION_RECORD *e=info->ExceptionRecord;
+    CONTEXT *r=info->ContextRecord;
+    bridge_fault.magic=0x24268012u;bridge_fault.version=1;bridge_fault.code=e->ExceptionCode;
+    bridge_fault.instruction=(uint64_t)(uintptr_t)e->ExceptionAddress;
+    if (e->NumberParameters>=2 && (e->ExceptionCode==EXCEPTION_ACCESS_VIOLATION || e->ExceptionCode==EXCEPTION_IN_PAGE_ERROR)) {
+        bridge_fault.access=(uint32_t)e->ExceptionInformation[0];bridge_fault.address=e->ExceptionInformation[1];
+    }
+    bridge_fault.rcx=r->Rcx;bridge_fault.rdx=r->Rdx;bridge_fault.r8=r->R8;bridge_fault.r9=r->R9;
+    bridge_fault.rax=r->Rax;bridge_fault.rbx=r->Rbx;bridge_fault.rsp=r->Rsp;bridge_fault.rbp=r->Rbp;
+    return EXCEPTION_EXECUTE_HANDLER;
+}
 static LRESULT CALLBACK BridgeCallback(int code, WPARAM w, LPARAM l) {
     BridgeCommand *cmd = g_dispatch;
     LRESULT result;
@@ -62,7 +81,7 @@ static LRESULT CALLBACK BridgeCallback(int code, WPARAM w, LPARAM l) {
                     cmd->query_result = cmd->query();
                     cmd->query_stage = 2;
                 }
-            } __except (EXCEPTION_EXECUTE_HANDLER) {
+            } __except (BridgeExceptionFilter(GetExceptionInformation())) {
                 cmd->exception_code = GetExceptionCode();
                 cmd->query_stage = 3;
             }

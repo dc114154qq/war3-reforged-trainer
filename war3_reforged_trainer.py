@@ -13764,45 +13764,10 @@ class War3Trainer:
                            native_write=True,
                            note=f"引擎从地图资源替换技能；当前等级={results[1].arg1}")
         if getattr(self, "_native_selection_unavailable", False):
-            components = self._selected_components(pm, candidate.owner_address)
-            hero = components.get("hero")
-            if hero is None:
-                raise RuntimeError("当前选中单位没有英雄组件，不能写入英雄技能")
-            hero_data = hero[1]
-            config_address = hero_data + 0x1BC + index * 4
-            old_rawcode = pm.read_u32(config_address)
-            if not old_rawcode:
-                raise RuntimeError(f"技能{index + 1}当前为空")
-            cache_address = hero_data + 0x1D4 + index * 4
-            instances = [
-                item for item in self._ability_instances_from_candidate(pm, candidate)
-                if item.rawcode == old_rawcode
-            ]
-            if len(instances) != 1:
-                raise RuntimeError(
-                    f"技能{index + 1}没有唯一的实时 ability 实例，拒绝只改配置"
-                )
-            instance = instances[0]
-            old_tag = pm.read_u64(instance.wrapper_tag_address)
-            new_tag = ((new_rawcode & 0xFFFFFFFF) << 32) | (old_tag & 0xFFFFFFFF)
-            pm.write_u64(instance.wrapper_tag_address, new_tag)
-            pm.write_u32(instance.rawcode_address, new_rawcode)
-            if instance.mirror_rawcode_address:
-                pm.write_u32(instance.mirror_rawcode_address, new_rawcode)
-            pm.write_u32(config_address, new_rawcode)
-            pm.write_u32(cache_address, new_rawcode)
-            actual = pm.read_u32(config_address)
-            cache_actual = pm.read_u32(cache_address)
-            runtime_rawcode = pm.read_u32(instance.rawcode_address)
-            runtime_mirror = pm.read_u32(instance.mirror_rawcode_address)
-            if (actual != new_rawcode or cache_actual != new_rawcode
-                    or runtime_rawcode != new_rawcode or runtime_mirror != new_rawcode
-                    or pm.read_u64(instance.wrapper_tag_address) != new_tag):
-                raise RuntimeError("3.0 英雄技能配置写入读回不一致")
-            return replace(
-                field, value=actual, address=config_address,
-                write_address=config_address, write_type="rawcode",
-                note="3.0 hero runtime ability and configuration readback verified",
+            # Changing rawcode/class tags does not construct a new ability or
+            # update engine-owned effect state. Never publish that as replacement.
+            raise RuntimeError(
+                "3.0 技能替换尚未接通引擎创建/替换接口；原技能及配置未修改"
             )
         components = self._selected_components(pm, candidate.owner_address)
         hero = components.get("hero")

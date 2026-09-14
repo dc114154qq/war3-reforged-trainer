@@ -1,0 +1,79 @@
+{
+  "recorded_utc": "2026-09-14T02:10:47.254009+00:00",
+  "archive_sha256": "b60f88fb71d6763e5a77b197a9afb4c95b91ce7896a5f862a7df130a3719e80c",
+  "artifacts": [
+    {
+      "path": "analysis/engine_hook_probe.c",
+      "bytes": 3884,
+      "sha256": "d00b0cc8078af3649125de89e4b92740011f3579ed35f2f938c45f7053ed11d8"
+    },
+    {
+      "path": "analysis/engine-probe-image-entry.dll",
+      "bytes": 4096,
+      "sha256": "6232cb903fc4e248c07fc0d88a9eaa9fcc2e6a48785942a5bc142c1def4e9806"
+    },
+    {
+      "path": "analysis/engine-probe-image-entry-build.log",
+      "bytes": 108,
+      "sha256": "bba1a936bb6bcbe3633bf5b9f93b7c858a11a11f7b73d9ee380de7cd0ebf5244"
+    },
+    {
+      "path": "analysis/verify-image-thread-entry.py",
+      "bytes": 5597,
+      "sha256": "62ce73d910c5f57758ff219cecb2b1b16428b7544ef0c91727ce1adfa45cd5f7"
+    },
+    {
+      "path": "test_image_thread_diagnostic.py",
+      "bytes": 3286,
+      "sha256": "445e0361314e8f37d5c865528f53cc7fc7bc580156525834d316a244495d7941"
+    },
+    {
+      "path": "analysis/image-thread-entry-local.json",
+      "bytes": 21186,
+      "sha256": "ba83e7c650e83d7b1233c9fbca34acea30fed3165caf5453b2354555c3ef2edc"
+    },
+    {
+      "path": "analysis/image-thread-entry-22844.json",
+      "bytes": 20607,
+      "sha256": "d480c34aa7cd759dbed8a60ac8da9f4d582323bced208373ecee53e56884c495"
+    },
+    {
+      "path": "analysis/image-thread-entry-22844.log",
+      "bytes": 1176,
+      "sha256": "14bc830d9f94730bf27a8717a114966bcfabc75b5b3c6068046e5fe704652f44"
+    },
+    {
+      "path": "analysis/image-thread-diagnostic-tests.log",
+      "bytes": 101,
+      "sha256": "971a1674a8cef8c029112e542960e6e0289e6a15a7f35af6dc567678326e1ef1"
+    },
+    {
+      "path": "analysis/post-image-probe-selection.json",
+      "bytes": 90,
+      "sha256": "bb9a483f8497095734f8c2868d9814577c8a622a1d72741e4901f973f9d4126c"
+    }
+  ],
+  "verified": true,
+  "facts": [
+    "Windows SEC_IMAGE map verified as MEM_IMAGE, exported marker prefix matches file",
+    "Image-backed probe marker reached stage 2 in local host AND game PID22844",
+    "Game LoadLibraryW returned null with immediate last error 570; this is a live result, not an emulator inference",
+    "Previously private-page marker reached stage 0 only; do not conflate those entry types",
+    "Image maps and parameter blocks freed, temporary game-directory DLL removed",
+    "19 diagnostic tests passed",
+    "Post-probe current selection remains readable with unique identities"
+  ],
+  "limits": [
+    "Only diagnostic calls executed; no engine callbacks/level/clone/ability operation tested",
+    "Mapping a PE image is not a normal DLL load; import-independent probe entry used",
+    "Probe has compiler-generated code matching marker semantics, not byte-identical machine instructions",
+    "A game-thread execution path and verified current native ABI still needed"
+  ],
+  "commands": [
+    "clang -shared -O2 -fno-stack-protector -fno-builtin -nostdlib analysis/engine_hook_probe.c -o analysis/engine-probe-image-entry.dll '-Wl,/entry:DllMain,/nodefaultlib' -luser32 -lkernel32",
+    "python analysis/verify-image-thread-entry.py --local-host analysis/engine-hook-probe-host.exe --dll analysis/engine-hook-probe-minimal.dll --entry-image analysis/engine-probe-image-entry.dll --output analysis/image-thread-entry-local.json",
+    "python analysis/verify-image-thread-entry.py --pid 22844 --dll \"E:\\Warcraft III\\_retail_\\x86_64\\war3_probe1.dll\" --entry-image analysis/engine-probe-image-entry.dll --output analysis/image-thread-entry-22844.json",
+    "python -m pytest -q --tb=short test_image_thread_diagnostic.py test_loader_thread_diagnostic.py"
+  ],
+  "next": "Use the working import-independent image execution channel to verify game-thread dispatch; avoid relying on ordinary LoadLibrary success"
+}

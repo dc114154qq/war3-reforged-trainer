@@ -70,3 +70,25 @@ BOOL WINAPI DllMain(HINSTANCE module, DWORD reason, LPVOID reserved) {
     }
     return TRUE;
 }
+
+/* Same marker stages as verify-loader-thread.py, but residing in a PE image.
+   This export is self-contained: imports/TLS/DllMain are not needed to run it.
+   All loader calls are explicitly passed by the diagnostic controller. */
+typedef struct ProbeLoadCommand {
+    const wchar_t *path;
+    HMODULE (WINAPI *load_library)(LPCWSTR);
+    DWORD (WINAPI *get_last_error)(void);
+    volatile DWORD stage;
+    DWORD reserved;
+    HMODULE module;
+    DWORD last_error;
+    DWORD reserved2;
+} ProbeLoadCommand;
+
+__declspec(dllexport) DWORD WINAPI ProbeLoaderEntry(ProbeLoadCommand *cmd) {
+    cmd->stage = 1;
+    cmd->module = cmd->load_library(cmd->path);
+    cmd->last_error = cmd->get_last_error();
+    cmd->stage = 2;
+    return 0;
+}

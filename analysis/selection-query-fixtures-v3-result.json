@@ -1,0 +1,38 @@
+[
+  {
+    "case": 0,
+    "count": 0,
+    "error": 0,
+    "destroyed": 1,
+    "query_stage": 2,
+    "exception": "0x0",
+    "cleaned": true
+  },
+  {
+    "case": 1,
+    "count": 24,
+    "error": 0,
+    "destroyed": 1,
+    "query_stage": 2,
+    "exception": "0x0",
+    "cleaned": true
+  },
+  {
+    "case": 2,
+    "count": 0,
+    "error": 4,
+    "destroyed": 1,
+    "query_stage": 2,
+    "exception": "0x0",
+    "cleaned": true
+  },
+  {
+    "case": 3,
+    "count": 0,
+    "error": 4,
+    "destroyed": 1,
+    "query_stage": 2,
+    "exception": "0x0",
+    "cleaned": true
+  }
+]

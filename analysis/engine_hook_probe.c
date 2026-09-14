@@ -120,8 +120,9 @@ typedef struct ProbeHookCommand {
     LPVOID tls_value;
     void *specific_handler;
     DWORD unwind_count, tls_index, query_stage, exception_code, unwind_registered, unwind_removed;
+    void *work;
 } ProbeHookCommand;
-_Static_assert(sizeof(ProbeHookCommand) == 208, "ProbeHookCommand ABI");
+_Static_assert(sizeof(ProbeHookCommand) == 216, "ProbeHookCommand ABI");
 static ProbeHookCommand *g_dispatch;
 typedef EXCEPTION_DISPOSITION (*ProbeHandler)(PEXCEPTION_RECORD,void *,PCONTEXT,PDISPATCHER_CONTEXT);
 EXCEPTION_DISPOSITION ProbeSpecificHandler(PEXCEPTION_RECORD e,void *f,PCONTEXT c,PDISPATCHER_CONTEXT d) {
@@ -191,3 +192,9 @@ __declspec(dllexport) DWORD WINAPI ProbeUninstallLocalHook(ProbeHookCommand *cmd
     }
     return 0;
 }
+
+#include "engine_native_selection.h"
+
+#ifdef PROBE_TEST_FIXTURES
+#include "selection_query_fixtures.h"
+#endif

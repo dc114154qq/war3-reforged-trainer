@@ -3,6 +3,7 @@ import argparse
 import ctypes as c
 from datetime import datetime, timezone
 import hashlib
+import traceback
 import json
 import os
 from pathlib import Path
@@ -49,12 +50,12 @@ def query_completed(state):
     return state.get('query_stage') == 2 and state.get('exception_code') == '0x0'
 
 
-def inspect(pid,hwnd,tid,image,query_mode="none",tls_index=0,native_address=0):
+def inspect(pid,hwnd,tid,image,query_mode="none",tls_index=0,native_address=0,work_payload=b""):
     pe=pefile.PE(str(image));exports={s.name:s.address for s in pe.DIRECTORY_ENTRY_EXPORT.symbols}
     install_rva=exports[b'ProbeInstallLocalHook'];uninstall_rva=exports[b'ProbeUninstallLocalHook']
     report={'pid':pid,'hwnd':hex(hwnd),'expected_callback_tid':tid,'image':str(image),
-            'image_sha256':hashlib.sha256(image.read_bytes()).hexdigest(),'calls_game_handlers':query_mode=='native','query_mode':query_mode}
-    handle=file=section=block=thread=None;view=P();safe=True
+            'image_sha256':hashlib.sha256(image.read_bytes()).hexdigest(),'calls_game_handlers':query_mode in ('native','selection'),'query_mode':query_mode}
+    handle=file=section=block=thread=work=None;view=P();safe=True
     try:
         p['enable_debug_privilege']();handle=p['open_process'](0x43a,False,pid)
         if not handle:raise c.WinError(c.get_last_error())
@@ -72,15 +73,18 @@ def inspect(pid,hwnd,tid,image,query_mode="none",tls_index=0,native_address=0):
         report['image_base']=hex(view.value)
         for rva in (install_rva,uninstall_rva):
             if p['bytes_at'](handle,view.value+rva,16)!=pe.get_data(rva,16):raise RuntimeError('Image bytes differ')
-        block=p['alloc'](handle,None,208,0x3000,4)
+        block=p['alloc'](handle,None,216,0x3000,4)
         if not block:raise c.WinError(c.get_last_error())
         report['command_address']=hex(block)
         message=register_message('Codex.War3.DispatchProbe.'+str(uuid.uuid4()))
         if not message:raise c.WinError(c.get_last_error())
         nonce=int.from_bytes(os.urandom(8),'little') & 0x7fffffffffffffff
-        if query_mode=='fault':nonce=1
-        payload=struct.pack('<7QIIQ6IQII',hwnd,*addresses,0,tid,message,nonce,0,0,0,0,0,0,sleep_address,0,0)
-        query = (view.value+exports[b'ProbeConstantQuery'] if query_mode=='constant' else
+        if query_mode in ('fault','selection_fixture'):nonce=1
+        payload=struct.pack('<7QIIQ6IQII', hwnd, *addresses, 0, tid, message, nonce,
+            0, 0, 0, 0, 0, 0, sleep_address, 0, 0)
+        query = (view.value+exports[b'ProbeSelectionFixtureQuery'] if query_mode=='selection_fixture' else
+                 view.value+exports[b'ProbeSelectionQuery'] if query_mode=='selection' else
+                 view.value+exports[b'ProbeConstantQuery'] if query_mode=='constant' else
                  view.value+exports[b'ProbeFaultQuery'] if query_mode=='fault' else native_address if query_mode=='native' else 0)
         directory=pe.OPTIONAL_HEADER.DATA_DIRECTORY[3]
         if not directory.Size or directory.Size%12:raise RuntimeError('Unwind table missing')
@@ -88,8 +92,16 @@ def inspect(pid,hwnd,tid,image,query_mode="none",tls_index=0,native_address=0):
             resolve(memory,'ntdll','RtlAddFunctionTable'),resolve(memory,'ntdll','RtlDeleteFunctionTable'),
             view.value+directory.VirtualAddress,view.value,query,0,0,
             resolve(memory,'ntdll','__C_specific_handler'),directory.Size//12,tls_index,0,0,0,0)
+        if work_payload:
+            if len(work_payload) > 4096:raise ValueError('Diagnostic work block exceeds bound')
+            work=p['alloc'](handle,None,len(work_payload),0x3000,4)
+            if not work:raise c.WinError(c.get_last_error())
+            buf=c.create_string_buffer(bytes(work_payload));n=Z()
+            if not p['write'](handle,work,buf,len(work_payload),c.byref(n)) or n.value!=len(work_payload):raise c.WinError(c.get_last_error())
+            report['work_address']=hex(work)
+        payload+=struct.pack('<Q',work or 0)
         written=Z();buffer=c.create_string_buffer(payload)
-        if not p['write'](handle,block,buffer,208,c.byref(written)) or written.value!=208:raise c.WinError(c.get_last_error())
+        if not p['write'](handle,block,buffer,216,c.byref(written)) or written.value!=216:raise c.WinError(c.get_last_error())
         safe=False
         worker_tid=U()
         thread=p['create_thread'](handle,None,0,view.value+install_rva,block,0,c.byref(worker_tid))
@@ -118,13 +130,16 @@ def inspect(pid,hwnd,tid,image,query_mode="none",tls_index=0,native_address=0):
         safe=can_release(completed, delivered, state)
         report['callback_verified']=bool(safe and state['callback_tid']==tid and state['callback_count']==1)
         report['query_completed']=query_completed(state)
+        if work:report['work_result_hex']=p['bytes_at'](handle,work,len(work_payload)).hex()
     except Exception as exc:
-        report['error']=str(exc)
+        report['error']=repr(exc)
+        report['traceback']=traceback.format_exc()
     finally:
         report['safe_to_release']=safe
         if thread:p['close'](thread)
         if handle:
             if safe:
+                if work:report['work_freed']=bool(p['free'](handle,work,0,0x8000))
                 if block:report['block_freed']=bool(p['free'](handle,block,0,0x8000))
                 if view.value:report['image_unmap_status']=hex(x['unmap_section'](handle,view)&0xffffffff)
             else:report['allocations_retained']=True
@@ -139,7 +154,7 @@ def main():
     target=ap.add_mutually_exclusive_group(required=True)
     target.add_argument('--pid',type=int);target.add_argument('--local-host',type=Path)
     ap.add_argument('--image',type=Path,required=True);ap.add_argument('--output',type=Path,required=True)
-    ap.add_argument("--query-mode",choices=["none","constant","fault"],default="none")
+    ap.add_argument("--query-mode",choices=["none","constant","fault","selection_fixture","selection"],default="none")
     args=ap.parse_args();child=None
     try:
         if args.local_host:

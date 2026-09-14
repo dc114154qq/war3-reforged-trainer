@@ -1,0 +1,62 @@
+{
+  "previous_turn": "progress: posted dispatch and exact-code retry verified",
+  "product_changes": [
+    "Current 24268 standalone bridge, live native registration, exact signatures, image ABI, TLS and window identity checks.",
+    "Hero batch reads/writes use selected JASS units, skip nonheroes, validate before mutation and read back after mutation.",
+    "GUI dispatches one batch for the whole selection rather than repeating batch execution per candidate.",
+    "Registration metadata uses bounded page-local chunks and detects cycles by node address; no full process scan or stale native cache.",
+    "3.0 spec packages new bridge instead of renamed historical helper.",
+    "Engine failures include dispatch report in user-facing diagnostic log; pending calls are not automatically retried."
+  ],
+  "artifact": {
+    "path": "tools\\war3_bridge_24268.dll",
+    "sha256": "16140f3ae2bb4141d613b52e9f5b93557acba47e5f73392b91154317acaa1b0c",
+    "machine": "0x8664",
+    "test_fixture_export_present": false
+  },
+  "live": {
+    "pid": 38352,
+    "operation": "War3Trainer.get_selected_hero_level",
+    "writes_executed_this_turn": false,
+    "runs": [
+      {
+        "level": 1,
+        "elapsed_ms": 145.17440000054194,
+        "preflight_ms": 123.94210000275052
+      },
+      {
+        "level": 1,
+        "elapsed_ms": 145.9976000005554,
+        "preflight_ms": 119.65839999902528
+      },
+      {
+        "level": 1,
+        "elapsed_ms": 149.990699999762,
+        "preflight_ms": 129.29910000093514
+      }
+    ],
+    "baseline_ms": 947.0293999984278,
+    "all_groups_and_mappings_released": true
+  },
+  "verification": {
+    "final_tests": "218 passed, 16 subtests passed in 4.69s",
+    "test_log": "product-bridge-regression-isolated.log",
+    "native_fixture": "Actual compiled product C logic; 1/4/15/24 mixed units, read-only/same-level/changed-level and failures. Not a live-game write acceptance.",
+    "gui_test": "Executes extracted actual GUI handlers; one dispatch for 24 mixed units."
+  },
+  "failures": [
+    "Initial edit script default Windows encoding rejected main source; no buffered edits were written; reran UTF-8.",
+    "Initial 40-byte node read included unused gap missing in fixture; reduced to only contiguous valid fields.",
+    "Final test startup hit unrelated Hydra/ANTLR plugin conflict; isolated test subprocess with third-party plugin autoload disabled, no environment packages altered."
+  ],
+  "commands": [
+    "tools/build_engine_bridge.ps1",
+    "clang -shared -O2 -DBRIDGE_TEST -fexceptions -fasync-exceptions -fno-stack-protector -fno-builtin -nostdlib tools/war3_bridge_24268.c -o analysis/engine-hero-fixture.dll -Wl,/entry:DllMain,/nodefaultlib,/alternatename:__C_specific_handler=BridgeSpecificHandler -luser32 -lkernel32",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 (child environment only): python -m pytest -q test_24268_product_hero.py test_24268_native_table_blocks.py test_native_table_live.py test_24268_context_retry.py test_24268_dispatch_delivery.py test_24268_lifecycle_protocol.py test_24268_native_preflight.py test_24268_selection_protocol.py test_game_thread_dispatch_cleanup.py test_24268_executor_readiness.py test_24268_product_boundary.py test_classic_player_selection.py --tb=short --maxfail=2"
+  ],
+  "residual": [
+    "Changed-level write through the final product path has not been run in game this turn.",
+    "Removal finalization timing unresolved, clone and skill/item creation not integrated in this new bridge.",
+    "No new EXE/package or cross-device execution claim; full goal remains active."
+  ]
+}

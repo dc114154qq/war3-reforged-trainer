@@ -22,21 +22,28 @@ def _string(memory, address: int) -> str:
         raise ObjectIdentityError("Native metadata pointer is invalid")
     result = bytearray()
     while len(result) < MAX_STRING:
+        current = address + len(result)
+        # Never read beyond this page or the metadata-string bound. A null
+        # terminator is interpreted before decoding any trailing page bytes.
+        count = min(64, MAX_STRING-len(result), 0x1000-(current & 0xfff))
         try:
-            byte = _read(memory, address + len(result), 1)
-        except OSError as exc:
-            raise ObjectIdentityError("Native metadata read failed") from exc
-        if byte == b"\0":
-            value = bytes(result)
-            try:
-                text = value.decode("ascii")
+            chunk = _read(memory, current, count)
+        except OSError:
+            # Some readers expose only the exact string extent. Retry that
+            # same position once at byte granularity; no pointer/region scan.
+            try: chunk = _read(memory, current, 1)
+            except OSError as exc:
+                raise ObjectIdentityError("Native metadata read failed") from exc
+        end = chunk.find(b"\0")
+        result.extend(chunk if end < 0 else chunk[:end])
+        if end >= 0:
+            try: text = result.decode("ascii")
             except UnicodeDecodeError as exc:
                 raise ObjectIdentityError("Native metadata is not ASCII") from exc
-            if not text:
-                raise ObjectIdentityError("Native metadata is empty")
+            if not text: raise ObjectIdentityError("Native metadata is empty")
             return text
-        result.extend(byte)
     raise ObjectIdentityError("Native metadata has no bounded terminator")
+
 
 
 class NativeTable24268:
@@ -61,20 +68,24 @@ class NativeTable24268:
     def _read_entries(self, memory):
         entries = {}
         node = self.head
+        visited = set()
         for _ in range(MAX_NODES):
             if node == self.terminal:
                 return entries
-            if not _ptr(node) or node in entries:
+            if not _ptr(node) or node in visited:
                 raise ObjectIdentityError("Native registration list is invalid or cyclic")
-            name = _string(memory, self._qword(memory, node + 0x28))
-            signature = _string(memory, self._qword(memory, node + 0x40))
-            handler = self._qword(memory, node + 0x30)
+            visited.add(node)
+            import struct
+            nxt, name_ptr, handler = struct.unpack('<3Q', _read(memory, node+0x20,24))
+            signature_ptr = self._qword(memory,node+0x40)
+            name = _string(memory, name_ptr)
+            signature = _string(memory, signature_ptr)
             if not _ptr(handler) or not signature.startswith("(") or ")" not in signature:
                 raise ObjectIdentityError("Native registration ABI metadata is invalid")
             if name in entries:
                 raise ObjectIdentityError("Duplicate native registration name")
             entries[name] = LiveNativeEntry(name, signature, node, handler)
-            node = self._qword(memory, node + 0x20)
+            node = nxt
         raise ObjectIdentityError("Native registration list exceeded bound")
 
     def require(self, *names: str) -> dict[str, LiveNativeEntry]:

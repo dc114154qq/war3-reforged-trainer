@@ -1,0 +1,526 @@
+{
+  "pid": 38352,
+  "requested_mutations": false,
+  "runs": [
+    {
+      "level": 1,
+      "elapsed_ms": 145.17440000054194,
+      "preflight_ms": 123.94210000275052,
+      "report": {
+        "pid": 38352,
+        "target": 0,
+        "ok": true,
+        "mappings": {
+          "GetLocalPlayer": {
+            "address": "0x7ff73a8773d0",
+            "kind": "image-noaccess-diagnostic-only",
+            "protection": "0x1",
+            "allocation": "0x7ff739bd0000",
+            "code_hex": null
+          },
+          "CreateGroup": {
+            "address": "0x7ff73a865f40",
+            "kind": "image-noaccess-diagnostic-only",
+            "protection": "0x1",
+            "allocation": "0x7ff739bd0000",
+            "code_hex": null
+          },
+          "GroupEnumUnitsSelected": {
+            "address": "0x7ff73a8808a0",
+            "kind": "image-noaccess-diagnostic-only",
+            "protection": "0x1",
+            "allocation": "0x7ff739bd0000",
+            "code_hex": null
+          },
+          "FirstOfGroup": {
+            "address": "0x7ff73a86bb90",
+            "kind": "image-noaccess-diagnostic-only",
+            "protection": "0x1",
+            "allocation": "0x7ff739bd0000",
+            "code_hex": null
+          },
+          "GroupRemoveUnit": {
+            "address": "0x7ff73a880e80",
+            "kind": "image-noaccess-diagnostic-only",
+            "protection": "0x1",
+            "allocation": "0x7ff739bd0000",
+            "code_hex": null
+          },
+          "DestroyGroup": {
+            "address": "0x7ff73a8699d0",
+            "kind": "image-noaccess-diagnostic-only",
+            "protection": "0x1",
+            "allocation": "0x7ff739bd0000",
+            "code_hex": null
+          },
+          "GetUnitTypeId": {
+            "address": "0x7ff73a87f560",
+            "kind": "image-noaccess-diagnostic-only",
+            "protection": "0x1",
+            "allocation": "0x7ff739bd0000",
+            "code_hex": null
+          },
+          "GetHeroLevel": {
+            "address": "0x7ff73a876160",
+            "kind": "image-noaccess-diagnostic-only",
+            "protection": "0x1",
+            "allocation": "0x7ff739bd0000",
+            "code_hex": null
+          },
+          "SetHeroLevel": {
+            "address": "0x7ff73a8c1fa0",
+            "kind": "image-noaccess-diagnostic-only",
+            "protection": "0x1",
+            "allocation": "0x7ff739bd0000",
+            "code_hex": null
+          }
+        },
+        "preflight_ms": 123.94210000275052,
+        "dispatch": {
+          "pid": 38352,
+          "hwnd": "0x8d09a8",
+          "expected_callback_tid": 35668,
+          "image": "C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\tools\\war3_bridge_24268.dll",
+          "image_sha256": "484766e891906299b4c13b95dbd589e3e6e210982087f6ca2c9c3836326e2122",
+          "calls_game_handlers": true,
+          "query_mode": "hero_progress",
+          "delivery_mode": "posted",
+          "image_base": "0x7ffe84390000",
+          "command_address": "0x22600770000",
+          "work_address": "0x22600780000",
+          "install_thread": {
+            "tid": 40384,
+            "created": true,
+            "completed": true
+          },
+          "after_install": {
+            "hook": 369232941,
+            "target_tid": 35668,
+            "message": 50126,
+            "nonce": 648997024419397835,
+            "stage": 2,
+            "last_error": 0,
+            "callback_tid": 0,
+            "callback_count": 0,
+            "detached": 0,
+            "active": 0,
+            "query_result": "0x0",
+            "tls_value": "0x0",
+            "query_stage": 0,
+            "exception_code": "0x0",
+            "unwind_registered": 1,
+            "unwind_removed": 0
+          },
+          "post": {
+            "enqueued": true,
+            "error": 0
+          },
+          "after_send": {
+            "hook": 369232941,
+            "target_tid": 35668,
+            "message": 50126,
+            "nonce": 648997024419397835,
+            "stage": 3,
+            "last_error": 0,
+            "callback_tid": 35668,
+            "callback_count": 1,
+            "detached": 1,
+            "active": 0,
+            "query_result": "0xf",
+            "tls_value": "0x225ddb3ea60",
+            "query_stage": 2,
+            "exception_code": "0x0",
+            "unwind_registered": 1,
+            "unwind_removed": 0
+          },
+          "after_cleanup": {
+            "hook": 369232941,
+            "target_tid": 35668,
+            "message": 50126,
+            "nonce": 648997024419397835,
+            "stage": 3,
+            "last_error": 0,
+            "callback_tid": 35668,
+            "callback_count": 1,
+            "detached": 1,
+            "active": 0,
+            "query_result": "0xf",
+            "tls_value": "0x225ddb3ea60",
+            "query_stage": 2,
+            "exception_code": "0x0",
+            "unwind_registered": 1,
+            "unwind_removed": 1
+          },
+          "callback_verified": true,
+          "query_completed": true,
+          "work_result_hex": "d073873af77f0000405f863af77f0000a008883af77f000090bb863af77f0000800e883af77f0000d099863af77f000060f5873af77f00006061873af77f0000080010000000000052081000000000000f0000000000000001000000000000002d081000000000006c6170480100000048081000000000006f6f66680000000049081000000000006f6f66680000000043081000000000006f6f66680000000042081000000000006f6f6668000000003d081000000000006f6f66680000000046081000000000006f6f6668000000004b081000000000006f6f66680000000031081000000000006f6f6668000000002f081000000000006f6f66680000000028081000000000006f6f66680000000026081000000000006f6f6668000000002b081000000000006f6f6668000000002c081000000000006f6f66680000000023081000000000006f6f666800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a01f8c3af77f000060eab3dd2502000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "safe_to_release": true,
+          "work_freed": true,
+          "block_freed": true,
+          "image_unmap_status": "0x0"
+        },
+        "result": {
+          "rows": [
+            {
+              "handle": 1050669,
+              "rawcode": 1215324524,
+              "level": 1,
+              "after": 1
+            }
+          ],
+          "changed": 0,
+          "skipped": 14,
+          "selection_count": 15
+        },
+        "elapsed_ms": 145.17440000054194
+      }
+    },
+    {
+      "level": 1,
+      "elapsed_ms": 145.9976000005554,
+      "preflight_ms": 119.65839999902528,
+      "report": {
+        "pid": 38352,
+        "target": 0,
+        "ok": true,
+        "mappings": {
+          "GetLocalPlayer": {
+            "address": "0x7ff73a8773d0",
+            "kind": "readable-executable",
+            "protection": "0x20",
+            "allocation": "0x7ff739bd0000",
+            "code_hex": "40534883ec2066660f1f840000000000"
+          },
+          "CreateGroup": {
+            "address": "0x7ff73a865f40",
+            "kind": "readable-executable",
+            "protection": "0x20",
+            "allocation": "0x7ff739bd0000",
+            "code_hex": "48895c240848896c2410488974241857"
+          },
+          "GroupEnumUnitsSelected": {
+            "address": "0x7ff73a8808a0",
+            "kind": "readable-executable",
+            "protection": "0x20",
+            "allocation": "0x7ff739bd0000",
+            "code_hex": "48895c240848896c2410488974241848"
+          },
+          "FirstOfGroup": {
+            "address": "0x7ff73a86bb90",
+            "kind": "readable-executable",
+            "protection": "0x20",
+            "allocation": "0x7ff739bd0000",
+            "code_hex": "4883ec28e817fac4ff4885c0741e488d"
+          },
+          "GroupRemoveUnit": {
+            "address": "0x7ff73a880e80",
+            "kind": "readable-executable",
+            "protection": "0x20",
+            "allocation": "0x7ff739bd0000",
+            "code_hex": "48895c2408574883ec208bfae81fa7c3"
+          },
+          "DestroyGroup": {
+            "address": "0x7ff73a8699d0",
+            "kind": "readable-executable",
+            "protection": "0x20",
+            "allocation": "0x7ff739bd0000",
+            "code_hex": "4883ec28e8d71bc5ff4885c07411488b"
+          },
+          "GetUnitTypeId": {
+            "address": "0x7ff73a87f560",
+            "kind": "readable-executable",
+            "protection": "0x20",
+            "allocation": "0x7ff739bd0000",
+            "code_hex": "4883ec28e8a7e7c3ff4885c075054883"
+          },
+          "GetHeroLevel": {
+            "address": "0x7ff73a876160",
+            "kind": "readable-executable",
+            "protection": "0x20",
+            "allocation": "0x7ff739bd0000",
+            "code_hex": "48895c2408574883ec20e8a17bc4ff48"
+          },
+          "SetHeroLevel": {
+            "address": "0x7ff73a8c1fa0",
+            "kind": "image-noaccess-diagnostic-only",
+            "protection": "0x1",
+            "allocation": "0x7ff739bd0000",
+            "code_hex": null
+          }
+        },
+        "preflight_ms": 119.65839999902528,
+        "dispatch": {
+          "pid": 38352,
+          "hwnd": "0x8d09a8",
+          "expected_callback_tid": 35668,
+          "image": "C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\tools\\war3_bridge_24268.dll",
+          "image_sha256": "484766e891906299b4c13b95dbd589e3e6e210982087f6ca2c9c3836326e2122",
+          "calls_game_handlers": true,
+          "query_mode": "hero_progress",
+          "delivery_mode": "posted",
+          "image_base": "0x7ffe84390000",
+          "command_address": "0x22600770000",
+          "work_address": "0x22600780000",
+          "install_thread": {
+            "tid": 30980,
+            "created": true,
+            "completed": true
+          },
+          "after_install": {
+            "hook": 369298477,
+            "target_tid": 35668,
+            "message": 50164,
+            "nonce": 8140702644414945635,
+            "stage": 2,
+            "last_error": 0,
+            "callback_tid": 0,
+            "callback_count": 0,
+            "detached": 0,
+            "active": 0,
+            "query_result": "0x0",
+            "tls_value": "0x0",
+            "query_stage": 0,
+            "exception_code": "0x0",
+            "unwind_registered": 1,
+            "unwind_removed": 0
+          },
+          "post": {
+            "enqueued": true,
+            "error": 0
+          },
+          "after_send": {
+            "hook": 369298477,
+            "target_tid": 35668,
+            "message": 50164,
+            "nonce": 8140702644414945635,
+            "stage": 3,
+            "last_error": 0,
+            "callback_tid": 35668,
+            "callback_count": 1,
+            "detached": 1,
+            "active": 0,
+            "query_result": "0xf",
+            "tls_value": "0x225ddb3ea60",
+            "query_stage": 2,
+            "exception_code": "0x0",
+            "unwind_registered": 1,
+            "unwind_removed": 0
+          },
+          "after_cleanup": {
+            "hook": 369298477,
+            "target_tid": 35668,
+            "message": 50164,
+            "nonce": 8140702644414945635,
+            "stage": 3,
+            "last_error": 0,
+            "callback_tid": 35668,
+            "callback_count": 1,
+            "detached": 1,
+            "active": 0,
+            "query_result": "0xf",
+            "tls_value": "0x225ddb3ea60",
+            "query_stage": 2,
+            "exception_code": "0x0",
+            "unwind_registered": 1,
+            "unwind_removed": 1
+          },
+          "callback_verified": true,
+          "query_completed": true,
+          "work_result_hex": "d073873af77f0000405f863af77f0000a008883af77f000090bb863af77f0000800e883af77f0000d099863af77f000060f5873af77f00006061873af77f0000080010000000000018081000000000000f0000000000000001000000000000002d081000000000006c6170480100000048081000000000006f6f66680000000049081000000000006f6f66680000000043081000000000006f6f66680000000042081000000000006f6f6668000000003d081000000000006f6f66680000000046081000000000006f6f6668000000004b081000000000006f6f66680000000031081000000000006f6f6668000000002f081000000000006f6f66680000000028081000000000006f6f66680000000026081000000000006f6f6668000000002b081000000000006f6f6668000000002c081000000000006f6f66680000000023081000000000006f6f666800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a01f8c3af77f000060eab3dd2502000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "safe_to_release": true,
+          "work_freed": true,
+          "block_freed": true,
+          "image_unmap_status": "0x0"
+        },
+        "result": {
+          "rows": [
+            {
+              "handle": 1050669,
+              "rawcode": 1215324524,
+              "level": 1,
+              "after": 1
+            }
+          ],
+          "changed": 0,
+          "skipped": 14,
+          "selection_count": 15
+        },
+        "elapsed_ms": 145.9976000005554
+      }
+    },
+    {
+      "level": 1,
+      "elapsed_ms": 149.990699999762,
+      "preflight_ms": 129.29910000093514,
+      "report": {
+        "pid": 38352,
+        "target": 0,
+        "ok": true,
+        "mappings": {
+          "GetLocalPlayer": {
+            "address": "0x7ff73a8773d0",
+            "kind": "readable-executable",
+            "protection": "0x20",
+            "allocation": "0x7ff739bd0000",
+            "code_hex": "40534883ec2066660f1f840000000000"
+          },
+          "CreateGroup": {
+            "address": "0x7ff73a865f40",
+            "kind": "readable-executable",
+            "protection": "0x20",
+            "allocation": "0x7ff739bd0000",
+            "code_hex": "48895c240848896c2410488974241857"
+          },
+          "GroupEnumUnitsSelected": {
+            "address": "0x7ff73a8808a0",
+            "kind": "readable-executable",
+            "protection": "0x20",
+            "allocation": "0x7ff739bd0000",
+            "code_hex": "48895c240848896c2410488974241848"
+          },
+          "FirstOfGroup": {
+            "address": "0x7ff73a86bb90",
+            "kind": "readable-executable",
+            "protection": "0x20",
+            "allocation": "0x7ff739bd0000",
+            "code_hex": "4883ec28e817fac4ff4885c0741e488d"
+          },
+          "GroupRemoveUnit": {
+            "address": "0x7ff73a880e80",
+            "kind": "readable-executable",
+            "protection": "0x20",
+            "allocation": "0x7ff739bd0000",
+            "code_hex": "48895c2408574883ec208bfae81fa7c3"
+          },
+          "DestroyGroup": {
+            "address": "0x7ff73a8699d0",
+            "kind": "readable-executable",
+            "protection": "0x20",
+            "allocation": "0x7ff739bd0000",
+            "code_hex": "4883ec28e8d71bc5ff4885c07411488b"
+          },
+          "GetUnitTypeId": {
+            "address": "0x7ff73a87f560",
+            "kind": "readable-executable",
+            "protection": "0x20",
+            "allocation": "0x7ff739bd0000",
+            "code_hex": "4883ec28e8a7e7c3ff4885c075054883"
+          },
+          "GetHeroLevel": {
+            "address": "0x7ff73a876160",
+            "kind": "readable-executable",
+            "protection": "0x20",
+            "allocation": "0x7ff739bd0000",
+            "code_hex": "48895c2408574883ec20e8a17bc4ff48"
+          },
+          "SetHeroLevel": {
+            "address": "0x7ff73a8c1fa0",
+            "kind": "image-noaccess-diagnostic-only",
+            "protection": "0x1",
+            "allocation": "0x7ff739bd0000",
+            "code_hex": null
+          }
+        },
+        "preflight_ms": 129.29910000093514,
+        "dispatch": {
+          "pid": 38352,
+          "hwnd": "0x8d09a8",
+          "expected_callback_tid": 35668,
+          "image": "C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\tools\\war3_bridge_24268.dll",
+          "image_sha256": "484766e891906299b4c13b95dbd589e3e6e210982087f6ca2c9c3836326e2122",
+          "calls_game_handlers": true,
+          "query_mode": "hero_progress",
+          "delivery_mode": "posted",
+          "image_base": "0x7ffe84390000",
+          "command_address": "0x22600770000",
+          "work_address": "0x22600780000",
+          "install_thread": {
+            "tid": 3284,
+            "created": true,
+            "completed": true
+          },
+          "after_install": {
+            "hook": 369364013,
+            "target_tid": 35668,
+            "message": 50166,
+            "nonce": 1233551408700740088,
+            "stage": 2,
+            "last_error": 0,
+            "callback_tid": 0,
+            "callback_count": 0,
+            "detached": 0,
+            "active": 0,
+            "query_result": "0x0",
+            "tls_value": "0x0",
+            "query_stage": 0,
+            "exception_code": "0x0",
+            "unwind_registered": 1,
+            "unwind_removed": 0
+          },
+          "post": {
+            "enqueued": true,
+            "error": 0
+          },
+          "after_send": {
+            "hook": 369364013,
+            "target_tid": 35668,
+            "message": 50166,
+            "nonce": 1233551408700740088,
+            "stage": 3,
+            "last_error": 0,
+            "callback_tid": 35668,
+            "callback_count": 1,
+            "detached": 1,
+            "active": 0,
+            "query_result": "0xf",
+            "tls_value": "0x225ddb3ea60",
+            "query_stage": 2,
+            "exception_code": "0x0",
+            "unwind_registered": 1,
+            "unwind_removed": 0
+          },
+          "after_cleanup": {
+            "hook": 369364013,
+            "target_tid": 35668,
+            "message": 50166,
+            "nonce": 1233551408700740088,
+            "stage": 3,
+            "last_error": 0,
+            "callback_tid": 35668,
+            "callback_count": 1,
+            "detached": 1,
+            "active": 0,
+            "query_result": "0xf",
+            "tls_value": "0x225ddb3ea60",
+            "query_stage": 2,
+            "exception_code": "0x0",
+            "unwind_registered": 1,
+            "unwind_removed": 1
+          },
+          "callback_verified": true,
+          "query_completed": true,
+          "work_result_hex": "d073873af77f0000405f863af77f0000a008883af77f000090bb863af77f0000800e883af77f0000d099863af77f000060f5873af77f00006061873af77f000008001000000000004f081000000000000f0000000000000001000000000000002d081000000000006c6170480100000048081000000000006f6f66680000000049081000000000006f6f66680000000043081000000000006f6f66680000000042081000000000006f6f6668000000003d081000000000006f6f66680000000046081000000000006f6f6668000000004b081000000000006f6f66680000000031081000000000006f6f6668000000002f081000000000006f6f66680000000028081000000000006f6f66680000000026081000000000006f6f6668000000002b081000000000006f6f6668000000002c081000000000006f6f66680000000023081000000000006f6f666800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a01f8c3af77f000060eab3dd2502000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "safe_to_release": true,
+          "work_freed": true,
+          "block_freed": true,
+          "image_unmap_status": "0x0"
+        },
+        "result": {
+          "rows": [
+            {
+              "handle": 1050669,
+              "rawcode": 1215324524,
+              "level": 1,
+              "after": 1
+            }
+          ],
+          "changed": 0,
+          "skipped": 14,
+          "selection_count": 15
+        },
+        "elapsed_ms": 149.990699999762
+      }
+    }
+  ],
+  "ok": true
+}

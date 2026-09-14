@@ -1863,6 +1863,9 @@ def record_operation_failure(pid: int, operation: str, exc: BaseException) -> st
         logger.log("operation_failure", operation=operation,
                    executable=sys.executable, source=__file__,
                    exception=repr(exc), traceback="".join(traceback.format_exception(exc)))
+        engine_report = getattr(exc, "report", None)
+        if isinstance(engine_report, dict):
+            logger.log("engine24268_execution_report", report=engine_report)
         return str(logger.archive_path)
     finally:
         logger.close()
@@ -5420,7 +5423,17 @@ class War3Trainer:
             pass
         return max(len(handlers), persistent_count)
 
+    def hero_progress_24268(self, target: int = 0) -> dict:
+        from war3_engine_24268 import Engine24268
+        engine = getattr(self, "_engine24268", None)
+        if engine is None or (engine.pid, engine.hwnd) != (self.pid, self.hwnd):
+            engine = Engine24268(self.pid, self.hwnd, ProcessMemory)
+            self._engine24268 = engine
+        return engine.hero_progress(target)
+
     def get_selected_hero_level(self) -> int:
+        if getattr(self, "_native_selection_unavailable", False):
+            return int(self.hero_progress_24268()["rows"][0]["after"])
         return self._query_elephant_unit_int("GetHeroLevel") & 0xFFFFFFFF
 
     def set_selected_hero_level(self, level: int) -> int:
@@ -5428,7 +5441,8 @@ class War3Trainer:
         if not 1 <= target <= 100000:
             raise ValueError("英雄等级必须在 1 到 100000 之间")
         if getattr(self, "_native_selection_unavailable", False):
-            raise RuntimeError("3.0 英雄等级尚未接通引擎等级接口，拒绝只改组件缓存")
+            self.hero_progress_24268(target)
+            return target
         self._run_bound_hero_progress(self.NATIVE_HELPER_OP_SET_BOUND_HERO_LEVEL, target)
         return target
 
@@ -16014,6 +16028,12 @@ def run_gui() -> None:
         return f"，跳过/失败 {failed} 个" if failed else ""
 
     def elephant_read_hero_level() -> str:
+        trainer = elephant_trainer()
+        if getattr(trainer, "_native_selection_unavailable", False):
+            result = trainer.hero_progress_24268()
+            level = int(result["rows"][0]["after"])
+            root.after(0, elephant_hero_level.set, str(level))
+            return f"已读取 {len(result['rows'])} 个英雄；首个等级：{level}，跳过 {result['skipped']} 个非英雄"
         levels = elephant_batch(
             elephant_trainer().get_selected_hero_level,
             "读取英雄等级",
@@ -16027,6 +16047,13 @@ def run_gui() -> None:
 
     def elephant_set_hero_level() -> str:
         target = parse_int(elephant_hero_level.get(), "英雄等级")
+        if not 1 <= target <= 100000:
+            raise ValueError("英雄等级必须在 1 到 100000 之间")
+        trainer = elephant_trainer()
+        if getattr(trainer, "_native_selection_unavailable", False):
+            result = trainer.hero_progress_24268(target)
+            root.after(0, elephant_hero_level.set, str(target))
+            return f"已设置 {len(result['rows'])} 个英雄等级为 {target}，实际修改 {result['changed']} 个，跳过 {result['skipped']} 个非英雄"
         results = elephant_batch(
             lambda: elephant_trainer().set_selected_hero_level(target),
             "设置英雄等级",

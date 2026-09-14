@@ -5,7 +5,7 @@ a = Analysis(
     pathex=[],
     binaries=[
         ('tools/capstone.dll', 'capstone/lib'),
-        ('tools/war3_engine_24268.dll', 'tools'),
+        ('tools/war3_bridge_24268.dll', 'tools'),
     ],
     datas=[('assets/app_icon.png', 'assets')],
     hiddenimports=['capstone', 'war3_runtime_check'],

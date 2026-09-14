@@ -5423,13 +5423,22 @@ class War3Trainer:
             pass
         return max(len(handlers), persistent_count)
 
-    def hero_progress_24268(self, target: int = 0) -> dict:
+    def _engine_instance_24268(self):
         from war3_engine_24268 import Engine24268
         engine = getattr(self, "_engine24268", None)
         if engine is None or (engine.pid, engine.hwnd) != (self.pid, self.hwnd):
             engine = Engine24268(self.pid, self.hwnd, ProcessMemory)
             self._engine24268 = engine
-        return engine.hero_progress(target)
+        return engine
+
+    def hero_progress_24268(self, target: int = 0) -> dict:
+        return self._engine_instance_24268().hero_progress(target)
+
+    def ability_batch_24268(self, rawcode: int | str, action: int = 0, level: int = 0) -> dict:
+        ability = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
+        if not ability:
+            raise ValueError("技能 ID 无效")
+        return self._engine_instance_24268().ability_batch(ability, action, level)
 
     def get_selected_hero_level(self) -> int:
         if getattr(self, "_native_selection_unavailable", False):
@@ -6629,6 +6638,8 @@ class War3Trainer:
         if not ability_rawcode:
             raise ValueError("技能 ID 无效")
         action = {"UnitAddAbility": 1, "UnitRemoveAbility": 2}[native_name]
+        if getattr(self, "_native_selection_unavailable", False):
+            return self.ability_batch_24268(ability_rawcode, action)["count"]
         return int(self._run_bound_ability_actions(((action, ability_rawcode, 0, 0),))[0].result)
 
     def add_ability_to_selected_unit(self, rawcode: int | str) -> None:
@@ -6703,6 +6714,9 @@ class War3Trainer:
         target_level = int(level)
         if not ability_rawcode or not 1 <= target_level <= 100000:
             raise ValueError("请提供有效技能 ID，等级必须在 1 到 100000 之间")
+        if getattr(self, "_native_selection_unavailable", False):
+            self.ability_batch_24268(ability_rawcode, 3, target_level)
+            return target_level
         actual = int(self._run_bound_ability_actions(((3, ability_rawcode, target_level, 0),))[0].arg1)
         if actual != target_level:
             raise RuntimeError(f"技能等级写入后读回 {actual}，目标为 {target_level}")
@@ -16133,6 +16147,10 @@ def run_gui() -> None:
         rawcode = elephant_ability_rawcode.get().strip()
         if not rawcode:
             raise ValueError("请填写技能 ID")
+        trainer = elephant_trainer()
+        if getattr(trainer, "_native_selection_unavailable", False):
+            result = trainer.ability_batch_24268(rawcode, 1, 0)
+            return f"技能操作完成：{result['count']} 个单位，实际修改 {result['changed']} 个"
         results = elephant_batch(
             lambda: elephant_trainer().add_ability_to_selected_unit(rawcode),
             f"添加技能 {rawcode}",
@@ -16146,6 +16164,10 @@ def run_gui() -> None:
         rawcode = elephant_ability_rawcode.get().strip()
         if not rawcode:
             raise ValueError("请填写技能 ID")
+        trainer = elephant_trainer()
+        if getattr(trainer, "_native_selection_unavailable", False):
+            result = trainer.ability_batch_24268(rawcode, 2, 0)
+            return f"技能操作完成：{result['count']} 个单位，实际修改 {result['changed']} 个"
         results = elephant_batch(
             lambda: elephant_trainer().remove_ability_from_selected_unit(rawcode),
             f"删除技能 {rawcode}",
@@ -16158,6 +16180,12 @@ def run_gui() -> None:
     def elephant_set_ability_level() -> str:
         rawcode = elephant_ability_rawcode.get().strip()
         level = parse_int(elephant_ability_level.get(), "技能等级")
+        trainer = elephant_trainer()
+        if getattr(trainer, "_native_selection_unavailable", False):
+            if not 1 <= level <= 100000:
+                raise ValueError("技能等级必须在 1 到 100000 之间")
+            result = trainer.ability_batch_24268(rawcode, 3, level)
+            return f"技能操作完成：{result['count']} 个单位，实际修改 {result['changed']} 个"
         results = elephant_batch(
             lambda: elephant_trainer().set_selected_unit_ability_level(rawcode, level),
             f"设置技能 {rawcode} 等级",

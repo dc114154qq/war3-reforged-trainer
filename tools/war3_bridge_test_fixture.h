@@ -30,3 +30,38 @@ __declspec(dllexport) uint64_t BridgeTestRun(HeroWork *w,int count,int scenario)
     return BridgeHeroQuery();
 }
 __declspec(dllexport) int BridgeTestWrites(void) {return fixture_writes;}
+
+static int32_t ability_levels[24];
+static int ability_scenario,ability_adds,ability_removes,ability_sets;
+static uint8_t fixture_ability_add(uint64_t u,uint32_t id) {
+    (void)id;++ability_adds;
+    if (ability_scenario==1) return 0;
+    ability_levels[u-0x100000]=1;return 1;
+}
+static uint8_t fixture_ability_remove(uint64_t u,uint32_t id) {
+    (void)id;++ability_removes;
+    if (ability_scenario==3) return 0;
+    ability_levels[u-0x100000]=0;return 1;
+}
+static int32_t fixture_ability_set(uint64_t u,uint32_t id,int32_t level) {
+    (void)id;++ability_sets;
+    if (ability_scenario==2) return ability_levels[u-0x100000];
+    ability_levels[u-0x100000]=level;return level;
+}
+static int32_t fixture_ability_get(uint64_t u,uint32_t id) {(void)id;return ability_levels[u-0x100000];}
+__declspec(dllexport) uint64_t BridgeAbilityTestRun(AbilityWork *w,int count,int scenario,int initial) {
+    static BridgeCommand cmd;
+    int i;
+    if (count<0 || count>24) return 0;
+    fixture_count=count;fixture_scenario=scenario==6 ? 2 : 0;fixture_type_calls=0;
+    ability_scenario=scenario;ability_adds=ability_removes=ability_sets=0;
+    for (i=0;i<24;++i) {fixture_levels[i]=i%3==0 ? 1 : 0;ability_levels[i]=scenario==5 ? (i%3==0 ? 1 : 0) : initial;}
+    cmd.work=w;cmd.tls_value=w->expected_tls;g_dispatch=&cmd;
+    w->selection.local_player=fixture_player;w->selection.create_group=fixture_group;
+    w->selection.enum_selected=fixture_enum;w->selection.first_of_group=fixture_first;
+    w->selection.remove_from_group=fixture_remove;w->selection.destroy_group=fixture_destroy;
+    w->selection.unit_type_id=fixture_type;w->selection.hero_level=fixture_level;
+    w->add=fixture_ability_add;w->remove=fixture_ability_remove;w->set_level=fixture_ability_set;w->get_level=fixture_ability_get;
+    return BridgeAbilityQuery();
+}
+__declspec(dllexport) int BridgeAbilityTestStat(int kind) {return kind==0 ? ability_adds : kind==1 ? ability_removes : ability_sets;}

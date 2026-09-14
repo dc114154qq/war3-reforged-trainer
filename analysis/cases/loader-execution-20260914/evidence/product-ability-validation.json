@@ -1,0 +1,119 @@
+{
+  "previous_goal_turn": "progress: hero product bridge integration and measured metadata optimization",
+  "product_changes": [
+    "New ability batch ABI and C implementation for query/add/remove/set level.",
+    "New bridge generic operation dispatch uses exact current native signatures and 24-selection query; no donor-unit/template search.",
+    "GUI add/remove/level submits one batch for the selection.",
+    "Reversible diagnostic restores only abilities that were originally absent, preserving existing skills.",
+    "Real phase markers 100+index=add,200+index=level read,300+index=setter; user failure log includes partial completed/changed counters."
+  ],
+  "live_verified": {
+    "pid": 38352,
+    "ability": "AOcr",
+    "selected_count": 15,
+    "before": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "add_result": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "remove_result": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "cleanup_verified": true,
+    "source": "product-ability-staged-roundtrip-38352.json",
+    "timings_ms": [
+      {
+        "action": 0,
+        "ms": 180.92869999964023,
+        "ok": true
+      },
+      {
+        "action": 1,
+        "ms": 161.02659999887692,
+        "ok": true
+      },
+      {
+        "action": 0,
+        "ms": 186.75149999762652,
+        "ok": true
+      },
+      {
+        "action": 3,
+        "ms": 187.42889999703038,
+        "ok": false
+      },
+      {
+        "action": 2,
+        "ms": 194.52940000337549,
+        "ok": true
+      }
+    ]
+  },
+  "live_failed": [
+    "Same-callback add/set2/remove test caught 0xc0000005 after one addition; followup all 15 levels zero.",
+    "Separate add and read succeeded, set-to-2 still faulted at stage300, cleanup remove succeeded on all 15."
+  ],
+  "analysis": [
+    "Existing section bytes for SetUnitAbilityLevel show rcx=unit handle, edx=rawcode, r8d=level and internal ability resolution/vtable calls; ABI registers match current wrapper. This does not identify exact fault instruction.",
+    "No current guarantee that every map-defined or special ability is supported; AOcr only demonstrated absence on selected units is not an obstacle to creation."
+  ],
+  "verification": {
+    "tests": "281 passed,16 subtests passed in 6.12s",
+    "log": "product-ability-regression.log",
+    "fixtures": "Compiled exact C implementation covers mixed selection, 24 units, preserved existing skills, no-op and failure cleanup, one GUI batch; not counted as live level success."
+  },
+  "commands_successful": [
+    "tools/build_engine_bridge.ps1",
+    "tools/build_engine_bridge.ps1 -Fixture -OutputDirectory ./analysis",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q test_24268_product_ability.py test_24268_product_hero.py test_24268_native_table_blocks.py test_native_table_live.py test_24268_context_retry.py test_24268_dispatch_delivery.py test_24268_lifecycle_protocol.py test_24268_native_preflight.py test_24268_selection_protocol.py test_game_thread_dispatch_cleanup.py test_24268_executor_readiness.py test_24268_product_boundary.py test_classic_player_selection.py --tb=short --maxfail=2"
+  ],
+  "residual": [
+    "Ability level setter failure remains; do not package as accepted.",
+    "Clone including items/skills and complete other elephant functions remain in goal.",
+    "Next investigate failing setter instruction or current registered IncUnitAbilityLevel/DecUnitAbilityLevel route; validate semantics before switching product path.",
+    "No new EXE, GitHub release or cross-device test claimed."
+  ]
+}

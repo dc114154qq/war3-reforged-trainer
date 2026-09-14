@@ -206,6 +206,7 @@ __declspec(dllexport) uint64_t BridgeHeroQuery(void) {
 BOOL WINAPI DllMain(HINSTANCE module,DWORD reason,LPVOID reserved) {
     (void)module;(void)reason;(void)reserved;return TRUE;
 }
+#include "war3_bridge_ability.h"
 #ifdef BRIDGE_TEST
 #include "war3_bridge_test_fixture.h"
 #endif

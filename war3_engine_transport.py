@@ -90,15 +90,20 @@ def query_completed(state):
     return state.get('query_stage') == 2 and state.get('exception_code') == '0x0'
 
 
-def dispatch(pid,hwnd,tid,image,tls_index,work_payload):
-    validate_work(work_payload)
+def dispatch(pid,hwnd,tid,image,tls_index,work_payload,kind="hero"):
+    if kind=='hero':
+        validate_work(work_payload);expected_abi=ABI;marker_name=b'bridge_abi';query_name=b'BridgeHeroQuery'
+    elif kind=='ability':
+        from war3_ability_protocol import ABI as expected_abi,validate_work as validate_ability
+        validate_ability(work_payload);marker_name=b'ability_batch_abi';query_name=b'BridgeAbilityQuery'
+    else:raise ValueError('Unknown current-engine batch kind')
     owner=U()
     if window_thread(hwnd,c.byref(owner))!=tid or owner.value!=pid:
         raise RuntimeError('Bridge target window/thread identity changed')
-    query_mode='hero_progress';delivery_mode='posted'
+    query_mode=kind;delivery_mode='posted'
     pe=pefile.PE(str(image));exports={s.name:s.address for s in pe.DIRECTORY_ENTRY_EXPORT.symbols}
-    marker=exports.get(b'bridge_abi')
-    if marker is None or pe.get_data(marker,len(ABI))!=ABI:
+    marker=exports.get(marker_name)
+    if marker is None or pe.get_data(marker,len(expected_abi))!=expected_abi:
         raise ValueError('24268 bridge ABI differs; rebuild the current-engine module')
     install_rva=exports[b'BridgeInstall'];uninstall_rva=exports[b'BridgeUninstall']
     report={'pid':pid,'hwnd':hex(hwnd),'expected_callback_tid':tid,'image':str(image),
@@ -129,7 +134,7 @@ def dispatch(pid,hwnd,tid,image,tls_index,work_payload):
         nonce=int.from_bytes(os.urandom(8),'little') & 0x7fffffffffffffff
         payload=struct.pack('<7QIIQ6IQII', hwnd, *addresses, 0, tid, message, nonce,
             0, 0, 0, 0, 0, 0, sleep_address, 0, 3 if delivery_mode == "posted" else 4)
-        query=view.value+exports[b'BridgeHeroQuery']
+        query=view.value+exports[query_name]
         directory=pe.OPTIONAL_HEADER.DATA_DIRECTORY[3]
         if not directory.Size or directory.Size%12:raise RuntimeError('Unwind table missing')
         payload+=struct.pack('<9Q6I',resolve(memory,'kernel32','TlsGetValue'),

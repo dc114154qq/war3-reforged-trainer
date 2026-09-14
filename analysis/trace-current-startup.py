@@ -17,9 +17,10 @@ from unicorn import Uc, UcError, UC_ARCH_X86, UC_MODE_64, UC_HOOK_CODE, UC_HOOK_
 from unicorn.x86_const import *
 import capstone
 from war3_reforged_trainer import ProcessMemory
+from avx_copy_model import apply as apply_avx_copy
 
 
-def run(pid, root_file, symbol, output, procedure_va=None, query_current=False):
+def run(pid, root_file, symbol, output, procedure_va=None, query_current=False, cpu_scenario=None, model_avx=False):
     roots = json.loads(root_file.read_text(encoding='utf-8'))
     if roots['pid'] != pid:
         raise ValueError('Capture PID does not match')
@@ -81,6 +82,9 @@ def run(pid, root_file, symbol, output, procedure_va=None, query_current=False):
         if query_current and (procedure_va is None or memory.read(remote_query, 24) != c.string_at(query_vm, 24)):
             raise ValueError('Explicit current procedure and matching query function required')
         report['observed_query_substitutions'] = []
+        report['synthetic_cpu_scenario'] = cpu_scenario
+        report['modeled_cpu_instructions'] = []
+        report['modeled_avx_moves'] = 0
 
 
         def unmapped(vm, access, address, size, value, user):
@@ -100,6 +104,12 @@ def run(pid, root_file, symbol, output, procedure_va=None, query_current=False):
                 report.update(stop='snapshot_read_failed', fault_address=hex(address), fault=str(exc))
                 return False
 
+        def ensure_copy_memory(address, size):
+            for page in range(address & ~4095, (address + size - 1 & ~4095) + 1, 4096):
+                if not any(begin <= page and page + 4095 <= end for begin, end, permissions in uc.mem_regions()):
+                    if not unmapped(uc, 0, page, 4096, 0, None):
+                        raise ValueError('Vector copy page unavailable')
+
         def instruction(vm, address, size, user):
             report['instructions'] += 1
             if query_current and address == remote_query:
@@ -107,7 +117,7 @@ def run(pid, root_file, symbol, output, procedure_va=None, query_current=False):
                     (UC_X86_REG_RCX, UC_X86_REG_RDX, UC_X86_REG_R8, UC_X86_REG_R9))
                 current_rsp = vm.reg_read(UC_X86_REG_RSP)
                 out_size, returned_pointer = struct.unpack('<QQ', vm.mem_read(current_rsp + 0x28, 16))
-                if (process != 0xffffffffffffffff or target != procedure or kind != 0 or
+                if (process != 0xffffffffffffffff or not 0x10000 <= target < 0x800000000000 or kind != 0 or
                     not 48 <= out_size <= 64 or not stack <= destination < stack + 0x20000 - 64 or
                     returned_pointer and not stack <= returned_pointer < stack + 0x20000 - 8):
                     report['stop'] = 'unmodeled_memory_query'
@@ -130,17 +140,28 @@ def run(pid, root_file, symbol, output, procedure_va=None, query_current=False):
                 vm.reg_write(UC_X86_REG_RSP, current_rsp + 8)
                 vm.reg_write(UC_X86_REG_RIP, return_address)
                 return
-            # Unicorn may pass an oversized sentinel for an unsupported opcode.
-            raw = bytes(vm.mem_read(address, min(size, 15)))
+            # Unsupported AVX opcodes can have an incorrect callback size (short
+            # or sentinel-sized). Decode independently, never trust that length.
+            ensure_copy_memory(address, 15)
+            raw = bytes(vm.mem_read(address, 15))
             ins = next(md.disasm(raw, address), None)
             if ins is None:
                 report['stop'] = 'decode_failed'
                 vm.emu_stop()
                 return
+            if model_avx and apply_avx_copy(vm, ins, ensure_copy_memory):
+                report['modeled_avx_moves'] += 1
+                return
             if ins.mnemonic == 'rdpid':
-                report.update(stop='unmodeled_cpu_environment_instruction', unsupported_instruction='rdpid',
-                              fault_address=hex(address))
-                vm.emu_stop()
+                if cpu_scenario is None or ins.op_str not in ('rcx', 'ecx'):
+                    report.update(stop='unmodeled_cpu_environment_instruction', unsupported_instruction='rdpid',
+                                  fault_address=hex(address))
+                    vm.emu_stop()
+                    return
+                report['modeled_cpu_instructions'].append({'address': hex(address), 'value': cpu_scenario,
+                    'source': 'Explicit synthetic scenario, not target thread processor identity'})
+                vm.reg_write(UC_X86_REG_RCX, cpu_scenario & 0xffffffff)
+                vm.reg_write(UC_X86_REG_RIP, address + ins.size)
                 return
             line = {'address': hex(address), 'instruction': ins.mnemonic + ' ' + ins.op_str}
             recent.append(line)
@@ -158,7 +179,7 @@ def run(pid, root_file, symbol, output, procedure_va=None, query_current=False):
         uc.hook_add(UC_HOOK_CODE, instruction)
         try:
             uc.emu_start(entry, sentinel, timeout=3000000, count=100000)
-        except (UcError, capstone.CsError) as exc:
+        except (UcError, capstone.CsError, ValueError) as exc:
             report['emulator_error'] = str(exc)
             if report['stop'] == 'budget_or_timeout':
                 report['stop'] = 'emulator_error'
@@ -192,5 +213,7 @@ if __name__ == '__main__':
     ap.add_argument('--output', type=Path, required=True)
     ap.add_argument('--procedure-va', type=lambda x: int(x, 0))
     ap.add_argument('--query-current', action='store_true')
+    ap.add_argument('--cpu-scenario', type=lambda x: int(x, 0))
+    ap.add_argument('--model-avx-moves', action='store_true')
     a = ap.parse_args()
-    run(a.pid, a.roots, a.symbol, a.output, a.procedure_va, a.query_current)
+    run(a.pid, a.roots, a.symbol, a.output, a.procedure_va, a.query_current, a.cpu_scenario, a.model_avx_moves)

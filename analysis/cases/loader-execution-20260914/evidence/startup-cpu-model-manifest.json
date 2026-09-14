@@ -1,0 +1,135 @@
+{
+  "recorded_utc": "2026-09-14T01:58:48.627005+00:00",
+  "archive": "analysis\\cases\\loader-execution-20260914\\evidence\\startup-cpu-model-capture.zip",
+  "artifacts": [
+    {
+      "path": "analysis/trace-current-startup.py",
+      "bytes": 12230,
+      "sha256": "266be4e5265096305fe6cf0e5b98d32d422401d28c9b57e0035454b57aa8ad94"
+    },
+    {
+      "path": "analysis/avx_copy_model.py",
+      "bytes": 2807,
+      "sha256": "7122942b0e5b8197beb6489583725e8a1876db1ca88c34a22618b514913a6fa1"
+    },
+    {
+      "path": "test_avx_copy_model.py",
+      "bytes": 1962,
+      "sha256": "6903d98a472d7ac3fc927bb37172bf75b39a21e2090a1619dccdc00b6365ad0b"
+    },
+    {
+      "path": "analysis/avx-copy-model-tests.log",
+      "bytes": 15403,
+      "sha256": "f0cf504f4ca26177b39bd54966d5db47f93e5b4f0865380c17ba7dba4ab46eda"
+    },
+    {
+      "path": "analysis/avx-copy-model-standalone.log",
+      "bytes": 37,
+      "sha256": "b1e8ce0c4c83fe95cf73bbf4dc18ed4830d2ce9be738792a39c6f9304a5df0d9"
+    },
+    {
+      "path": "analysis/unicorn-avx-repro.json",
+      "bytes": 653,
+      "sha256": "4a76b7ffe2caf125bba1e4ddeb3d4d08303fbb028ed83f8e7a90cdeccc4d588e"
+    },
+    {
+      "path": "analysis/ldr-startup-cpu0-22844.json",
+      "bytes": 17290,
+      "sha256": "c8601c9d237537d6723cd34ef691e1c1a4150359e10ef09fd16bb34691e5a313"
+    },
+    {
+      "path": "analysis/ldr-startup-cpu0-22844.pages.zip",
+      "bytes": 185381,
+      "sha256": "4e84d21ea7a5318f112e319712631823b784a4103bf87fde2cffe494d344cf30"
+    },
+    {
+      "path": "analysis/ldr-startup-cpu0-22844.log",
+      "bytes": 1061,
+      "sha256": "cb12bd70e6e11ae479cd3edbe2f39b238f7053f07a7f4cf1d8c875aaa64880fe"
+    },
+    {
+      "path": "analysis/ldr-startup-cpu1-22844.json",
+      "bytes": 17423,
+      "sha256": "ec1d1bab85bb339522c4bd4581ef45c18713d871378f9fb1d281df2f21d162ac"
+    },
+    {
+      "path": "analysis/ldr-startup-cpu1-22844.pages.zip",
+      "bytes": 187810,
+      "sha256": "3baeab9c2331a135a99f97b312ab6300b06184692ca2fd7c4167c828cca3149e"
+    },
+    {
+      "path": "analysis/ldr-startup-cpu1-22844.log",
+      "bytes": 1061,
+      "sha256": "a3820ba97dc37afe7d4244b9eacca2a09451c2ca55c574f2a98f060be17626fb"
+    },
+    {
+      "path": "analysis/ldr-startup-modeled-copy-22844.json",
+      "bytes": 17379,
+      "sha256": "215c9d1d51362fda5908d5cfdd82f358b088362da75252c31f9d80408bbbb1ba"
+    },
+    {
+      "path": "analysis/ldr-startup-modeled-copy-22844.pages.zip",
+      "bytes": 186884,
+      "sha256": "a386a973d86a2abc9c99590dce6fe0f62c8d3ba99fbd07d4a79af6f6c7901457"
+    },
+    {
+      "path": "analysis/ldr-startup-modeled-copy-22844.log",
+      "bytes": 1029,
+      "sha256": "b3b735919412b5f0c0860898fe5b965e4139d85ee17543cf957498bb78faeea0"
+    },
+    {
+      "path": "analysis/ldr-startup-modeled-copy-v2-22844.json",
+      "bytes": 24224,
+      "sha256": "2f933228258cbc1c7e760956c4c118b9d8f700a8eb1f81474dbcdc3c85410240"
+    },
+    {
+      "path": "analysis/ldr-startup-modeled-copy-v2-22844.pages.zip",
+      "bytes": 322463,
+      "sha256": "1425e8b532db4e6f326d7b70346df99599258fc85469b54ec62b6af0bc382c08"
+    },
+    {
+      "path": "analysis/ldr-startup-modeled-copy-v2-22844.log",
+      "bytes": 1050,
+      "sha256": "6cbb5087ac7fb45f6f1e621d79161ece823e889a6fdd8142fb84b971ed80f0a9"
+    },
+    {
+      "path": "analysis/ldr-startup-current-queries-22844.json",
+      "bytes": 33101,
+      "sha256": "afdda6242b93153cc856caa6035c41c8a06ea2109beefbb455b1d663a239e431"
+    },
+    {
+      "path": "analysis/ldr-startup-current-queries-22844.pages.zip",
+      "bytes": 420887,
+      "sha256": "04a50e00f713777841b062d58427806ecdf514b3148c9855f48980d92d9ceffc"
+    },
+    {
+      "path": "analysis/ldr-startup-current-queries-22844.log",
+      "bytes": 4832,
+      "sha256": "1b1f7b0407750827595d0716c40165219582cf5107b3bc4459574e367b4f9d61"
+    }
+  ],
+  "verified": true,
+  "archive_sha256": "2b8c9e62d6cd86c8262a31f273e0a2071ddd8a82e206997bb39a7434e18bf1d6",
+  "facts": [
+    "CPU scenarios 0 and 1 both passed RDPID and stopped at VMOVDQU",
+    "Four isolated AVX configurations failed (default/Haswell, OSXSAVE off/on)",
+    "VEX move model: five pytest tests and five standalone assertion tests passed",
+    "Pytest run logged native memory-map exception despite exit 0; raw log preserved",
+    "Instruction hook size was unreliable for unsupported AVX; independent 15-byte Capstone decoding fixed truncation",
+    "With explicit CPU scenario 0, 21 modeled AVX moves and 15 real read-only target memory queries, initialization trace reached 48910 instructions then time limit"
+  ],
+  "limitations": [
+    "CPU identity still synthetic; modeled instructions are not live thread execution proof",
+    "All observed NtQueryVirtualMemory answers are actual current target queries, but emulated stack/TEB/context and heap modifications are synthetic",
+    "No syscall executed by emulator, no game writes, no functionality marked complete"
+  ],
+  "sources": [
+    "https://cdrdv2-public.intel.com/843829/325383-sdm-vol-2abcd-dec-24.pdf"
+  ],
+  "commands": [
+    "python -m pytest -q --tb=short test_avx_copy_model.py",
+    "python analysis/trace-current-startup.py --pid 22844 --roots analysis/startup-roots-22844.json --symbol LdrInitializeThunk --cpu-scenario 0 --model-avx-moves --output analysis/ldr-startup-modeled-copy-v2-22844.json",
+    "python analysis/trace-current-startup.py --pid 22844 --roots analysis/startup-roots-22844.json --symbol LdrInitializeThunk --procedure-va 0x7ffeab8adc00 --query-current --cpu-scenario 0 --model-avx-moves --output analysis/ldr-startup-current-queries-22844.json"
+  ],
+  "replay_precondition": "Resolve current LoadLibraryW and revalidate root bytes; recorded PID and addresses are capture-specific"
+}

@@ -33,19 +33,27 @@ def resolve(memory,library,name):
 
 def fields(handle,address):
     v=struct.unpack('<7QIIQ6I',p['bytes_at'](handle,address,96))
-    return dict(zip(('hook','target_tid','message','nonce','stage','last_error','callback_tid','callback_count','detached','active'),v[6:]))
+    state=dict(zip(('hook','target_tid','message','nonce','stage','last_error','callback_tid','callback_count','detached','active'),v[6:]))
+    extra=struct.unpack('<9Q6I',p['bytes_at'](handle,address+112,96))
+    state.update(query_result=hex(extra[6]),tls_value=hex(extra[7]),query_stage=extra[11],exception_code=hex(extra[12]),unwind_registered=extra[13],unwind_removed=extra[14])
+    return state
 
 
 def can_release(completed, delivered, state):
     return bool(completed and (not state['hook'] or
-        delivered and state['stage'] == 3 and state['detached'] and state['active'] == 0))
+        delivered and state['stage'] == 3 and state['detached'] and state['active'] == 0)
+        and (not state.get('unwind_registered') or state.get('unwind_removed')))
 
 
-def inspect(pid,hwnd,tid,image):
+def query_completed(state):
+    return state.get('query_stage') == 2 and state.get('exception_code') == '0x0'
+
+
+def inspect(pid,hwnd,tid,image,query_mode="none",tls_index=0,native_address=0):
     pe=pefile.PE(str(image));exports={s.name:s.address for s in pe.DIRECTORY_ENTRY_EXPORT.symbols}
     install_rva=exports[b'ProbeInstallLocalHook'];uninstall_rva=exports[b'ProbeUninstallLocalHook']
     report={'pid':pid,'hwnd':hex(hwnd),'expected_callback_tid':tid,'image':str(image),
-            'image_sha256':hashlib.sha256(image.read_bytes()).hexdigest(),'calls_game_handlers':False}
+            'image_sha256':hashlib.sha256(image.read_bytes()).hexdigest(),'calls_game_handlers':query_mode=='native','query_mode':query_mode}
     handle=file=section=block=thread=None;view=P();safe=True
     try:
         p['enable_debug_privilege']();handle=p['open_process'](0x43a,False,pid)
@@ -64,15 +72,24 @@ def inspect(pid,hwnd,tid,image):
         report['image_base']=hex(view.value)
         for rva in (install_rva,uninstall_rva):
             if p['bytes_at'](handle,view.value+rva,16)!=pe.get_data(rva,16):raise RuntimeError('Image bytes differ')
-        block=p['alloc'](handle,None,112,0x3000,4)
+        block=p['alloc'](handle,None,208,0x3000,4)
         if not block:raise c.WinError(c.get_last_error())
         report['command_address']=hex(block)
         message=register_message('Codex.War3.DispatchProbe.'+str(uuid.uuid4()))
         if not message:raise c.WinError(c.get_last_error())
         nonce=int.from_bytes(os.urandom(8),'little') & 0x7fffffffffffffff
+        if query_mode=='fault':nonce=1
         payload=struct.pack('<7QIIQ6IQII',hwnd,*addresses,0,tid,message,nonce,0,0,0,0,0,0,sleep_address,0,0)
+        query = (view.value+exports[b'ProbeConstantQuery'] if query_mode=='constant' else
+                 view.value+exports[b'ProbeFaultQuery'] if query_mode=='fault' else native_address if query_mode=='native' else 0)
+        directory=pe.OPTIONAL_HEADER.DATA_DIRECTORY[3]
+        if not directory.Size or directory.Size%12:raise RuntimeError('Unwind table missing')
+        payload+=struct.pack('<9Q6I',resolve(memory,'kernel32','TlsGetValue'),
+            resolve(memory,'ntdll','RtlAddFunctionTable'),resolve(memory,'ntdll','RtlDeleteFunctionTable'),
+            view.value+directory.VirtualAddress,view.value,query,0,0,
+            resolve(memory,'ntdll','__C_specific_handler'),directory.Size//12,tls_index,0,0,0,0)
         written=Z();buffer=c.create_string_buffer(payload)
-        if not p['write'](handle,block,buffer,112,c.byref(written)) or written.value!=112:raise c.WinError(c.get_last_error())
+        if not p['write'](handle,block,buffer,208,c.byref(written)) or written.value!=208:raise c.WinError(c.get_last_error())
         safe=False
         worker_tid=U()
         thread=p['create_thread'](handle,None,0,view.value+install_rva,block,0,c.byref(worker_tid))
@@ -100,6 +117,7 @@ def inspect(pid,hwnd,tid,image):
         state=fields(handle,block);report['after_cleanup']=state
         safe=can_release(completed, delivered, state)
         report['callback_verified']=bool(safe and state['callback_tid']==tid and state['callback_count']==1)
+        report['query_completed']=query_completed(state)
     except Exception as exc:
         report['error']=str(exc)
     finally:
@@ -121,6 +139,7 @@ def main():
     target=ap.add_mutually_exclusive_group(required=True)
     target.add_argument('--pid',type=int);target.add_argument('--local-host',type=Path)
     ap.add_argument('--image',type=Path,required=True);ap.add_argument('--output',type=Path,required=True)
+    ap.add_argument("--query-mode",choices=["none","constant","fault"],default="none")
     args=ap.parse_args();child=None
     try:
         if args.local_host:
@@ -128,7 +147,7 @@ def main():
             pid,tid,hwnd=map(int,child.stdout.readline().split());assert pid==child.pid
         else:
             hwnd,pid=h['find_war3'](args.pid);owner=U();tid=h['window_thread'](hwnd,c.byref(owner));assert owner.value==pid
-        r=inspect(pid,hwnd,tid,args.image.resolve());r.update(captured_utc=datetime.now(timezone.utc).isoformat(),local_host=bool(child))
+        r=inspect(pid,hwnd,tid,args.image.resolve(),query_mode=args.query_mode);r.update(captured_utc=datetime.now(timezone.utc).isoformat(),local_host=bool(child))
         tmp=args.output.with_suffix('.tmp');tmp.write_text(json.dumps(r,indent=2),encoding='utf-8');os.replace(tmp,args.output)
         print(json.dumps(r))
         if child:assert r.get('callback_verified') and r.get('image_unmap_status')=='0x0' and r.get('block_freed')

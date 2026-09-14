@@ -1,0 +1,103 @@
+{
+  "recorded_utc": "2026-09-14T02:30:33.174285+00:00",
+  "archive_sha256": "dafceb10de327206158ed12b03a6a653420fad2ce04bd666caecd7812e3f00fa",
+  "artifacts": [
+    {
+      "path": "analysis/engine_hook_probe.c",
+      "sha256": "05057fdf5413fb35ff5a0daaf3baebdba7d797075ee34bffe6abd5e38fa1ba5c",
+      "bytes": 8068
+    },
+    {
+      "path": "analysis/verify-game-thread-dispatch.py",
+      "sha256": "bba5d756c9def32b5450c2ad66b2f8a962cae14a5fec2d62fc9512a698d19808",
+      "bytes": 8812
+    },
+    {
+      "path": "test_game_thread_dispatch_cleanup.py",
+      "sha256": "a55b342d08acc4af1a858b40a91df57aec701243d53cadcf04b1b495fad85216",
+      "bytes": 1469
+    },
+    {
+      "path": "analysis/engine-native-query-probe.dll",
+      "sha256": "43b3a74f011fc13b1239a61ff610be075686cae6a9f7e1b427e5ea5235e55ac3",
+      "bytes": 5120
+    },
+    {
+      "path": "analysis/engine-native-query-probe-build.log",
+      "sha256": "95dd45f50847876e5004b5a5e79b41a080c1ba7d773d70e6fad1e7f0de0ade91",
+      "bytes": 110
+    },
+    {
+      "path": "analysis/exception-link-check.c",
+      "sha256": "7c786027c72666019ba6a8a44eb1dcd0ccbacfac4eeb9e47dd45fa2ba53c3dfb",
+      "bytes": 569
+    },
+    {
+      "path": "analysis/exception-link-forwarded.dll",
+      "sha256": "5ea2eaaf2b2a9b36601e82414d46a0fbf904fb9cac1e5689abdd637c9e3cdded",
+      "bytes": 2560
+    },
+    {
+      "path": "analysis/exception-link-check-build.log",
+      "sha256": "9acdaa8a739f5c46371926276a384d6b075831c0d289df06fe9790f337ab514b",
+      "bytes": 100
+    },
+    {
+      "path": "analysis/exception-link-async-build.log",
+      "sha256": "369d38df4f114c67c1a0ac1f3f94cca13748fe9ea46ac07b77ccf1cd80e272ec",
+      "bytes": 361
+    },
+    {
+      "path": "analysis/exception-link-forwarded-build.log",
+      "sha256": "f1253244048ad82a254a947d5aad832d57a83a04358047fa3700333e775b2324",
+      "bytes": 108
+    },
+    {
+      "path": "analysis/mapped-seh-local-check.json",
+      "sha256": "d6e4ed35abf83d3c18fdaa4a37f3c130ba459c63cfd3d94eed7a5d725c275e8f",
+      "bytes": 105
+    },
+    {
+      "path": "analysis/query-dispatch-local-constant.json",
+      "sha256": "23f2e5c3d99ae9edcc2682c2b78675832d83ca973b35ece8612218139ae1c78b",
+      "bytes": 2051
+    },
+    {
+      "path": "analysis/query-dispatch-local-fault.json",
+      "sha256": "65799f598f8f1a2b0a1aa194726f8acdcb88f9dfff9f5ebcb181d54a3e98d273",
+      "bytes": 1994
+    },
+    {
+      "path": "analysis/query-dispatch-game-tls.json",
+      "sha256": "1208db32f95c75e0ed49d35eaeda0575c7ff7db0adff37f734a3a34f9aa5a9b4",
+      "bytes": 2247
+    },
+    {
+      "path": "analysis/native-getlocalplayer-game.json",
+      "sha256": "aa873b058d36efbafeebdb3fd5b1ade73e4d5220043b52c67ff765daab65a001",
+      "bytes": 2179
+    },
+    {
+      "path": "analysis/native-query-diagnostic-tests.log",
+      "sha256": "52da75a796ed5695eabeab04a812a29e62f9f5284f1cd8949551bf30993505f3",
+      "bytes": 101
+    }
+  ],
+  "verified": true,
+  "facts": [
+    "Mapped local fault test returned valid value 42 and caught access violation 0xc0000005; unwind table removed",
+    "Local window-thread constant query returned 0x24268001; fault query caught exception and completed cleanup",
+    "Game window-thread TLS index 22 returned 0x2429b64ea50, matching independently sampled frame context",
+    "Current GetLocalPlayer registration signature ()Hplayer; verified and handler read from current native table",
+    "Game callback invoked GetLocalPlayer on TID7812: result 0x100008, query_stage 2, exception_code 0",
+    "Self-unhook, worker stop, dynamic unwind deletion and image/block cleanup succeeded"
+  ],
+  "limitations": [
+    "Only GetLocalPlayer called; result has not yet been roundtripped through GetPlayerId/Player",
+    "No level write, clone, ability add/remove or item creation tested",
+    "Dynamic unwind table must remain registered until callback returned; exception acknowledgement is not operation success"
+  ],
+  "build_command": "clang -shared -O2 -fexceptions -fasync-exceptions -fno-stack-protector -fno-builtin -nostdlib analysis/engine_hook_probe.c -o analysis/engine-native-query-probe.dll '-Wl,/entry:DllMain,/nodefaultlib,/alternatename:__C_specific_handler=ProbeSpecificHandler' -luser32 -lkernel32",
+  "test_command": "python -m pytest -q --tb=short test_game_thread_dispatch_cleanup.py test_image_thread_diagnostic.py test_loader_thread_diagnostic.py",
+  "next": "Enumerate selection through native group functions, query hero level, then implement verified mutations with guarded identities"
+}

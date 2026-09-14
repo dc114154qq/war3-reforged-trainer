@@ -110,9 +110,26 @@ typedef struct ProbeHookCommand {
     void (WINAPI *sleep_ms)(DWORD);
     volatile LONG stop_requested;
     DWORD reserved;
+    LPVOID (WINAPI *get_tls)(DWORD);
+    BOOLEAN (WINAPI *add_table)(PRUNTIME_FUNCTION,DWORD,DWORD64);
+    BOOLEAN (WINAPI *delete_table)(PRUNTIME_FUNCTION);
+    PRUNTIME_FUNCTION unwind_table;
+    DWORD64 image_base;
+    uint64_t (*query)(void);
+    uint64_t query_result;
+    LPVOID tls_value;
+    void *specific_handler;
+    DWORD unwind_count, tls_index, query_stage, exception_code, unwind_registered, unwind_removed;
 } ProbeHookCommand;
-_Static_assert(sizeof(ProbeHookCommand) == 112, "ProbeHookCommand ABI");
+_Static_assert(sizeof(ProbeHookCommand) == 208, "ProbeHookCommand ABI");
 static ProbeHookCommand *g_dispatch;
+typedef EXCEPTION_DISPOSITION (*ProbeHandler)(PEXCEPTION_RECORD,void *,PCONTEXT,PDISPATCHER_CONTEXT);
+EXCEPTION_DISPOSITION ProbeSpecificHandler(PEXCEPTION_RECORD e,void *f,PCONTEXT c,PDISPATCHER_CONTEXT d) {
+    return ((ProbeHandler)g_dispatch->specific_handler)(e,f,c,d);
+}
+__declspec(dllexport) uint64_t ProbeConstantQuery(void) { return 0x24268001; }
+__declspec(dllexport) uint64_t ProbeFaultQuery(void) { return *(volatile uint64_t *)g_dispatch->nonce; }
+
 
 static LRESULT CALLBACK ProbeLocalCallback(int code, WPARAM w, LPARAM l) {
     ProbeHookCommand *cmd = g_dispatch;
@@ -125,6 +142,17 @@ static LRESULT CALLBACK ProbeLocalCallback(int code, WPARAM w, LPARAM l) {
             message->wParam == cmd->nonce) {
             cmd->callback_tid = cmd->current_tid();
             InterlockedIncrement(&cmd->callback_count);
+            __try {
+                cmd->tls_value = cmd->get_tls(cmd->tls_index);
+                if (cmd->query) {
+                    cmd->query_stage = 1;
+                    cmd->query_result = cmd->query();
+                    cmd->query_stage = 2;
+                }
+            } __except (EXCEPTION_EXECUTE_HANDLER) {
+                cmd->exception_code = GetExceptionCode();
+                cmd->query_stage = 3;
+            }
             cmd->detached = cmd->unhook(cmd->hook);
             if (!cmd->detached) cmd->last_error = cmd->get_error();
             cmd->stage = 3;
@@ -138,17 +166,21 @@ static LRESULT CALLBACK ProbeLocalCallback(int code, WPARAM w, LPARAM l) {
 __declspec(dllexport) DWORD WINAPI ProbeInstallLocalHook(ProbeHookCommand *cmd) {
     cmd->stage = 1;
     g_dispatch = cmd;
+    cmd->unwind_registered = cmd->add_table(cmd->unwind_table, cmd->unwind_count, cmd->image_base);
+    if (!cmd->unwind_registered) { cmd->last_error = cmd->get_error(); cmd->stage = 2; return 0; }
     cmd->hook = cmd->set_hook(WH_CALLWNDPROC, ProbeLocalCallback, NULL, cmd->target_tid);
     if (!cmd->hook) cmd->last_error = cmd->get_error();
     cmd->stage = 2;
     /* Hooks belong to the installing thread; keep it alive through dispatch. */
     if (cmd->hook) {
-        while (!cmd->detached && !cmd->stop_requested) cmd->sleep_ms(1);
+        while (!cmd->stop_requested) cmd->sleep_ms(1);
         if (!cmd->detached) {
             cmd->detached = cmd->unhook(cmd->hook);
             if (!cmd->detached) cmd->last_error = cmd->get_error();
         }
     }
+    if ((!cmd->hook || cmd->detached) && !cmd->active)
+        cmd->unwind_removed = cmd->delete_table(cmd->unwind_table);
     return 0;
 }
 

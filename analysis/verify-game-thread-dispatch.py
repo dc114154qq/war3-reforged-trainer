@@ -12,9 +12,12 @@ import struct
 import subprocess
 import time
 import uuid
+import sys
 import pefile
 
 ROOT=Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from war3_selection_protocol import ABI, validate_work
 x=runpy.run_path(str(ROOT/'analysis/verify-image-thread-entry.py'))
 p=x['probe'];h=p['helper'];P,U,Z=c.c_void_p,c.c_ulong,c.c_size_t
 register_message=p['api'](h['u'],'RegisterWindowMessageW',U,c.c_wchar_p)
@@ -51,9 +54,13 @@ def query_completed(state):
 
 
 def inspect(pid,hwnd,tid,image,query_mode="none",tls_index=0,native_address=0,work_payload=b""):
-    if query_mode in ("selection", "selection_fixture") and not work_payload:
-        raise ValueError("selection query requires an initialized SelectionWork payload; refusing to dispatch with null work")
+    if query_mode in ("selection", "selection_fixture"):
+        validate_work(work_payload, fixture=query_mode == "selection_fixture")
     pe=pefile.PE(str(image));exports={s.name:s.address for s in pe.DIRECTORY_ENTRY_EXPORT.symbols}
+    if query_mode in ("selection", "selection_fixture"):
+        marker = exports.get(b"probe_selection_abi")
+        if marker is None or pe.get_data(marker, len(ABI)) != ABI:
+            raise ValueError("Selection probe ABI does not match controller; rebuild the probe")
     install_rva=exports[b'ProbeInstallLocalHook'];uninstall_rva=exports[b'ProbeUninstallLocalHook']
     report={'pid':pid,'hwnd':hex(hwnd),'expected_callback_tid':tid,'image':str(image),
             'image_sha256':hashlib.sha256(image.read_bytes()).hexdigest(),'calls_game_handlers':query_mode in ('native','selection','unit'),'query_mode':query_mode}

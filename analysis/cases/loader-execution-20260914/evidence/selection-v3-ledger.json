@@ -1,0 +1,30 @@
+{
+  "result": "selection protocol hardening and reproducible current-process preflight",
+  "tests": {
+    "passed": 42,
+    "exit": 0
+  },
+  "build": {
+    "exit": 0,
+    "abi_marker_verified": true
+  },
+  "live_preflight": "rejected before dispatch",
+  "observed_handler_protection": "GetLocalPlayer: MEM_COMMIT, MEM_MAPPED, PAGE_NOACCESS (0x1)",
+  "not_proven": [
+    "cause of protection",
+    "handler callability in the proper engine context",
+    "production execution or clone/ability support"
+  ],
+  "commands": [
+    "python -m pytest -q test_24268_selection_protocol.py test_game_thread_dispatch_cleanup.py --tb=short --maxfail=2",
+    "clang selection ABI v3 build; PE ABI export comparison",
+    "python analysis/verify-native-selection-24268.py --pid 38352 --image analysis/engine-selection-abi-v3.dll --output analysis/cases/loader-execution-20260914/evidence/selection-v3-preflight-38352.json --preflight-only",
+    "current NativeTable24268 lookup and VirtualQueryEx for GetLocalPlayer"
+  ],
+  "skill_content_reused": [
+    "l-gameassist",
+    "l-reverse",
+    "seagull-lab"
+  ],
+  "new_skill_reads": []
+}

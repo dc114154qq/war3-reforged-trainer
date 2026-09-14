@@ -15,11 +15,17 @@ typedef struct SelectionWork {
 } SelectionWork;
 _Static_assert(sizeof(SelectionWork) == 480, "SelectionWork ABI");
 
+__declspec(dllexport) const uint32_t probe_selection_abi[3] = {0x24268003u, 216u, 480u};
+
 __declspec(dllexport) uint64_t ProbeSelectionQuery(void) {
     SelectionWork *work = (SelectionWork *)g_dispatch->work;
     int32_t index, prior;
     uint64_t group, unit;
+    if (!work) return 0;
     work->count = 0;
+    if (!work->local_player || !work->create_group || !work->enum_selected ||
+        !work->first_of_group || !work->remove_from_group || !work->destroy_group ||
+        !work->unit_type_id || !work->hero_level) { work->error = 5; return 0; }
     work->player = work->local_player();
     group = work->create_group();
     work->temporary_group = group;

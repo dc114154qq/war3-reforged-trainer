@@ -26,7 +26,7 @@ def main() -> None:
         {"feature": "ability add/remove/clone", "status": "3.0 engine callbacks not yet product-integrated", "evidence": "native-query-manifest.json; no modifying callback executed"},
         {"feature": "unit clone/copy", "status": "3.0 engine callbacks not yet product-integrated", "evidence": "24268 capability matrix; no clone callback executed"},
         {"feature": "mouse group move", "status": "native dispatch proven; product group-move migration pending", "evidence": "native-query-manifest.json; no movement callback executed"},
-        {"feature": "cross-device EXE", "status": "independent smoke package; cross-device acceptance pending", "evidence": "package-3.0.0.24268-r12.json"},
+        {"feature": "cross-device EXE", "status": "independent smoke package; cross-device acceptance pending", "evidence": "final-package-20260914.md"},
     ]
     report = {
         "build": "3.0.0.24268",
@@ -48,3 +48,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

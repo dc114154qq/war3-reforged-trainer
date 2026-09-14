@@ -15,17 +15,17 @@ def main() -> None:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             methods[node.name] = node.lineno
     matrix = [
-        {"feature": "24-unit selection", "status": "14 live; 24 structural fixture", "evidence": "canonical-player-list-live.json; test_classic_player_selection.py"},
+        {"feature": "24-unit selection", "status": "15 unique live on PID 22844; 24 structural fixture", "evidence": "selection-query-game-22844.json; current-e-drive-target.json; test_classic_player_selection.py"},
         {"feature": "resource read/write", "status": "read and original-value writeback live validated", "evidence": "direct-writeback-live.json; test_indexed_resources.py"},
         {"feature": "coordinate write", "status": "code-routed", "evidence": "set_selected_unit_position"},
         {"feature": "hero attribute write", "status": "typed original-value writeback live validated", "evidence": "hero-writeback-live.json; set_selected_hero_attributes"},
         {"feature": "inventory read", "status": "6 live items; new-unit live pending", "evidence": "3.0 slot-array pointer + registry item identities"},
         {"feature": "inventory charge write", "status": "six existing items original-value writeback live validated", "evidence": "direct-writeback-live.json; set_selected_inventory_charges"},
         {"feature": "existing ability enumeration", "status": "validated read-only", "evidence": "ability-instances-live.json; 15/7/12 instances in live heroes"},
-        {"feature": "ability field read/write", "status": "legacy native blocked", "evidence": "3.0 handler table not reconstructed"},
-        {"feature": "ability add/remove/clone", "status": "legacy native blocked", "evidence": "old 2.0.4.23745 helper internals"},
-        {"feature": "unit clone/copy", "status": "legacy native blocked", "evidence": "old helper create path"},
-        {"feature": "mouse group move", "status": "legacy native blocked", "evidence": "group move op uses old handler"},
+        {"feature": "ability field read/write", "status": "handler address readable; product dispatch migration pending", "evidence": "native-query-manifest.json; 3.0 handler table and thread dispatch verified"},
+        {"feature": "ability add/remove/clone", "status": "3.0 engine callbacks not yet product-integrated", "evidence": "native-query-manifest.json; no modifying callback executed"},
+        {"feature": "unit clone/copy", "status": "3.0 engine callbacks not yet product-integrated", "evidence": "24268 capability matrix; no clone callback executed"},
+        {"feature": "mouse group move", "status": "native dispatch proven; product group-move migration pending", "evidence": "native-query-manifest.json; no movement callback executed"},
         {"feature": "cross-device EXE", "status": "independent smoke package; cross-device acceptance pending", "evidence": "package-3.0.0.24268-r12.json"},
     ]
     report = {

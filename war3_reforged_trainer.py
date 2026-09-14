@@ -14057,7 +14057,18 @@ class War3Trainer:
             raise ValueError(f"物品 rawcode 无效：{format_rawcode(new_rawcode)}")
 
         previous = self._native_snapshot_for_candidate(candidate)
-        candidate = self._refresh_native_candidate(candidate)
+        try:
+            candidate = self._refresh_native_candidate(candidate)
+        except TimeoutError as exc:
+            # The 3.0 executor may be unavailable while the indexed object
+            # chain remains writable. Trip the session breaker and retry this
+            # same request through the guarded direct-property path above.
+            self._native_selection_unavailable = True
+            self._native_fallback_reason = f"unit write native timeout: {exc}"
+            return self._write_basic_unit_values_to_candidate(
+                pm, candidate, target_hp, target_mp, max_hp, max_mp,
+                target_x, target_y, target_hp_regen, target_mp_regen,
+            )
         current = self._native_snapshot_for_candidate(candidate)
         if previous is not None:
             names = ("item_handles", "item_addresses", "item_ids", "item_full_handles")

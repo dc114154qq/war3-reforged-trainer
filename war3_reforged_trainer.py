@@ -2917,10 +2917,12 @@ class War3Trainer:
         self._classic_object_registry = None
         self._classic_thread_context = None
         self._last_classic_mode = None
-        # This branch targets 3.0.0.24268. Legacy execution binaries have
-        # been removed; the new engine executor is still being adapted.
-        # Indexed engine objects are the current selection entry path.
-        self._native_selection_unavailable = True
+        # Enable the 3.0 route only when its dedicated executor is present.
+        # The 1.0.19 helper is never accepted as a substitute.
+        bundle_base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+        self._native_selection_unavailable = not (
+            bundle_base / "tools" / "war3_engine_24268.dll"
+        ).is_file()
         self._classic_resource_cache: ResourceCache | None = None
         self._start_persistent_bootstrap()
 
@@ -3004,9 +3006,10 @@ class War3Trainer:
             self._classic_object_registry = None
             self._classic_thread_context = None
             self._last_classic_mode = None
-            # This branch always targets 3.0; reconnecting must not re-enable
-            # the bundled 2.0.4.23745 native helper.
-            self._native_selection_unavailable = True
+            bundle_base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+            self._native_selection_unavailable = not (
+                bundle_base / "tools" / "war3_engine_24268.dll"
+            ).is_file()
             self._classic_resource_cache = None
             self._start_persistent_bootstrap()
 
@@ -9141,7 +9144,14 @@ class War3Trainer:
                     expected is None or actual == int(expected) for actual, expected in (
                         (cache.gold, current_gold), (cache.lumber, current_lumber),
                         (cache.food_used, current_food), (cache.food_cap, current_food_cap)))]
-        handlers = self._query_native_table_handlers(("Player", "GetPlayerState"))
+        try:
+            handlers = self._query_native_table_handlers(("Player", "GetPlayerState"))
+        except (TimeoutError, OSError) as exc:
+            self._native_selection_unavailable = True
+            self._native_fallback_reason = f"resource-list native timeout/failure: {exc}"
+            return self.list_resource_caches(
+                current_gold, current_lumber, current_food, current_food_cap
+            )
         caches = []
         # Three complete players per command (15 ops); empty slots are explicit
         # results, while helper failures propagate instead of hiding whole rows.
@@ -9271,7 +9281,13 @@ class War3Trainer:
             )):
                 raise RuntimeError("当前输入的资源值与 3.0 本地玩家资源状态不一致")
             return cache
-        native = self._native_resource_cache(None)
+        try:
+            native = self._native_resource_cache(None)
+        except (TimeoutError, OSError) as exc:
+            self._native_selection_unavailable = True
+            self._native_fallback_reason = f"local-resource native timeout/failure: {exc}"
+            with self._process_memory() as memory:
+                native = self._classic_local_resource_cache(memory)
         if (
             current_gold is None and current_lumber is None
             and current_food is None and current_food_cap is None

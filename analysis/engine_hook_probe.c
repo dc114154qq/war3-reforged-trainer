@@ -2,6 +2,9 @@
 #include <windows.h>
 #include <stdint.h>
 
+/* CRT-free DLL: MSVC ABI marker for the lifecycle query's float arithmetic. */
+int _fltused = 0;
+
 typedef struct ProbeTelemetry {
     uint32_t magic, version, requested_pid, reserved;
     uint32_t attach_pid, attach_tid, callback_pid, callback_tid;
@@ -143,6 +146,13 @@ __declspec(dllexport) uint64_t ProbeUnitQuery(void) {
     return ((UnitQuery)pair[0])(pair[1]);
 }
 
+__declspec(dllexport) uint64_t ProbeUnitVoidQuery(void) {
+    uint64_t *pair=(uint64_t *)g_dispatch->work;
+    typedef void (*UnitVoid)(uint64_t);
+    ((UnitVoid)pair[0])(pair[1]);
+    return 1;
+}
+
 __declspec(dllexport) uint64_t ProbeFaultQuery(void) { return *(volatile uint64_t *)g_dispatch->nonce; }
 
 
@@ -212,3 +222,5 @@ __declspec(dllexport) DWORD WINAPI ProbeUninstallLocalHook(ProbeHookCommand *cmd
 #ifdef PROBE_TEST_FIXTURES
 #include "selection_query_fixtures.h"
 #endif
+
+#include "engine_unit_lifecycle.h"

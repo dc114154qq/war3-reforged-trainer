@@ -1,4 +1,4 @@
-"""Single-message mapped-image hook test. Never calls game handlers."""
+"""Single-message mapped-image diagnostic; native modes explicitly call game handlers."""
 import argparse
 import ctypes as c
 from datetime import datetime, timezone
@@ -18,6 +18,7 @@ import pefile
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from war3_selection_protocol import ABI, validate_work
+import war3_lifecycle_protocol as lifecycle
 x=runpy.run_path(str(ROOT/'analysis/verify-image-thread-entry.py'))
 p=x['probe'];h=p['helper'];P,U,Z=c.c_void_p,c.c_ulong,c.c_size_t
 register_message=p['api'](h['u'],'RegisterWindowMessageW',U,c.c_wchar_p)
@@ -54,6 +55,15 @@ def query_completed(state):
 
 
 def inspect(pid,hwnd,tid,image,query_mode="none",tls_index=0,native_address=0,work_payload=b""):
+    if query_mode in ("unit", "unit_void"):
+        if len(work_payload)!=16: raise ValueError("Unit query work requires two qwords")
+        handler, unit=struct.unpack('<2Q',work_payload)
+        if not 0x10000<=handler<0x800000000000 or not 0<unit<=0xffffffff:
+            raise ValueError("Invalid unit query handler or JASS handle")
+    if query_mode == "unit_membership": lifecycle.validate_membership(work_payload)
+    if query_mode == "unit_lifecycle": lifecycle.validate_work(work_payload)
+    if query_mode == "hero_level":
+        if len(work_payload) != 40: raise ValueError("Hero level work requires five qwords")
     if query_mode in ("selection", "selection_fixture"):
         validate_work(work_payload, fixture=query_mode == "selection_fixture")
     pe=pefile.PE(str(image));exports={s.name:s.address for s in pe.DIRECTORY_ENTRY_EXPORT.symbols}
@@ -61,9 +71,17 @@ def inspect(pid,hwnd,tid,image,query_mode="none",tls_index=0,native_address=0,wo
         marker = exports.get(b"probe_selection_abi")
         if marker is None or pe.get_data(marker, len(ABI)) != ABI:
             raise ValueError("Selection probe ABI does not match controller; rebuild the probe")
+    if query_mode == 'unit_lifecycle':
+        marker = exports.get(b'probe_lifecycle_abi')
+        if marker is None or pe.get_data(marker,len(lifecycle.ABI)) != lifecycle.ABI:
+            raise ValueError('Lifecycle probe ABI differs; rebuild the probe')
+    if query_mode == 'unit_membership':
+        marker=exports.get(b'probe_membership_abi')
+        if marker is None or pe.get_data(marker,len(lifecycle.MEMBERSHIP_ABI)) != lifecycle.MEMBERSHIP_ABI:
+            raise ValueError('Membership probe ABI differs; rebuild the probe')
     install_rva=exports[b'ProbeInstallLocalHook'];uninstall_rva=exports[b'ProbeUninstallLocalHook']
     report={'pid':pid,'hwnd':hex(hwnd),'expected_callback_tid':tid,'image':str(image),
-            'image_sha256':hashlib.sha256(image.read_bytes()).hexdigest(),'calls_game_handlers':query_mode in ('native','selection','unit'),'query_mode':query_mode}
+            'image_sha256':hashlib.sha256(image.read_bytes()).hexdigest(),'calls_game_handlers':query_mode in ('native','selection','unit','hero_level','unit_lifecycle','unit_membership','unit_void'),'query_mode':query_mode}
     handle=file=section=block=thread=work=None;view=P();safe=True
     try:
         p['enable_debug_privilege']();handle=p['open_process'](0x43a,False,pid)
@@ -93,7 +111,11 @@ def inspect(pid,hwnd,tid,image,query_mode="none",tls_index=0,native_address=0,wo
             0, 0, 0, 0, 0, 0, sleep_address, 0, 0)
         query = (view.value+exports[b'ProbeSelectionFixtureQuery'] if query_mode=='selection_fixture' else
                  view.value+exports[b'ProbeSelectionQuery'] if query_mode=='selection' else
-                 view.value+exports[b'ProbeUnitQuery'] if query_mode=='hero_level' else
+                 view.value+exports[b'ProbeMembershipQuery'] if query_mode=='unit_membership' else
+                 view.value+exports[b'ProbeUnitLifecycleQuery'] if query_mode=='unit_lifecycle' else
+                 view.value+exports[b'ProbeSetHeroLevelRoundtrip'] if query_mode=='hero_level' else
+                 view.value+exports[b'ProbeUnitVoidQuery'] if query_mode=='unit_void' else
+                 view.value+exports[b'ProbeUnitQuery'] if query_mode=='unit' else
                  view.value+exports[b'ProbeConstantQuery'] if query_mode=='constant' else
                  view.value+exports[b'ProbeFaultQuery'] if query_mode=='fault' else native_address if query_mode=='native' else 0)
         directory=pe.OPTIONAL_HEADER.DATA_DIRECTORY[3]

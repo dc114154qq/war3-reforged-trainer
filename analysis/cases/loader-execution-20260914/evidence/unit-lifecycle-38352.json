@@ -1,0 +1,161 @@
+{
+  "pid": 38352,
+  "source": {
+    "handle": 1050669,
+    "rawcode": 1215324524,
+    "level": 1
+  },
+  "mappings": {
+    "GetOwningPlayer": {
+      "address": "0x7ff73a878970",
+      "kind": "image-noaccess-diagnostic-only",
+      "protection": "0x1",
+      "allocation": "0x7ff739bd0000",
+      "code_hex": null
+    },
+    "GetUnitTypeId": {
+      "address": "0x7ff73a87f560",
+      "kind": "readable-executable",
+      "protection": "0x20",
+      "allocation": "0x7ff739bd0000",
+      "code_hex": "4883ec28e8a7e7c3ff4885c075054883"
+    },
+    "GetUnitX": {
+      "address": "0x7ff73a87fad0",
+      "kind": "readable-executable",
+      "protection": "0x20",
+      "allocation": "0x7ff739bd0000",
+      "code_hex": "4883ec38e837e2c3ff488bc84885c075"
+    },
+    "GetUnitY": {
+      "address": "0x7ff73a87fb10",
+      "kind": "readable-executable",
+      "protection": "0x20",
+      "allocation": "0x7ff739bd0000",
+      "code_hex": "4883ec38e8f7e1c3ff488bc84885c075"
+    },
+    "CreateUnit": {
+      "address": "0x7ff73a868620",
+      "kind": "image-noaccess-diagnostic-only",
+      "protection": "0x1",
+      "allocation": "0x7ff739bd0000",
+      "code_hex": null
+    },
+    "RemoveUnit": {
+      "address": "0x7ff73a88e690",
+      "kind": "image-noaccess-diagnostic-only",
+      "protection": "0x1",
+      "allocation": "0x7ff739bd0000",
+      "code_hex": null
+    },
+    "GetHeroLevel": {
+      "address": "0x7ff73a876160",
+      "kind": "readable-executable",
+      "protection": "0x20",
+      "allocation": "0x7ff739bd0000",
+      "code_hex": "48895c2408574883ec20e8a17bc4ff48"
+    },
+    "SetHeroLevel": {
+      "address": "0x7ff73a8c1fa0",
+      "kind": "image-noaccess-diagnostic-only",
+      "protection": "0x1",
+      "allocation": "0x7ff739bd0000",
+      "code_hex": null
+    }
+  },
+  "dispatch": {
+    "pid": 38352,
+    "hwnd": "0x8d09a8",
+    "expected_callback_tid": 35668,
+    "image": "C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\analysis\\engine-lifecycle-v1.dll",
+    "image_sha256": "34bfec126d5ba6507c382e483088a8d513a6e55ff310a8e1ca937177da552236",
+    "calls_game_handlers": true,
+    "query_mode": "unit_lifecycle",
+    "image_base": "0x7ffe9fa90000",
+    "command_address": "0x22600730000",
+    "work_address": "0x22600740000",
+    "install_thread": {
+      "tid": 38084,
+      "created": true,
+      "completed": true
+    },
+    "after_install": {
+      "hook": 761400435,
+      "target_tid": 35668,
+      "message": 50093,
+      "nonce": 6345219726832733339,
+      "stage": 2,
+      "last_error": 0,
+      "callback_tid": 0,
+      "callback_count": 0,
+      "detached": 0,
+      "active": 0,
+      "query_result": "0x0",
+      "tls_value": "0x0",
+      "query_stage": 0,
+      "exception_code": "0x0",
+      "unwind_registered": 1,
+      "unwind_removed": 0
+    },
+    "send": {
+      "completed": true,
+      "error": 0
+    },
+    "after_send": {
+      "hook": 761400435,
+      "target_tid": 35668,
+      "message": 50093,
+      "nonce": 6345219726832733339,
+      "stage": 3,
+      "last_error": 0,
+      "callback_tid": 35668,
+      "callback_count": 1,
+      "detached": 1,
+      "active": 0,
+      "query_result": "0x0",
+      "tls_value": "0x225ddb3ea60",
+      "query_stage": 2,
+      "exception_code": "0x0",
+      "unwind_registered": 1,
+      "unwind_removed": 0
+    },
+    "after_cleanup": {
+      "hook": 761400435,
+      "target_tid": 35668,
+      "message": 50093,
+      "nonce": 6345219726832733339,
+      "stage": 3,
+      "last_error": 0,
+      "callback_tid": 35668,
+      "callback_count": 1,
+      "detached": 1,
+      "active": 0,
+      "query_result": "0x0",
+      "tls_value": "0x225ddb3ea60",
+      "query_stage": 2,
+      "exception_code": "0x0",
+      "unwind_registered": 1,
+      "unwind_removed": 1
+    },
+    "callback_verified": true,
+    "query_completed": true,
+    "work_result_hex": "7089873af77f000060f5873af77f0000d0fa873af77f000010fb873af77f00002086863af77f000090e6883af77f00006061873af77f0000a01f8c3af77f00002d081000000000006c6170480200000060eab3dd25020000500810000000000005000000000000000100000001000000020000006c6170486c61704800000000",
+    "safe_to_release": true,
+    "work_freed": true,
+    "block_freed": true,
+    "image_unmap_status": "0x0"
+  },
+  "lifecycle": {
+    "created": 1050704,
+    "phase": 5,
+    "error": 0,
+    "removed": true,
+    "before": 1,
+    "after": 2,
+    "removed_type": 1215324524,
+    "created_type": 1215324524,
+    "ok": false
+  },
+  "ok": false,
+  "elapsed_ms": 2023.422299997037
+}

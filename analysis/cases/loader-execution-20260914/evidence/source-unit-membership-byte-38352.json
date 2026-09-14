@@ -1,0 +1,130 @@
+{
+  "pid": 38352,
+  "unit": 1050669,
+  "mappings": {
+    "CreateGroup": {
+      "address": "0x7ff73a865f40",
+      "kind": "readable-executable",
+      "protection": "0x20",
+      "allocation": "0x7ff739bd0000",
+      "code_hex": "48895c240848896c2410488974241857"
+    },
+    "GetOwningPlayer": {
+      "address": "0x7ff73a878970",
+      "kind": "readable-executable",
+      "protection": "0x20",
+      "allocation": "0x7ff739bd0000",
+      "code_hex": "4883ec28e89753c4ff4885c075054883"
+    },
+    "GroupEnumUnitsOfPlayer": {
+      "address": "0x7ff73a880410",
+      "kind": "readable-executable",
+      "protection": "0x20",
+      "allocation": "0x7ff739bd0000",
+      "code_hex": "48895c2418554883ec20418be88bda44"
+    },
+    "IsUnitInGroup": {
+      "address": "0x7ff73a885870",
+      "kind": "readable-executable",
+      "protection": "0x20",
+      "allocation": "0x7ff739bd0000",
+      "code_hex": "48895c2408574883ec208bfae88f84c3"
+    },
+    "DestroyGroup": {
+      "address": "0x7ff73a8699d0",
+      "kind": "readable-executable",
+      "protection": "0x20",
+      "allocation": "0x7ff739bd0000",
+      "code_hex": "4883ec28e8d71bc5ff4885c07411488b"
+    }
+  },
+  "dispatch": {
+    "pid": 38352,
+    "hwnd": "0x8d09a8",
+    "expected_callback_tid": 35668,
+    "image": "C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\analysis\\engine-lifecycle-v3.dll",
+    "image_sha256": "f1592c3ae6936a882a2fd06ac2d8cf77e52c163f22634aa29aa8377d2c754dc1",
+    "calls_game_handlers": true,
+    "query_mode": "unit_membership",
+    "image_base": "0x7ffe89fb0000",
+    "command_address": "0x22600770000",
+    "work_address": "0x22600780000",
+    "install_thread": {
+      "tid": 16616,
+      "created": true,
+      "completed": true
+    },
+    "after_install": {
+      "hook": 1618807401,
+      "target_tid": 35668,
+      "message": 49935,
+      "nonce": 475396336532315674,
+      "stage": 2,
+      "last_error": 0,
+      "callback_tid": 0,
+      "callback_count": 0,
+      "detached": 0,
+      "active": 0,
+      "query_result": "0x0",
+      "tls_value": "0x0",
+      "query_stage": 0,
+      "exception_code": "0x0",
+      "unwind_registered": 1,
+      "unwind_removed": 0
+    },
+    "send": {
+      "completed": true,
+      "error": 0
+    },
+    "after_send": {
+      "hook": 1618807401,
+      "target_tid": 35668,
+      "message": 49935,
+      "nonce": 475396336532315674,
+      "stage": 3,
+      "last_error": 0,
+      "callback_tid": 35668,
+      "callback_count": 1,
+      "detached": 1,
+      "active": 0,
+      "query_result": "0x1",
+      "tls_value": "0x225ddb3ea60",
+      "query_stage": 2,
+      "exception_code": "0x0",
+      "unwind_registered": 1,
+      "unwind_removed": 0
+    },
+    "after_cleanup": {
+      "hook": 1618807401,
+      "target_tid": 35668,
+      "message": 49935,
+      "nonce": 475396336532315674,
+      "stage": 3,
+      "last_error": 0,
+      "callback_tid": 35668,
+      "callback_count": 1,
+      "detached": 1,
+      "active": 0,
+      "query_result": "0x1",
+      "tls_value": "0x225ddb3ea60",
+      "query_stage": 2,
+      "exception_code": "0x0",
+      "unwind_registered": 1,
+      "unwind_removed": 1
+    },
+    "callback_verified": true,
+    "query_completed": true,
+    "work_result_hex": "405f863af77f00007089873af77f00001004883af77f00007058883af77f0000d099863af77f00002d0810000000000060eab3dd25020000520810000000000008001000000000000100000001000000",
+    "safe_to_release": true,
+    "work_freed": true,
+    "block_freed": true,
+    "image_unmap_status": "0x0"
+  },
+  "ok": true,
+  "membership": {
+    "group": 1050706,
+    "player": 1048584,
+    "member": true,
+    "destroyed": true
+  }
+}

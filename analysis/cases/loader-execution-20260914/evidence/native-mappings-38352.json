@@ -1,0 +1,150 @@
+{
+  "pid": 38352,
+  "game_base": "0x7ff739bd0000",
+  "handlers": {
+    "GetLocalPlayer": {
+      "address": "0x7ff73a8773d0",
+      "rva": "0xca73d0",
+      "signature": "()Hplayer;",
+      "region": {
+        "base": "0x7ff73a877000",
+        "allocation": "0x7ff739bd0000",
+        "alloc_protect": "0x40",
+        "partition": "0x0",
+        "size": "0xcb000",
+        "state": "0x1000",
+        "protect": "0x1",
+        "type": "0x40000"
+      },
+      "mapped_file": ""
+    },
+    "CreateGroup": {
+      "address": "0x7ff73a865f40",
+      "rva": "0xc95f40",
+      "signature": "()Hgroup;",
+      "region": {
+        "base": "0x7ff73a865000",
+        "allocation": "0x7ff739bd0000",
+        "alloc_protect": "0x40",
+        "partition": "0x0",
+        "size": "0xdd000",
+        "state": "0x1000",
+        "protect": "0x1",
+        "type": "0x40000"
+      },
+      "mapped_file": ""
+    },
+    "GroupEnumUnitsSelected": {
+      "address": "0x7ff73a8808a0",
+      "rva": "0xcb08a0",
+      "signature": "(Hgroup;Hplayer;Hboolexpr;)V",
+      "region": {
+        "base": "0x7ff73a880000",
+        "allocation": "0x7ff739bd0000",
+        "alloc_protect": "0x40",
+        "partition": "0x0",
+        "size": "0xc2000",
+        "state": "0x1000",
+        "protect": "0x1",
+        "type": "0x40000"
+      },
+      "mapped_file": ""
+    },
+    "FirstOfGroup": {
+      "address": "0x7ff73a86bb90",
+      "rva": "0xc9bb90",
+      "signature": "(Hgroup;)Hunit;",
+      "region": {
+        "base": "0x7ff73a86b000",
+        "allocation": "0x7ff739bd0000",
+        "alloc_protect": "0x40",
+        "partition": "0x0",
+        "size": "0xd7000",
+        "state": "0x1000",
+        "protect": "0x1",
+        "type": "0x40000"
+      },
+      "mapped_file": ""
+    },
+    "GroupRemoveUnit": {
+      "address": "0x7ff73a880e80",
+      "rva": "0xcb0e80",
+      "signature": "(Hgroup;Hunit;)B",
+      "region": {
+        "base": "0x7ff73a880000",
+        "allocation": "0x7ff739bd0000",
+        "alloc_protect": "0x40",
+        "partition": "0x0",
+        "size": "0xc2000",
+        "state": "0x1000",
+        "protect": "0x1",
+        "type": "0x40000"
+      },
+      "mapped_file": ""
+    },
+    "DestroyGroup": {
+      "address": "0x7ff73a8699d0",
+      "rva": "0xc999d0",
+      "signature": "(Hgroup;)V",
+      "region": {
+        "base": "0x7ff73a869000",
+        "allocation": "0x7ff739bd0000",
+        "alloc_protect": "0x40",
+        "partition": "0x0",
+        "size": "0xd9000",
+        "state": "0x1000",
+        "protect": "0x1",
+        "type": "0x40000"
+      },
+      "mapped_file": ""
+    },
+    "GetUnitTypeId": {
+      "address": "0x7ff73a87f560",
+      "rva": "0xcaf560",
+      "signature": "(Hunit;)I",
+      "region": {
+        "base": "0x7ff73a87f000",
+        "allocation": "0x7ff739bd0000",
+        "alloc_protect": "0x40",
+        "partition": "0x0",
+        "size": "0xc3000",
+        "state": "0x1000",
+        "protect": "0x1",
+        "type": "0x40000"
+      },
+      "mapped_file": ""
+    },
+    "GetHeroLevel": {
+      "address": "0x7ff73a876160",
+      "rva": "0xca6160",
+      "signature": "(Hunit;)I",
+      "region": {
+        "base": "0x7ff73a876000",
+        "allocation": "0x7ff739bd0000",
+        "alloc_protect": "0x40",
+        "partition": "0x0",
+        "size": "0xcc000",
+        "state": "0x1000",
+        "protect": "0x1",
+        "type": "0x40000"
+      },
+      "mapped_file": ""
+    },
+    "SetHeroLevel": {
+      "address": "0x7ff73a8c1fa0",
+      "rva": "0xcf1fa0",
+      "signature": "(Hunit;IB)V",
+      "region": {
+        "base": "0x7ff73a8c1000",
+        "allocation": "0x7ff739bd0000",
+        "alloc_protect": "0x40",
+        "partition": "0x0",
+        "size": "0x81000",
+        "state": "0x1000",
+        "protect": "0x1",
+        "type": "0x40000"
+      },
+      "mapped_file": ""
+    }
+  }
+}

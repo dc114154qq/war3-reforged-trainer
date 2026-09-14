@@ -1,0 +1,122 @@
+[
+  {
+    "attempt": 0,
+    "rva": "0x1838fd",
+    "protect": "0x20",
+    "allocation": "0x7ff739bd0000",
+    "readable": true,
+    "exact": true
+  },
+  {
+    "attempt": 0,
+    "rva": "0x18395e",
+    "protect": "0x20",
+    "allocation": "0x7ff739bd0000",
+    "readable": true,
+    "exact": true
+  },
+  {
+    "attempt": 0,
+    "rva": "0x152a690",
+    "protect": "0x20",
+    "allocation": "0x7ff739bd0000",
+    "readable": true,
+    "exact": true
+  },
+  {
+    "attempt": 1,
+    "rva": "0x1838fd",
+    "protect": "0x20",
+    "allocation": "0x7ff739bd0000",
+    "readable": true,
+    "exact": true
+  },
+  {
+    "attempt": 1,
+    "rva": "0x18395e",
+    "protect": "0x20",
+    "allocation": "0x7ff739bd0000",
+    "readable": true,
+    "exact": true
+  },
+  {
+    "attempt": 1,
+    "rva": "0x152a690",
+    "protect": "0x20",
+    "allocation": "0x7ff739bd0000",
+    "readable": true,
+    "exact": true
+  },
+  {
+    "attempt": 2,
+    "rva": "0x1838fd",
+    "protect": "0x20",
+    "allocation": "0x7ff739bd0000",
+    "readable": true,
+    "exact": true
+  },
+  {
+    "attempt": 2,
+    "rva": "0x18395e",
+    "protect": "0x20",
+    "allocation": "0x7ff739bd0000",
+    "readable": true,
+    "exact": true
+  },
+  {
+    "attempt": 2,
+    "rva": "0x152a690",
+    "protect": "0x20",
+    "allocation": "0x7ff739bd0000",
+    "readable": true,
+    "exact": true
+  },
+  {
+    "attempt": 3,
+    "rva": "0x1838fd",
+    "protect": "0x20",
+    "allocation": "0x7ff739bd0000",
+    "readable": true,
+    "exact": true
+  },
+  {
+    "attempt": 3,
+    "rva": "0x18395e",
+    "protect": "0x20",
+    "allocation": "0x7ff739bd0000",
+    "readable": true,
+    "exact": true
+  },
+  {
+    "attempt": 3,
+    "rva": "0x152a690",
+    "protect": "0x20",
+    "allocation": "0x7ff739bd0000",
+    "readable": true,
+    "exact": true
+  },
+  {
+    "attempt": 4,
+    "rva": "0x1838fd",
+    "protect": "0x20",
+    "allocation": "0x7ff739bd0000",
+    "readable": true,
+    "exact": true
+  },
+  {
+    "attempt": 4,
+    "rva": "0x18395e",
+    "protect": "0x20",
+    "allocation": "0x7ff739bd0000",
+    "readable": true,
+    "exact": true
+  },
+  {
+    "attempt": 4,
+    "rva": "0x152a690",
+    "protect": "0x20",
+    "allocation": "0x7ff739bd0000",
+    "readable": true,
+    "exact": true
+  }
+]

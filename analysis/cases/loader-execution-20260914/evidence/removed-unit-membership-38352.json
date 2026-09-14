@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "Traceback (most recent call last):\n  File \"C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\analysis\\verify-unit-membership-24268.py\", line 37, in main\n    try:r=run(args.pid,args.image,args.unit)\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\analysis\\verify-unit-membership-24268.py\", line 28, in run\n    result['membership']=decode_membership(bytes.fromhex(evidence['work_result_hex']))\n                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\war3_lifecycle_protocol.py\", line 67, in decode_membership\n    raise ValueError('Membership query or cleanup failed')\nValueError: Membership query or cleanup failed\n"
+}

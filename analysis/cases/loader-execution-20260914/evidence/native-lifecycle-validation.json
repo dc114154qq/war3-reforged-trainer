@@ -1,0 +1,46 @@
+{
+  "previous_goal_turn": "progress: startup changed, tests and live timings saved in commit 4f6dbdf",
+  "skill_reads_this_turn": [
+    {
+      "path": "C:/Users/14186/.codex/skills/ida-reverse/SKILL.md",
+      "lines": "1-170"
+    }
+  ],
+  "observations": [
+    "All nine sampled native entries belonged to the current game allocation in committed mapped PAGE_NOACCESS regions.",
+    "Context code read failed with WinError 299 once; five later samples matched all three exact checks.",
+    "GetLocalPlayer and 15-unit selection succeeded through registered current-build native entries without changing page protection.",
+    "Fresh temporary hero creation and level 1 to 2 succeeded twice.",
+    "First temporary handle 1050704 later returned type zero.",
+    "Second temporary handle 1050705 remained type Hpal and was in owner unit group; a second explicit RemoveUnit call still did not yield type zero.",
+    "Original hero handle 1050669 remains Hpal; it was not the target of any level or removal call.",
+    "Membership boolean returned dirty upper bits with low byte 1; uint8 return declaration now verified against original and temporary unit."
+  ],
+  "verified": [
+    "Selection group destroyed and diagnostic hook, work, command and mapped image released.",
+    "118 tests passed in 2.01s.",
+    "Final diagnostic DLL build v4 succeeded.",
+    "PID38352 still Responding=True at last process check."
+  ],
+  "hypotheses": [
+    "The unreadable code mapping can still be invoked through game-thread context; loader behavior is not yet fully recovered.",
+    "Removal failure/latency may involve engine lifecycle timing or required context; successful void return alone is insufficient."
+  ],
+  "residual": [
+    "Temporary hero 1050705 may remain in map; do not create more until cleanup understood.",
+    "Full clone with skills and items not verified.",
+    "No product integration, packaging, cross-device execution or whole-goal completion claimed."
+  ],
+  "commands_successful": [
+    "python -m pytest -q test_24268_lifecycle_protocol.py test_24268_native_preflight.py test_24268_selection_protocol.py test_game_thread_dispatch_cleanup.py test_24268_executor_readiness.py test_24268_product_boundary.py --tb=short --maxfail=2",
+    "clang -shared -O2 -fexceptions -fasync-exceptions -fno-stack-protector -fno-builtin -nostdlib analysis/engine_hook_probe.c -o analysis/engine-lifecycle-v4.dll -Wl,/entry:DllMain,/nodefaultlib,/alternatename:__C_specific_handler=ProbeSpecificHandler -luser32 -lkernel32",
+    "python analysis/verify-native-selection-24268.py --pid 38352 --image analysis/engine-selection-abi-v3.dll --output analysis/cases/loader-execution-20260914/evidence/selection-image-bound-38352.json --allow-image-noaccess",
+    "python analysis/verify-unit-membership-24268.py --pid 38352 --image analysis/engine-lifecycle-v3.dll --unit 1050705 --output analysis/cases/loader-execution-20260914/evidence/removed-unit-membership-byte-38352.json"
+  ],
+  "failed_checks": [
+    "Initial context preflight WinError299; retried only after resampling.",
+    "Initial DLL unresolved _fltused; rebuilt after source fix.",
+    "Lifecycle removal acceptance false; preserved negative evidence."
+  ],
+  "next": "Recover RemoveUnit engine lifecycle/context and verify temporary-unit cleanup before further creation; then port validated calls to product instead of legacy bootstrap."
+}

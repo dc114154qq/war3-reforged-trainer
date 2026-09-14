@@ -1,0 +1,110 @@
+{
+  "pid": 38352,
+  "preflight_only": false,
+  "player_object": "0x2259b21cb88",
+  "tls_index": 22,
+  "thread_id": 35668,
+  "work_size": 480,
+  "mappings": {
+    "GetLocalPlayer": {
+      "address": "0x7ff73a8773d0",
+      "kind": "image-noaccess-diagnostic-only",
+      "protection": "0x1",
+      "allocation": "0x7ff739bd0000",
+      "code_hex": null
+    }
+  },
+  "probe_local_player": true,
+  "signatures": {
+    "GetLocalPlayer": "()Hplayer;",
+    "CreateGroup": "()Hgroup;",
+    "GroupEnumUnitsSelected": "(Hgroup;Hplayer;Hboolexpr;)V",
+    "FirstOfGroup": "(Hgroup;)Hunit;",
+    "GroupRemoveUnit": "(Hgroup;Hunit;)B",
+    "DestroyGroup": "(Hgroup;)V",
+    "GetUnitTypeId": "(Hunit;)I",
+    "GetHeroLevel": "(Hunit;)I"
+  },
+  "dispatch": {
+    "pid": 38352,
+    "hwnd": "0x8d09a8",
+    "expected_callback_tid": 35668,
+    "image": "C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\analysis\\engine-selection-abi-v3.dll",
+    "image_sha256": "c056505b0f5b9ad595e4c5b47afb91a3ab6ff314b0215cabbdad0a64d87d1dae",
+    "calls_game_handlers": true,
+    "query_mode": "native",
+    "image_base": "0x7ffe9fa90000",
+    "command_address": "0x22600730000",
+    "install_thread": {
+      "tid": 38592,
+      "created": true,
+      "completed": true
+    },
+    "after_install": {
+      "hook": 1039469321,
+      "target_tid": 35668,
+      "message": 50131,
+      "nonce": 8606323214856657353,
+      "stage": 2,
+      "last_error": 0,
+      "callback_tid": 0,
+      "callback_count": 0,
+      "detached": 0,
+      "active": 0,
+      "query_result": "0x0",
+      "tls_value": "0x0",
+      "query_stage": 0,
+      "exception_code": "0x0",
+      "unwind_registered": 1,
+      "unwind_removed": 0
+    },
+    "send": {
+      "completed": true,
+      "error": 0
+    },
+    "after_send": {
+      "hook": 1039469321,
+      "target_tid": 35668,
+      "message": 50131,
+      "nonce": 8606323214856657353,
+      "stage": 3,
+      "last_error": 0,
+      "callback_tid": 35668,
+      "callback_count": 1,
+      "detached": 1,
+      "active": 0,
+      "query_result": "0x100008",
+      "tls_value": "0x225ddb3ea60",
+      "query_stage": 2,
+      "exception_code": "0x0",
+      "unwind_registered": 1,
+      "unwind_removed": 0
+    },
+    "after_cleanup": {
+      "hook": 1039469321,
+      "target_tid": 35668,
+      "message": 50131,
+      "nonce": 8606323214856657353,
+      "stage": 3,
+      "last_error": 0,
+      "callback_tid": 35668,
+      "callback_count": 1,
+      "detached": 1,
+      "active": 0,
+      "query_result": "0x100008",
+      "tls_value": "0x225ddb3ea60",
+      "query_stage": 2,
+      "exception_code": "0x0",
+      "unwind_registered": 1,
+      "unwind_removed": 1
+    },
+    "callback_verified": true,
+    "query_completed": true,
+    "safe_to_release": true,
+    "block_freed": true,
+    "image_unmap_status": "0x0"
+  },
+  "player_handle": "0x100008",
+  "ok": true,
+  "elapsed_ms": 989.9087000012514
+}

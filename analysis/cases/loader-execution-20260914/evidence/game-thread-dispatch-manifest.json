@@ -1,0 +1,88 @@
+{
+  "recorded_utc": "2026-09-14T02:17:57.766704+00:00",
+  "archive_sha256": "24575275311b3795140286ea58864d0ccc98ded70c7d502a02253c41fa89bff1",
+  "artifacts": [
+    {
+      "path": "analysis/engine_hook_probe.c",
+      "bytes": 6411,
+      "sha256": "044286bdb4a815c5b74bc833fac91e1f1c869eda0ea9b4cc352b7da04047e448"
+    },
+    {
+      "path": "analysis/verify-game-thread-dispatch.py",
+      "bytes": 7321,
+      "sha256": "55857059de70385cebbdc788113cbd71934eb6b9bae6e1437b74e9e2a3003364"
+    },
+    {
+      "path": "test_game_thread_dispatch_cleanup.py",
+      "bytes": 888,
+      "sha256": "6fcfbb5e9329d46052811986faa89ef4abf2e27b73df2ddf9cab43c986a9372b"
+    },
+    {
+      "path": "analysis/game-thread-dispatch-cleanup-tests.log",
+      "bytes": 100,
+      "sha256": "4f83f2493d0845af6ae8666f8ff297b2c6e372cd47ce02f4cc575ad81dbbb4c3"
+    },
+    {
+      "path": "analysis/engine-thread-dispatch-probe.dll",
+      "bytes": 4608,
+      "sha256": "be095c8d05aa34eda525f7ec514cc822a241f3b1d1c61ed3c8e32ac14ac048e3"
+    },
+    {
+      "path": "analysis/engine-thread-dispatch-probe-build.log",
+      "bytes": 116,
+      "sha256": "a9acc0cf32b43d6115a086e730596f5ed577a3ad06ca3aed3fb3a412d43e0de1"
+    },
+    {
+      "path": "analysis/engine-thread-dispatch-persistent.dll",
+      "bytes": 4608,
+      "sha256": "dae6aaee22ebb62f41a4864c17f4ea092c9b1e10a53cd1b211dfd81542ea967d"
+    },
+    {
+      "path": "analysis/engine-thread-dispatch-persistent-build.log",
+      "bytes": 126,
+      "sha256": "0887bac978378208740865db094981c62a343e7303002a0cf2eab3ec9391b1e6"
+    },
+    {
+      "path": "analysis/game-thread-dispatch-local.json",
+      "bytes": 1717,
+      "sha256": "91849e6a502b361d1bf50994e9eeb8b37576d96597152c1809ff080648a60cde"
+    },
+    {
+      "path": "analysis/game-thread-dispatch-local-persistent.json",
+      "bytes": 1539,
+      "sha256": "354dd48cb92c54714593874cf8fa2e8a64b53472d5cc664e15d4f552df95d121"
+    },
+    {
+      "path": "analysis/game-thread-dispatch-22844.json",
+      "bytes": 1532,
+      "sha256": "844efcf5f64155e5c989a09be6ad82ce03729cfacfbb7489fac0dec6f00781ff"
+    },
+    {
+      "path": "analysis/game-thread-dispatch-22844.log",
+      "bytes": 1274,
+      "sha256": "2d3c22d3ce4d5f36f8e2ea4ae63c76c9a5cea8ae784803d021742a098ee4b803"
+    }
+  ],
+  "verified": true,
+  "facts": [
+    "Image-backed installer ran inside game and installed WH_CALLWNDPROC for current window thread without ordinary DLL loading",
+    "Local first attempt failed after installer thread exited; callback missing and hook invalid; local host exited releasing retained test allocations",
+    "Keeping installer thread alive produced one callback in local window thread",
+    "Same persistent-installer probe in PID22844 produced one callback on expected window thread 7812",
+    "Matching unique registered message and nonce triggered self-unhook; detached=1, active=0; sender completed",
+    "Installer exited; command block and image mapping released",
+    "8 release-gate tests passed"
+  ],
+  "limits": [
+    "Only diagnostic callback, no game handler call yet",
+    "Game window thread identity does not by itself prove native TLS/calling convention compatibility",
+    "Single successful capture does not prove cross-device stability"
+  ],
+  "commands": [
+    "clang -shared -O2 -fno-stack-protector -fno-builtin -nostdlib analysis/engine_hook_probe.c -o analysis/engine-thread-dispatch-persistent.dll '-Wl,/entry:DllMain,/nodefaultlib' -luser32 -lkernel32",
+    "python analysis/verify-game-thread-dispatch.py --local-host analysis/engine-hook-probe-host.exe --image analysis/engine-thread-dispatch-persistent.dll --output analysis/game-thread-dispatch-local-persistent.json",
+    "python analysis/verify-game-thread-dispatch.py --pid 22844 --image analysis/engine-thread-dispatch-persistent.dll --output analysis/game-thread-dispatch-22844.json",
+    "python -m pytest -q --tb=short test_game_thread_dispatch_cleanup.py"
+  ],
+  "next": "Validate native context and read-only native query on this window-thread channel before any modifying engine operations"
+}

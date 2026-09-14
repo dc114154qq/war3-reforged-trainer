@@ -92,3 +92,70 @@ __declspec(dllexport) DWORD WINAPI ProbeLoaderEntry(ProbeLoadCommand *cmd) {
     cmd->stage = 2;
     return 0;
 }
+
+/* Install from inside the target process: no remote DLL-loading hook path. */
+typedef struct ProbeHookCommand {
+    HWND window;
+    HHOOK (WINAPI *set_hook)(int, HOOKPROC, HINSTANCE, DWORD);
+    BOOL (WINAPI *unhook)(HHOOK);
+    LRESULT (WINAPI *next_hook)(HHOOK, int, WPARAM, LPARAM);
+    DWORD (WINAPI *current_tid)(void);
+    DWORD (WINAPI *get_error)(void);
+    HHOOK hook;
+    DWORD target_tid, message;
+    uintptr_t nonce;
+    volatile LONG stage;
+    DWORD last_error, callback_tid;
+    volatile LONG callback_count, detached, active;
+    void (WINAPI *sleep_ms)(DWORD);
+    volatile LONG stop_requested;
+    DWORD reserved;
+} ProbeHookCommand;
+_Static_assert(sizeof(ProbeHookCommand) == 112, "ProbeHookCommand ABI");
+static ProbeHookCommand *g_dispatch;
+
+static LRESULT CALLBACK ProbeLocalCallback(int code, WPARAM w, LPARAM l) {
+    ProbeHookCommand *cmd = g_dispatch;
+    LRESULT result;
+    if (!cmd) return 0;
+    InterlockedIncrement(&cmd->active);
+    if (code >= 0 && l) {
+        const CWPSTRUCT *message = (const CWPSTRUCT *)l;
+        if (message->hwnd == cmd->window && message->message == cmd->message &&
+            message->wParam == cmd->nonce) {
+            cmd->callback_tid = cmd->current_tid();
+            InterlockedIncrement(&cmd->callback_count);
+            cmd->detached = cmd->unhook(cmd->hook);
+            if (!cmd->detached) cmd->last_error = cmd->get_error();
+            cmd->stage = 3;
+        }
+    }
+    result = cmd->next_hook(NULL, code, w, l);
+    InterlockedDecrement(&cmd->active);
+    return result;
+}
+
+__declspec(dllexport) DWORD WINAPI ProbeInstallLocalHook(ProbeHookCommand *cmd) {
+    cmd->stage = 1;
+    g_dispatch = cmd;
+    cmd->hook = cmd->set_hook(WH_CALLWNDPROC, ProbeLocalCallback, NULL, cmd->target_tid);
+    if (!cmd->hook) cmd->last_error = cmd->get_error();
+    cmd->stage = 2;
+    /* Hooks belong to the installing thread; keep it alive through dispatch. */
+    if (cmd->hook) {
+        while (!cmd->detached && !cmd->stop_requested) cmd->sleep_ms(1);
+        if (!cmd->detached) {
+            cmd->detached = cmd->unhook(cmd->hook);
+            if (!cmd->detached) cmd->last_error = cmd->get_error();
+        }
+    }
+    return 0;
+}
+
+__declspec(dllexport) DWORD WINAPI ProbeUninstallLocalHook(ProbeHookCommand *cmd) {
+    if (cmd->hook && !cmd->detached) {
+        cmd->detached = cmd->unhook(cmd->hook);
+        if (!cmd->detached) cmd->last_error = cmd->get_error();
+    }
+    return 0;
+}

@@ -84,7 +84,7 @@ def inspect(pid,hwnd,tid,image,query_mode="none",tls_index=0,native_address=0,wo
             0, 0, 0, 0, 0, 0, sleep_address, 0, 0)
         query = (view.value+exports[b'ProbeSelectionFixtureQuery'] if query_mode=='selection_fixture' else
                  view.value+exports[b'ProbeSelectionQuery'] if query_mode=='selection' else
-                 view.value+exports[b'ProbeUnitQuery'] if query_mode=='unit' else
+                 view.value+exports[b'ProbeUnitQuery'] if query_mode=='hero_level' else
                  view.value+exports[b'ProbeConstantQuery'] if query_mode=='constant' else
                  view.value+exports[b'ProbeFaultQuery'] if query_mode=='fault' else native_address if query_mode=='native' else 0)
         directory=pe.OPTIONAL_HEADER.DATA_DIRECTORY[3]

@@ -1,0 +1,3 @@
+# SetHeroLevel failure — 2026-09-14
+
+Observation: current native selection returned 15 and fresh first JASS handle 0x10082d. Calling SetHeroLevel(Hunit, 2, true) through the parameterized image wrapper caught 0xc0000005; wrapper cleanup completed. This is not a successful write and is not included in capability acceptance. GetHeroLevel(Hunit) had previously returned 1 with the same selection shape. Hypotheses remaining: handler ABI/boolean representation, required game-thread state beyond window-thread dispatch, or an invalid hero selection mapping. No further writes executed after this failure.

@@ -1,0 +1,97 @@
+{
+  "pid": 22844,
+  "hwnd": "0x3035e",
+  "expected_callback_tid": 7812,
+  "image": "C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\analysis\\engine-hero-level-set-probe.dll",
+  "image_sha256": "cf0eaa76aef2822d40e05c86e0aad1e398f4e18346b2b3e6b06ac43ddfe22103",
+  "calls_game_handlers": false,
+  "query_mode": "hero_level",
+  "image_base": "0x7ffe841f0000",
+  "command_address": "0x2429cee0000",
+  "work_address": "0x2429cef0000",
+  "install_thread": {
+    "tid": 12632,
+    "created": true,
+    "completed": true
+  },
+  "after_install": {
+    "hook": 540411119,
+    "target_tid": 7812,
+    "message": 49436,
+    "nonce": 9202248203250519844,
+    "stage": 2,
+    "last_error": 0,
+    "callback_tid": 0,
+    "callback_count": 0,
+    "detached": 0,
+    "active": 0,
+    "query_result": "0x0",
+    "tls_value": "0x0",
+    "query_stage": 0,
+    "exception_code": "0x0",
+    "unwind_registered": 1,
+    "unwind_removed": 0
+  },
+  "send": {
+    "completed": true,
+    "error": 0
+  },
+  "after_send": {
+    "hook": 540411119,
+    "target_tid": 7812,
+    "message": 49436,
+    "nonce": 9202248203250519844,
+    "stage": 3,
+    "last_error": 0,
+    "callback_tid": 7812,
+    "callback_count": 1,
+    "detached": 1,
+    "active": 0,
+    "query_result": "0x0",
+    "tls_value": "0x2429b64ea50",
+    "query_stage": 3,
+    "exception_code": "0xc0000005",
+    "unwind_registered": 1,
+    "unwind_removed": 0
+  },
+  "after_cleanup": {
+    "hook": 540411119,
+    "target_tid": 7812,
+    "message": 49436,
+    "nonce": 9202248203250519844,
+    "stage": 3,
+    "last_error": 0,
+    "callback_tid": 7812,
+    "callback_count": 1,
+    "detached": 1,
+    "active": 0,
+    "query_result": "0x0",
+    "tls_value": "0x2429b64ea50",
+    "query_stage": 3,
+    "exception_code": "0xc0000005",
+    "unwind_registered": 1,
+    "unwind_removed": 1
+  },
+  "callback_verified": true,
+  "query_completed": false,
+  "work_result_hex": "a01f0f4ef67f000060610a4ef67f00002d081000000000000200000001000000",
+  "safe_to_release": true,
+  "work_freed": true,
+  "block_freed": true,
+  "image_unmap_status": "0x0",
+  "target_jass_unit": "0x10082d",
+  "requested_level": 2,
+  "native_handlers": {
+    "GetHeroLevel": {
+      "signature": "(Hunit;)I",
+      "handler": "0x7ff64e0a6160"
+    },
+    "SetHeroLevel": {
+      "signature": "(Hunit;IB)V",
+      "handler": "0x7ff64e0f1fa0"
+    }
+  },
+  "classification": "invalid_write_attempt_not_accepted",
+  "verified_result": false,
+  "note": "Fresh selection handle was used, but SetHeroLevel wrapper caught 0xc0000005; no post-write restoration was executed because no valid write/readback state existed."
+}

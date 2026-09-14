@@ -15,7 +15,7 @@ def main() -> None:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             methods[node.name] = node.lineno
     matrix = [
-        {"feature": "24-unit selection", "status": "15 unique live on PID 22844; 24 structural fixture", "evidence": "selection-query-game-22844.json; current-e-drive-target.json; test_classic_player_selection.py"},
+        {"feature": "24-unit selection", "status": "15 unique live on PID 38352; 24 structural fixture", "evidence": "classic-chain-live-38352.json; in-map-resource-fallback-20260914.md; test_classic_player_selection.py"},
         {"feature": "resource read/write", "status": "read and original-value writeback live validated", "evidence": "direct-writeback-live.json; test_indexed_resources.py"},
         {"feature": "coordinate write", "status": "code-routed", "evidence": "set_selected_unit_position"},
         {"feature": "hero attribute write", "status": "typed original-value writeback live validated", "evidence": "hero-writeback-live.json; set_selected_hero_attributes"},

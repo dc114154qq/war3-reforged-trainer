@@ -16,7 +16,8 @@ class EngineExecutionError(RuntimeError):
         super().__init__(message+'; engine24268='+json.dumps(dict(pid=report.get('pid'),
             phase=state.get('query_stage'),exception=state.get('exception_code'),
             retained=report.get('dispatch',{}).get('allocations_retained',False),
-            ability_status=report.get('ability_status'),item_status=report.get('item_status')),ensure_ascii=False))
+            ability_status=report.get('ability_status'),item_status=report.get('item_status'),
+            clone_status=report.get('clone_status')),ensure_ascii=False))
 
 class Engine24268:
     def __init__(self,pid,hwnd,memory_factory,image=None,report_sink=None):
@@ -54,6 +55,30 @@ class Engine24268:
         return self._execute('item',names,lambda entries,tls:build(entries,tls,action,rawcode,charges),decode,
                              dict(action=action,rawcode=rawcode,charges=charges))
 
+    def clone_batch(self, *, keep=False, preserve_owner=False,
+                    copy_abilities=True, copy_items=True,
+                    spawn_x_bits=0, spawn_y_bits=0):
+        from war3_clone_protocol import (
+            SIGNATURES as CLONE_SIGNATURES,
+            CLONE_COPY_ABILITIES, CLONE_COPY_ITEMS, CLONE_KEEP,
+            CLONE_PRESERVE_OWNER, build_work as build, decode_work as decode,
+        )
+        flags = 0
+        if keep: flags |= CLONE_KEEP
+        if preserve_owner: flags |= CLONE_PRESERVE_OWNER
+        if copy_abilities: flags |= CLONE_COPY_ABILITIES
+        if copy_items: flags |= CLONE_COPY_ITEMS
+        names = tuple(n for n, _ in SIGNATURES + CLONE_SIGNATURES)
+        return self._execute(
+            'clone', names,
+            lambda entries, tls: build(entries, tls, flags=flags,
+                                       spawn_x_bits=spawn_x_bits,
+                                       spawn_y_bits=spawn_y_bits),
+            decode,
+            dict(keep=keep, preserve_owner=preserve_owner,
+                 copy_abilities=copy_abilities, copy_items=copy_items),
+        )
+
     def _execute(self,kind,names,builder,decoder,request):
         with self.lock:
             if self.quarantined:raise EngineExecutionError('Previous dispatch retained resources; inspect before reconnecting',self.last_report)
@@ -85,6 +110,11 @@ class Engine24268:
                         if len(raw)==5960:
                             changed,error,completed,skipped=struct.unpack_from('<4I',raw,564)
                             report['item_status']=dict(changed=changed,error=error,completed=completed,skipped=skipped)
+                    if kind=='clone' and evidence.get('work_result_hex'):
+                        raw=bytes.fromhex(evidence['work_result_hex'])
+                        if len(raw)==1848:
+                            changed,error,completed=struct.unpack_from('<3I',raw,676)
+                            report['clone_status']=dict(changed=changed,error=error,completed=completed)
                     if not (evidence.get('callback_verified') and evidence.get('query_completed') and evidence.get('work_freed')
                         and evidence.get('block_freed') and evidence.get('image_unmap_status')=='0x0'
                         and evidence['after_send']['tls_value']==hex(mode.tls)):

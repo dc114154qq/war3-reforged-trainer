@@ -5454,6 +5454,17 @@ class War3Trainer:
         code = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF if rawcode else 0
         return self._engine_instance_24268().item_batch(action, code, charges)
 
+    def clone_batch_24268(self, *, keep: bool = True,
+                          preserve_owner: bool = False,
+                          copy_abilities: bool = True,
+                          copy_items: bool = True) -> dict:
+        return self._engine_instance_24268().clone_batch(
+            keep=keep,
+            preserve_owner=preserve_owner,
+            copy_abilities=copy_abilities,
+            copy_items=copy_items,
+        )
+
     def get_selected_hero_level(self) -> int:
         if getattr(self, "_native_selection_unavailable", False):
             return int(self.hero_progress_24268()["rows"][0]["after"])
@@ -6228,6 +6239,17 @@ class War3Trainer:
         use_selected_lookup: bool = True,
         preserve_owner: bool = False,
     ) -> tuple[int, int]:
+        if rawcode is None and getattr(self, "_native_selection_unavailable", False):
+            result = self.clone_batch_24268(
+                keep=True,
+                preserve_owner=preserve_owner,
+                copy_abilities=True,
+                copy_items=True,
+            )
+            if not result["rows"]:
+                raise RuntimeError("当前选择没有可复制单位")
+            row = result["rows"][0]
+            return int(row["rawcode"]), int(row["clone"])
         x, y = self.query_mouse_world_position() if position is None else position
         unit_handle = 0
         if rawcode is None:
@@ -16106,8 +16128,21 @@ def run_gui() -> None:
         if not copy_selected and not rawcode:
             raise ValueError("请填写单位 ID")
         if copy_selected:
+            trainer = elephant_trainer()
+            if getattr(trainer, "_native_selection_unavailable", False):
+                result = trainer.clone_batch_24268(
+                    keep=True,
+                    preserve_owner=preserve_owner,
+                    copy_abilities=True,
+                    copy_items=True,
+                )
+                return (
+                    f"已复制 {result['count']} 个选中单位，技能 "
+                    f"{sum(row['ability_count'] for row in result['rows'])} 个，物品 "
+                    f"{sum(row['item_count'] for row in result['rows'])} 个"
+                )
             results = elephant_batch(
-                lambda: elephant_trainer().create_local_unit(
+                lambda: trainer.create_local_unit(
                     None,
                     use_selected_lookup=True,
                     preserve_owner=preserve_owner,

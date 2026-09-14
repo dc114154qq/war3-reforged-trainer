@@ -1,6 +1,13 @@
 #include <windows.h>
 #include <stdint.h>
 
+int _fltused = 0;
+void *memset(void *destination, int value, size_t count) {
+    unsigned char *bytes = (unsigned char *)destination;
+    while (count--) *bytes++ = (unsigned char)value;
+    return destination;
+}
+
 typedef struct BridgeCommand {
     HWND window;
     HHOOK (WINAPI *set_hook)(int, HOOKPROC, HINSTANCE, DWORD);
@@ -227,6 +234,7 @@ BOOL WINAPI DllMain(HINSTANCE module,DWORD reason,LPVOID reserved) {
 }
 #include "war3_bridge_ability.h"
 #include "war3_bridge_item.h"
+#include "war3_bridge_clone.h"
 #ifdef BRIDGE_TEST
 #include "war3_bridge_test_fixture.h"
 #endif

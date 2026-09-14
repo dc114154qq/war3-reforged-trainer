@@ -107,6 +107,9 @@ def dispatch(pid,hwnd,tid,image,tls_index,work_payload,kind="hero"):
     elif kind=='item':
         from war3_item_protocol import ABI as expected_abi,validate_work as validate_item
         validate_item(work_payload);marker_name=b'item_batch_abi';query_name=b'BridgeItemQuery'
+    elif kind=='clone':
+        from war3_clone_protocol import ABI as expected_abi,validate_work as validate_clone
+        validate_clone(work_payload);marker_name=b'clone_batch_abi';query_name=b'BridgeCloneQuery'
     else:raise ValueError('Unknown current-engine batch kind')
     owner=U()
     if window_thread(hwnd,c.byref(owner))!=tid or owner.value!=pid:

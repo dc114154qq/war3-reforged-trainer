@@ -132,3 +132,83 @@ __declspec(dllexport) uint64_t BridgeItemTestRun(ItemWork *w,int count,int scena
     return BridgeItemQuery();
 }
 __declspec(dllexport) int BridgeItemTestStat(int kind) {return kind==0 ? item_create_calls : kind==1 ? item_set_calls : item_remove_calls;}
+
+static int clone_case,clone_created,clone_removed,clone_abilities,clone_items;
+static uint32_t clone_type[24],clone_ability_level[24],clone_item_type[24];
+static int32_t clone_item_charge[24];
+static uint32_t clone_bits(float value) { union {float value;uint32_t bits;} v;v.value=value;return v.bits; }
+static int clone_index(uint64_t unit) {
+    if (unit>=0x100000 && unit<0x100018) return (int)(unit-0x100000);
+    if (unit>=0x600000 && unit<0x600018) return (int)(unit-0x600000);
+    return 0;
+}
+static uint64_t clone_owner(uint64_t unit) { (void)unit; return 0x100008; }
+static uint32_t clone_type_id(uint64_t unit) {
+    int index=clone_index(unit);
+    if (unit>=0x600000 && unit<0x600018) return clone_type[index];
+    return fixture_type(unit);
+}
+static uint32_t clone_x(uint64_t unit) { (void)unit; return clone_bits(100.0f); }
+static uint32_t clone_y(uint64_t unit) { (void)unit; return clone_bits(200.0f); }
+static uint32_t clone_facing(uint64_t unit) { (void)unit; return clone_bits(90.0f); }
+static uint64_t clone_create(uint64_t owner,uint32_t rawcode,float *x,float *y,float *facing) {
+    int i=clone_created;(void)owner;(void)x;(void)y;(void)facing;
+    if (clone_case==1 || (clone_case==4 && i>=3) || i>=24) return 0;
+    clone_type[i]=rawcode;clone_ability_level[i]=0;clone_item_type[i]=0;clone_item_charge[i]=0;
+    ++clone_created;return 0x600000+i;
+}
+static void clone_set_owner(uint64_t unit,uint64_t owner,uint32_t color) {(void)unit;(void)owner;(void)color;}
+static void clone_remove_unit(uint64_t unit) { if (unit>=0x600000 && unit<0x600018) {clone_type[clone_index(unit)]=0;++clone_removed;} }
+static int32_t clone_level(uint64_t unit) { return unit>=0x600000 ? 1 : fixture_level(unit); }
+static void clone_set_hero_level_fixture(uint64_t unit,int32_t level,uint32_t eye) {(void)unit;(void)level;(void)eye;}
+static uint64_t clone_ability_by_index(uint64_t unit,int32_t index) {
+    return unit<0x600000 && fixture_level(unit)>0 && index==0 ? 0x700000+clone_index(unit) : 0;
+}
+static uint32_t clone_ability_id(uint64_t ability) {(void)ability;return 0x414f6372;}
+static int32_t clone_get_ability_level(uint64_t unit,uint32_t rawcode) {
+    (void)rawcode;return unit>=0x600000 ? (int32_t)clone_ability_level[clone_index(unit)] : fixture_level(unit)>0 ? 2 : 0;
+}
+static uint8_t clone_add_ability(uint64_t unit,uint32_t rawcode) {
+    (void)rawcode;if (clone_case==2)return 0;clone_ability_level[clone_index(unit)]=1;++clone_abilities;return 1;
+}
+static int32_t clone_set_ability_level_fn(uint64_t unit,uint32_t rawcode,int32_t level) {
+    (void)rawcode;clone_ability_level[clone_index(unit)]=level;return level;
+}
+static uint64_t clone_item_slot(uint64_t unit,int32_t slot) {
+    return unit<0x600000 && fixture_level(unit)>0 && slot==0 ? 0x200000+clone_index(unit) : 0;
+}
+static uint32_t clone_item_type_fn(uint64_t item) {
+    if (item>=0x800000 && item<0x800018)return clone_item_type[item-0x800000];
+    return item>=0x200000 && item<0x200018 ? 0x73747770 : 0;
+}
+static int32_t clone_item_charges_fn(uint64_t item) {
+    return item>=0x800000 && item<0x800018 ? clone_item_charge[item-0x800000] : 1;
+}
+static uint64_t clone_add_item(uint64_t unit,uint32_t rawcode) {
+    int i=clone_index(unit);(void)rawcode;
+    if (clone_case==3)return 0;
+    clone_item_type[i]=rawcode;clone_item_charge[i]=1;++clone_items;return 0x800000+i;
+}
+static void clone_set_item_charges(uint64_t item,int32_t value) {if (item>=0x800000 && item<0x800018)clone_item_charge[item-0x800000]=value;}
+static void clone_detach_item(uint64_t unit,uint64_t item) {(void)unit;(void)item;}
+static void clone_remove_item(uint64_t item) {if (item>=0x800000 && item<0x800018)clone_item_type[item-0x800000]=0;}
+__declspec(dllexport) uint64_t BridgeCloneTestRun(CloneWork *w,int count,int scenario) {
+    static BridgeCommand cmd;int i;
+    if (count<0 || count>24)return 0;
+    fixture_count=count;fixture_scenario=0;clone_case=scenario;clone_created=clone_removed=clone_abilities=clone_items=0;
+    for(i=0;i<24;++i){fixture_levels[i]=i%3==0?1:0;clone_type[i]=0;clone_ability_level[i]=0;clone_item_type[i]=0;clone_item_charge[i]=0;}
+    cmd.work=w;cmd.tls_value=w->expected_tls;g_dispatch=&cmd;
+    w->selection.local_player=fixture_player;w->selection.create_group=fixture_group;
+    w->selection.enum_selected=fixture_enum;w->selection.first_of_group=fixture_first;
+    w->selection.remove_from_group=fixture_remove;w->selection.destroy_group=fixture_destroy;
+    w->selection.unit_type_id=fixture_type;w->selection.hero_level=fixture_level;
+    w->owner=clone_owner;w->type_id=clone_type_id;w->get_x=clone_x;w->get_y=clone_y;w->get_facing=clone_facing;
+    w->create=clone_create;w->set_owner=clone_set_owner;w->remove_unit=clone_remove_unit;
+    w->get_level=clone_level;w->set_level=clone_set_hero_level_fixture;w->ability_by_index=clone_ability_by_index;
+    w->ability_id=clone_ability_id;w->ability_level=clone_get_ability_level;w->add_ability=clone_add_ability;
+    w->set_ability_level=clone_set_ability_level_fn;w->item_in_slot=clone_item_slot;w->item_type=clone_item_type_fn;
+    w->item_charges=clone_item_charges_fn;w->add_item=clone_add_item;w->set_item_charges=clone_set_item_charges;
+    w->detach_item=clone_detach_item;w->remove_item=clone_remove_item;
+    return BridgeCloneQuery();
+}
+__declspec(dllexport) int BridgeCloneTestStat(int kind) {return kind==0?clone_created:kind==1?clone_removed:kind==2?clone_abilities:clone_items;}

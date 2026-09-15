@@ -16,17 +16,26 @@ static int32_t fixture_level(uint64_t u) {return fixture_levels[u-0x100000];}
 static void fixture_set(uint64_t u,int32_t value,uint32_t eye) {
     (void)eye;++fixture_writes;if (fixture_scenario!=1) fixture_levels[u-0x100000]=value;
 }
+static uint8_t fixture_strip(uint64_t u,int32_t delta) {
+    ++fixture_writes;
+    if (fixture_scenario==1 || delta<0 || fixture_levels[u-0x100000]<delta) return 0;
+    fixture_levels[u-0x100000]-=delta;
+    return 1;
+}
+static void fixture_suspend(uint64_t u,uint32_t value) {(void)u;(void)value;}
+static uint8_t fixture_is_suspended(uint64_t u) {(void)u;return 0;}
 __declspec(dllexport) uint64_t BridgeTestRun(HeroWork *w,int count,int scenario) {
     static BridgeCommand cmd;
     int i;
     if (count<0 || count>24) return 0;
     fixture_count=count;fixture_scenario=scenario;fixture_writes=0;fixture_type_calls=0;
-    for (i=0;i<24;++i) fixture_levels[i]=(scenario!=4 && i%3==0) ? 1 : 0;
+    for (i=0;i<24;++i) fixture_levels[i]=(scenario!=4 && i%3==0) ? (scenario==7 ? 3 : 1) : 0;
     cmd.work=w;cmd.tls_value=w->expected_tls;g_dispatch=&cmd;
     w->selection.local_player=fixture_player;w->selection.create_group=fixture_group;
     w->selection.enum_selected=fixture_enum;w->selection.first_of_group=fixture_first;
     w->selection.remove_from_group=fixture_remove;w->selection.destroy_group=fixture_destroy;
     w->selection.unit_type_id=fixture_type;w->selection.hero_level=fixture_level;w->set_level=fixture_set;
+    w->strip_level=fixture_strip;w->suspend_xp=fixture_suspend;w->is_suspended_xp=fixture_is_suspended;
     return BridgeHeroQuery();
 }
 __declspec(dllexport) int BridgeTestWrites(void) {return fixture_writes;}
@@ -359,4 +368,36 @@ __declspec(dllexport) int BridgeSpawnTestStat(int kind) {
     if (kind == 5) return (int)spawn_y_bits;
     if (kind == 6) return (int)spawn_facing_bits;
     return -1;
+}
+
+static float fixture_mouse_x, fixture_mouse_y;
+static uint64_t fixture_mouse_location(void) { return 0x910000; }
+static float fixture_get_location_x(uint64_t location) { (void)location; return fixture_mouse_x; }
+static float fixture_get_location_y(uint64_t location) { (void)location; return fixture_mouse_y; }
+static void fixture_remove_location(uint64_t location) { (void)location; }
+__declspec(dllexport) uint64_t BridgeMouseTestRun(MouseWork *w, uint32_t x_bits, uint32_t y_bits, int error) {
+    static BridgeCommand cmd;
+    union { uint32_t bits; float value; } x, y;
+    x.bits = x_bits; y.bits = y_bits;
+    fixture_mouse_x = x.value; fixture_mouse_y = y.value;
+    cmd.work = w; cmd.tls_value = w->expected_tls; g_dispatch = &cmd;
+    w->get_mouse_position = fixture_mouse_location;
+    w->get_location_x = fixture_get_location_x;
+    w->get_location_y = fixture_get_location_y;
+    w->remove_location = fixture_remove_location;
+    w->error = (uint32_t)error;
+    return BridgeMouseQuery();
+}
+
+static int32_t fixture_screen_x, fixture_screen_y;
+static int32_t fixture_get_screen_x(void) { return fixture_screen_x; }
+static int32_t fixture_get_screen_y(void) { return fixture_screen_y; }
+__declspec(dllexport) uint64_t BridgeScreenTestRun(ScreenMouseWork *w, int32_t x, int32_t y, int error) {
+    static BridgeCommand cmd;
+    fixture_screen_x = x; fixture_screen_y = y;
+    cmd.work = w; cmd.tls_value = w->expected_tls; g_dispatch = &cmd;
+    w->get_x = fixture_get_screen_x;
+    w->get_y = fixture_get_screen_y;
+    w->error = (int32_t)error;
+    return BridgeScreenMouseQuery();
 }

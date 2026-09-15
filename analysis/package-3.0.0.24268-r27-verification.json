@@ -1,0 +1,42 @@
+{
+  "version": "3.0.0.24268-r27",
+  "branch": "codex/war3-3.0.0.24268-adaptation",
+  "exe": "dist-3.0.0.24268-r27/War3ReforgedTrainer-3.0.0.24268.exe",
+  "exe_size": 18770766,
+  "exe_sha256": "C2F5B6491FDD6A0EC71DB006E29D677A7F467E1153659A552B1A5E7C6F741103",
+  "bridge": "tools/war3_bridge_24268_current.dll",
+  "bridge_size": 21504,
+  "bridge_sha256": "86A07E0E1ADC32918C06345923ABF0754D73306F165841EE1F56CA0B6A2AF5A8",
+  "hero_abi": "0x2426801c/632",
+  "focused_product_tests": "287 passed",
+  "runtime_self_test": {
+    "report": "analysis/packaged-runtime-selftest-r27.json",
+    "ok": true,
+    "frozen": true,
+    "retired_helper_present": false
+  },
+  "gui_smoke": {
+    "ok": true,
+    "alive_after_seconds": 4
+  },
+  "live_pid": 26796,
+  "live_smoke": {
+    "selection": 15,
+    "hero_level_roundtrip": "1->2->1",
+    "item_query_count": 15,
+    "ability_diagnostic_changed": 14,
+    "item_diagnostic_changed": 1,
+    "item_diagnostic_skipped": 14,
+    "clone_diagnostic_changed": 15,
+    "clone_diagnostic_kept": false,
+    "instant_move_changed": 15,
+    "instant_move_readback_verified": true,
+    "instant_move_target": [
+      1085.5689331950211,
+      5817.20645253565
+    ],
+    "state_restored": true
+  },
+  "website_sync": false,
+  "cross_device_validation": false
+}

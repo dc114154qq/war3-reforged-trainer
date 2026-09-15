@@ -27,6 +27,7 @@ map_section=api(nt,'NtMapViewOfSection',c.c_long,P,P,c.POINTER(P),Z,Z,P,c.POINTE
 unmap_section=api(nt,'NtUnmapViewOfSection',c.c_long,P,P)
 register_message=api(u,'RegisterWindowMessageW',U,c.c_wchar_p)
 window_thread=api(u,'GetWindowThreadProcessId',U,P,c.POINTER(U))
+send_message_timeout=api(u,'SendMessageTimeoutW',Z,P,U,Z,c.c_ssize_t,U,U,c.POINTER(Z))
 
 def bytes_at(handle,address,size):
     data=c.create_string_buffer(size);actual=Z()
@@ -57,7 +58,7 @@ def module_base(memory,name):
 # Transport uses only Windows exports and fresh process-local module bases.
 p=dict(api=api,open_process=open_process,close=close,read=read,write=write,alloc=alloc,free=free,
     create_thread=create_thread,wait=wait,get_module=get_module,current_process=current_process,bytes_at=bytes_at)
-h=dict(u=u,module_name=module_name,module_base=module_base)
+h=dict(u=u,module_name=module_name,module_base=module_base,send=send_message_timeout)
 x=dict(create_file=create_file,create_mapping=create_mapping,map_section=map_section,unmap_section=unmap_section)
 
 def resolve(memory,library,name):
@@ -132,7 +133,11 @@ def dispatch(pid,hwnd,tid,image,tls_index,work_payload,kind="hero"):
     owner=U()
     if window_thread(hwnd,c.byref(owner))!=tid or owner.value!=pid:
         raise RuntimeError('Bridge target window/thread identity changed')
-    query_mode=kind;delivery_mode='posted'
+    # Synchronous CallWndProc delivery is the validated route for the current
+    # build. A posted message can remain queued while the render thread is
+    # busy, which leaves the remote hook allocation live and quarantines the
+    # session before the game native is called.
+    query_mode=kind;delivery_mode='send'
     pe=pefile.PE(str(image));exports={s.name:s.address for s in pe.DIRECTORY_ENTRY_EXPORT.symbols}
     marker=exports.get(marker_name)
     if marker is None or pe.get_data(marker,len(expected_abi))!=expected_abi:

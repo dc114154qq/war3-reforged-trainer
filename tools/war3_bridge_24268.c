@@ -188,18 +188,22 @@ __declspec(dllexport) uint64_t BridgeSelect(void) {
 typedef struct HeroWork {
     SelectionWork selection;
     void (*set_level)(uint64_t,int32_t,uint32_t);
+    uint8_t (*strip_level)(uint64_t,int32_t);
+    void (*suspend_xp)(uint64_t,uint32_t);
+    uint8_t (*is_suspended_xp)(uint64_t);
     void *expected_tls;
     uint32_t target,changed,error,reserved;
     int32_t after[24];
 } HeroWork;
-_Static_assert(sizeof(HeroWork)==608,"HeroWork ABI");
-__declspec(dllexport) const uint32_t bridge_abi[3]={0x24268010u,216u,608u};
+_Static_assert(sizeof(HeroWork)==632,"HeroWork ABI");
+__declspec(dllexport) const uint32_t bridge_abi[3]={0x2426801Cu,216u,632u};
 __declspec(dllexport) uint64_t BridgeHeroQuery(void) {
     HeroWork *w=(HeroWork *)g_dispatch->work;
     uint32_t i,heroes=0;
     uint64_t count;
     if (!w) return 0;
-    if (g_dispatch->tls_value!=w->expected_tls || !w->set_level || w->target>100000) {
+    if (g_dispatch->tls_value!=w->expected_tls || !w->set_level || !w->strip_level ||
+        !w->suspend_xp || !w->is_suspended_xp || w->target>100000) {
         w->error=10;return 0;
     }
     count=BridgeSelect();
@@ -221,7 +225,35 @@ __declspec(dllexport) uint64_t BridgeHeroQuery(void) {
         if (w->selection.unit_type_id(row->unit)!=row->rawcode ||
             w->selection.hero_level(row->unit)!=row->level) {w->error=14;return count;}
         if (w->target && row->level!=(int32_t)w->target) {
-            w->set_level(row->unit,(int32_t)w->target,0);
+            uint32_t operation_error=0;
+            uint8_t restore_xp=0;
+            __try {
+                if (w->target > (uint32_t)row->level) {
+                    if (w->is_suspended_xp(row->unit)) {
+                        w->suspend_xp(row->unit,0);
+                        restore_xp=1;
+                    }
+                    w->set_level(row->unit,(int32_t)w->target,1);
+                } else {
+                    if (!w->strip_level(row->unit,row->level-(int32_t)w->target))
+                        operation_error=16;
+                }
+            } __except(EXCEPTION_EXECUTE_HANDLER) {
+                operation_error=GetExceptionCode();
+            }
+            if (restore_xp) {
+                __try { w->suspend_xp(row->unit,1); }
+                __except(EXCEPTION_EXECUTE_HANDLER) {
+                    if (!operation_error) operation_error=GetExceptionCode();
+                }
+            }
+            w->after[i]=w->selection.hero_level(row->unit);
+            /* A current-build setter may fault after changing the object. The
+               readback is authoritative; reject only when it missed target. */
+            if (w->after[i]!=(int32_t)w->target) {
+                w->error=operation_error ? operation_error : 15;
+                return count;
+            }
             ++w->changed;
         }
         w->after[i]=w->selection.hero_level(row->unit);

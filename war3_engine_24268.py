@@ -6,7 +6,7 @@ from war3_thread_context import GameThreadContext24268
 from war3_native_table import NativeTable24268
 from war3_native_preflight import inspect_entries
 from war3_selection_protocol import SIGNATURES
-from war3_hero_protocol import build_work,decode_work
+from war3_hero_protocol import SIGNATURES as HERO_SIGNATURES, build_work,decode_work
 from war3_engine_transport import dispatch
 
 class EngineExecutionError(RuntimeError):
@@ -23,13 +23,13 @@ class Engine24268:
     def __init__(self,pid,hwnd,memory_factory,image=None,report_sink=None):
         self.pid,self.hwnd,self.memory_factory=pid,hwnd,memory_factory
         self.report_sink=report_sink
-        self.image=Path(image) if image is not None else Path(getattr(sys,'_MEIPASS',Path(__file__).resolve().parent))/'tools/war3_bridge_24268.dll'
+        self.image=Path(image) if image is not None else Path(getattr(sys,'_MEIPASS',Path(__file__).resolve().parent))/'tools/war3_bridge_24268_current.dll'
         self.lock=threading.RLock();self.last_report={};self.quarantined=False
 
     def hero_progress(self,target=0):
         if isinstance(target,bool) or not isinstance(target,int) or not 0<=target<=100000:
             raise ValueError('Hero level must be integer 1..100000; 0 means read-only query')
-        names=tuple(n for n,_ in SIGNATURES)+('SetHeroLevel',)
+        names=tuple(n for n,_ in SIGNATURES)+tuple(n for n,_ in HERO_SIGNATURES)
         return self._execute('hero',names,lambda entries,tls:build_work(entries,tls,target),decode_work,dict(target=target))
 
     def ability_batch(self,rawcode,action=0,level=0):

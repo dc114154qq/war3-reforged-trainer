@@ -11,7 +11,12 @@ import war3_reforged_trainer as trainer_module
 import war3_engine_transport as transport
 
 def entries():
-    signatures=SIGNATURES+(('SetHeroLevel','(Hunit;IB)V'),)
+    signatures=SIGNATURES+(
+        ('SetHeroLevel','(Hunit;IB)V'),
+        ('UnitStripHeroLevel','(Hunit;I)B'),
+        ('SuspendHeroXP','(Hunit;B)V'),
+        ('IsSuspendedXP','(Hunit;)B'),
+    )
     return {n:LiveNativeEntry(n,s,0x300000+i*80,0x500000+i*256) for i,(n,s) in enumerate(signatures)}
 def work(target=0):return build_work(entries(),0x10000000,target)
 
@@ -50,7 +55,7 @@ def fixture_dll():
 
 def run_fixture(dll,count,target,scenario=0):
     buf=c.create_string_buffer(work(target));actual=dll.BridgeTestRun(buf,count,scenario)
-    return buf.raw[:608],actual,dll.BridgeTestWrites()
+    return buf.raw[:632],actual,dll.BridgeTestWrites()
 
 @pytest.mark.parametrize('count',[1,4,15,24])
 @pytest.mark.parametrize('target',[0,1,2,7])
@@ -66,6 +71,13 @@ def test_actual_c_rejects_noop_setter_changed_identity_and_noheroes(fixture_dll,
     data,actual,writes=run_fixture(fixture_dll,15,2,scenario)
     assert writes==expected_writes
     with pytest.raises(ValueError):decode_work(data,actual)
+
+def test_actual_c_strips_levels_for_downward_change(fixture_dll):
+    data,actual,writes=run_fixture(fixture_dll,15,1,7)
+    result=decode_work(data,actual)
+    heroes=(15+2)//3
+    assert result['changed']==heroes and writes==heroes
+    assert all(row['level']==3 and row['after']==1 for row in result['rows'])
 
 def test_no_analysis_or_old_profile_in_product_modules():
     root=Path(__file__).parent

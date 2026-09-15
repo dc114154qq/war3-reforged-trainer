@@ -43,7 +43,7 @@ def main() -> None:
         if actual != expected:
             raise AssertionError(f"{name.decode('ascii')} ABI mismatch: {actual.hex()}")
 
-    marker(b"bridge_abi", (0x24268010, 216, 608))
+    marker(b"bridge_abi", (0x2426801C, 216, 632))
     marker(b"ability_batch_abi", (0x24268011, 216, 832))
     marker(b"item_batch_abi", (0x24268014, 216, 5960))
     marker(b"clone_batch_abi", (0x24268015, 216, 1848))

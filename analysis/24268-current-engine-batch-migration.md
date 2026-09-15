@@ -17,6 +17,8 @@ Branch: `codex/war3-3.0.0.24268-adaptation`
 
 PID `26796` was still the only responding Warcraft III process when checked. A current-engine item query reached the dispatch path once, but the follow-up attempt stopped before dispatch because the game context exact-byte page was temporarily unreadable (`WinError 299`). No live mutation is recorded as successful from that attempt.
 
+A later read-only world-fog probe reached the current native callback and returned bridge `error=84` from a game-side exception. The dispatch cleaned up successfully and performed no write; this indicates the process was not in a stable map/UI context for that query, not a successful world-state read.
+
 ## Release policy
 
 This work remains on the 3.0 adaptation branch. Later builds are not synchronized to the personal website; website sync is reserved for an explicit future request.

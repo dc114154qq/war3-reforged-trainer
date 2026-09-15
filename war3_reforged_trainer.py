@@ -5925,11 +5925,14 @@ class War3Trainer:
         for row in rows:
             actual_x = self._float_from_bits(int(row["actual_x_bits"]))
             actual_y = self._float_from_bits(int(row["actual_y_bits"]))
+            expected_x = float(row.get("expected_x", target_x))
+            expected_y = float(row.get("expected_y", target_y))
             if (not math.isfinite(actual_x) or not math.isfinite(actual_y)
-                    or abs(actual_x - target_x) > 0.01 or abs(actual_y - target_y) > 0.01):
-                raise RuntimeError("3.0 当前引擎 SetUnitPosition 读回不一致")
+                    or not math.isfinite(expected_x) or not math.isfinite(expected_y)
+                    or abs(actual_x - expected_x) > 0.01 or abs(actual_y - expected_y) > 0.01):
+                raise RuntimeError("3.0 当前引擎 SetUnitX/Y 编队读回不一致")
         if int(result.get("completed", 0)) != len(rows) or int(result.get("changed", 0)) != len(rows):
-            raise RuntimeError("3.0 当前引擎 SetUnitPosition 批处理不完整")
+            raise RuntimeError("3.0 当前引擎 SetUnitX/Y 批处理不完整")
         return len(rows)
 
     def move_selected_group_to_mouse(self) -> tuple[int, float, float]:

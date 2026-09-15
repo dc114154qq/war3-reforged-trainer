@@ -308,6 +308,12 @@ static uint32_t position_get_y(uint64_t unit) {
     union { float value; uint32_t bits; } result;
     ++position_calls[3]; result.value = position_y[unit_action_index(unit)]; return result.bits;
 }
+static uint32_t position_stop_order(uint64_t unit, int32_t order) {
+    (void)unit; (void)order; return 1;
+}
+static int32_t position_current_order(uint64_t unit) {
+    (void)unit; return 0;
+}
 __declspec(dllexport) uint64_t BridgePositionTestRun(PositionWork *w, int count) {
     static BridgeCommand cmd; int i;
     if (count < 0 || count > 24) return 0;
@@ -324,6 +330,7 @@ __declspec(dllexport) uint64_t BridgePositionTestRun(PositionWork *w, int count)
     w->selection.unit_type_id = fixture_type; w->selection.hero_level = fixture_level;
     w->set_x = position_set_x; w->set_y = position_set_y;
     w->get_x = position_get_x; w->get_y = position_get_y;
+    w->stop_order = position_stop_order; w->current_order = position_current_order;
     return BridgePositionQuery();
 }
 __declspec(dllexport) int BridgePositionTestStat(int kind) {

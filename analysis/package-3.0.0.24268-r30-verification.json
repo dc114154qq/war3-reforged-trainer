@@ -1,0 +1,33 @@
+{
+  "version": "3.0.0.24268-r30",
+  "branch": "codex/war3-3.0.0.24268-adaptation",
+  "exe": "dist-3.0.0.24268-r30/War3ReforgedTrainer-3.0.0.24268.exe",
+  "exe_size": 18775518,
+  "exe_sha256": "7685408F19EAA81D8D21547801DA4F3B4E17E89055344699F5A9B31C4B154A8F",
+  "bridge": "tools/war3_bridge_24268_current_r30.dll",
+  "bridge_size": 23040,
+  "bridge_sha256": "5F650B3EB7F07E52F8BE97E9E3E4CEFE316294BCAF41693BB0F02BAE2EF302AF",
+  "position_abi": "0x2426801e/1328",
+  "focused_product_tests": "291 passed",
+  "position_tests": "6 passed",
+  "runtime_self_test": {
+    "report": "analysis/packaged-runtime-selftest-r30.json",
+    "ok": true,
+    "frozen": true,
+    "retired_helper_present": false
+  },
+  "gui_smoke": {
+    "ok": true,
+    "alive_after_seconds": 4,
+    "responding": true
+  },
+  "live_write": {
+    "status": "verified",
+    "pid": 33728,
+    "selected_count": 15,
+    "movement_report": "analysis/live-position-r30-33728.json",
+    "mouse_target": "not_executed"
+  },
+  "website_sync": false,
+  "cross_device_validation": false
+}

@@ -1,0 +1,27 @@
+{
+  "pid": 33728,
+  "bridge": "tools/war3_bridge_24268_current_r30.dll",
+  "selected_count": 15,
+  "noop_anchor": {
+    "elapsed_ms": 479.3213,
+    "count": 15,
+    "changed": 15,
+    "completed": 15,
+    "formation_readback": true
+  },
+  "move_and_restore": {
+    "target_delta": [25.0, 25.0],
+    "elapsed_ms": 566.5029,
+    "move": {"count": 15, "changed": 15, "completed": 15},
+    "restore": {"count": 15, "changed": 15, "completed": 15},
+    "formation_match": true,
+    "restoration_match": true
+  },
+  "process_after": {
+    "responding": true,
+    "window_hung": false,
+    "send_message_timeout_ok": true,
+    "send_message_elapsed_ms": 4.3454
+  },
+  "scope": "Live code-level position probe; mouse-target and cross-device acceptance remain pending."
+}

@@ -1,0 +1,40 @@
+{
+  "package": "dist-3.0.0.24268-r36",
+  "commit": "25fcf9c",
+  "branch": "codex/war3-3.0.0.24268-adaptation",
+  "built_at": "2026-09-15T18:39:16.3368472+08:00",
+  "artifacts": {
+    "exe": {
+      "path": "dist-3.0.0.24268-r36/War3ReforgedTrainer-3.0.0.24268.exe",
+      "size": 18820727,
+      "sha256": "A3A97CD3C877DC7718CB74AA66349A02F260C04E412F370060D7F61E13C338EE"
+    },
+    "bridge_dll": {
+      "path": "tools/war3_bridge_24268_current_r36.dll",
+      "size": 34304,
+      "sha256": "FE3FCA7831B9BACEC5001F22621C0ED2919F8254F8691241CB1D58933EF99DAB"
+    }
+  },
+  "verification": {
+    "product_tests": "337 passed in 10.43s",
+    "bridge_abi": "x64 bridge ABI verified",
+    "fixture_bridge_build": "x64 bridge ABI verified",
+    "gui_smoke": {
+      "started": true,
+      "wait_seconds": 4,
+      "same_path_processes_after_cleanup": 0
+    },
+    "embedded_bridge": "build and package TOC contain tools/war3_bridge_24268_current_r36.dll",
+    "cross_device_validation": false,
+    "live_game_validation": false
+  },
+  "notes": [
+    "Current 3.0 effect ABI now carries bounded area and pass options and restores temporary abilities and area values on failure.",
+    "Current 3.0 direct target callbacks use the verified unit object extracted from the ability data object.",
+    "Current 3.0 world-effect batch enumerates enemy units through the current native table and cleans temporary target/source abilities.",
+    "Current 3.0 hero skill-slot replacement uses engine add/remove callbacks plus guarded component config/cache readback and rollback.",
+    "Buff-constructor-specific behavior, create-all-loaded-items, and actual cross-device gameplay acceptance remain unverified.",
+    "The personal website was not synchronized, per request."
+  ],
+  "website_sync": false
+}

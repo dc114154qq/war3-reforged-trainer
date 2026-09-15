@@ -22,6 +22,27 @@ def test_stale_requested_pid_is_released_after_game_restart():
         assert module.resolve_requested_war3_pid(3000) == 3000
 
 
+def test_window_discovery_retries_transient_loading_window():
+    with patch.object(
+        module,
+        "find_war3",
+        side_effect=[RuntimeError("没有找到标题为 Warcraft III 的可见窗口"), (300, 3000)],
+    ), patch.object(module.time, "sleep") as sleep:
+        assert module.find_war3_with_retry(3000, attempts=2, delay_seconds=0.25) == (300, 3000)
+    sleep.assert_called_once_with(0.25)
+
+
+def test_window_discovery_does_not_retry_multiple_client_selection_error():
+    with patch.object(
+        module,
+        "find_war3",
+        side_effect=RuntimeError("Multiple Warcraft III clients are open; select an explicit PID"),
+    ), patch.object(module.time, "sleep") as sleep:
+        with pytest.raises(RuntimeError, match="explicit PID"):
+            module.find_war3_with_retry()
+    sleep.assert_not_called()
+
+
 def test_legacy_dll_files_never_satisfy_24268_loader(tmp_path):
     (tmp_path / "tools").mkdir()
     for name in ("war3_native_helper.dll", "war3_native_helper.3.0-live.dll"):

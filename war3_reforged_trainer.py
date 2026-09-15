@@ -2270,6 +2270,28 @@ def find_war3(pid: int | None = None) -> tuple[int, int]:
     return hwnd, found_pid
 
 
+def find_war3_with_retry(
+    pid: int | None = None,
+    attempts: int = 16,
+    delay_seconds: float = 0.25,
+) -> tuple[int, int]:
+    """Wait briefly for a game window that is between launch/loading states."""
+    last_error: RuntimeError | None = None
+    for attempt in range(max(1, int(attempts))):
+        try:
+            return find_war3(pid)
+        except RuntimeError as exc:
+            # Multiple clients are an explicit-selection problem, not a transient
+            # launch state. Preserve that diagnostic immediately.
+            if "Multiple Warcraft III clients are open" in str(exc):
+                raise
+            last_error = exc
+            if attempt + 1 < max(1, int(attempts)):
+                time.sleep(max(0.0, float(delay_seconds)))
+    assert last_error is not None
+    raise last_error
+
+
 def resolve_requested_war3_pid(requested_pid: int | None) -> int | None:
     """Keep an explicit PID only while its visible Warcraft III window exists."""
     if requested_pid is None:
@@ -2880,7 +2902,7 @@ class War3Trainer:
     )
 
     def __init__(self, pid: int | None = None):
-        self.hwnd, self.pid = find_war3(pid)
+        self.hwnd, self.pid = find_war3_with_retry(pid)
         self._unit_owner_index: dict[int, int] = {}
         self._unit_owner_index_lock = threading.RLock()
         self._unit_object_index_cache: dict[int, tuple[int, int]] | None = None
@@ -2979,7 +3001,7 @@ class War3Trainer:
         if is_war3_window(self.hwnd, self.pid):
             return
         old_pid = self.pid
-        self.hwnd, self.pid = find_war3(None if allow_pid_change else self.pid)
+        self.hwnd, self.pid = find_war3_with_retry(None if allow_pid_change else self.pid)
         if self.pid != old_pid:
             self._close_native_helper_persistent()
             previous_win10_session = self._win10_session_trainer

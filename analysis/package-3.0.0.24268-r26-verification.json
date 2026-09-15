@@ -1,0 +1,32 @@
+{
+  "version": "3.0.0.24268-r26",
+  "exe": "dist-3.0.0.24268-r26/War3ReforgedTrainer-3.0.0.24268.exe",
+  "size": 18770011,
+  "sha256": "807393BA0AAFC9F12EA4C9E642BC9ED6137F146411992566D71069B2E6254C7E",
+  "bridge": {
+    "path": "tools/war3_bridge_24268.dll",
+    "sha256": "D49DA4700F7070B9DD8E05914508A887B392439367F8EA1F4E09D2C52FB43BA6"
+  },
+  "focused_tests": "264 passed",
+  "runtime_self_test": {
+    "report": "analysis/packaged-runtime-selftest-r26.json",
+    "ok": true,
+    "frozen": true,
+    "retired_helper_present": false,
+    "decoder_sha256": "76958e18380023a68fd1714fa2e01c594cc6db1955a07ad6937b66e66dc5d6c3"
+  },
+  "gui_startup_smoke": {
+    "ok": true,
+    "observed_responsive_seconds": 4,
+    "test_process_cleaned": true
+  },
+  "live_instant_move": {
+    "pid": 26796,
+    "selected_units_changed": 15,
+    "projected_point": [3975.3681897411984, 2914.6341627707025],
+    "readback_verified": true
+  },
+  "website_sync": false,
+  "cross_device_validation": false,
+  "note": "The package has local frozen-runtime and live instant-move evidence. Cross-device acceptance remains user-side validation."
+}

@@ -2,14 +2,15 @@
   "version": "3.0.0.24268-r32",
   "branch": "codex/war3-3.0.0.24268-adaptation",
   "exe": "dist-3.0.0.24268-r32/War3ReforgedTrainer-3.0.0.24268.exe",
-  "exe_size": 18775756,
-  "exe_sha256": "0A8A75D6CE022BC4C39D65639819D669793CE5F1421396ED0C59B3B495779637",
+  "exe_size": 18775734,
+  "exe_sha256": "02C21DD07D1573ECC4C0BCD608099E38364C97019EC69327BC820FA1F1AAA85F",
   "bridge": "tools/war3_bridge_24268_current_r32.dll",
   "bridge_size": 23040,
-  "bridge_sha256": "9E95D58C73A542DEC32EBC25A8AD42B5E407C31D54277DEA84A98530AAFBC2F9",
+  "bridge_sha256": "432B056062A68A22F17ACB6D2CF33436AB591F58B1A3F6D502A13DB41AC773A7",
   "position_abi": "0x24268020/1312",
   "position_route": "SetUnitPosition",
   "product_tests": "292 passed",
+  "ability_clone_position_product_tests": "221 passed",
   "focused_position_camera_action_boundary_tests": "37 passed",
   "archive_check": {
     "embedded_r32": true,
@@ -23,6 +24,8 @@
   },
   "live_rebind": "analysis/live-rebind-r31-31488.json",
   "live_position": "analysis/live-position-r32-4004.json",
+  "live_ability": "analysis/live-ability-r32-4004.json",
+  "live_clone": "analysis/live-clone-r32-4004.json",
   "cross_device_validation": false,
   "website_sync": false
 }

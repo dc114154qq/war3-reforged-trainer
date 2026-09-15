@@ -1,0 +1,16 @@
+{
+  "pid": 4004,
+  "bridge": "tools/war3_bridge_24268_current_r32.dll",
+  "keep": false,
+  "preserve_owner": false,
+  "copy_abilities": true,
+  "copy_items": true,
+  "elapsed_ms": 740.443,
+  "count": 15,
+  "changed": 15,
+  "rows": 15,
+  "status": [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
+  "ability_counts": [6, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4],
+  "item_counts": [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  "post_test_process_responding": true
+}

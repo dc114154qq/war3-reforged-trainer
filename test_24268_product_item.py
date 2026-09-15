@@ -12,7 +12,7 @@ def entries():return {n:LiveNativeEntry(n,s,0x300000+i*80,0x500000+i*256) for i,
 def work(action=0,charges=-1):return build_work(entries(),0x10000000,action,0x70686561 if action in (1,3) else 0,charges)
 @pytest.fixture(scope='module')
 def fixture():
-    dll=c.WinDLL(str(Path(__file__).parent/'analysis/engine-hero-fixture.dll'))
+    dll=c.WinDLL(str(Path(__file__).parent/'analysis/bridge-build-check-r32/engine-hero-fixture.dll'))
     dll.BridgeItemTestRun.argtypes=[c.c_void_p,c.c_int,c.c_int];dll.BridgeItemTestRun.restype=c.c_uint64
     dll.BridgeItemTestStat.argtypes=[c.c_int];dll.BridgeItemTestStat.restype=c.c_int
     return dll

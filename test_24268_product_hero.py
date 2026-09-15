@@ -47,7 +47,7 @@ def test_bad_user_level_never_dispatches(level):
 
 @pytest.fixture(scope='module')
 def fixture_dll():
-    path=Path(__file__).parent/'analysis/engine-hero-fixture.dll'
+    path=Path(__file__).parent/'analysis/bridge-build-check-r32/engine-hero-fixture.dll'
     assert path.is_file(),'Compile tools/war3_bridge_24268.c with BRIDGE_TEST before this gate'
     dll=c.WinDLL(str(path));dll.BridgeTestRun.argtypes=[c.c_void_p,c.c_int,c.c_int];dll.BridgeTestRun.restype=c.c_uint64
     dll.BridgeTestWrites.argtypes=[];dll.BridgeTestWrites.restype=c.c_int

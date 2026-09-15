@@ -14,7 +14,7 @@ def entries():
 def work(action=0,level=0):return build_work(entries(),0x10000000,0x41487664,action,level)
 @pytest.fixture(scope='module')
 def fixture():
-    dll=c.WinDLL(str(Path(__file__).parent/'analysis/engine-hero-fixture.dll'))
+    dll=c.WinDLL(str(Path(__file__).parent/'analysis/bridge-build-check-r32/engine-hero-fixture.dll'))
     dll.BridgeAbilityTestRun.argtypes=[c.c_void_p,c.c_int,c.c_int,c.c_int];dll.BridgeAbilityTestRun.restype=c.c_uint64
     dll.BridgeAbilityTestStat.argtypes=[c.c_int];dll.BridgeAbilityTestStat.restype=c.c_int
     return dll
@@ -112,7 +112,7 @@ def test_absent_fault_is_not_fabricated():
 def test_bad_fault_telemetry_is_rejected(data):
     with pytest.raises(ValueError):transport.decode_fault(data)
 
-@pytest.mark.parametrize('index,value',[(0,0),(1,0xc0000094),(2,1),(3,1),(4,0x5004bd),(5,1),(5,8),(6,8),(7,8)])
+@pytest.mark.parametrize('index,value',[(0,0),(1,0xc0000094),(2,1),(3,1),(4,0x5004bd),(5,1),(5,8),(6,8)])
 def test_compiled_tail_gate_rejects_other_faults(fixture,index,value):
     fn=fixture.BridgeTestKnownAbilityTail
     fn.argtypes=[c.c_uint64,c.c_uint32,c.c_uint32,c.c_uint32,c.c_uint64,c.c_uint64,c.c_uint64,c.c_uint64];fn.restype=c.c_int
@@ -120,6 +120,13 @@ def test_compiled_tail_gate_rejects_other_faults(fixture,index,value):
     assert fn(*args)==1
     args[index]=value
     assert fn(*args)==0
+
+
+def test_compiled_tail_gate_ignores_unstable_r15(fixture):
+    fn=fixture.BridgeTestKnownAbilityTail
+    fn.argtypes=[c.c_uint64,c.c_uint32,c.c_uint32,c.c_uint32,c.c_uint64,c.c_uint64,c.c_uint64,c.c_uint64]
+    fn.restype=c.c_int
+    assert fn(0x500000,0xc0000005,0,2,0x5004bc,0,0,8)==1
 
 @pytest.mark.parametrize('actual,target,expected',[(2,2,2),(1,2,-1),(3,2,-1),(0,0,-1),(-1,2,-1)])
 def test_compiled_tail_recovery_requires_exact_readback(fixture,actual,target,expected):

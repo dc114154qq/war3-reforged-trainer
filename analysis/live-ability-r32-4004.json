@@ -1,0 +1,26 @@
+{
+  "pid": 4004,
+  "rawcode": 1095721842,
+  "selected_count": 15,
+  "read_only": {
+    "changed": 0,
+    "levels": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  },
+  "add_remove": {
+    "add_ms": 366.506,
+    "remove_ms": 287.423,
+    "add_changed": 15,
+    "remove_changed": 15,
+    "add_levels": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    "remove_levels": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  },
+  "diagnostic_level_two": {
+    "elapsed_ms": 323.677,
+    "changed": 15,
+    "intermediate_levels": [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
+    "final_levels": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    "cleanup": "verified"
+  },
+  "post_test_process_responding": true,
+  "bridge": "tools/war3_bridge_24268_current_r32.dll"
+}

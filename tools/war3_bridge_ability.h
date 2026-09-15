@@ -10,15 +10,17 @@ typedef struct AbilityWork {
 } AbilityWork;
 _Static_assert(sizeof(AbilityWork)==832,"AbilityWork ABI");
 __declspec(dllexport) const uint32_t ability_batch_abi[3]={0x24268011u,216u,832u};
-/* 24268 evidence: SetUnitAbilityLevel+0x4bc faults reading [r15=0]
-   AFTER its level mutation. Do not patch the game or resume at a guessed RIP.
-   Unwind only that exact tail fault, then require native readback == target. */
+/* 24268 evidence: SetUnitAbilityLevel+0x4bc faults reading a null address
+   AFTER its level mutation. R15 is not stable at handler entry, so it is not
+   part of the gate. Do not patch the game or resume at a guessed RIP. Unwind
+   only that exact tail fault, then require native readback == target. */
 static int BridgeKnownAbilityTail(uint64_t handler,uint32_t code,uint32_t flags,
                                  uint32_t parameters,uint64_t instruction,
                                  uint64_t access,uint64_t address,uint64_t r15) {
+    (void)r15;
     return handler>=0x10000 && handler<0x800000000000ULL-0x4bc &&
         code==EXCEPTION_ACCESS_VIOLATION && !(flags&EXCEPTION_NONCONTINUABLE) && parameters>=2 &&
-        instruction==handler+0x4bc && access==0 && address==0 && r15==0;
+        instruction==handler+0x4bc && access==0 && address==0;
 }
 static LONG BridgeAbilityTailFilter(EXCEPTION_POINTERS *info,AbilityWork *w) {
     EXCEPTION_RECORD *e=info->ExceptionRecord;

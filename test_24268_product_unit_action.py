@@ -135,3 +135,15 @@ def test_product_unit_actions_do_not_dispatch_legacy_helper():
     assert trainer.take_selected_unit_control() == 15
     trainer.add_selected_hero_skill_points(7)
     assert trainer.unit_action_batch_24268.call_count == 9
+
+
+def test_current_engine_group_move_uses_one_position_batch_after_mouse_query():
+    trainer = object.__new__(product.War3Trainer)
+    trainer._native_selection_unavailable = True
+    trainer.query_mouse_world_position = Mock(return_value=(123.5, -45.25))
+    trainer.set_selected_group_position = Mock(return_value=15)
+    trainer._run_native_helper_ops = Mock(side_effect=AssertionError("legacy group mover"))
+
+    assert trainer.move_selected_group_to_mouse() == (15, 123.5, -45.25)
+    trainer.query_mouse_world_position.assert_called_once_with()
+    trainer.set_selected_group_position.assert_called_once_with(123.5, -45.25)

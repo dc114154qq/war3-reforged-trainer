@@ -5832,6 +5832,10 @@ class War3Trainer:
         return count
 
     def move_selected_group_to_mouse(self) -> tuple[int, float, float]:
+        if getattr(self, "_native_selection_unavailable", False):
+            x, y = self.query_mouse_world_position()
+            count = self.set_selected_group_position(x, y)
+            return int(count), x, y
         handler = self._query_native_table_handlers(("SetUnitPosition",))["SetUnitPosition"].handler_address
         result = self._run_native_helper_ops(0, ((
             self.NATIVE_HELPER_OP_MOVE_SELECTED_GROUP_TO_MOUSE, 0, handler, 0, 0,

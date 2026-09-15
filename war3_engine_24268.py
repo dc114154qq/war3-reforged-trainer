@@ -186,18 +186,43 @@ class Engine24268:
             dict(action=action, value=value),
         )
 
-    def effect_batch(self, rawcode, action, x_bits=0, y_bits=0):
+    def effect_batch(self, rawcode, action, x_bits=0, y_bits=0, *, area_bits=0, passes=1):
         from war3_effect_protocol import SIGNATURES as EFFECT_SIGNATURES, build_work as build, decode_work as decode
         if (isinstance(rawcode, bool) or not isinstance(rawcode, int) or not 0 < rawcode <= 0xFFFFFFFF
                 or isinstance(action, bool) or action not in range(1, 5)
-                or any(isinstance(value, bool) or not isinstance(value, int) for value in (x_bits, y_bits))):
+                or any(isinstance(value, bool) or not isinstance(value, int)
+                       for value in (x_bits, y_bits, area_bits, passes))
+                or not 0 <= area_bits <= 0xFFFFFFFF or not 1 <= passes <= 255):
             raise ValueError('Invalid current-engine effect operation')
+        wire_x = x_bits if action == 3 else area_bits
+        wire_y = y_bits if action == 3 else passes
         names = tuple(n for n, _ in SIGNATURES + EFFECT_SIGNATURES)
         return self._execute(
             'effect', names,
-            lambda entries, tls: build(entries, tls, rawcode, action, x_bits, y_bits),
+            lambda entries, tls: build(
+                entries, tls, rawcode, action, wire_x, wire_y, area_bits,
+            ),
             decode,
-            dict(rawcode=rawcode, action=action, x_bits=x_bits, y_bits=y_bits),
+            dict(rawcode=rawcode, action=action, x_bits=x_bits, y_bits=y_bits,
+                 area_bits=area_bits, passes=passes),
+        )
+
+    def world_effect_batch(self, rawcode, action, success_limit=0):
+        from war3_world_effect_protocol import (
+            SIGNATURES as WORLD_EFFECT_SIGNATURES,
+            build_work as build,
+            decode_work as decode,
+        )
+        if (isinstance(rawcode, bool) or not isinstance(rawcode, int) or not 0 < rawcode <= 0xFFFFFFFF
+                or isinstance(action, bool) or action not in (1, 3)
+                or isinstance(success_limit, bool) or not 0 <= success_limit <= 65535):
+            raise ValueError('Invalid current-engine world effect operation')
+        names = tuple(n for n, _ in WORLD_EFFECT_SIGNATURES)
+        return self._execute(
+            'world_effect', names,
+            lambda entries, tls: build(entries, tls, rawcode, action, success_limit),
+            decode,
+            dict(rawcode=rawcode, action=action, success_limit=success_limit),
         )
 
     def spawn_batch(self, rawcode, x_bits=0, y_bits=0, facing_bits=0):
@@ -310,9 +335,17 @@ class Engine24268:
                             report['bulk_status']=dict(changed=changed,error=error,completed=completed)
                     if kind=='effect' and evidence.get('work_result_hex'):
                         raw=bytes.fromhex(evidence['work_result_hex'])
-                        if len(raw)==1144:
-                            changed,error,completed=struct.unpack_from('<3I',raw,552)
+                        if len(raw)==1160:
+                            changed,error,completed=struct.unpack_from('<3I',raw,568)
                             report['effect_status']=dict(changed=changed,error=error,completed=completed)
+                    if kind=='world_effect' and evidence.get('work_result_hex'):
+                        raw=bytes.fromhex(evidence['work_result_hex'])
+                        if len(raw)==648:
+                            attempts,error,successes,completed=struct.unpack_from('<4I',raw,628)
+                            report['world_effect_status']=dict(
+                                attempts=attempts, error=error,
+                                successes=successes, completed=completed,
+                            )
                     if kind=='spawn' and evidence.get('work_result_hex'):
                         raw=bytes.fromhex(evidence['work_result_hex'])
                         if len(raw)==128:

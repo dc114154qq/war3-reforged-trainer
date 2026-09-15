@@ -129,6 +129,9 @@ def dispatch(pid,hwnd,tid,image,tls_index,work_payload,kind="hero"):
     elif kind=='effect':
         from war3_effect_protocol import ABI as expected_abi,validate_work as validate_effect
         validate_effect(work_payload);marker_name=b'effect_batch_abi';query_name=b'BridgeEffectQuery'
+    elif kind=='world_effect':
+        from war3_world_effect_protocol import ABI as expected_abi,validate_work as validate_world_effect
+        validate_world_effect(work_payload);marker_name=b'world_effect_batch_abi';query_name=b'BridgeWorldEffectQuery'
     elif kind=='spawn':
         from war3_spawn_protocol import ABI as expected_abi,validate_work as validate_spawn
         validate_spawn(work_payload);marker_name=b'spawn_batch_abi';query_name=b'BridgeSpawnQuery'

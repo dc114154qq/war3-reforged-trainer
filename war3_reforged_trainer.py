@@ -5559,13 +5559,34 @@ class War3Trainer:
 
     def effect_batch_24268(
         self, rawcode: int | str, action: int, x_bits: int = 0, y_bits: int = 0,
+        *, area: float | None = None, passes: int = 1,
     ) -> dict:
         code = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
         if not code:
             raise ValueError("技能 ID 无效")
+        if isinstance(passes, bool) or not 1 <= int(passes) <= 255:
+            raise ValueError("技能效果执行次数必须在 1 到 255 之间")
+        area_bits = 0
+        if area is not None:
+            area_value = float(area)
+            if not math.isfinite(area_value) or not 0 <= area_value <= 1_000_000:
+                raise ValueError("技能效果范围必须是 0 到 1000000 之间的有限数值")
+            area_bits = self._float_bits(area_value)
         return self._engine_instance_24268().effect_batch(
             code, int(action), int(x_bits), int(y_bits),
+            area_bits=area_bits, passes=int(passes),
         )
+
+    def world_effect_batch_24268(
+        self, rawcode: int | str, action: int, success_limit: int = 0,
+    ) -> dict:
+        code = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
+        limit = int(success_limit)
+        if not code:
+            raise ValueError("技能 ID 无效")
+        if not 0 <= limit <= 65535:
+            raise ValueError("全屏效果上限必须在 0 到 65535 之间")
+        return self._engine_instance_24268().world_effect_batch(code, int(action), limit)
 
     def spawn_unit_24268(
         self, rawcode: int | str, x: float, y: float, facing: float = 0.0,
@@ -6205,6 +6226,9 @@ class War3Trainer:
         limit = int(success_limit)
         if not ability_rawcode or effect_mode is None or not 0 <= limit <= 65535:
             raise ValueError("Invalid world ability effect parameters")
+        if getattr(self, "_native_selection_unavailable", False):
+            result = self.world_effect_batch_24268(ability_rawcode, effect_mode, limit)
+            return int(result["attempts"]), int(result["successes"])
         candidate, handle = self._direct_selected_context()
         native = self._native_snapshot_for_candidate(candidate)
         if native is None or native.handle != handle:
@@ -6263,6 +6287,17 @@ class War3Trainer:
         order = int(order_id)
         if not ability_rawcode or not 0 < order <= 0x7FFFFFFF:
             raise ValueError("Invalid ability or toggle order")
+        if getattr(self, "_native_selection_unavailable", False):
+            # The current build has the ability lifecycle callbacks but the
+            # legacy order helper is unavailable. Keep the toggle ability on
+            # the unit and invoke its immediate effect in the same bridge
+            # path; the order is retained for diagnostics and old builds.
+            added = self.ability_batch_24268(ability_rawcode, 1, 1)
+            effect = self.effect_batch_24268(ability_rawcode, 2)
+            changed = int(added.get("changed", 0)) + int(effect.get("changed", 0))
+            if not changed:
+                raise RuntimeError("当前引擎未接受切换技能")
+            return changed
         candidate, handle = self._direct_selected_context()
         native = self._native_snapshot_for_candidate(candidate)
         if native is None or native.handle != handle:
@@ -6335,6 +6370,29 @@ class War3Trainer:
                 packed_point = self._float_bits(x) | (self._float_bits(y) << 32)
         elif point is not None:
             raise ValueError("Only point effects accept coordinates")
+        if getattr(self, "_native_selection_unavailable", False):
+            # The current bridge owns temporary ability creation, area
+            # restoration, and all passes inside one game-thread callback.
+            # Point callbacks keep their coordinate payload, while other
+            # callbacks use the bridge's bounded area/pass option payload.
+            if mode == 3:
+                if point is None:
+                    point_x, point_y = self.query_mouse_world_position()
+                    packed_point = self._float_bits(point_x) | (self._float_bits(point_y) << 32)
+                result = self.effect_batch_24268(
+                    ability_rawcode,
+                    mode,
+                    packed_point & 0xFFFFFFFF,
+                    (packed_point >> 32) & 0xFFFFFFFF,
+                )
+            else:
+                result = self.effect_batch_24268(
+                    ability_rawcode,
+                    mode,
+                    area=area,
+                    passes=count,
+                )
+            return count, int(result["changed"])
         candidate, handle = self._direct_selected_context()
         native = self._native_snapshot_for_candidate(candidate)
         if native is None or native.handle != handle:
@@ -14687,6 +14745,104 @@ class War3Trainer:
             )[0].result
         )
 
+    def _write_hero_skill_name_field_24268(
+        self,
+        pm: ProcessMemory,
+        candidate: UnitCandidate,
+        field: UnitMemoryField,
+        index: int,
+        new_rawcode: int,
+    ) -> UnitMemoryField:
+        """Replace one current-build hero skill through engine callbacks."""
+        selected = self._selected_candidates_snapshot(pm)
+        if len(selected) != 1 or selected[0][0].unit_address != candidate.unit_address:
+            raise RuntimeError("3.0 英雄技能替换需要只选中当前英雄")
+        components = self._selected_components(pm, candidate.owner_address)
+        hero = components.get("hero")
+        if hero is None:
+            raise RuntimeError("当前选中单位没有英雄组件，不能替换英雄技能")
+        _hero_wrapper, hero_data = hero
+        if pm.read_u64(hero_data + 0x68) != candidate.unit_address:
+            raise RuntimeError("3.0 英雄组件身份已经变化，请重新读取")
+        config_address = hero_data + 0x1BC + index * 4
+        cache_address = hero_data + 0x1D4 + index * 4
+        old_rawcode = pm.read_u32(config_address)
+        old_cache = pm.read_u32(cache_address)
+        if not old_rawcode:
+            raise RuntimeError("当前英雄技能栏为空，没有可替换的技能")
+        if old_rawcode == new_rawcode:
+            return replace(
+                field, value=new_rawcode, write_address=0, write_type="",
+                extra_writes=(), native_write=True,
+                note="3.0 当前引擎技能栏已是目标资源",
+            )
+        configs = [pm.read_u32(hero_data + 0x1BC + slot * 4)
+                   for slot in range(self.HERO_SKILL_SLOT_COUNT)]
+        if new_rawcode in configs[:index] + configs[index + 1:]:
+            raise RuntimeError(f"{format_rawcode(new_rawcode)} 已存在于当前英雄的其它技能槽")
+        old_result = self.ability_batch_24268(old_rawcode, 0)
+        old_rows = [row for row in old_result.get("rows", ())
+                    if row.get("unit") == candidate.handle]
+        if len(old_rows) != 1:
+            raise RuntimeError("当前英雄技能实例已变化，请重新读取")
+        old_level = int(old_rows[0].get("after", 0))
+        new_result = self.ability_batch_24268(new_rawcode, 0)
+        new_rows = [row for row in new_result.get("rows", ())
+                    if row.get("unit") == candidate.handle]
+        if len(new_rows) != 1:
+            raise RuntimeError("当前英雄目标技能实例读取不完整")
+        if int(new_rows[0].get("after", 0)) > 0:
+            raise RuntimeError(f"{format_rawcode(new_rawcode)} 已经存在于当前英雄，拒绝生成重复技能")
+
+        changed_runtime = False
+        try:
+            if old_level > 0:
+                removed = self.ability_batch_24268(old_rawcode, 2)
+                removed_rows = [row for row in removed.get("rows", ())
+                                if row.get("unit") == candidate.handle]
+                if len(removed_rows) != 1 or int(removed_rows[0].get("after", -1)) != 0:
+                    raise RuntimeError("旧技能移除后读回不一致")
+                added = self.ability_batch_24268(new_rawcode, 1, old_level)
+                added_rows = [row for row in added.get("rows", ())
+                              if row.get("unit") == candidate.handle]
+                if len(added_rows) != 1 or int(added_rows[0].get("after", 0)) <= 0:
+                    raise RuntimeError("新技能创建后读回不一致")
+                changed_runtime = True
+            pm.write_u32(config_address, new_rawcode)
+            pm.write_u32(cache_address, new_rawcode)
+            if pm.read_u32(config_address) != new_rawcode or pm.read_u32(cache_address) != new_rawcode:
+                raise RuntimeError("英雄技能配置写入后读回不一致")
+        except Exception as exc:
+            rollback_errors: list[str] = []
+            if changed_runtime:
+                try:
+                    self.ability_batch_24268(new_rawcode, 2)
+                except Exception as rollback_error:
+                    rollback_errors.append(f"移除新技能：{rollback_error}")
+                try:
+                    restored = self.ability_batch_24268(old_rawcode, 1, old_level)
+                    rows = [row for row in restored.get("rows", ())
+                            if row.get("unit") == candidate.handle]
+                    if len(rows) != 1 or int(rows[0].get("after", 0)) <= 0:
+                        rollback_errors.append("旧技能读回失败")
+                except Exception as rollback_error:
+                    rollback_errors.append(f"恢复旧技能：{rollback_error}")
+            try:
+                if pm.read_u32(config_address) == new_rawcode:
+                    pm.write_u32(config_address, old_rawcode)
+                if pm.read_u32(cache_address) == new_rawcode:
+                    pm.write_u32(cache_address, old_cache)
+            except Exception as rollback_error:
+                rollback_errors.append(f"恢复技能配置：{rollback_error}")
+            suffix = f"；回滚失败：{'；'.join(rollback_errors)}" if rollback_errors else ""
+            raise RuntimeError(f"3.0 技能替换失败：{exc}{suffix}") from exc
+        return replace(
+            field, value=new_rawcode, write_address=0, write_type="",
+            extra_writes=(), native_write=True,
+            note=(f"3.0 当前引擎从地图资源创建技能；原等级={old_level}；"
+                  "已验证配置与运行时实例"),
+        )
+
     def _write_hero_skill_name_field(
         self,
         pm: ProcessMemory,
@@ -14700,6 +14856,10 @@ class War3Trainer:
         new_rawcode = int(self._coerce_memory_value("rawcode", value)) & 0xFFFFFFFF
         if not self._looks_like_rawcode(new_rawcode):
             raise ValueError(f"技能 rawcode 无效：{format_rawcode(new_rawcode)}")
+        if getattr(self, "_native_selection_unavailable", False):
+            return self._write_hero_skill_name_field_24268(
+                pm, candidate, field, index, new_rawcode,
+            )
         native = self._native_snapshot_for_candidate(candidate)
         if native is not None:
             identity = field.native_component_identity

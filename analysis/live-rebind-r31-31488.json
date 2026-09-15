@@ -1,0 +1,18 @@
+{
+  "scenario": "stale trainer session after Warcraft III restart",
+  "old_session": {
+    "pid": 31488,
+    "hwnd": 2756168
+  },
+  "simulated_stale": {
+    "pid": 33728,
+    "hwnd": 1775274
+  },
+  "rebound": {
+    "pid": 31488,
+    "hwnd": 2756168
+  },
+  "requested_old_pid_resolution": null,
+  "requested_current_pid_resolution": 31488,
+  "verified": true
+}

@@ -23,7 +23,7 @@ class Engine24268:
     def __init__(self,pid,hwnd,memory_factory,image=None,report_sink=None):
         self.pid,self.hwnd,self.memory_factory=pid,hwnd,memory_factory
         self.report_sink=report_sink
-        self.image=Path(image) if image is not None else Path(getattr(sys,'_MEIPASS',Path(__file__).resolve().parent))/'tools/war3_bridge_24268_current_r30.dll'
+        self.image=Path(image) if image is not None else Path(getattr(sys,'_MEIPASS',Path(__file__).resolve().parent))/'tools/war3_bridge_24268_current_r32.dll'
         self.lock=threading.RLock();self.last_report={};self.quarantined=False
 
     def hero_progress(self,target=0):
@@ -212,8 +212,8 @@ class Engine24268:
                             report['unit_action_status']=dict(changed=changed,error=error,completed=completed)
                     if kind=='position' and evidence.get('work_result_hex'):
                         raw=bytes.fromhex(evidence['work_result_hex'])
-                        if len(raw)==1328:
-                            changed,error,completed=struct.unpack_from('<3I',raw,544)
+                        if len(raw)==1312:
+                            changed,error,completed=struct.unpack_from('<3I',raw,528)
                             report['position_status']=dict(changed=changed,error=error,completed=completed)
                     if kind=='world' and evidence.get('work_result_hex'):
                         raw=bytes.fromhex(evidence['work_result_hex'])

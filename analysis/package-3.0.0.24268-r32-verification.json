@@ -1,0 +1,28 @@
+{
+  "version": "3.0.0.24268-r32",
+  "branch": "codex/war3-3.0.0.24268-adaptation",
+  "exe": "dist-3.0.0.24268-r32/War3ReforgedTrainer-3.0.0.24268.exe",
+  "exe_size": 18775756,
+  "exe_sha256": "0A8A75D6CE022BC4C39D65639819D669793CE5F1421396ED0C59B3B495779637",
+  "bridge": "tools/war3_bridge_24268_current_r32.dll",
+  "bridge_size": 23040,
+  "bridge_sha256": "9E95D58C73A542DEC32EBC25A8AD42B5E407C31D54277DEA84A98530AAFBC2F9",
+  "position_abi": "0x24268020/1312",
+  "position_route": "SetUnitPosition",
+  "product_tests": "292 passed",
+  "focused_position_camera_action_boundary_tests": "37 passed",
+  "archive_check": {
+    "embedded_r32": true,
+    "embedded_r31": false,
+    "toc_entries": 1143
+  },
+  "gui_smoke": {
+    "alive_after_seconds": 4,
+    "responding": true,
+    "all_smoke_processes_stopped": true
+  },
+  "live_rebind": "analysis/live-rebind-r31-31488.json",
+  "live_position": "analysis/live-position-r32-4004.json",
+  "cross_device_validation": false,
+  "website_sync": false
+}

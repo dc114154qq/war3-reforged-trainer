@@ -294,11 +294,10 @@ __declspec(dllexport) int BridgeUnitActionTestStat(int kind) {
 
 static float position_x[24], position_y[24];
 static int position_calls[4];
-static void position_set_x(uint64_t unit, float *value) {
-    ++position_calls[0]; position_x[unit_action_index(unit)] = *value;
-}
-static void position_set_y(uint64_t unit, float *value) {
-    ++position_calls[1]; position_y[unit_action_index(unit)] = *value;
+static void position_set_position(uint64_t unit, float *x, float *y) {
+    ++position_calls[0]; ++position_calls[1];
+    position_x[unit_action_index(unit)] = *x;
+    position_y[unit_action_index(unit)] = *y;
 }
 static uint32_t position_get_x(uint64_t unit) {
     union { float value; uint32_t bits; } result;
@@ -307,12 +306,6 @@ static uint32_t position_get_x(uint64_t unit) {
 static uint32_t position_get_y(uint64_t unit) {
     union { float value; uint32_t bits; } result;
     ++position_calls[3]; result.value = position_y[unit_action_index(unit)]; return result.bits;
-}
-static uint32_t position_stop_order(uint64_t unit, int32_t order) {
-    (void)unit; (void)order; return 1;
-}
-static int32_t position_current_order(uint64_t unit) {
-    (void)unit; return 0;
 }
 __declspec(dllexport) uint64_t BridgePositionTestRun(PositionWork *w, int count) {
     static BridgeCommand cmd; int i;
@@ -328,9 +321,8 @@ __declspec(dllexport) uint64_t BridgePositionTestRun(PositionWork *w, int count)
     w->selection.enum_selected = fixture_enum; w->selection.first_of_group = fixture_first;
     w->selection.remove_from_group = fixture_remove; w->selection.destroy_group = fixture_destroy;
     w->selection.unit_type_id = fixture_type; w->selection.hero_level = fixture_level;
-    w->set_x = position_set_x; w->set_y = position_set_y;
+    w->set_position = position_set_position;
     w->get_x = position_get_x; w->get_y = position_get_y;
-    w->stop_order = position_stop_order; w->current_order = position_current_order;
     return BridgePositionQuery();
 }
 __declspec(dllexport) int BridgePositionTestStat(int kind) {

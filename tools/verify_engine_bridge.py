@@ -54,7 +54,7 @@ def main() -> None:
     marker(b"mouse_batch_abi", (0x24268019, 216, 128))
     marker(b"screen_mouse_batch_abi", (0x2426801A, 216, 128))
     marker(b"camera_batch_abi", (0x2426801B, 216, 256))
-    marker(b"position_batch_abi", (0x2426801E, 216, 1328))
+    marker(b"position_batch_abi", (0x24268020, 216, 1312))
     for name in (b"BridgeUnitActionQuery",):
         if name not in exports:
             raise AssertionError("missing export: " + name.decode("ascii"))

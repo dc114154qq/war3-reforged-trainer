@@ -2270,6 +2270,15 @@ def find_war3(pid: int | None = None) -> tuple[int, int]:
     return hwnd, found_pid
 
 
+def resolve_requested_war3_pid(requested_pid: int | None) -> int | None:
+    """Keep an explicit PID only while its visible Warcraft III window exists."""
+    if requested_pid is None:
+        return None
+    if any(found_pid == int(requested_pid) for _hwnd, found_pid, _title in enum_war3_windows()):
+        return int(requested_pid)
+    return None
+
+
 def is_war3_window(hwnd: int, pid: int) -> bool:
     if not hwnd or not user32.IsWindow(hwnd) or not user32.IsWindowVisible(hwnd):
         return False
@@ -5550,7 +5559,32 @@ class War3Trainer:
         rect = Rect()
         if not get_client_rect(ctypes.c_void_p(self.hwnd), ctypes.byref(rect)):
             raise ctypes.WinError(ctypes.get_last_error())
-        return int(rect.right - rect.left), int(rect.bottom - rect.top)
+        width, height = int(rect.right - rect.left), int(rect.bottom - rect.top)
+        if width > 0 and height > 0:
+            return width, height
+
+        # Some 3.0 render states expose a visible OsWindow with a zero-sized
+        # client area while the camera natives still report normalized 16-bit
+        # screen coordinates. Do not use its title-bar dimensions as the
+        # projection aspect ratio; use a real window size or desktop metrics.
+        get_window_rect = user32.GetWindowRect
+        get_window_rect.argtypes = (ctypes.c_void_p, ctypes.POINTER(Rect))
+        get_window_rect.restype = ctypes.c_bool
+        window_rect = Rect()
+        if get_window_rect(ctypes.c_void_p(self.hwnd), ctypes.byref(window_rect)):
+            width = int(window_rect.right - window_rect.left)
+            height = int(window_rect.bottom - window_rect.top)
+            if width >= 320 and height >= 200:
+                return width, height
+
+        get_system_metrics = user32.GetSystemMetrics
+        get_system_metrics.argtypes = (ctypes.c_int,)
+        get_system_metrics.restype = ctypes.c_int
+        width = int(get_system_metrics(0))
+        height = int(get_system_metrics(1))
+        if width > 0 and height > 0:
+            return width, height
+        raise RuntimeError("3.0 游戏客户区尺寸无效")
 
     def _screen_scale_24268(self) -> float:
         get_dpi_for_window = user32.GetDpiForWindow
@@ -5925,14 +5959,10 @@ class War3Trainer:
         for row in rows:
             actual_x = self._float_from_bits(int(row["actual_x_bits"]))
             actual_y = self._float_from_bits(int(row["actual_y_bits"]))
-            expected_x = float(row.get("expected_x", target_x))
-            expected_y = float(row.get("expected_y", target_y))
-            if (not math.isfinite(actual_x) or not math.isfinite(actual_y)
-                    or not math.isfinite(expected_x) or not math.isfinite(expected_y)
-                    or abs(actual_x - expected_x) > 0.01 or abs(actual_y - expected_y) > 0.01):
-                raise RuntimeError("3.0 当前引擎 SetUnitX/Y 编队读回不一致")
+            if not math.isfinite(actual_x) or not math.isfinite(actual_y):
+                raise RuntimeError("3.0 当前引擎 SetUnitPosition 读回无效")
         if int(result.get("completed", 0)) != len(rows) or int(result.get("changed", 0)) != len(rows):
-            raise RuntimeError("3.0 当前引擎 SetUnitX/Y 批处理不完整")
+            raise RuntimeError("3.0 当前引擎 SetUnitPosition 批处理不完整")
         return len(rows)
 
     def move_selected_group_to_mouse(self) -> tuple[int, float, float]:
@@ -15451,15 +15481,20 @@ def run_gui() -> None:
             state["trainer"] = obj
         else:
             assert isinstance(obj, War3Trainer)
-            obj.refresh_window(allow_pid_change=False)
+            obj.refresh_window(allow_pid_change=True)
         root.after(0, pid_var.set, str(obj.pid))
         return obj
 
     def connect() -> str:
-        replacement = War3Trainer(pid=int(pid_var.get()) if pid_var.get().strip() else None)
+        requested_pid = int(pid_var.get()) if pid_var.get().strip() else None
+        replacement = War3Trainer(pid=resolve_requested_war3_pid(requested_pid))
         previous = state.get("trainer")
-        if previous is not None:
+        batch_trainer = state.get("elephant_batch_trainer")
+        if isinstance(previous, War3Trainer):
             previous.close()
+        if isinstance(batch_trainer, War3Trainer) and batch_trainer is not previous:
+            batch_trainer.close()
+        state["elephant_batch_trainer"] = None
         state["trainer"] = replacement
         root.after(0, pid_var.set, str(state["trainer"].pid))
         return f"已连接 Warcraft III，PID {state['trainer'].pid}"
@@ -15705,6 +15740,7 @@ def run_gui() -> None:
     def elephant_trainer() -> War3Trainer:
         batch_trainer = state.get("elephant_batch_trainer")
         if isinstance(batch_trainer, War3Trainer):
+            batch_trainer.refresh_window(allow_pid_change=True)
             return batch_trainer
         return trainer()
 

@@ -25,22 +25,22 @@ def test_position_work_decodes_all_selected_units_with_float_readback():
         before_y = struct.unpack("<I", struct.pack("<f", 20.0 + index))[0]
         actual_x = struct.unpack("<I", struct.pack("<f", 123.5 + index))[0]
         actual_y = struct.unpack("<I", struct.pack("<f", -45.25 + index))[0]
-        struct.pack_into("<Q6I", payload, 560 + index * 32, 0x1000 + index,
+        struct.pack_into("<Q6I", payload, 544 + index * 32, 0x1000 + index,
                          before_x, before_y, 1, 0, actual_x, actual_y)
         struct.pack_into("<QIi", payload, 96 + index * 16, 0x1000 + index, 0x41303030 + index, 0)
-    struct.pack_into("<3I", payload, 544, 15, 0, 15)
+    struct.pack_into("<3I", payload, 528, 15, 0, 15)
     result = decode_work(bytes(payload), 15)
     assert len(result["rows"]) == 15
     assert result["changed"] == result["completed"] == 15
 
 
 def test_position_work_has_stable_size():
-    assert WORK_SIZE == 1328
+    assert WORK_SIZE == 1312
 
 
 @pytest.fixture(scope="module")
 def fixture():
-    dll = c.WinDLL(str(Path(__file__).parent / "analysis/bridge-build-check-r30/engine-hero-fixture.dll"))
+    dll = c.WinDLL(str(Path(__file__).parent / "analysis/bridge-build-check-r32/engine-hero-fixture.dll"))
     dll.BridgePositionTestRun.argtypes = [c.c_void_p, c.c_int]
     dll.BridgePositionTestRun.restype = c.c_uint64
     dll.BridgePositionTestStat.argtypes = [c.c_int]

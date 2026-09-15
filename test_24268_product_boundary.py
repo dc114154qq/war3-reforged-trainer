@@ -15,6 +15,13 @@ def test_multiple_clients_require_pid_without_reading_the_other_client():
         assert module.find_war3(2000) == (200, 2000)
 
 
+def test_stale_requested_pid_is_released_after_game_restart():
+    windows = [(300, 3000, "Warcraft III")]
+    with patch.object(module, "enum_war3_windows", return_value=windows):
+        assert module.resolve_requested_war3_pid(2000) is None
+        assert module.resolve_requested_war3_pid(3000) == 3000
+
+
 def test_legacy_dll_files_never_satisfy_24268_loader(tmp_path):
     (tmp_path / "tools").mkdir()
     for name in ("war3_native_helper.dll", "war3_native_helper.3.0-live.dll"):

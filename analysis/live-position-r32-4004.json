@@ -1,0 +1,23 @@
+{
+  "pid": 4004,
+  "bridge": "tools/war3_bridge_24268_current_r32.dll",
+  "selected_count": 15,
+  "target_delta": [1.0, 1.0],
+  "move_ms": 161.932,
+  "restore_ms": 163.237,
+  "move_status": {
+    "count": 15,
+    "changed": 15,
+    "completed": 15
+  },
+  "restore_status": {
+    "count": 15,
+    "changed": 15,
+    "completed": 15
+  },
+  "post_wait_process": {
+    "responding": true,
+    "wait_seconds": 5
+  },
+  "route": "SetUnitPosition batch, one requested point per selected unit"
+}

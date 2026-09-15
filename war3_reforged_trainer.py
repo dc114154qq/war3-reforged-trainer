@@ -53,6 +53,7 @@ if sys.platform == "win32":
 
 
 PROCESS_QUERY_INFORMATION = 0x0400
+PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 PROCESS_VM_READ = 0x0010
 PROCESS_VM_WRITE = 0x0020
 PROCESS_VM_OPERATION = 0x0008
@@ -122,6 +123,13 @@ user32 = ctypes.WinDLL("user32", use_last_error=True)
 advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
 
 kernel32.OpenProcess.restype = ctypes.c_void_p
+kernel32.QueryFullProcessImageNameW.argtypes = (
+    ctypes.c_void_p,
+    ctypes.c_ulong,
+    ctypes.c_wchar_p,
+    ctypes.POINTER(ctypes.c_ulong),
+)
+kernel32.QueryFullProcessImageNameW.restype = ctypes.c_bool
 kernel32.GetCurrentProcess.restype = ctypes.c_void_p
 kernel32.CreateMutexW.argtypes = (ctypes.c_void_p, ctypes.c_bool, ctypes.c_wchar_p)
 kernel32.CreateMutexW.restype = ctypes.c_void_p
@@ -2270,10 +2278,42 @@ def find_war3(pid: int | None = None) -> tuple[int, int]:
     return hwnd, found_pid
 
 
+def process_executable_path(pid: int) -> str:
+    handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
+    if not handle:
+        return ""
+    try:
+        buffer = ctypes.create_unicode_buffer(32768)
+        length = ctypes.c_ulong(len(buffer))
+        if not kernel32.QueryFullProcessImageNameW(
+            handle, 0, buffer, ctypes.byref(length)
+        ):
+            return ""
+        return buffer.value
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def find_war3_by_executable_path(executable_path: str) -> tuple[int, int]:
+    expected = executable_path.casefold()
+    matches = [
+        (hwnd, pid, title)
+        for hwnd, pid, title in enum_war3_windows()
+        if process_executable_path(pid).casefold() == expected
+    ]
+    if not matches:
+        raise RuntimeError("没有找到同一 Warcraft III 安装目录的可见窗口")
+    if len(matches) > 1:
+        raise RuntimeError("同一 Warcraft III 安装目录存在多个客户端，请选择 PID")
+    hwnd, found_pid, _title = matches[0]
+    return hwnd, found_pid
+
+
 def find_war3_with_retry(
     pid: int | None = None,
     attempts: int = 16,
     delay_seconds: float = 0.25,
+    executable_path: str | None = None,
 ) -> tuple[int, int]:
     """Wait briefly for a game window that is between launch/loading states."""
     last_error: RuntimeError | None = None
@@ -2281,11 +2321,16 @@ def find_war3_with_retry(
         try:
             return find_war3(pid)
         except RuntimeError as exc:
-            # Multiple clients are an explicit-selection problem, not a transient
-            # launch state. Preserve that diagnostic immediately.
-            if "Multiple Warcraft III clients are open" in str(exc):
-                raise
             last_error = exc
+            if executable_path:
+                try:
+                    return find_war3_by_executable_path(executable_path)
+                except RuntimeError as affinity_error:
+                    last_error = affinity_error
+            elif "Multiple Warcraft III clients are open" in str(exc):
+                # Without a remembered installation path, multiple clients are an
+                # explicit-selection problem rather than a transient launch state.
+                raise
             if attempt + 1 < max(1, int(attempts)):
                 time.sleep(max(0.0, float(delay_seconds)))
     assert last_error is not None
@@ -2903,6 +2948,7 @@ class War3Trainer:
 
     def __init__(self, pid: int | None = None):
         self.hwnd, self.pid = find_war3_with_retry(pid)
+        self._executable_path = process_executable_path(self.pid)
         self._unit_owner_index: dict[int, int] = {}
         self._unit_owner_index_lock = threading.RLock()
         self._unit_object_index_cache: dict[int, tuple[int, int]] | None = None
@@ -3001,8 +3047,12 @@ class War3Trainer:
         if is_war3_window(self.hwnd, self.pid):
             return
         old_pid = self.pid
-        self.hwnd, self.pid = find_war3_with_retry(None if allow_pid_change else self.pid)
+        self.hwnd, self.pid = find_war3_with_retry(
+            None if allow_pid_change else self.pid,
+            executable_path=getattr(self, "_executable_path", "") or None,
+        )
         if self.pid != old_pid:
+            self._executable_path = process_executable_path(self.pid)
             self._close_native_helper_persistent()
             previous_win10_session = self._win10_session_trainer
             if isinstance(previous_win10_session, BackupReadWar3Trainer):

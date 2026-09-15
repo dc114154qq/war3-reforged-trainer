@@ -1,0 +1,26 @@
+{
+  "version": "3.0.0.24268-r34",
+  "branch": "codex/war3-3.0.0.24268-adaptation",
+  "change": "window discovery retries transient restart states and rebinds by the remembered Warcraft III executable path",
+  "exe": "C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\dist-3.0.0.24268-r34\\War3ReforgedTrainer-3.0.0.24268.exe",
+  "exe_size": 18777370,
+  "exe_sha256": "E0338F343037168B0B194B2AA1292FEF41CEAF4940F6F20AB07DF41C6A4DFB5E",
+  "bridge": "tools/war3_bridge_24268_current_r32.dll",
+  "bridge_size": 23040,
+  "bridge_sha256": "432B056062A68A22F17ACB6D2CF33436AB591F58B1A3F6D502A13DB41AC773A7",
+  "tests": "321 passed in 11.48s",
+  "gui_smoke": {
+    "alive_after_seconds": 4,
+    "responding": true,
+    "all_same_path_processes_stopped": true,
+    "remaining": 0
+  },
+  "path_affinity_live_observation": {
+    "target_pid": 25488,
+    "target_executable": "E:\\Warcraft III - 副本\\_retail_\\x86_64\\Warcraft III.exe",
+    "other_pid": 4004,
+    "other_executable": "E:\\Warcraft III\\_retail_\\x86_64\\Warcraft III.exe"
+  },
+  "cross_device_validation": false,
+  "website_sync": false
+}

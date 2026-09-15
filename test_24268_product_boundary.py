@@ -43,6 +43,27 @@ def test_window_discovery_does_not_retry_multiple_client_selection_error():
     sleep.assert_not_called()
 
 
+def test_window_discovery_rebinds_to_same_installation_after_pid_restart():
+    windows = [(100, 1000, "Warcraft III"), (200, 2000, "Warcraft III")]
+    with patch.object(
+        module,
+        "find_war3",
+        side_effect=RuntimeError("没有找到标题为 Warcraft III 的可见窗口"),
+    ), patch.object(module, "enum_war3_windows", return_value=windows), patch.object(
+        module,
+        "process_executable_path",
+        side_effect=lambda pid: {
+            1000: r"E:\\Warcraft III",
+            2000: r"E:\\Warcraft III - 副本",
+        }[pid],
+    ):
+        assert module.find_war3_with_retry(
+            9999,
+            attempts=1,
+            executable_path=r"e:\\warcraft iii - 副本",
+        ) == (200, 2000)
+
+
 def test_legacy_dll_files_never_satisfy_24268_loader(tmp_path):
     (tmp_path / "tools").mkdir()
     for name in ("war3_native_helper.dll", "war3_native_helper.3.0-live.dll"):

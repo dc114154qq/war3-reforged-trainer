@@ -319,3 +319,44 @@ __declspec(dllexport) int BridgeWorldTestStat(int kind) {
     if(kind==12)return world_mask;
     return -1;
 }
+
+static int spawn_case, spawn_create_calls, spawn_remove_calls;
+static uint32_t spawn_requested, spawn_actual, spawn_x_bits, spawn_y_bits, spawn_facing_bits;
+static uint64_t spawn_create(uint64_t player, uint32_t rawcode, float x, float y, float facing) {
+    union { float value; uint32_t bits; } xb, yb, fb;
+    (void)player;
+    xb.value = x; yb.value = y; fb.value = facing;
+    ++spawn_create_calls;
+    spawn_x_bits = xb.bits; spawn_y_bits = yb.bits; spawn_facing_bits = fb.bits;
+    if (spawn_case == 1) return 0;
+    spawn_requested = rawcode;
+    spawn_actual = spawn_case == 2 ? 0x62616421u : rawcode;
+    return 0x900000;
+}
+static uint32_t spawn_type(uint64_t unit) {
+    (void)unit;
+    return spawn_actual;
+}
+static void spawn_remove(uint64_t unit) { (void)unit; ++spawn_remove_calls; }
+__declspec(dllexport) uint64_t BridgeSpawnTestRun(SpawnWork *w, uint32_t rawcode, int scenario) {
+    static BridgeCommand cmd;
+    spawn_case = scenario; spawn_create_calls = spawn_remove_calls = 0;
+    spawn_requested = spawn_actual = spawn_x_bits = spawn_y_bits = spawn_facing_bits = 0;
+    cmd.work = w; cmd.tls_value = w->expected_tls; g_dispatch = &cmd;
+    w->get_local_player = world_player;
+    w->create_unit = spawn_create;
+    w->type_id = spawn_type;
+    w->remove_unit = spawn_remove;
+    w->rawcode = rawcode;
+    return BridgeSpawnQuery();
+}
+__declspec(dllexport) int BridgeSpawnTestStat(int kind) {
+    if (kind == 0) return spawn_create_calls;
+    if (kind == 1) return spawn_remove_calls;
+    if (kind == 2) return (int)spawn_requested;
+    if (kind == 3) return (int)spawn_actual;
+    if (kind == 4) return (int)spawn_x_bits;
+    if (kind == 5) return (int)spawn_y_bits;
+    if (kind == 6) return (int)spawn_facing_bits;
+    return -1;
+}

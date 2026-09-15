@@ -116,6 +116,9 @@ def dispatch(pid,hwnd,tid,image,tls_index,work_payload,kind="hero"):
     elif kind=='world':
         from war3_world_protocol import ABI as expected_abi,validate_work as validate_world
         validate_world(work_payload);marker_name=b'world_batch_abi';query_name=b'BridgeWorldQuery'
+    elif kind=='spawn':
+        from war3_spawn_protocol import ABI as expected_abi,validate_work as validate_spawn
+        validate_spawn(work_payload);marker_name=b'spawn_batch_abi';query_name=b'BridgeSpawnQuery'
     else:raise ValueError('Unknown current-engine batch kind')
     owner=U()
     if window_thread(hwnd,c.byref(owner))!=tid or owner.value!=pid:

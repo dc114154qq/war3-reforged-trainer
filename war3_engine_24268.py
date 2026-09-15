@@ -114,6 +114,21 @@ class Engine24268:
             dict(action=action, rawcode=rawcode, value=value),
         )
 
+    def spawn_batch(self, rawcode, x_bits=0, y_bits=0, facing_bits=0):
+        from war3_spawn_protocol import SIGNATURES as SPAWN_SIGNATURES, build_work as build, decode_work as decode
+        values = (rawcode, x_bits, y_bits, facing_bits)
+        if any(isinstance(value, bool) or not isinstance(value, int) for value in values):
+            raise ValueError('Spawn arguments must be integers')
+        if not 0 < rawcode <= 0xFFFFFFFF or any(not 0 <= value <= 0xFFFFFFFF for value in values[1:]):
+            raise ValueError('Invalid current-engine spawn operation')
+        names = tuple(n for n, _ in SPAWN_SIGNATURES)
+        return self._execute(
+            'spawn', names,
+            lambda entries, tls: build(entries, tls, rawcode, x_bits, y_bits, facing_bits),
+            decode,
+            dict(rawcode=rawcode, x_bits=x_bits, y_bits=y_bits, facing_bits=facing_bits),
+        )
+
     def _execute(self,kind,names,builder,decoder,request):
         with self.lock:
             if self.quarantined:raise EngineExecutionError('Previous dispatch retained resources; inspect before reconnecting',self.last_report)
@@ -160,6 +175,11 @@ class Engine24268:
                         if len(raw)==128:
                             changed,error,completed=struct.unpack_from('<3I',raw,100)
                             report['world_status']=dict(changed=changed,error=error,completed=completed)
+                    if kind=='spawn' and evidence.get('work_result_hex'):
+                        raw=bytes.fromhex(evidence['work_result_hex'])
+                        if len(raw)==128:
+                            changed,error,completed=struct.unpack_from('<3I',raw,56)
+                            report['spawn_status']=dict(changed=changed,error=error,completed=completed)
                     if not (evidence.get('callback_verified') and evidence.get('query_completed') and evidence.get('work_freed')
                         and evidence.get('block_freed') and evidence.get('image_unmap_status')=='0x0'
                         and evidence['after_send']['tls_value']==hex(mode.tls)):

@@ -5458,6 +5458,19 @@ class War3Trainer:
         code = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF if rawcode else 0
         return self._engine_instance_24268().world_batch(action, code, int(value))
 
+    def spawn_unit_24268(
+        self, rawcode: int | str, x: float, y: float, facing: float = 0.0,
+    ) -> dict:
+        code = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
+        if not code:
+            raise ValueError("单位 ID 无效")
+        return self._engine_instance_24268().spawn_batch(
+            code,
+            self._float_bits(float(x)),
+            self._float_bits(float(y)),
+            self._float_bits(float(facing)),
+        )
+
     def clone_batch_24268(self, *, keep: bool = True,
                           preserve_owner: bool = False,
                           copy_abilities: bool = True,
@@ -6354,6 +6367,9 @@ class War3Trainer:
             unit_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
         if not unit_rawcode:
             raise ValueError("没有可用于创建单位的有效 ID")
+        if getattr(self, "_native_selection_unavailable", False) and rawcode is not None:
+            result = self.spawn_unit_24268(unit_rawcode, x, y)
+            return unit_rawcode, int(result["created"])
         handler_names = ["GetLocalPlayer", "CreateUnit"]
         source_is_hero = False
         source_has_inventory = False

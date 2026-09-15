@@ -27,6 +27,7 @@ def main() -> None:
         b"BridgeItemQuery",
         b"BridgeCloneQuery",
         b"BridgeWorldQuery",
+        b"BridgeSpawnQuery",
     )
     missing = [name.decode("ascii") for name in required if name not in exports]
     if missing:
@@ -45,6 +46,7 @@ def main() -> None:
     marker(b"clone_batch_abi", (0x24268015, 216, 1848))
     marker(b"unit_action_batch_abi", (0x24268016, 216, 1432))
     marker(b"world_batch_abi", (0x24268017, 216, 128))
+    marker(b"spawn_batch_abi", (0x24268018, 216, 128))
     for name in (b"BridgeUnitActionQuery",):
         if name not in exports:
             raise AssertionError("missing export: " + name.decode("ascii"))

@@ -105,9 +105,15 @@ def dispatch(pid,hwnd,tid,image,tls_index,work_payload,kind="hero"):
     elif kind=='ability':
         from war3_ability_protocol import ABI as expected_abi,validate_work as validate_ability
         validate_ability(work_payload);marker_name=b'ability_batch_abi';query_name=b'BridgeAbilityQuery'
+    elif kind=='ability_field':
+        from war3_ability_field_protocol import ABI as expected_abi,validate_work as validate_ability_field
+        validate_ability_field(work_payload);marker_name=b'ability_field_batch_abi';query_name=b'BridgeAbilityFieldQuery'
     elif kind=='item':
         from war3_item_protocol import ABI as expected_abi,validate_work as validate_item
         validate_item(work_payload);marker_name=b'item_batch_abi';query_name=b'BridgeItemQuery'
+    elif kind=='item_field':
+        from war3_item_field_protocol import ABI as expected_abi,validate_work as validate_item_field
+        validate_item_field(work_payload);marker_name=b'item_field_batch_abi';query_name=b'BridgeItemFieldQuery'
     elif kind=='clone':
         from war3_clone_protocol import ABI as expected_abi,validate_work as validate_clone
         validate_clone(work_payload);marker_name=b'clone_batch_abi';query_name=b'BridgeCloneQuery'
@@ -117,6 +123,12 @@ def dispatch(pid,hwnd,tid,image,tls_index,work_payload,kind="hero"):
     elif kind=='world':
         from war3_world_protocol import ABI as expected_abi,validate_work as validate_world
         validate_world(work_payload);marker_name=b'world_batch_abi';query_name=b'BridgeWorldQuery'
+    elif kind=='bulk':
+        from war3_bulk_protocol import ABI as expected_abi,validate_work as validate_bulk
+        validate_bulk(work_payload);marker_name=b'bulk_batch_abi';query_name=b'BridgeBulkQuery'
+    elif kind=='effect':
+        from war3_effect_protocol import ABI as expected_abi,validate_work as validate_effect
+        validate_effect(work_payload);marker_name=b'effect_batch_abi';query_name=b'BridgeEffectQuery'
     elif kind=='spawn':
         from war3_spawn_protocol import ABI as expected_abi,validate_work as validate_spawn
         validate_spawn(work_payload);marker_name=b'spawn_batch_abi';query_name=b'BridgeSpawnQuery'

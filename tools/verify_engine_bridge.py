@@ -24,9 +24,13 @@ def main() -> None:
         b"BridgeUninstall",
         b"BridgeHeroQuery",
         b"BridgeAbilityQuery",
+        b"BridgeAbilityFieldQuery",
         b"BridgeItemQuery",
+        b"BridgeItemFieldQuery",
         b"BridgeCloneQuery",
         b"BridgeWorldQuery",
+        b"BridgeBulkQuery",
+        b"BridgeEffectQuery",
         b"BridgeSpawnQuery",
         b"BridgeMouseQuery",
         b"BridgeScreenMouseQuery",
@@ -46,10 +50,14 @@ def main() -> None:
 
     marker(b"bridge_abi", (0x2426801C, 216, 632))
     marker(b"ability_batch_abi", (0x24268011, 216, 832))
+    marker(b"ability_field_batch_abi", (0x24268021, 216, 7688))
     marker(b"item_batch_abi", (0x24268014, 216, 5968))
+    marker(b"item_field_batch_abi", (0x24268022, 216, 5136))
     marker(b"clone_batch_abi", (0x24268015, 216, 1848))
     marker(b"unit_action_batch_abi", (0x24268016, 216, 1432))
     marker(b"world_batch_abi", (0x24268017, 216, 128))
+    marker(b"bulk_batch_abi", (0x24268023, 216, 624))
+    marker(b"effect_batch_abi", (0x24268024, 216, 1144))
     marker(b"spawn_batch_abi", (0x24268018, 216, 128))
     marker(b"mouse_batch_abi", (0x24268019, 216, 128))
     marker(b"screen_mouse_batch_abi", (0x2426801A, 216, 128))

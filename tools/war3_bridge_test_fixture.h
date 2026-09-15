@@ -75,6 +75,76 @@ __declspec(dllexport) uint64_t BridgeAbilityTestRun(AbilityWork *w,int count,int
 }
 __declspec(dllexport) int BridgeAbilityTestStat(int kind) {return kind==0 ? ability_adds : kind==1 ? ability_removes : ability_sets;}
 
+static uint32_t ability_field_values[24][32][4];
+static int ability_field_case, ability_field_sets, ability_field_gets;
+static int ability_field_index(uint64_t value) {
+    if (value >= 0x100000 && value < 0x100018) return (int)(value - 0x100000);
+    if (value >= 0x700000 && value < 0x700018) return (int)(value - 0x700000);
+    return 0;
+}
+static uint32_t ability_field_key(uint32_t field, int32_t level) {
+    return (field ^ (field >> 7) ^ (uint32_t)(level * 7)) & 31u;
+}
+static uint64_t fixture_field_get_ability(uint64_t unit, uint32_t rawcode) {
+    (void)rawcode;
+    if (ability_field_case == 3 && ability_field_index(unit) == 2) return 0;
+    return 0x700000 + (uint64_t)ability_field_index(unit);
+}
+static uint32_t fixture_field_get_id(uint64_t ability) {
+    (void)ability;
+    return 0x41487664;
+}
+static int32_t fixture_field_get_unit_level(uint64_t unit, uint32_t rawcode) {
+    (void)unit;(void)rawcode;
+    return 3;
+}
+static uint64_t fixture_field_get(uint64_t ability, uint32_t field, int32_t level) {
+    ++ability_field_gets;
+    return ability_field_values[ability_field_index(ability)][ability_field_key(field, level)][level < 0 ? 0 : level & 3];
+}
+static uint32_t fixture_field_set(uint64_t ability, uint32_t field, uint32_t value, int32_t level) {
+    ++ability_field_sets;
+    if (ability_field_case == 1) return 0;
+    if (ability_field_case == 2) return 1;
+    ability_field_values[ability_field_index(ability)][ability_field_key(field, level)][level < 0 ? 0 : level & 3] = value;
+    return 1;
+}
+static uint64_t fixture_field_get_field(uint64_t ability, uint32_t field) {return fixture_field_get(ability, field, 0);}
+static uint64_t fixture_field_get_level_field(uint64_t ability, uint32_t field, int32_t level) {return fixture_field_get(ability, field, level);}
+static uint32_t fixture_field_set_field(uint64_t ability, uint32_t field, uint32_t value) {return fixture_field_set(ability, field, value, 0);}
+static uint32_t fixture_field_set_level(uint64_t ability, uint32_t field, int32_t level, uint32_t value) {return fixture_field_set(ability, field, value, level);}
+static uint32_t fixture_field_set_real_field(uint64_t ability, uint32_t field, float *value) {
+    union {float value;uint32_t bits;} v;v.value=*value;return fixture_field_set_field(ability,field,v.bits);
+}
+static uint32_t fixture_field_set_real_level(uint64_t ability, uint32_t field, int32_t level, float *value) {
+    union {float value;uint32_t bits;} v;v.value=*value;return fixture_field_set_level(ability,field,level,v.bits);
+}
+__declspec(dllexport) uint64_t BridgeAbilityFieldTestRun(AbilityFieldWork *w,int count,int scenario) {
+    static BridgeCommand cmd;int i,j,k;
+    if (count < 0 || count > 24) return 0;
+    fixture_count=count;fixture_scenario=0;fixture_type_calls=0;
+    ability_field_case=scenario;ability_field_sets=ability_field_gets=0;
+    for (i=0;i<24;++i) for (j=0;j<32;++j) for (k=0;k<4;++k)
+        ability_field_values[i][j][k]=(uint32_t)(1000+i*100+j*10+k);
+    cmd.work=w;cmd.tls_value=w->expected_tls;g_dispatch=&cmd;
+    w->selection.local_player=fixture_player;w->selection.create_group=fixture_group;
+    w->selection.enum_selected=fixture_enum;w->selection.first_of_group=fixture_first;
+    w->selection.remove_from_group=fixture_remove;w->selection.destroy_group=fixture_destroy;
+    w->selection.unit_type_id=fixture_type;w->selection.hero_level=fixture_level;
+    w->get_ability=fixture_field_get_ability;w->get_ability_id=fixture_field_get_id;
+    w->get_ability_level=fixture_field_get_unit_level;
+    w->get_boolean_field=fixture_field_get_field;w->get_integer_field=fixture_field_get_field;
+    w->get_real_field=fixture_field_get_field;w->get_boolean_level_field=fixture_field_get_level_field;
+    w->get_integer_level_field=fixture_field_get_level_field;w->get_real_level_field=fixture_field_get_level_field;
+    w->set_boolean_field=fixture_field_set_field;w->set_integer_field=fixture_field_set_field;
+    w->set_real_field=fixture_field_set_real_field;w->set_boolean_level_field=fixture_field_set_level;
+    w->set_integer_level_field=fixture_field_set_level;w->set_real_level_field=fixture_field_set_real_level;
+    return BridgeAbilityFieldQuery();
+}
+__declspec(dllexport) int BridgeAbilityFieldTestStat(int kind) {
+    return kind == 0 ? ability_field_sets : ability_field_gets;
+}
+
 __declspec(dllexport) int BridgeTestKnownAbilityTail(uint64_t handler,uint32_t code,uint32_t flags,
     uint32_t parameters,uint64_t instruction,uint64_t access,uint64_t address,uint64_t r15) {
     return BridgeKnownAbilityTail(handler,code,flags,parameters,instruction,access,address,r15);

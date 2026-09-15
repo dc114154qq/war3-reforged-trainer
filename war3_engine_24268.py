@@ -43,6 +43,30 @@ class Engine24268:
         return self._execute('ability',names,lambda entries,tls:build(entries,tls,rawcode,action,level),decode,
                              dict(rawcode=rawcode,action=action,level=level))
 
+    def ability_field_batch(self, rawcode, level, action, fields, target_unit=0):
+        from war3_ability_field_protocol import (
+            SIGNATURES as FIELD_SIGNATURES,
+            build_work as build,
+            decode_work as decode,
+        )
+        if (isinstance(rawcode, bool) or not isinstance(rawcode, int) or not 0 < rawcode <= 0xFFFFFFFF
+                or isinstance(level, bool) or not isinstance(level, int) or not 1 <= level <= 1000
+                or isinstance(action, bool) or action not in (0, 1)
+                or isinstance(target_unit, bool) or not isinstance(target_unit, int)
+                or not 0 <= target_unit <= 0xFFFFFFFFFFFFFFFF):
+            raise ValueError('Invalid current-engine ability field operation')
+        names = tuple(n for n, _ in SIGNATURES + FIELD_SIGNATURES)
+        return self._execute(
+            'ability_field',
+            names,
+            lambda entries, tls: build(
+                entries, tls, rawcode, level, action, fields, target_unit,
+            ),
+            decode,
+            dict(rawcode=rawcode, level=level, action=action,
+                 field_count=len(fields), target_unit=target_unit),
+        )
+
     def item_batch(self,action=0,rawcode=0,charges=-1):
         from war3_item_protocol import SIGNATURES as ITEMS,build_work as build,decode_work as decode
         if any(isinstance(v,bool) or not isinstance(v,int) for v in (action,rawcode,charges)):
@@ -56,6 +80,26 @@ class Engine24268:
         names=tuple(n for n,_ in SIGNATURES)+tuple(n for n,_ in required_signatures(action))
         return self._execute('item',names,lambda entries,tls:build(entries,tls,action,rawcode,charges),decode,
                              dict(action=action,rawcode=rawcode,charges=charges))
+
+    def item_field_batch(self, slot, action, fields, target_unit=0):
+        from war3_item_field_protocol import (
+            SIGNATURES as FIELD_SIGNATURES,
+            build_work as build,
+            decode_work as decode,
+        )
+        if (isinstance(slot, bool) or not isinstance(slot, int) or not 0 <= slot < 6
+                or isinstance(action, bool) or action not in (0, 1)
+                or isinstance(target_unit, bool) or not isinstance(target_unit, int)
+                or not 0 <= target_unit <= 0xFFFFFFFFFFFFFFFF):
+            raise ValueError('Invalid current-engine item field operation')
+        names = tuple(n for n, _ in SIGNATURES + FIELD_SIGNATURES)
+        return self._execute(
+            'item_field',
+            names,
+            lambda entries, tls: build(entries, tls, slot, action, fields, target_unit),
+            decode,
+            dict(slot=slot, action=action, field_count=len(fields), target_unit=target_unit),
+        )
 
     def clone_batch(self, *, keep=False, preserve_owner=False,
                     copy_abilities=True, copy_items=True,
@@ -129,6 +173,33 @@ class Engine24268:
             dict(action=action, rawcode=rawcode, value=value),
         )
 
+    def bulk_batch(self, action, value=0):
+        from war3_bulk_protocol import SIGNATURES as BULK_SIGNATURES, build_work as build, decode_work as decode
+        if (isinstance(action, bool) or action not in range(1, 5)
+                or isinstance(value, bool) or value not in (0, 1)):
+            raise ValueError('Invalid current-engine bulk action')
+        names = tuple(n for n, _ in BULK_SIGNATURES)
+        return self._execute(
+            'bulk', names,
+            lambda entries, tls: build(entries, tls, action, value),
+            decode,
+            dict(action=action, value=value),
+        )
+
+    def effect_batch(self, rawcode, action, x_bits=0, y_bits=0):
+        from war3_effect_protocol import SIGNATURES as EFFECT_SIGNATURES, build_work as build, decode_work as decode
+        if (isinstance(rawcode, bool) or not isinstance(rawcode, int) or not 0 < rawcode <= 0xFFFFFFFF
+                or isinstance(action, bool) or action not in range(1, 5)
+                or any(isinstance(value, bool) or not isinstance(value, int) for value in (x_bits, y_bits))):
+            raise ValueError('Invalid current-engine effect operation')
+        names = tuple(n for n, _ in SIGNATURES + EFFECT_SIGNATURES)
+        return self._execute(
+            'effect', names,
+            lambda entries, tls: build(entries, tls, rawcode, action, x_bits, y_bits),
+            decode,
+            dict(rawcode=rawcode, action=action, x_bits=x_bits, y_bits=y_bits),
+        )
+
     def spawn_batch(self, rawcode, x_bits=0, y_bits=0, facing_bits=0):
         from war3_spawn_protocol import SIGNATURES as SPAWN_SIGNATURES, build_work as build, decode_work as decode
         values = (rawcode, x_bits, y_bits, facing_bits)
@@ -197,11 +268,21 @@ class Engine24268:
                         if len(raw)==832:
                             changed,error,completed=struct.unpack_from('<3I',raw,532)
                             report['ability_status']=dict(changed=changed,error=error,completed=completed)
+                    if kind=='ability_field' and evidence.get('work_result_hex'):
+                        raw=bytes.fromhex(evidence['work_result_hex'])
+                        if len(raw)==7688:
+                            changed,error,completed=struct.unpack_from('<3I',raw,624)
+                            report['ability_field_status']=dict(changed=changed,error=error,completed=completed)
                     if kind=='item' and evidence.get('work_result_hex'):
                         raw=bytes.fromhex(evidence['work_result_hex'])
                         if len(raw)==5968:
                             changed,error,completed,skipped=struct.unpack_from('<4I',raw,572)
                             report['item_status']=dict(changed=changed,error=error,completed=completed,skipped=skipped)
+                    if kind=='item_field' and evidence.get('work_result_hex'):
+                        raw=bytes.fromhex(evidence['work_result_hex'])
+                        if len(raw)==5136:
+                            changed,error,completed=struct.unpack_from('<3I',raw,552+12)
+                            report['item_field_status']=dict(changed=changed,error=error,completed=completed)
                     if kind=='clone' and evidence.get('work_result_hex'):
                         raw=bytes.fromhex(evidence['work_result_hex'])
                         if len(raw)==1848:
@@ -222,6 +303,16 @@ class Engine24268:
                         if len(raw)==128:
                             changed,error,completed=struct.unpack_from('<3I',raw,100)
                             report['world_status']=dict(changed=changed,error=error,completed=completed)
+                    if kind=='bulk' and evidence.get('work_result_hex'):
+                        raw=bytes.fromhex(evidence['work_result_hex'])
+                        if len(raw)==624:
+                            changed,error,completed=struct.unpack_from('<3I',raw,608)
+                            report['bulk_status']=dict(changed=changed,error=error,completed=completed)
+                    if kind=='effect' and evidence.get('work_result_hex'):
+                        raw=bytes.fromhex(evidence['work_result_hex'])
+                        if len(raw)==1144:
+                            changed,error,completed=struct.unpack_from('<3I',raw,552)
+                            report['effect_status']=dict(changed=changed,error=error,completed=completed)
                     if kind=='spawn' and evidence.get('work_result_hex'):
                         raw=bytes.fromhex(evidence['work_result_hex'])
                         if len(raw)==128:

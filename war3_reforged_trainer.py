@@ -5531,6 +5531,21 @@ class War3Trainer:
             raise ValueError("技能 ID 无效")
         return self._engine_instance_24268().ability_batch(ability, action, level)
 
+    def ability_field_batch_24268(
+        self,
+        rawcode: int | str,
+        level: int,
+        action: int,
+        fields: Iterable[tuple[int, int, int, int]],
+        target_unit: int = 0,
+    ) -> dict:
+        ability = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
+        if not ability:
+            raise ValueError("技能 ID 无效")
+        return self._engine_instance_24268().ability_field_batch(
+            ability, int(level), int(action), tuple(fields), int(target_unit),
+        )
+
     def item_batch_24268(self, action: int = 0, rawcode: int | str = 0, charges: int = -1) -> dict:
         code = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF if rawcode else 0
         return self._engine_instance_24268().item_batch(action, code, charges)
@@ -5538,6 +5553,19 @@ class War3Trainer:
     def world_batch_24268(self, action: int, rawcode: int | str = 0, value: int = 0) -> dict:
         code = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF if rawcode else 0
         return self._engine_instance_24268().world_batch(action, code, int(value))
+
+    def bulk_batch_24268(self, action: int, value: int = 0) -> dict:
+        return self._engine_instance_24268().bulk_batch(int(action), int(value))
+
+    def effect_batch_24268(
+        self, rawcode: int | str, action: int, x_bits: int = 0, y_bits: int = 0,
+    ) -> dict:
+        code = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
+        if not code:
+            raise ValueError("技能 ID 无效")
+        return self._engine_instance_24268().effect_batch(
+            code, int(action), int(x_bits), int(y_bits),
+        )
 
     def spawn_unit_24268(
         self, rawcode: int | str, x: float, y: float, facing: float = 0.0,
@@ -6078,6 +6106,15 @@ class War3Trainer:
         }.get(op_kind)
         if effect_kind is None or int(vtable_offset) != {1: 0xA70, 2: 0x998, 3: 0xA58, 4: 0xA78, 5: 0xA00}[effect_kind]:
             raise ValueError("Unsupported direct ability effect type")
+        if getattr(self, "_native_selection_unavailable", False):
+            if effect_kind == 5:
+                raise RuntimeError("当前引擎批处理暂未开放需要 buff 构造器的直接效果")
+            point_x = int(arg1) & 0xFFFFFFFF if effect_kind == 3 else 0
+            point_y = (int(arg1) >> 32) & 0xFFFFFFFF if effect_kind == 3 else 0
+            result = self.effect_batch_24268(
+                ability_rawcode, effect_kind, point_x, point_y,
+            )
+            return int(result["changed"])
         candidate, unit_handle = self._direct_selected_context()
         native = self._native_snapshot_for_candidate(candidate)
         if native is None or native.handle != unit_handle:
@@ -6766,6 +6803,9 @@ class War3Trainer:
         return unit_rawcode, result
 
     def heal_local_player_units(self) -> int:
+        if getattr(self, "_native_selection_unavailable", False):
+            from war3_bulk_protocol import BULK_HEAL_LOCAL
+            return int(self.bulk_batch_24268(BULK_HEAL_LOCAL)["changed"])
         handlers = self._elephant_handlers(
                 None,
                 (
@@ -6809,6 +6849,9 @@ class War3Trainer:
         )[0].result)
 
     def reset_local_player_unit_cooldowns(self) -> int:
+        if getattr(self, "_native_selection_unavailable", False):
+            from war3_bulk_protocol import BULK_RESET_LOCAL_COOLDOWNS
+            return int(self.bulk_batch_24268(BULK_RESET_LOCAL_COOLDOWNS)["changed"])
         handlers = self._elephant_handlers(
                 None,
                 (
@@ -7169,6 +7212,400 @@ class War3Trainer:
         except (OSError, RuntimeError) as exc:
             return ability_rawcode, False, str(exc)
 
+    def _current_engine_ability_instance_24268(
+        self, candidate: UnitCandidate, ability_rawcode: int,
+    ) -> AbilityInstance:
+        with self._process_memory() as memory:
+            instances = self._ability_instances_from_candidate(
+                memory,
+                candidate,
+                required_rawcodes={ability_rawcode},
+            )
+        if len(instances) != 1:
+            raise RuntimeError(
+                f"当前单位上的 {format_rawcode(ability_rawcode)} 运行时技能实例不唯一"
+            )
+        instance = instances[0]
+        if (instance.rawcode != ability_rawcode or not instance.class_rawcode
+                or not instance.data_address or not instance.handle):
+            raise RuntimeError("当前技能运行时对象身份不完整")
+        return instance
+
+    @staticmethod
+    def _current_engine_ability_row_24268(result: dict, unit_handle: int) -> dict:
+        rows = [row for row in result.get("rows", ()) if row.get("handle") == unit_handle]
+        if len(rows) != 1 or rows[0].get("status") != 1:
+            raise RuntimeError("当前选中单位没有可绑定的运行时技能实例")
+        row = rows[0]
+        if not row.get("ability_handle"):
+            raise RuntimeError("当前技能返回了无效的运行时句柄")
+        return row
+
+    @staticmethod
+    def _current_engine_ability_field_bits(
+        spec: AbilityFieldSpec,
+        value: bool | int | float,
+    ) -> int:
+        if spec.value_kind == "real":
+            return War3Trainer._float_bits(float(value))
+        return int(bool(value)) if spec.value_kind == "boolean" else int(value) & 0xFFFFFFFF
+
+    def _current_engine_ability_field_descriptor_24268(
+        self,
+        spec: AbilityFieldSpec,
+        target: bool | int | float = 0,
+    ) -> tuple[int, int, int, int]:
+        from war3_ability_field_protocol import descriptor
+        return descriptor(
+            spec.field_id,
+            spec.value_kind,
+            spec.scope,
+            self._current_engine_ability_field_bits(spec, target),
+        )
+
+    def _read_selected_ability_fields_24268(
+        self,
+        rawcode: int | str,
+        level: int,
+        *,
+        unit_identity: tuple[int, int, int] | None = None,
+    ) -> AbilityFieldSnapshot:
+        ability_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
+        level_number = int(level)
+        if not ability_rawcode or not 1 <= level_number <= 1000:
+            raise ValueError("请提供有效技能 ID，字段等级必须在 1 到 1000 之间")
+        if unit_identity is None:
+            candidate, _unit_handle = self._direct_selected_context()
+        else:
+            handle, owner, unit = (int(value) for value in unit_identity)
+            candidate = self._candidate_from_display_identity(
+                None, handle, owner, unit, "ability_field_candidate", 900,
+            )
+            if candidate is None:
+                raise RuntimeError("当前选中单位已变化，请重新读取字段")
+        instance = self._current_engine_ability_instance_24268(candidate, ability_rawcode)
+        effect_text = self._ability_field_rawcode_text(instance.class_rawcode)
+        specs = ability_fields_for_effect_class(effect_text)
+        supported = [spec for spec in specs if spec.runtime_supported]
+        values_by_key: dict[tuple[str, str, str], AbilityFieldValue] = {}
+        ability_handle = 0
+        current_level: int | None = None
+        for start in range(0, len(supported), 32):
+            batch = tuple(supported[start:start + 32])
+            result = self.ability_field_batch_24268(
+                ability_rawcode,
+                level_number,
+                0,
+                tuple(self._current_engine_ability_field_descriptor_24268(spec) for spec in batch),
+                target_unit=candidate.handle,
+            )
+            row = self._current_engine_ability_row_24268(result, candidate.handle)
+            if ability_handle and row["ability_handle"] != ability_handle:
+                raise RuntimeError("技能实例在字段批处理期间发生变化")
+            ability_handle = int(row["ability_handle"])
+            row_level = int(row["ability_level"])
+            if current_level is not None and row_level != current_level:
+                raise RuntimeError("技能等级在字段批处理期间发生变化")
+            current_level = row_level
+            for spec, field in zip(batch, row["values"]):
+                value = self._decode_ability_field_value(spec, field["before"])
+                if spec.value_kind == "real" and not math.isfinite(float(value)):
+                    values_by_key[(spec.rawcode, spec.value_kind, spec.scope)] = AbilityFieldValue(
+                        spec, None, "读取异常", "游戏返回了非有限浮点值",
+                    )
+                else:
+                    values_by_key[(spec.rawcode, spec.value_kind, spec.scope)] = AbilityFieldValue(
+                        spec, value, "可尝试" if spec.writable else "只读",
+                    )
+        fields: list[AbilityFieldValue] = []
+        for spec in specs:
+            key = (spec.rawcode, spec.value_kind, spec.scope)
+            field_value = values_by_key.get(key)
+            if field_value is None:
+                reason = (
+                    "字符串字段的当前引擎 ABI 尚未开放字符串传输"
+                    if spec.value_kind == "string"
+                    else "等级数组字段需要单独的数组索引"
+                )
+                field_value = AbilityFieldValue(spec, None, "未开放", reason)
+            fields.append(field_value)
+        if current_level is None or not ability_handle:
+            raise RuntimeError("当前技能字段批处理没有返回有效身份")
+        return AbilityFieldSnapshot(
+            ability_rawcode=ability_rawcode,
+            effect_class=instance.class_rawcode,
+            current_level=current_level,
+            requested_level=level_number,
+            fields=tuple(fields),
+            unit_identity=(candidate.handle, candidate.owner_address, candidate.unit_address),
+            effect_class_verified=True,
+            ability_identity=(ability_handle, instance.data_address, instance.handle),
+        )
+
+    def _set_selected_ability_field_24268(
+        self,
+        rawcode: int | str,
+        level: int,
+        spec: AbilityFieldSpec,
+        value: bool | int | float | str,
+        expected_snapshot: AbilityFieldSnapshot | None = None,
+        *,
+        unit_identity: tuple[int, int, int] | None = None,
+    ) -> AbilityFieldValue:
+        if self._ability_field_write_disabled:
+            raise RuntimeError("上一次技能字段回滚无法确认，请重新连接游戏后再写入")
+        if not spec.runtime_supported or not spec.writable:
+            raise ValueError("该字段当前未开放运行时写入")
+        ability_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
+        level_number = int(level)
+        if expected_snapshot is not None:
+            if ability_rawcode != expected_snapshot.ability_rawcode:
+                raise RuntimeError("技能 ID 已变化，请重新读取字段")
+            if level_number != expected_snapshot.requested_level:
+                raise RuntimeError("字段等级已变化，请重新读取字段")
+            if expected_snapshot.win10_compat:
+                raise RuntimeError("当前引擎字段读取来源已变化，请重新读取字段")
+        target = self._coerce_ability_field_value(spec, value)
+        if unit_identity is None:
+            candidate, _unit_handle = self._direct_selected_context()
+        else:
+            handle, owner, unit = (int(item) for item in unit_identity)
+            candidate = self._candidate_from_display_identity(
+                None, handle, owner, unit, "ability_field_candidate", 900,
+            )
+            if candidate is None:
+                raise RuntimeError("当前选中单位已变化，请重新读取字段")
+        instance = self._current_engine_ability_instance_24268(candidate, ability_rawcode)
+        effect_text = self._ability_field_rawcode_text(instance.class_rawcode)
+        applicable = {
+            (field.rawcode, field.value_kind, field.scope)
+            for field in ability_fields_for_effect_class(effect_text)
+        }
+        key = (spec.rawcode, spec.value_kind, spec.scope)
+        if key not in applicable or ABILITY_FIELD_BY_KEY.get(key) != spec:
+            raise RuntimeError("当前技能效果类已经变化，请重新读取字段")
+        if spec.use_specific and not instance.class_rawcode:
+            raise RuntimeError("运行时效果类未确认，不能写入效果类专用字段")
+        descriptor = self._current_engine_ability_field_descriptor_24268(spec)
+        read_result = self.ability_field_batch_24268(
+            ability_rawcode, level_number, 0, (descriptor,), target_unit=candidate.handle,
+        )
+        row = self._current_engine_ability_row_24268(read_result, candidate.handle)
+        identity = (int(row["ability_handle"]), instance.data_address, instance.handle)
+        current_level = int(row["ability_level"])
+        if expected_snapshot is not None:
+            if not all(expected_snapshot.ability_identity) or identity != expected_snapshot.ability_identity:
+                raise RuntimeError("技能实例已经变化，请重新读取字段")
+            if any(expected_snapshot.unit_identity) and (
+                candidate.handle, candidate.owner_address, candidate.unit_address
+            ) != expected_snapshot.unit_identity:
+                raise RuntimeError("当前选中单位已变化，请重新读取字段")
+            if current_level != expected_snapshot.current_level:
+                raise RuntimeError("技能当前等级已变化，请重新读取字段")
+            if expected_snapshot.effect_class != instance.class_rawcode:
+                raise RuntimeError("当前技能效果类已经变化，请重新读取字段")
+        original_bits = int(row["values"][0]["before"]) & 0xFFFFFFFF
+        original = self._decode_ability_field_value(spec, original_bits)
+        target_bits = self._current_engine_ability_field_bits(spec, target)
+        try:
+            self.ability_field_batch_24268(
+                ability_rawcode,
+                level_number,
+                1,
+                (self._current_engine_ability_field_descriptor_24268(spec, target),),
+                target_unit=candidate.handle,
+            )
+            verify_result = self.ability_field_batch_24268(
+                ability_rawcode, level_number, 0, (descriptor,), target_unit=candidate.handle,
+            )
+            verify_row = self._current_engine_ability_row_24268(verify_result, candidate.handle)
+            actual = self._decode_ability_field_value(spec, verify_row["values"][0]["before"])
+            if not self._ability_field_values_equal(spec, actual, target):
+                raise RuntimeError(f"字段写入后读回不一致：{actual!s}!={target!s}")
+        except Exception as exc:
+            rollback_ok = False
+            try:
+                self.ability_field_batch_24268(
+                    ability_rawcode,
+                    level_number,
+                    1,
+                    (self._current_engine_ability_field_descriptor_24268(spec, original),),
+                    target_unit=candidate.handle,
+                )
+                rollback_result = self.ability_field_batch_24268(
+                    ability_rawcode, level_number, 0, (descriptor,), target_unit=candidate.handle,
+                )
+                rollback_row = self._current_engine_ability_row_24268(rollback_result, candidate.handle)
+                restored = self._decode_ability_field_value(spec, rollback_row["values"][0]["before"])
+                rollback_ok = self._ability_field_values_equal(spec, restored, original)
+            except Exception:
+                rollback_ok = False
+            if not rollback_ok:
+                self._ability_field_write_disabled = True
+                raise RuntimeError(f"{exc}；原始字段恢复无法确认") from exc
+            raise
+        return AbilityFieldValue(spec, actual, "已验证")
+
+    def _current_engine_item_24268(
+        self, candidate: UnitCandidate, slot: int,
+    ) -> InventoryItem:
+        slot_number = int(slot)
+        if not 1 <= slot_number <= 6:
+            raise ValueError("物品槽位必须在 1 到 6 之间")
+        with self._process_memory() as memory:
+            items = self._inventory_items_from_candidate(memory, candidate)
+        item = next((item for item in items if item.slot == slot_number and item.rawcode), None)
+        if item is None or not item.handle or not item.item_address:
+            raise RuntimeError(f"当前选中单位的物品栏 {slot_number} 为空")
+        return item
+
+    @staticmethod
+    def _current_engine_item_field_row_24268(result: dict, unit_handle: int) -> dict:
+        rows = [row for row in result.get("rows", ()) if row.get("handle") == unit_handle]
+        if len(rows) != 1 or rows[0].get("status") != 1 or not rows[0].get("item_handle"):
+            raise RuntimeError("当前选中单位没有可绑定的运行时物品")
+        return rows[0]
+
+    @staticmethod
+    def _current_engine_item_field_bits(
+        spec: ItemFieldSpec,
+        value: bool | int | float,
+    ) -> int:
+        if spec.value_kind == "real":
+            return War3Trainer._float_bits(float(value))
+        return int(bool(value)) if spec.value_kind == "boolean" else int(value) & 0xFFFFFFFF
+
+    def _current_engine_item_field_descriptor_24268(
+        self, spec: ItemFieldSpec, target: bool | int | float = 0,
+    ) -> tuple[int, int, int, int]:
+        from war3_item_field_protocol import descriptor
+        return descriptor(
+            spec.field_id,
+            spec.value_kind,
+            self._current_engine_item_field_bits(spec, target),
+        )
+
+    def _read_selected_item_fields_24268(
+        self,
+        slot: int,
+        *,
+        unit_identity: tuple[int, int, int],
+    ) -> ItemFieldSnapshot:
+        handle, owner, unit = (int(value) for value in unit_identity)
+        candidate = self._candidate_from_display_identity(
+            None, handle, owner, unit, "item_field_candidate", 900,
+        )
+        if candidate is None:
+            raise RuntimeError("当前选中单位已变化，请重新读取字段")
+        item = self._current_engine_item_24268(candidate, slot)
+        supported = tuple(spec for spec in ITEM_FIELD_CATALOG if spec.runtime_supported)
+        values: dict[str, ItemFieldValue] = {}
+        result = self.item_field_batch_24268(
+            item.slot - 1,
+            0,
+            tuple(self._current_engine_item_field_descriptor_24268(spec) for spec in supported),
+            target_unit=candidate.handle,
+        )
+        row = self._current_engine_item_field_row_24268(result, candidate.handle)
+        if row["item_rawcode"] != item.rawcode:
+            raise RuntimeError("物品实例在字段批处理期间发生变化")
+        for spec, field in zip(supported, row["values"]):
+            value = self._decode_item_field_value(spec, field["before"])
+            values[spec.rawcode] = ItemFieldValue(spec, value, "可写" if spec.writable else "只读")
+        fields = [
+            values[spec.rawcode]
+            if spec.runtime_supported
+            else ItemFieldValue(spec, None, "未开放", "当前引擎 ABI 尚未开放字符串传输")
+            for spec in ITEM_FIELD_CATALOG
+        ]
+        item_handle = int(row["item_handle"])
+        return ItemFieldSnapshot(
+            slot=item.slot,
+            item_handle=item_handle,
+            item_rawcode=item.rawcode,
+            fields=tuple(fields),
+            unit_identity=(candidate.handle, candidate.owner_address, candidate.unit_address),
+            item_identity=(item_handle, item.item_address, item.handle),
+        )
+
+    def _set_selected_item_field_24268(
+        self,
+        slot: int,
+        spec: ItemFieldSpec,
+        value: bool | int | float | str,
+        expected_snapshot: ItemFieldSnapshot,
+        *,
+        unit_identity: tuple[int, int, int],
+    ) -> ItemFieldValue:
+        if self._item_field_write_disabled:
+            raise RuntimeError("上一次物品字段回滚无法确认，请重新连接游戏后再写入")
+        if not spec.runtime_supported or not spec.writable:
+            raise ValueError("该字段当前未开放运行时写入")
+        if int(slot) != expected_snapshot.slot:
+            raise RuntimeError("物品槽位已变化，请重新读取字段")
+        if expected_snapshot.win10_compat:
+            raise RuntimeError("当前引擎物品字段读取来源已变化，请重新读取字段")
+        if ITEM_FIELD_BY_KEY.get((spec.rawcode, spec.value_kind)) != spec:
+            raise RuntimeError("物品字段目录已变化，请重新读取字段")
+        handle, owner, unit = (int(item) for item in unit_identity)
+        candidate = self._candidate_from_display_identity(
+            None, handle, owner, unit, "item_field_candidate", 900,
+        )
+        if candidate is None:
+            raise RuntimeError("当前选中单位已变化，请重新读取字段")
+        item = self._current_engine_item_24268(candidate, slot)
+        target = self._coerce_item_field_value(spec, value)
+        descriptor = self._current_engine_item_field_descriptor_24268(spec)
+        read_result = self.item_field_batch_24268(
+            item.slot - 1, 0, (descriptor,), target_unit=candidate.handle,
+        )
+        row = self._current_engine_item_field_row_24268(read_result, candidate.handle)
+        identity = (int(row["item_handle"]), item.item_address, item.handle)
+        if (
+            identity != expected_snapshot.item_identity
+            or row["item_rawcode"] != expected_snapshot.item_rawcode
+            or (candidate.handle, candidate.owner_address, candidate.unit_address) != expected_snapshot.unit_identity
+        ):
+            raise RuntimeError("当前物品已经变化，请重新读取字段")
+        original_bits = int(row["values"][0]["before"]) & 0xFFFFFFFF
+        original = self._decode_item_field_value(spec, original_bits)
+        try:
+            self.item_field_batch_24268(
+                item.slot - 1,
+                1,
+                (self._current_engine_item_field_descriptor_24268(spec, target),),
+                target_unit=candidate.handle,
+            )
+            verify = self.item_field_batch_24268(
+                item.slot - 1, 0, (descriptor,), target_unit=candidate.handle,
+            )
+            verify_row = self._current_engine_item_field_row_24268(verify, candidate.handle)
+            actual = self._decode_item_field_value(spec, verify_row["values"][0]["before"])
+            if not self._ability_field_values_equal(spec, actual, target):
+                raise RuntimeError(f"物品字段写入后读回不一致：{actual!s}!={target!s}")
+        except Exception as exc:
+            rollback_ok = False
+            try:
+                self.item_field_batch_24268(
+                    item.slot - 1,
+                    1,
+                    (self._current_engine_item_field_descriptor_24268(spec, original),),
+                    target_unit=candidate.handle,
+                )
+                rollback = self.item_field_batch_24268(
+                    item.slot - 1, 0, (descriptor,), target_unit=candidate.handle,
+                )
+                rollback_row = self._current_engine_item_field_row_24268(rollback, candidate.handle)
+                restored = self._decode_item_field_value(spec, rollback_row["values"][0]["before"])
+                rollback_ok = self._ability_field_values_equal(spec, restored, original)
+            except Exception:
+                rollback_ok = False
+            if not rollback_ok:
+                self._item_field_write_disabled = True
+                raise RuntimeError(f"{exc}；原始字段恢复无法确认") from exc
+            raise
+        return ItemFieldValue(spec, actual, "已验证")
+
     def _ability_field_context_from_candidate_locked(
         self,
         pm: ProcessMemory,
@@ -7360,6 +7797,12 @@ class War3Trainer:
         unit_identity: tuple[int, int, int] | None = None,
         win10_compat: bool = False,
     ) -> AbilityFieldSnapshot:
+        if getattr(self, "_native_selection_unavailable", False):
+            return self._read_selected_ability_fields_24268(
+                rawcode,
+                level,
+                unit_identity=unit_identity,
+            )
         level_number = int(level)
         level_index = level_number - 1
         with self._native_helper_transaction():
@@ -7528,6 +7971,15 @@ class War3Trainer:
         unit_identity: tuple[int, int, int] | None = None,
         win10_compat: bool = False,
     ) -> AbilityFieldValue:
+        if getattr(self, "_native_selection_unavailable", False):
+            return self._set_selected_ability_field_24268(
+                rawcode,
+                level,
+                spec,
+                value,
+                expected_snapshot,
+                unit_identity=unit_identity,
+            )
         if self._ability_field_write_disabled:
             raise RuntimeError("上一次技能字段回滚无法确认，请重新连接游戏后再写入")
         if not spec.runtime_supported or not spec.writable:
@@ -7738,6 +8190,11 @@ class War3Trainer:
         unit_identity: tuple[int, int, int],
         win10_compat: bool = False,
     ) -> ItemFieldSnapshot:
+        if getattr(self, "_native_selection_unavailable", False):
+            return self._read_selected_item_fields_24268(
+                slot,
+                unit_identity=unit_identity,
+            )
         with self._native_helper_transaction():
             context = self._item_field_context_by_identity_locked(
                 slot,
@@ -7816,6 +8273,14 @@ class War3Trainer:
         unit_identity: tuple[int, int, int],
         win10_compat: bool = False,
     ) -> ItemFieldValue:
+        if getattr(self, "_native_selection_unavailable", False):
+            return self._set_selected_item_field_24268(
+                slot,
+                spec,
+                value,
+                expected_snapshot,
+                unit_identity=unit_identity,
+            )
         if self._item_field_write_disabled:
             raise RuntimeError("上一次物品字段回滚无法确认，请重新连接游戏后再写入")
         if not spec.runtime_supported or not spec.writable:
@@ -8017,6 +8482,9 @@ class War3Trainer:
         )
 
     def set_peace_mode(self, enabled: bool) -> int:
+        if getattr(self, "_native_selection_unavailable", False):
+            from war3_bulk_protocol import BULK_PEACE_MODE
+            return int(self.bulk_batch_24268(BULK_PEACE_MODE, int(bool(enabled)))["changed"])
         handlers = self._elephant_handlers(None, ("Player", "SetPlayerAlliance"))
         return int(self._run_native_helper_ops(
             0,
@@ -8030,6 +8498,9 @@ class War3Trainer:
         )[0].result)
 
     def kill_selected_owner_units(self) -> int:
+        if getattr(self, "_native_selection_unavailable", False):
+            from war3_bulk_protocol import BULK_KILL_SELECTED_OWNER
+            return int(self.bulk_batch_24268(BULK_KILL_SELECTED_OWNER)["changed"])
         candidate, unit_handle = self._direct_selected_context()
         handler = self._query_native_table_handlers(("KillUnit",))["KillUnit"].handler_address
         results = self._run_native_helper_ops(unit_handle, (
@@ -16783,11 +17254,6 @@ def run_gui() -> None:
             ability_field_detail.set("")
             ability_field_write_button.state(["disabled"])
             return
-        if getattr(trainer(), "_native_selection_unavailable", False):
-            ability_field_detail.set("3.0 当前只读；native 执行入口尚未接通")
-            ability_field_write_button.state(["disabled"])
-            ability_field_value.set(field_value.value_text())
-            return
         spec = field_value.spec
         ability_field_value.set(field_value.value_text())
         bounds = ""
@@ -17058,12 +17524,6 @@ def run_gui() -> None:
         )
 
     def item_field_write_clicked() -> None:
-        if getattr(trainer(), "_native_selection_unavailable", False):
-            messagebox.showinfo(
-                ui_text("提示"),
-                ui_text("3.0 当前只读；物品字段写入等待 native 执行入口适配"),
-            )
-            return
         snapshot = state.get("item_field_snapshot")
         if not isinstance(snapshot, ItemFieldSnapshot):
             messagebox.showerror(ui_text("错误"), ui_text("请先读取物品字段"))

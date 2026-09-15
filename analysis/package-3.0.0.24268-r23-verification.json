@@ -1,0 +1,23 @@
+{
+  "version": "3.0.0.24268-r23",
+  "exe": "dist-3.0.0.24268-r23/War3ReforgedTrainer-3.0.0.24268.exe",
+  "size": 18753591,
+  "sha256": "E86B2F024D2E4D29E0D37E4825A76A6730A1B5202568122D2DEA1DC1077E4DB7",
+  "pyinstaller_exit_code": 0,
+  "focused_tests": "208 passed",
+  "runtime_self_test": {
+    "report": "analysis/packaged-runtime-selftest-r23.json",
+    "ok": true,
+    "frozen": true,
+    "retired_helper_present": false,
+    "decoder_sha256": "76958e18380023a68fd1714fa2e01c594cc6db1955a07ad6937b66e66dc5d6c3"
+  },
+  "gui_startup_smoke": {
+    "ok": true,
+    "observed_responsive_seconds": 4,
+    "test_process_cleaned": true
+  },
+  "website_sync": false,
+  "live_game_mutation_validation": false,
+  "note": "Package validation covers frozen runtime and startup only; live-game mutation was not claimed."
+}

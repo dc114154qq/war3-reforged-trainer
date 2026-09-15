@@ -129,6 +129,33 @@ class Engine24268:
             dict(rawcode=rawcode, x_bits=x_bits, y_bits=y_bits, facing_bits=facing_bits),
         )
 
+    def mouse_world_point(self):
+        from war3_mouse_protocol import SIGNATURES as MOUSE_SIGNATURES, build_work as build, decode_work as decode
+        return self._execute(
+            'mouse', tuple(n for n, _ in MOUSE_SIGNATURES),
+            lambda entries, tls: build(entries, tls),
+            decode,
+            {},
+        )
+
+    def mouse_screen_point(self):
+        from war3_screen_protocol import SIGNATURES as SCREEN_SIGNATURES, build_work as build, decode_work as decode
+        return self._execute(
+            'screen_mouse', tuple(n for n, _ in SCREEN_SIGNATURES),
+            lambda entries, tls: build(entries, tls),
+            decode,
+            {},
+        )
+
+    def camera_snapshot(self):
+        from war3_camera_protocol import SIGNATURES as CAMERA_SIGNATURES, build_work as build, decode_work as decode
+        return self._execute(
+            'camera', tuple(n for n, _ in CAMERA_SIGNATURES),
+            lambda entries, tls: build(entries, tls),
+            decode,
+            {},
+        )
+
     def _execute(self,kind,names,builder,decoder,request):
         with self.lock:
             if self.quarantined:raise EngineExecutionError('Previous dispatch retained resources; inspect before reconnecting',self.last_report)
@@ -180,6 +207,11 @@ class Engine24268:
                         if len(raw)==128:
                             changed,error,completed=struct.unpack_from('<3I',raw,56)
                             report['spawn_status']=dict(changed=changed,error=error,completed=completed)
+                    if kind=='mouse' and evidence.get('work_result_hex'):
+                        raw=bytes.fromhex(evidence['work_result_hex'])
+                        if len(raw)==128:
+                            changed,error,completed=struct.unpack_from('<3I',raw,48)
+                            report['mouse_status']=dict(changed=changed,error=error,completed=completed)
                     if not (evidence.get('callback_verified') and evidence.get('query_completed') and evidence.get('work_freed')
                         and evidence.get('block_freed') and evidence.get('image_unmap_status')=='0x0'
                         and evidence['after_send']['tls_value']==hex(mode.tls)):

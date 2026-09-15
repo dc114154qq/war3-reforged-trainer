@@ -119,6 +119,15 @@ def dispatch(pid,hwnd,tid,image,tls_index,work_payload,kind="hero"):
     elif kind=='spawn':
         from war3_spawn_protocol import ABI as expected_abi,validate_work as validate_spawn
         validate_spawn(work_payload);marker_name=b'spawn_batch_abi';query_name=b'BridgeSpawnQuery'
+    elif kind=='mouse':
+        from war3_mouse_protocol import ABI as expected_abi,validate_work as validate_mouse
+        validate_mouse(work_payload);marker_name=b'mouse_batch_abi';query_name=b'BridgeMouseQuery'
+    elif kind=='screen_mouse':
+        from war3_screen_protocol import ABI as expected_abi,validate_work as validate_screen
+        validate_screen(work_payload);marker_name=b'screen_mouse_batch_abi';query_name=b'BridgeScreenMouseQuery'
+    elif kind=='camera':
+        from war3_camera_protocol import ABI as expected_abi,validate_work as validate_camera
+        validate_camera(work_payload);marker_name=b'camera_batch_abi';query_name=b'BridgeCameraQuery'
     else:raise ValueError('Unknown current-engine batch kind')
     owner=U()
     if window_thread(hwnd,c.byref(owner))!=tid or owner.value!=pid:

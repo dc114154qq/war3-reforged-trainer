@@ -72,7 +72,7 @@ def validate_work(payload):
         raise ValueError('World outputs must be zero')
 
 
-def decode_work(payload):
+def decode_work(payload, _expected_count=None):
     if len(payload) != WORK_SIZE:
         raise ValueError('Incomplete world batch')
     action, rawcode, value, changed, error, completed, after0, after1, reserved0, reserved1 = struct.unpack_from(

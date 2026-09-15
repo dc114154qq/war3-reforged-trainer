@@ -1,0 +1,38 @@
+{
+  "package": "dist-3.0.0.24268-r35",
+  "commit": "e4c03c8",
+  "branch": "codex/war3-3.0.0.24268-adaptation",
+  "built_at": "2026-09-15T17:23:41.7992899+08:00",
+  "artifacts": {
+    "exe": {
+      "path": "dist-3.0.0.24268-r35/War3ReforgedTrainer-3.0.0.24268.exe",
+      "size": 18779741,
+      "sha256": "BB4BB61F469F8EC6EEBDE010A2FE89F5BD2CCBA025747D6C594B870ECDE96976"
+    },
+    "bridge_dll": {
+      "path": "tools/war3_bridge_24268_current_r35.dll",
+      "size": 24064,
+      "sha256": "1F913D10317C987E54ECB9DABF7AD167667D78771F6FBC81A5213957A7D86AC6"
+    }
+  },
+  "verification": {
+    "product_tests": "329 passed in 12.09s",
+    "bridge_abi": "x64 bridge ABI verified",
+    "gui_smoke": {
+      "started_pid": 21512,
+      "responding_after_seconds": 4,
+      "responding": true,
+      "onefile_child_pid": 46500,
+      "same_path_processes_after_cleanup": 0
+    },
+    "cross_device_validation": false,
+    "live_r35_item_write": false
+  },
+  "notes": [
+    "The package contains the current-engine r35 item bridge and exact inventory-slot replacement route.",
+    "Live r35 item write was not claimed because the available game session was not in a stable map/selection state.",
+    "Cross-device validation remains pending and must be performed on the other machine.",
+    "Skill-field UI, direct ability effects, and several legacy-only elephant actions remain outside the current-engine route."
+  ],
+  "website_sync": false
+}

@@ -10,7 +10,9 @@ typedef struct ItemUnitRow {
 _Static_assert(sizeof(ItemUnitRow)==224,"ItemUnitRow ABI");
 typedef struct ItemWork {
     SelectionWork selection;
-    uint64_t (*create)(uint64_t,uint32_t),(*in_slot)(uint64_t,int32_t);
+    uint64_t (*create)(uint64_t,uint32_t);
+    uint8_t (*add_slot)(uint64_t,uint32_t,int32_t);
+    uint64_t (*in_slot)(uint64_t,int32_t);
     int32_t (*size)(uint64_t);
     uint32_t (*type)(uint64_t);
     int32_t (*charges)(uint64_t);
@@ -21,8 +23,8 @@ typedef struct ItemWork {
     uint32_t changed,error,completed,skipped,reserved;
     ItemUnitRow rows[24];
 } ItemWork;
-_Static_assert(sizeof(ItemWork)==5960,"ItemWork ABI");
-__declspec(dllexport) const uint32_t item_batch_abi[3]={0x24268014u,216u,5960u};
+_Static_assert(sizeof(ItemWork)==5968,"ItemWork ABI");
+__declspec(dllexport) const uint32_t item_batch_abi[3]={0x24268014u,216u,5968u};
 static int BridgeItemSnapshot(ItemWork *w,uint64_t unit,uint32_t size,ItemSlot *out) {
     uint32_t i;
     for (i=0;i<6;++i) {
@@ -54,18 +56,30 @@ static int BridgeItemSourcesMatch(ItemWork *w,uint64_t unit,ItemUnitRow *r) {
 static int BridgeItemCreatedSeen(const uint64_t *created,uint32_t count,uint64_t item) {
     uint32_t i;for (i=0;i<count;++i) if (created[i]==item) return 1;return 0;
 }
+static void BridgeItemRollbackSlot(ItemWork *w,uint64_t unit,uint32_t slot,
+                                   const ItemSlot *old,uint64_t created) {
+    __try {
+        if (created && w->in_slot(unit,(int32_t)slot)==created) {
+            w->detach(unit,created);w->remove(created);
+        }
+        if (old->handle && !w->in_slot(unit,(int32_t)slot))
+            w->add_slot(unit,old->rawcode,(int32_t)slot);
+    } __except(EXCEPTION_EXECUTE_HANDLER) {}
+}
 __declspec(dllexport) uint64_t BridgeItemQuery(void) {
     ItemWork *w=(ItemWork *)g_dispatch->work;
     uint32_t i,j,count;
     if (!w) return 0;
-    if (w->expected_tls!=g_dispatch->tls_value || w->action>6 ||
+    if (w->expected_tls!=g_dispatch->tls_value || w->action>7 ||
         ((w->action==1 || w->action==3) && !w->rawcode) || w->target>1000000000 ||
         w->target< -1 ||
         ((w->action==0 || w->action==2 || w->action==4 || w->action==5 || w->action==6) && w->rawcode) ||
         ((w->action==2 || w->action==3) && w->target<1) ||
+        ((w->action==7) && (!w->rawcode || w->target<0 || w->target>=6)) ||
         (((w->action==0 || w->action==4 || w->action==5 || w->action==6) && w->target!=-1)) ||
         !w->create || !w->in_slot || !w->size ||
-        !w->type || !w->charges || !w->set_charges || !w->remove || !w->detach) {w->error=40;return 0;}
+        !w->type || !w->charges || !w->set_charges || !w->remove || !w->detach ||
+        (w->action==7 && !w->add_slot)) {w->error=40;return 0;}
     count=(uint32_t)BridgeSelect();
     if (!count || w->selection.error || !w->selection.destroyed || count!=w->selection.count) {w->error=41;return count;}
     for (i=0;i<count;++i) {
@@ -107,6 +121,43 @@ __declspec(dllexport) uint64_t BridgeItemQuery(void) {
                 ++w->changed;
             }
             r->status=w->action==4 ? 7 : 8;
+        } else if (w->action==7) {
+            uint32_t slot=(uint32_t)w->target;
+            uint64_t old=r->before[slot].handle,created=0;
+            if (old && r->before[slot].rawcode==w->rawcode) {
+                r->status=11;
+            } else {
+                if (old) {
+                    if (w->in_slot(unit,(int32_t)slot)!=old) {w->error=61;return count;}
+                    w->detach(unit,old);w->remove(old);
+                }
+                __try {
+                    w->error=100+i;
+                    if (!w->add_slot(unit,w->rawcode,(int32_t)slot)) {
+                        BridgeItemRollbackSlot(w,unit,slot,&r->before[slot],0);
+                        w->error=62;return count;
+                    }
+                    w->error=0;created=w->in_slot(unit,(int32_t)slot);
+                    if (!created || w->type(created)!=w->rawcode) {
+                        BridgeItemRollbackSlot(w,unit,slot,&r->before[slot],created);
+                        w->error=63;return count;
+                    }
+                } __except(EXCEPTION_EXECUTE_HANDLER) {
+                    BridgeItemRollbackSlot(w,unit,slot,&r->before[slot],created);
+                    w->error=64;return count;
+                }
+                r->created=created;r->created_type=w->type(created);r->created_charges=w->charges(created);
+                r->created_slot=slot;r->status=10;++w->changed;
+                for (j=0;j<6;++j) if (j!=slot) {
+                    uint64_t item=w->in_slot(unit,(int32_t)j);
+                    if (item!=r->before[j].handle ||
+                        (item && (w->type(item)!=r->before[j].rawcode ||
+                                  w->charges(item)!=r->before[j].charges))) {
+                        BridgeItemRollbackSlot(w,unit,slot,&r->before[slot],created);
+                        w->error=65;return count;
+                    }
+                }
+            }
         } else if (w->action==5) {
             uint64_t created[6]={0};uint32_t created_count=0;int had_original=0;
             __try {

@@ -122,6 +122,11 @@ static void fixture_item_detach(uint64_t u,uint64_t h) {
 static void fixture_item_remove(uint64_t h) {
     ++item_remove_calls;if(h>=0x300000 && item_case!=4)item_new_type[fixture_item_index(h)]=0;
 }
+static uint8_t fixture_item_add_slot(uint64_t u,uint32_t type,int32_t slot) {
+    int i=(int)(u-0x100000),index=item_created_count++;uint64_t h;
+    if (slot<0 || slot>=item_sizes[i] || item_slots[i][slot] || index>=144 || item_case==7) return 0;
+    ++item_create_calls;h=0x300000+(uint64_t)index*16;item_new_type[index]=type;item_new_charges[index]=1;item_slots[i][slot]=h;return 1;
+}
 __declspec(dllexport) uint64_t BridgeItemTestRun(ItemWork *w,int count,int scenario) {
     static BridgeCommand cmd;int i,j;
     if(count<0||count>24)return 0;
@@ -137,7 +142,7 @@ __declspec(dllexport) uint64_t BridgeItemTestRun(ItemWork *w,int count,int scena
     w->selection.enum_selected=fixture_enum;w->selection.first_of_group=fixture_first;
     w->selection.remove_from_group=fixture_remove;w->selection.destroy_group=fixture_destroy;
     w->selection.unit_type_id=fixture_type;w->selection.hero_level=fixture_level;
-    w->create=fixture_item_create;w->in_slot=fixture_item_slot;w->size=fixture_item_size;
+    w->create=fixture_item_create;w->add_slot=fixture_item_add_slot;w->in_slot=fixture_item_slot;w->size=fixture_item_size;
     w->type=fixture_item_type;w->charges=fixture_item_charges;w->set_charges=fixture_item_set;
     w->remove=fixture_item_remove;w->detach=fixture_item_detach;
     return BridgeItemQuery();

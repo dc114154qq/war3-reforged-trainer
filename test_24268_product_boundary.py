@@ -64,6 +64,21 @@ def test_window_discovery_rebinds_to_same_installation_after_pid_restart():
         ) == (200, 2000)
 
 
+def test_3_0_world_actions_are_not_blocked_by_selection_executor_state():
+    import ast
+    source = ast.parse(module.Path(module.__file__).read_text(encoding="utf-8"))
+    function = next(
+        node for node in ast.walk(source)
+        if isinstance(node, ast.FunctionDef) and node.name == "elephant_action"
+    )
+    called = []
+    from typing import Callable
+    namespace = {"Callable": Callable}
+    exec(compile(ast.Module(body=[function], type_ignores=[]), "<elephant-action>", "exec"), namespace)
+    assert namespace["elephant_action"](lambda: called.append(True), "done") == "done"
+    assert called == [True]
+
+
 def test_legacy_dll_files_never_satisfy_24268_loader(tmp_path):
     (tmp_path / "tools").mkdir()
     for name in ("war3_native_helper.dll", "war3_native_helper.3.0-live.dll"):

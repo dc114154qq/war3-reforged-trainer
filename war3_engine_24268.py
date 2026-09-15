@@ -23,7 +23,7 @@ class Engine24268:
     def __init__(self,pid,hwnd,memory_factory,image=None,report_sink=None):
         self.pid,self.hwnd,self.memory_factory=pid,hwnd,memory_factory
         self.report_sink=report_sink
-        self.image=Path(image) if image is not None else Path(getattr(sys,'_MEIPASS',Path(__file__).resolve().parent))/'tools/war3_bridge_24268_current_r32.dll'
+        self.image=Path(image) if image is not None else Path(getattr(sys,'_MEIPASS',Path(__file__).resolve().parent))/'tools/war3_bridge_24268_current_r35.dll'
         self.lock=threading.RLock();self.last_report={};self.quarantined=False
 
     def hero_progress(self,target=0):
@@ -47,11 +47,13 @@ class Engine24268:
         from war3_item_protocol import SIGNATURES as ITEMS,build_work as build,decode_work as decode
         if any(isinstance(v,bool) or not isinstance(v,int) for v in (action,rawcode,charges)):
             raise ValueError('Item arguments must be integers')
-        if (action not in (0,1,2,3,4,5,6) or not 0<=rawcode<=0xffffffff or (action in (1,3) and not rawcode)
+        if (action not in (0,1,2,3,4,5,6,7) or not 0<=rawcode<=0xffffffff or (action in (1,3,7) and not rawcode)
             or (action in (0,2,4,5,6) and rawcode) or not -1<=charges<=1000000000
-            or (action in (2,3) and charges<1) or (action in (0,1,4,5,6) and charges!=-1)):
+            or (action in (2,3) and charges<1) or (action in (0,1,4,5,6) and charges!=-1)
+            or (action==7 and not 0<=charges<6)):
             raise ValueError('Invalid item operation')
-        names=tuple(n for n,_ in SIGNATURES+ITEMS)
+        from war3_item_protocol import required_signatures
+        names=tuple(n for n,_ in SIGNATURES)+tuple(n for n,_ in required_signatures(action))
         return self._execute('item',names,lambda entries,tls:build(entries,tls,action,rawcode,charges),decode,
                              dict(action=action,rawcode=rawcode,charges=charges))
 
@@ -197,8 +199,8 @@ class Engine24268:
                             report['ability_status']=dict(changed=changed,error=error,completed=completed)
                     if kind=='item' and evidence.get('work_result_hex'):
                         raw=bytes.fromhex(evidence['work_result_hex'])
-                        if len(raw)==5960:
-                            changed,error,completed,skipped=struct.unpack_from('<4I',raw,564)
+                        if len(raw)==5968:
+                            changed,error,completed,skipped=struct.unpack_from('<4I',raw,572)
                             report['item_status']=dict(changed=changed,error=error,completed=completed,skipped=skipped)
                     if kind=='clone' and evidence.get('work_result_hex'):
                         raw=bytes.fromhex(evidence['work_result_hex'])

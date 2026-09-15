@@ -46,7 +46,7 @@ def main() -> None:
 
     marker(b"bridge_abi", (0x2426801C, 216, 632))
     marker(b"ability_batch_abi", (0x24268011, 216, 832))
-    marker(b"item_batch_abi", (0x24268014, 216, 5960))
+    marker(b"item_batch_abi", (0x24268014, 216, 5968))
     marker(b"clone_batch_abi", (0x24268015, 216, 1848))
     marker(b"unit_action_batch_abi", (0x24268016, 216, 1432))
     marker(b"world_batch_abi", (0x24268017, 216, 128))

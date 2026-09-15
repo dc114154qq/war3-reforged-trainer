@@ -7029,6 +7029,12 @@ class War3Trainer:
             raise ValueError("物品槽位或物品 ID 无效")
         if len({slot for slot, _rawcode in replacements}) != len(replacements):
             raise ValueError("物品组合包含重复槽位")
+        if getattr(self, "_native_selection_unavailable", False):
+            for slot, rawcode in replacements:
+                result = self.item_batch_24268(7, rawcode, slot)
+                if not result.get("rows") or int(result.get("completed", result.get("count", 0))) != int(result.get("count", 0)):
+                    raise RuntimeError("3.0 当前引擎物品槽替换批处理不完整")
+            return len(replacements)
         candidate, _unit_handle = self._direct_selected_context()
         for slot, rawcode in replacements:
             self._set_inventory_slot_item_via_native_handler(None, candidate, slot, rawcode)
@@ -14485,6 +14491,30 @@ class War3Trainer:
         new_rawcode = int(self._coerce_memory_value("rawcode", value)) & 0xFFFFFFFF
         if not self._looks_like_item_rawcode(new_rawcode):
             raise ValueError(f"物品 rawcode 无效：{format_rawcode(new_rawcode)}")
+        if getattr(self, "_native_selection_unavailable", False):
+            selected = self._selected_candidates_snapshot(pm)
+            matching = [item for item in selected if item[0].unit_address == candidate.unit_address]
+            if len(selected) != 1 or len(matching) != 1:
+                raise RuntimeError("3.0 当前引擎物品字段写入需要只选中一个带物品栏的单位")
+            result = self.item_batch_24268(7, new_rawcode, slot_index)
+            rows = result.get("rows", ())
+            if len(rows) != 1 or rows[0]["after"][slot_index]["rawcode"] != new_rawcode:
+                raise RuntimeError("3.0 当前引擎物品槽写入后读回不一致")
+            item = rows[0]["after"][slot_index]
+            return UnitMemoryField(
+                key=field.key,
+                label=field.label,
+                value_type="rawcode",
+                value=new_rawcode,
+                address=field.address,
+                category=field.category,
+                write_address=0,
+                write_type="",
+                write_base=field.write_base,
+                note=(f"当前引擎精确槽位替换；slot={slot_index + 1} "
+                      f"item=0x{int(item['handle']):x}"),
+                extra_writes=field.extra_writes,
+            )
 
         previous = self._native_snapshot_for_candidate(candidate)
         try:
@@ -17382,9 +17412,6 @@ def run_gui() -> None:
         return f"已击杀该单位所属玩家的 {killed} 个单位"
 
     def elephant_action(action: Callable[[], None], message: str) -> str:
-        current = state.get("trainer")
-        if isinstance(current, War3Trainer) and getattr(current, "_native_selection_unavailable", False):
-            return "3.0 当前只读；该大象功能等待 native 执行入口适配"
         action()
         return message
 

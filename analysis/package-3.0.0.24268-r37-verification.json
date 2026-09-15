@@ -1,0 +1,46 @@
+{
+  "package": "dist-3.0.0.24268-r37",
+  "branch": "codex/war3-3.0.0.24268-adaptation",
+  "built_at": "2026-09-15T19:16:22+08:00",
+  "artifacts": {
+    "exe": {
+      "path": "dist-3.0.0.24268-r37/War3ReforgedTrainer-3.0.0.24268.exe",
+      "size": 18820869,
+      "sha256": "02E967720FC32BBB69F9ED8F9827E1A9D26BEAD8B32F15F22DAB3F4C6261C728"
+    },
+    "bridge_dll": {
+      "path": "tools/war3_bridge_24268_current_r36.dll",
+      "size": 34304,
+      "sha256": "FE3FCA7831B9BACEC5001F22621C0ED2919F8254F8691241CB1D58933EF99DAB"
+    }
+  },
+  "verification": {
+    "product_tests": "487 passed in 16.41s",
+    "syntax": "py_compile passed",
+    "world_effect_protocol_fixture": "ABI 0x24268026, work size 648, passed",
+    "gui_smoke": {
+      "started": true,
+      "exact_path_instances_during_smoke": 2,
+      "remaining_exact_path_instances_after_cleanup": 0
+    },
+    "embedded_bridge": "EXE and build TOC contain tools/war3_bridge_24268_current_r36.dll",
+    "embedded_world_effect_protocol": "EXE and PYZ contain war3_world_effect_protocol",
+    "cross_device_validation": false,
+    "live_game_full_feature_validation": false
+  },
+  "live_observations": {
+    "pid": 27032,
+    "game_version": "3.0.0.24268",
+    "selected_units": 4,
+    "ability_add_remove_probe": "ANht add 4/4, remove 4/4",
+    "buff_effect_path": "not connected; current 3.0 vtable 0xA00 is not the verified legacy four-argument buff callback"
+  },
+  "known_gaps": [
+    "Cross-device acceptance was not run.",
+    "Buff-constructor-specific effects remain unverified and are not claimed as complete.",
+    "Create-all-loaded-items remains unverified on the current 3.0 path.",
+    "Real in-game clone, instant-move, hero-level, skill-field, item-field, and world-effect acceptance remains pending user gameplay validation.",
+    "The complete repository suite is not green in this environment: the AVX Unicorn fixture triggers a native access violation; the non-AVX run reported 2221 passed, 14 failed, and 17 errors, primarily legacy helper/UI/fixture failures."
+  ],
+  "website_sync": false
+}

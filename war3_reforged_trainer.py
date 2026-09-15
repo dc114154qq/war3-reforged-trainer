@@ -14754,7 +14754,13 @@ class War3Trainer:
         new_rawcode: int,
     ) -> UnitMemoryField:
         """Replace one current-build hero skill through engine callbacks."""
-        selected = self._selected_candidates_snapshot(pm)
+        try:
+            selected = self._selected_candidates_snapshot(pm)
+        except (AttributeError, OSError, RuntimeError) as exc:
+            raise RuntimeError(
+                "3.0 英雄技能替换需要稳定的当前选择和引擎上下文；"
+                "原技能及配置未修改"
+            ) from exc
         if len(selected) != 1 or selected[0][0].unit_address != candidate.unit_address:
             raise RuntimeError("3.0 英雄技能替换需要只选中当前英雄")
         components = self._selected_components(pm, candidate.owner_address)

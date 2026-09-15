@@ -24,7 +24,7 @@ SIGNATURES = (
     ("GetLocalPlayer", "()Hplayer;"),
     ("CreateGroup", "()Hgroup;"),
     ("GroupEnumUnitsOfPlayer", "(Hgroup;Hplayer;Hboolexpr;)V"),
-    ("FirstOfGroup", "()Hunit;"),
+    ("FirstOfGroup", "(Hgroup;)Hunit;"),
     ("GroupRemoveUnit", "(Hgroup;Hunit;)B"),
     ("DestroyGroup", "(Hgroup;)V"),
     ("GetOwningPlayer", "(Hunit;)Hplayer;"),

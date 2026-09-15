@@ -1,0 +1,31 @@
+{
+  "version": "3.0.0.24268-r29",
+  "branch": "codex/war3-3.0.0.24268-adaptation",
+  "exe": "dist-3.0.0.24268-r29/War3ReforgedTrainer-3.0.0.24268.exe",
+  "exe_size": 18774884,
+  "exe_sha256": "7D9C43CF5C3CB5C3E55CA123C0A86F48087E2FEF924429985C7C1A126BC42E93",
+  "bridge": "tools/war3_bridge_24268_current_r29.dll",
+  "bridge_size": 22528,
+  "bridge_sha256": "F50867AF5219EA2B998592DE3E0F09798A114FB988420B8907EC59396D55F750",
+  "position_abi": "0x2426801d/1312",
+  "focused_product_tests": "291 passed",
+  "runtime_self_test": {
+    "report": "analysis/packaged-runtime-selftest-r29.json",
+    "ok": true,
+    "frozen": true,
+    "retired_helper_present": false
+  },
+  "gui_smoke": {
+    "ok": true,
+    "alive_after_seconds": 4,
+    "test_pid": 39784
+  },
+  "live_write": {
+    "status": "not_executed",
+    "pid": 3928,
+    "selected_count": 0,
+    "reason": "No selected units in the current map process"
+  },
+  "website_sync": false,
+  "cross_device_validation": false
+}

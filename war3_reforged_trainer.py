@@ -5580,6 +5580,9 @@ class War3Trainer:
             scale_z_bits=scale_z_bits,
         )
 
+    def position_batch_24268(self, x_bits: int, y_bits: int) -> dict:
+        return self._engine_instance_24268().position_batch(x_bits, y_bits)
+
     def _unit_action_result_24268(self, action: int, *, value: int = 0,
                                    x_bits: int = 0, y_bits: int = 0,
                                    scale_x_bits: int = 0, scale_y_bits: int = 0,
@@ -5907,48 +5910,34 @@ class War3Trainer:
         return self.set_selected_unit_position(x, y)
 
     def set_selected_group_position(self, x: float, y: float) -> int:
-        """Move every selected unit by direct validated fields on 3.0.
-
-        This route accepts an explicit world target and does not need the
-        native mouse-coordinate query. It is available while native execution
-        is gated; the mouse-hotkey route remains separately gated.
-        """
+        """Move every selected unit through the current-engine batch native."""
         target_x, target_y = float(x), float(y)
         if not math.isfinite(target_x) or not math.isfinite(target_y):
             raise ValueError("单位坐标必须是有限数值")
         if abs(target_x) > 1_000_000.0 or abs(target_y) > 1_000_000.0:
             raise ValueError("单位坐标超出允许范围")
-        selected = self._selected_candidates_snapshot(None)
-        if not selected:
+        result = self.position_batch_24268(
+            self._float_bits(target_x), self._float_bits(target_y),
+        )
+        rows = result.get("rows", ())
+        if not rows:
             return 0
-        count = 0
-        with self._process_memory(write=True) as memory:
-            for candidate, _handle in selected:
-                if not candidate.x_address or not candidate.y_address:
-                    continue
-                # Revalidate the object identity before changing its fields.
-                if memory.read_u64(candidate.owner_address + 0x20) != candidate.handle \
-                        or memory.read_u64(candidate.unit_address + 0x18) != candidate.handle \
-                        or memory.read_u64(candidate.owner_address + 0x90) != candidate.unit_address:
-                    continue
-                memory.write_f32(candidate.x_address, target_x)
-                memory.write_f32(candidate.y_address, target_y)
-                actual_x, actual_y = memory.read_f32(candidate.x_address), memory.read_f32(candidate.y_address)
-                if abs(actual_x - target_x) > 0.01 or abs(actual_y - target_y) > 0.01:
-                    raise RuntimeError("3.0 选中组坐标写入读回不一致")
-                count += 1
-        return count
+        for row in rows:
+            actual_x = self._float_from_bits(int(row["actual_x_bits"]))
+            actual_y = self._float_from_bits(int(row["actual_y_bits"]))
+            if (not math.isfinite(actual_x) or not math.isfinite(actual_y)
+                    or abs(actual_x - target_x) > 0.01 or abs(actual_y - target_y) > 0.01):
+                raise RuntimeError("3.0 当前引擎 SetUnitPosition 读回不一致")
+        if int(result.get("completed", 0)) != len(rows) or int(result.get("changed", 0)) != len(rows):
+            raise RuntimeError("3.0 当前引擎 SetUnitPosition 批处理不完整")
+        return len(rows)
 
     def move_selected_group_to_mouse(self) -> tuple[int, float, float]:
-        if getattr(self, "_native_selection_unavailable", False):
-            x, y = self.query_mouse_world_position()
-            count = self.set_selected_group_position(x, y)
-            return int(count), x, y
-        handler = self._query_native_table_handlers(("SetUnitPosition",))["SetUnitPosition"].handler_address
-        result = self._run_native_helper_ops(0, ((
-            self.NATIVE_HELPER_OP_MOVE_SELECTED_GROUP_TO_MOUSE, 0, handler, 0, 0,
-        ),))[0]
-        return int(result.result), self._float_from_bits(result.arg0), self._float_from_bits(result.arg0 >> 32)
+        # The current build must never route movement through the retired
+        # per-unit helper opcode, even if an executor handshake later exists.
+        x, y = self.query_mouse_world_position()
+        count = self.set_selected_group_position(x, y)
+        return int(count), x, y
 
     def _run_direct_selected_ability(
         self,

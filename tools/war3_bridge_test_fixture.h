@@ -244,14 +244,20 @@ static void unit_action_reset(uint64_t unit) {(void)unit;++unit_action_calls[5];
 static void unit_action_kill(uint64_t unit) {(void)unit;++unit_action_calls[6];}
 static void unit_action_remove(uint64_t unit) {(void)unit;++unit_action_calls[7];}
 static void unit_action_explode(uint64_t unit,uint32_t value) {(void)unit;(void)value;++unit_action_calls[8];}
-static void unit_action_scale(uint64_t unit,float x,float y,float z) {
-    (void)y;(void)z;++unit_action_calls[9];unit_action_scale_values[unit_action_index(unit)]=x;
+static void unit_action_scale(uint64_t unit,float *x,float *y,float *z) {
+    (void)y;(void)z;++unit_action_calls[9];unit_action_scale_values[unit_action_index(unit)]=*x;
 }
-static void unit_action_position(uint64_t unit,float x,float y) {
-    ++unit_action_calls[10];unit_action_x[unit_action_index(unit)]=x;unit_action_y[unit_action_index(unit)]=y;
+static void unit_action_position(uint64_t unit,float *x,float *y) {
+    ++unit_action_calls[10];unit_action_x[unit_action_index(unit)]=*x;unit_action_y[unit_action_index(unit)]=*y;
 }
-static float unit_action_get_x(uint64_t unit) {++unit_action_calls[11];return unit_action_x[unit_action_index(unit)];}
-static float unit_action_get_y(uint64_t unit) {++unit_action_calls[12];return unit_action_y[unit_action_index(unit)];}
+static uint32_t unit_action_get_x(uint64_t unit) {
+    union { float value; uint32_t bits; } result;
+    ++unit_action_calls[11];result.value=unit_action_x[unit_action_index(unit)];return result.bits;
+}
+static uint32_t unit_action_get_y(uint64_t unit) {
+    union { float value; uint32_t bits; } result;
+    ++unit_action_calls[12];result.value=unit_action_y[unit_action_index(unit)];return result.bits;
+}
 static void unit_action_set_owner(uint64_t unit,uint64_t owner,uint32_t color) {
     (void)color;++unit_action_calls[13];unit_action_owner[unit_action_index(unit)]=owner;
 }
@@ -284,6 +290,44 @@ __declspec(dllexport) uint64_t BridgeUnitActionTestRun(UnitActionWork *w,int cou
 }
 __declspec(dllexport) int BridgeUnitActionTestStat(int kind) {
     return kind>=0 && kind<16 ? unit_action_calls[kind] : unit_action_case;
+}
+
+static float position_x[24], position_y[24];
+static int position_calls[4];
+static void position_set_x(uint64_t unit, float *value) {
+    ++position_calls[0]; position_x[unit_action_index(unit)] = *value;
+}
+static void position_set_y(uint64_t unit, float *value) {
+    ++position_calls[1]; position_y[unit_action_index(unit)] = *value;
+}
+static uint32_t position_get_x(uint64_t unit) {
+    union { float value; uint32_t bits; } result;
+    ++position_calls[2]; result.value = position_x[unit_action_index(unit)]; return result.bits;
+}
+static uint32_t position_get_y(uint64_t unit) {
+    union { float value; uint32_t bits; } result;
+    ++position_calls[3]; result.value = position_y[unit_action_index(unit)]; return result.bits;
+}
+__declspec(dllexport) uint64_t BridgePositionTestRun(PositionWork *w, int count) {
+    static BridgeCommand cmd; int i;
+    if (count < 0 || count > 24) return 0;
+    fixture_count = count; fixture_scenario = 0;
+    for (i = 0; i < 24; ++i) {
+        fixture_levels[i] = i % 3 == 0 ? 1 : 0;
+        position_x[i] = 10.0f + i; position_y[i] = 20.0f + i;
+        position_calls[0] = position_calls[1] = position_calls[2] = position_calls[3] = 0;
+    }
+    cmd.work = w; cmd.tls_value = w->expected_tls; g_dispatch = &cmd;
+    w->selection.local_player = fixture_player; w->selection.create_group = fixture_group;
+    w->selection.enum_selected = fixture_enum; w->selection.first_of_group = fixture_first;
+    w->selection.remove_from_group = fixture_remove; w->selection.destroy_group = fixture_destroy;
+    w->selection.unit_type_id = fixture_type; w->selection.hero_level = fixture_level;
+    w->set_x = position_set_x; w->set_y = position_set_y;
+    w->get_x = position_get_x; w->get_y = position_get_y;
+    return BridgePositionQuery();
+}
+__declspec(dllexport) int BridgePositionTestStat(int kind) {
+    return kind >= 0 && kind < 4 ? position_calls[kind] : -1;
 }
 
 static int world_calls[8];

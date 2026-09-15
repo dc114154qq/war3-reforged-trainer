@@ -147,3 +147,18 @@ def test_current_engine_group_move_uses_one_position_batch_after_mouse_query():
     assert trainer.move_selected_group_to_mouse() == (15, 123.5, -45.25)
     trainer.query_mouse_world_position.assert_called_once_with()
     trainer.set_selected_group_position.assert_called_once_with(123.5, -45.25)
+
+
+def test_current_engine_group_position_uses_verified_native_batch():
+    trainer = object.__new__(product.War3Trainer)
+    x_bits = struct.unpack("<I", struct.pack("<f", 123.5))[0]
+    y_bits = struct.unpack("<I", struct.pack("<f", -45.25))[0]
+    trainer.position_batch_24268 = Mock(return_value={
+        "completed": 15,
+        "changed": 15,
+        "rows": [
+            {"actual_x_bits": x_bits, "actual_y_bits": y_bits}
+        ] * 15,
+    })
+    assert trainer.set_selected_group_position(123.5, -45.25) == 15
+    trainer.position_batch_24268.assert_called_once()

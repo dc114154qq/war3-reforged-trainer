@@ -23,7 +23,7 @@ class Engine24268:
     def __init__(self,pid,hwnd,memory_factory,image=None,report_sink=None):
         self.pid,self.hwnd,self.memory_factory=pid,hwnd,memory_factory
         self.report_sink=report_sink
-        self.image=Path(image) if image is not None else Path(getattr(sys,'_MEIPASS',Path(__file__).resolve().parent))/'tools/war3_bridge_24268_current.dll'
+        self.image=Path(image) if image is not None else Path(getattr(sys,'_MEIPASS',Path(__file__).resolve().parent))/'tools/war3_bridge_24268_current_r29.dll'
         self.lock=threading.RLock();self.last_report={};self.quarantined=False
 
     def hero_progress(self,target=0):
@@ -98,6 +98,19 @@ class Engine24268:
             dict(action=action, value=value, x_bits=x_bits, y_bits=y_bits,
                  scale_x_bits=scale_x_bits, scale_y_bits=scale_y_bits,
                  scale_z_bits=scale_z_bits),
+        )
+
+    def position_batch(self, x_bits, y_bits):
+        from war3_position_protocol import SIGNATURES as POSITION_SIGNATURES, build_work as build, decode_work as decode
+        if (isinstance(x_bits, bool) or not isinstance(x_bits, int)
+                or isinstance(y_bits, bool) or not isinstance(y_bits, int)):
+            raise ValueError('Position bits must be integers')
+        names = tuple(n for n, _ in SIGNATURES + POSITION_SIGNATURES)
+        return self._execute(
+            'position', names,
+            lambda entries, tls: build(entries, tls, x_bits, y_bits),
+            decode,
+            dict(x_bits=x_bits, y_bits=y_bits),
         )
 
     def world_batch(self, action, rawcode=0, value=0):
@@ -197,6 +210,11 @@ class Engine24268:
                         if len(raw)==1432:
                             changed,error,completed=struct.unpack_from('<3I',raw,624)
                             report['unit_action_status']=dict(changed=changed,error=error,completed=completed)
+                    if kind=='position' and evidence.get('work_result_hex'):
+                        raw=bytes.fromhex(evidence['work_result_hex'])
+                        if len(raw)==1312:
+                            changed,error,completed=struct.unpack_from('<3I',raw,528)
+                            report['position_status']=dict(changed=changed,error=error,completed=completed)
                     if kind=='world' and evidence.get('work_result_hex'):
                         raw=bytes.fromhex(evidence['work_result_hex'])
                         if len(raw)==128:

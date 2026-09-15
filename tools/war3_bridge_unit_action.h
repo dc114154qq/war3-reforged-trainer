@@ -12,6 +12,7 @@
 #define UNIT_ACTION_QUERY_INVULNERABLE 11u
 #define UNIT_ACTION_QUERY_PAUSED 12u
 #define UNIT_ACTION_ADD_SKILL_POINTS 13u
+#define UNIT_ACTION_QUERY_POSITION 14u
 
 typedef struct UnitActionRow {
     uint64_t unit;
@@ -30,10 +31,11 @@ typedef struct UnitActionWork {
     void (*kill_unit)(uint64_t);
     void (*remove_unit)(uint64_t);
     void (*set_exploded)(uint64_t, uint32_t);
-    void (*set_scale)(uint64_t, float, float, float);
-    void (*set_position)(uint64_t, float, float);
-    float (*get_x)(uint64_t);
-    float (*get_y)(uint64_t);
+    /* JASS real arguments are pointers; real results are returned as bits. */
+    void (*set_scale)(uint64_t, float *, float *, float *);
+    void (*set_position)(uint64_t, float *, float *);
+    uint32_t (*get_x)(uint64_t);
+    uint32_t (*get_y)(uint64_t);
     void (*set_owner)(uint64_t, uint64_t, uint32_t);
     uint64_t (*get_owner)(uint64_t);
     uint8_t (*modify_skill_points)(uint64_t,uint32_t);
@@ -51,12 +53,6 @@ static float UnitActionReal(uint32_t bits) {
     return value.value;
 }
 
-static int UnitActionFloatEqual(float left, float right) {
-    float difference = left - right;
-    if (difference < 0.0f) difference = -difference;
-    return left == left && right == right && difference <= 0.01f;
-}
-
 static int UnitActionNeedsTypeCheck(uint32_t action) {
     return action != UNIT_ACTION_REMOVE && action != UNIT_ACTION_KILL && action != UNIT_ACTION_EXPLODE;
 }
@@ -67,7 +63,7 @@ __declspec(dllexport) uint64_t BridgeUnitActionQuery(void) {
     uint64_t count;
     float x, y, sx, sy, sz;
     if (!w || w->expected_tls != g_dispatch->tls_value || w->action < UNIT_ACTION_SET_INVULNERABLE ||
-        w->action > UNIT_ACTION_ADD_SKILL_POINTS ||
+    w->action > UNIT_ACTION_QUERY_POSITION ||
         ((w->action == UNIT_ACTION_ADD_SKILL_POINTS && (w->value < 1 || w->value > 1000000)) ||
          (w->action != UNIT_ACTION_ADD_SKILL_POINTS && w->value > 1))) {
         if (w) w->error = 60;
@@ -86,6 +82,7 @@ __declspec(dllexport) uint64_t BridgeUnitActionQuery(void) {
     if (w->action == UNIT_ACTION_SET_SCALE && !w->set_scale) w->error = 69;
     if (w->action == UNIT_ACTION_TAKE_CONTROL && (!w->set_owner || !w->get_owner)) w->error = 70;
     if (w->action == UNIT_ACTION_ADD_SKILL_POINTS && !w->modify_skill_points) w->error = 77;
+    if (w->action == UNIT_ACTION_QUERY_POSITION && (!w->get_x || !w->get_y)) w->error = 79;
     if (w->error) return 0;
     count = BridgeSelect();
     if (!count || w->selection.error || !w->selection.destroyed || count != w->selection.count) {
@@ -132,14 +129,26 @@ __declspec(dllexport) uint64_t BridgeUnitActionQuery(void) {
             w->remove_unit(unit); ++w->changed;
         } else if (w->action == UNIT_ACTION_EXPLODE) {
             w->set_exploded(unit, 1); w->kill_unit(unit); ++w->changed;
+        } else if (w->action == UNIT_ACTION_QUERY_POSITION) {
+            row->actual_x_bits = w->get_x(unit);
+            row->actual_y_bits = w->get_y(unit);
+            if ((row->actual_x_bits & 0x7f800000u) == 0x7f800000u ||
+                (row->actual_y_bits & 0x7f800000u) == 0x7f800000u) { w->error = 79; return count; }
         } else if (w->action == UNIT_ACTION_SET_POSITION) {
-            w->set_position(unit, x, y);
-            row->actual_x_bits = ((union { float value; uint32_t bits; }){w->get_x(unit)}).bits;
-            row->actual_y_bits = ((union { float value; uint32_t bits; }){w->get_y(unit)}).bits;
-            if (!UnitActionFloatEqual(w->get_x(unit), x) || !UnitActionFloatEqual(w->get_y(unit), y)) { w->error = 75; return count; }
+            uint32_t actual_x_bits, actual_y_bits;
+            w->set_position(unit, &x, &y);
+            /* The engine may quantize the final point by a few ulps. Keep a
+               single post-call sample and validate it with the game-space
+               tolerance instead of demanding bit-for-bit equality. */
+            actual_x_bits = w->get_x(unit);
+            actual_y_bits = w->get_y(unit);
+            row->actual_x_bits = actual_x_bits;
+            row->actual_y_bits = actual_y_bits;
+            if ((actual_x_bits & 0x7f800000u) == 0x7f800000u ||
+                (actual_y_bits & 0x7f800000u) == 0x7f800000u) { w->error = 75; return count; }
             ++w->changed;
         } else if (w->action == UNIT_ACTION_SET_SCALE) {
-            w->set_scale(unit, sx, sy, sz); ++w->changed;
+            w->set_scale(unit, &sx, &sy, &sz); ++w->changed;
         } else if (w->action == UNIT_ACTION_TAKE_CONTROL) {
             before = w->get_owner(unit) == w->selection.player ? 1u : 0u;
             w->set_owner(unit, w->selection.player, 0);

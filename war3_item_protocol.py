@@ -22,9 +22,9 @@ def validate_work(payload):
     if any(not 0x10000<=p<0x800000000000 for p in v[:9]) or len(set(v[:8]))!=8 or v[8]%8:
         raise ValueError('Invalid item native pointers or TLS')
     rawcode,action,charges,*outputs=v[9:]
-    if action not in (0,1,2,3) or (action in (1,3) and not rawcode) or (action in (0,2) and rawcode):
+    if action not in (0,1,2,3,4,5,6) or (action in (1,3) and not rawcode) or (action in (0,2,4,5,6) and rawcode):
         raise ValueError('Invalid item action/rawcode')
-    if not -1<=charges<=1000000000 or (action in (2,3) and charges<1) or (action==0 and charges!=-1):
+    if not -1<=charges<=1000000000 or (action in (2,3) and charges<1) or (action in (0,4,5,6) and charges!=-1):
         raise ValueError('Invalid item charges')
     if any(outputs) or any(payload[584:]):raise ValueError('Item outputs must be zero')
 
@@ -45,12 +45,22 @@ def decode_work(payload,count):
             return out
         before=snapshot(offset);after=snapshot(offset+96)
         created,created_type,created_charges,size,status,slot,row_reserved=struct.unpack_from('<QIi4I',payload,offset+192)
-        valid &= size<=6 and not row_reserved
+        valid &= size<=6 and (action==5 or not row_reserved)
         if action==0:valid &= status==1 and before==after and not created
         elif action==2:
             valid &= status==4 and not created
             for b,a in zip(before,after):valid &= b['handle']==a['handle'] and b['rawcode']==a['rawcode'] and a['charges']==(target if b['handle'] else 0)
         elif action==3:valid &= status in (5,6) and before==after and (status==6 or bool(created and created_type==rawcode and created_charges==target))
+        elif action==4:valid &= status==7 and not created and all(not item['handle'] for item in after)
+        elif action==6:valid &= status==8 and not created and all(not item['handle'] for item in after)
+        elif action==5:
+            valid &= status in (6,9)
+            for b,a in zip(before,after):
+                if b['handle']:valid &= b==a
+            if status==6:
+                valid &= not created and not row_reserved
+            else:
+                valid &= bool(created and row_reserved > 0 and created_type)
         elif action==1:
             valid &= status in (2,3) and bool(created and created_type==rawcode and (target<0 or created_charges==target))
             for b,a in zip(before,after):
@@ -58,10 +68,12 @@ def decode_work(payload,count):
                 else:valid &= a['handle'] in (0,created)
             if status==2:valid &= slot<6 and after[slot]['handle']==created
             if status==3:valid &= all(x['handle']!=created for x in after)
-        rows.append(dict(unit,inventory_size=size,before=before,after=after,created=created,created_type=created_type,created_charges=created_charges,status=status,created_slot=slot))
+        rows.append(dict(unit,inventory_size=size,before=before,after=after,created=created,created_type=created_type,created_charges=created_charges,status=status,created_slot=slot,reserved=row_reserved))
     if action==0:expected_changed=0
     elif action==1:expected_changed=count
     elif action==2:expected_changed=sum(bool(b['handle']) and b['charges']!=a['charges'] for r in rows for b,a in zip(r['before'],r['after']))
+    elif action in (4,6):expected_changed=sum(bool(item['handle']) for r in rows for item in r['before'])
+    elif action==5:expected_changed=sum(r['reserved'] for r in rows if r['status']==9)
     else:expected_changed=sum(r['status']==5 for r in rows)
     if changed!=expected_changed:valid=False
     created_handles=[r['created'] for r in rows if r['created']]

@@ -26,6 +26,7 @@ def main() -> None:
         b"BridgeAbilityQuery",
         b"BridgeItemQuery",
         b"BridgeCloneQuery",
+        b"BridgeWorldQuery",
     )
     missing = [name.decode("ascii") for name in required if name not in exports]
     if missing:
@@ -42,6 +43,11 @@ def main() -> None:
     marker(b"ability_batch_abi", (0x24268011, 216, 832))
     marker(b"item_batch_abi", (0x24268014, 216, 5960))
     marker(b"clone_batch_abi", (0x24268015, 216, 1848))
+    marker(b"unit_action_batch_abi", (0x24268016, 216, 1432))
+    marker(b"world_batch_abi", (0x24268017, 216, 128))
+    for name in (b"BridgeUnitActionQuery",):
+        if name not in exports:
+            raise AssertionError("missing export: " + name.decode("ascii"))
     if (b"BridgeTestRun" in exports) != fixture:
         raise AssertionError("fixture export state does not match -Fixture")
     print("x64 bridge ABI verified")

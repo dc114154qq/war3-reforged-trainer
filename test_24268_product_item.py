@@ -34,6 +34,36 @@ def test_compiled_item_actions(fixture,count,action,charges):
         eligible=(count+2)//3;assert stats==(eligible,eligible,eligible)
         assert r['skipped']==count-eligible and all(x['before']==x['after'] for x in r['rows'])
 
+
+@pytest.mark.parametrize('action,stat_index',[(4,2),(6,2)])
+def test_compiled_item_inventory_removal_actions(fixture,action,stat_index):
+    data,n,stats=run(fixture,15,action,-1)
+    result=decode_work(data,n)
+    assert result['changed']==5 and result['skipped']==0
+    assert all(not item['handle'] for row in result['rows'] for item in row['after'])
+    assert stats[stat_index]==(5 if action==4 else 0)
+
+
+def test_compiled_item_duplicate_preserves_sources_and_reports_count(fixture):
+    data,n,stats=run(fixture,15,5,-1)
+    result=decode_work(data,n)
+    assert result['changed']==5 and result['skipped']==10
+    assert stats==(5,0,0)
+    for row in result['rows']:
+        if row['status']==9:
+            assert row['reserved']==1 and row['created']
+            assert row['before'][0]==row['after'][0]
+        else:
+            assert row['status']==6 and not row['created']
+
+
+def test_compiled_item_duplicate_full_inventory_keeps_originals(fixture):
+    data,n,stats=run(fixture,15,5,-1,5)
+    result=decode_work(data,n)
+    assert result['changed']==90 and result['skipped']==0
+    assert stats==(90,0,0)
+    assert all(row['before']==row['after'] for row in result['rows'])
+
 @pytest.mark.parametrize('scenario,action,charges',[(1,1,-1),(2,2,7),(3,1,-1),(4,3,7)])
 def test_failure_not_accepted(fixture,scenario,action,charges):
     data,n,stats=run(fixture,15,action,charges,scenario)
@@ -92,7 +122,7 @@ def test_diagnostic_already_owned_item_is_not_touched(fixture):
     assert r['skipped']==15 and r['changed']==0
     assert tuple(fixture.BridgeItemTestStat(i) for i in range(3))==(0,0,0)
 
-@pytest.mark.parametrize('action,rawcode,charges',[(1,0,-1),(3,0,7),(0,0,1),(2,0,0),(4,0,-1),(2,1,7)])
+@pytest.mark.parametrize('action,rawcode,charges',[(1,0,-1),(3,0,7),(0,0,1),(2,0,0),(2,1,7)])
 def test_invalid_request_rejected(action,rawcode,charges):
     with pytest.raises(ValueError):build_work(entries(),0x10000000,action,rawcode,charges)
 

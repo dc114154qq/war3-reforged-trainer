@@ -5454,6 +5454,10 @@ class War3Trainer:
         code = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF if rawcode else 0
         return self._engine_instance_24268().item_batch(action, code, charges)
 
+    def world_batch_24268(self, action: int, rawcode: int | str = 0, value: int = 0) -> dict:
+        code = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF if rawcode else 0
+        return self._engine_instance_24268().world_batch(action, code, int(value))
+
     def clone_batch_24268(self, *, keep: bool = True,
                           preserve_owner: bool = False,
                           copy_abilities: bool = True,
@@ -5464,6 +5468,29 @@ class War3Trainer:
             copy_abilities=copy_abilities,
             copy_items=copy_items,
         )
+
+    def unit_action_batch_24268(self, action: int, *, value: int = 0,
+                                x_bits: int = 0, y_bits: int = 0,
+                                scale_x_bits: int = 0, scale_y_bits: int = 0,
+                                scale_z_bits: int = 0) -> dict:
+        return self._engine_instance_24268().unit_action_batch(
+            action, value=value, x_bits=x_bits, y_bits=y_bits,
+            scale_x_bits=scale_x_bits, scale_y_bits=scale_y_bits,
+            scale_z_bits=scale_z_bits,
+        )
+
+    def _unit_action_result_24268(self, action: int, *, value: int = 0,
+                                   x_bits: int = 0, y_bits: int = 0,
+                                   scale_x_bits: int = 0, scale_y_bits: int = 0,
+                                   scale_z_bits: int = 0) -> dict:
+        result = self.unit_action_batch_24268(
+            action, value=value, x_bits=x_bits, y_bits=y_bits,
+            scale_x_bits=scale_x_bits, scale_y_bits=scale_y_bits,
+            scale_z_bits=scale_z_bits,
+        )
+        if not result.get("rows"):
+            raise RuntimeError("当前选择没有可操作单位")
+        return result
 
     def get_selected_hero_level(self) -> int:
         if getattr(self, "_native_selection_unavailable", False):
@@ -5490,6 +5517,9 @@ class War3Trainer:
             raise RuntimeError("Native hero progression readback differs from request")
 
     def set_selected_unit_invulnerable(self, enabled: bool) -> None:
+        if getattr(self, "_native_selection_unavailable", False):
+            from war3_unit_action_protocol import ACTION_SET_INVULNERABLE
+            return int(self._unit_action_result_24268(ACTION_SET_INVULNERABLE, value=int(bool(enabled)))["count"])
         self._run_elephant_unit_bool("SetUnitInvulnerable", enabled)
 
     def set_selected_hero_attributes(self, value: int) -> int:
@@ -5527,38 +5557,66 @@ class War3Trainer:
             raise RuntimeError("Native hero attributes readback differs from request")
         return target
 
+    def set_selected_group_hero_attributes(self, value: int) -> int:
+        target = int(value)
+        if not 0 <= target <= 1_000_000_000:
+            raise ValueError("英雄属性必须在 0 到 1000000000 之间")
+        if not getattr(self, "_native_selection_unavailable", False):
+            return int(bool(self.set_selected_hero_attributes(target)))
+        selected = self._selected_candidates_snapshot(None)
+        changed = 0
+        requested = ("base_strength", "base_agility", "intelligence_total")
+        with self._process_memory(write=True) as memory:
+            for candidate, _unit_handle in selected:
+                fields = self._unit_fields_from_candidate(memory, candidate)
+                by_key = {field.key: field for field in fields}
+                if any(key not in by_key for key in requested):
+                    continue
+                for key in requested:
+                    field = by_key[key]
+                    if not field.write_address or field.write_type not in {"i32", "f32"}:
+                        raise RuntimeError(f"英雄字段不可写：{key}")
+                    self._write_memory_value(memory, field.write_address, field.write_type, target)
+                refreshed = self._unit_fields_from_candidate(memory, candidate)
+                actual = {field.key: int(field.value) for field in refreshed if field.key in requested}
+                if any(actual.get(key) != target for key in requested):
+                    raise RuntimeError(f"3.0 英雄属性写入读回不一致：{actual}")
+                changed += 1
+        return changed
+
     def add_selected_hero_skill_points(self, amount: int = 1) -> int:
         delta = int(amount)
         if not 1 <= delta <= 1_000_000:
             raise ValueError("增加技能点数必须在 1 到 1000000 之间")
         if getattr(self, "_native_selection_unavailable", False):
-            candidate, _handle = self._direct_selected_context()
-            with self._process_memory(write=True) as memory:
-                components = self._selected_components(memory, candidate.owner_address)
-                hero = components.get("hero")
-                if hero is None:
-                    raise RuntimeError("当前单位没有英雄组件")
-                address = hero[1] + 0x104
-                value = memory.read_i32(address) + delta
-                if value < 0 or value > 1_000_000:
-                    raise ValueError("技能点结果超出范围")
-                memory.write_i32(address, value)
-                if memory.read_i32(address) != value:
-                    raise RuntimeError("3.0 技能点写入读回不一致")
-            return delta
+            from war3_unit_action_protocol import ACTION_ADD_SKILL_POINTS
+            result = self._unit_action_result_24268(ACTION_ADD_SKILL_POINTS, value=delta)
+            return int(result["changed"])
         self._run_bound_hero_progress(self.NATIVE_HELPER_OP_ADD_BOUND_HERO_SKILL_POINTS, delta)
         return delta
 
     def is_selected_unit_invulnerable(self) -> bool:
+        if getattr(self, "_native_selection_unavailable", False):
+            from war3_unit_action_protocol import ACTION_QUERY_INVULNERABLE
+            return bool(self._unit_action_result_24268(ACTION_QUERY_INVULNERABLE)["rows"][0]["after"])
         return bool(self._query_elephant_unit_int("BlzIsUnitInvulnerable"))
 
     def set_selected_unit_pathing(self, enabled: bool) -> None:
+        if getattr(self, "_native_selection_unavailable", False):
+            from war3_unit_action_protocol import ACTION_SET_PATHING
+            return int(self._unit_action_result_24268(ACTION_SET_PATHING, value=int(bool(enabled)))["count"])
         self._run_elephant_unit_bool("SetUnitPathing", enabled)
 
     def set_selected_unit_paused(self, enabled: bool) -> None:
+        if getattr(self, "_native_selection_unavailable", False):
+            from war3_unit_action_protocol import ACTION_SET_PAUSED
+            return int(self._unit_action_result_24268(ACTION_SET_PAUSED, value=int(bool(enabled)))["count"])
         self._run_elephant_unit_bool("PauseUnit", enabled)
 
     def is_selected_unit_paused(self) -> bool:
+        if getattr(self, "_native_selection_unavailable", False):
+            from war3_unit_action_protocol import ACTION_QUERY_PAUSED
+            return bool(self._unit_action_result_24268(ACTION_QUERY_PAUSED)["rows"][0]["after"])
         return bool(self._query_elephant_unit_int("IsUnitPaused"))
 
     def _query_elephant_unit_int(self, native_name: str) -> int:
@@ -5600,15 +5658,27 @@ class War3Trainer:
                 raise RuntimeError("Native unit action result differs from request")
 
     def reset_selected_unit_cooldown(self) -> None:
+        if getattr(self, "_native_selection_unavailable", False):
+            from war3_unit_action_protocol import ACTION_RESET_COOLDOWN
+            return int(self._unit_action_result_24268(ACTION_RESET_COOLDOWN)["count"])
         self._run_elephant_unit_void("UnitResetCooldown")
 
     def kill_selected_unit(self) -> None:
+        if getattr(self, "_native_selection_unavailable", False):
+            from war3_unit_action_protocol import ACTION_KILL
+            return int(self._unit_action_result_24268(ACTION_KILL)["count"])
         self._run_elephant_unit_void("KillUnit")
 
     def remove_selected_unit(self) -> None:
+        if getattr(self, "_native_selection_unavailable", False):
+            from war3_unit_action_protocol import ACTION_REMOVE
+            return int(self._unit_action_result_24268(ACTION_REMOVE)["count"])
         self._run_elephant_unit_void("RemoveUnit")
 
     def explode_selected_unit(self) -> None:
+        if getattr(self, "_native_selection_unavailable", False):
+            from war3_unit_action_protocol import ACTION_EXPLODE
+            return int(self._unit_action_result_24268(ACTION_EXPLODE)["count"])
         self._run_bound_simple_unit_actions((("SetUnitExploded", True), ("KillUnit", None)))
 
     def set_selected_unit_scale(self, scale: float) -> float:
@@ -5645,6 +5715,20 @@ class War3Trainer:
         if result != expected:
             raise RuntimeError("Native scale acknowledgment differs from request")
         return target
+
+    def set_selected_group_scale(self, scale: float) -> int:
+        target = float(scale)
+        if not 0.01 <= target <= 100.0:
+            raise ValueError("单位大小必须在 0.01 到 100 之间")
+        target = coerce_finite_float32(target)
+        if getattr(self, "_native_selection_unavailable", False):
+            from war3_unit_action_protocol import ACTION_SET_SCALE
+            bits = self._float_bits(target)
+            return int(self._unit_action_result_24268(
+                ACTION_SET_SCALE,
+                scale_x_bits=bits, scale_y_bits=bits, scale_z_bits=bits,
+            )["changed"])
+        return sum(bool(self.set_selected_unit_scale(target)) for _ in (0,))
 
     def _run_bound_unit_value_action(self, name: str, kind: int, rawcode: int, arg0: int = 0) -> int:
         candidate, unit_handle = self._direct_selected_context()
@@ -5689,19 +5773,13 @@ class War3Trainer:
         if abs(target_x) > 1_000_000.0 or abs(target_y) > 1_000_000.0:
             raise ValueError("单位坐标超出允许范围")
         if getattr(self, "_native_selection_unavailable", False):
-            candidate, _handle = self._direct_selected_context()
-            if not candidate.x_address or not candidate.y_address:
-                raise RuntimeError("当前 3.0 单位没有经过校验的坐标字段")
-            with self._process_memory(write=True) as memory:
-                memory.write_f32(candidate.x_address, target_x)
-                memory.write_f32(candidate.y_address, target_y)
-                actual_x = memory.read_f32(candidate.x_address)
-                actual_y = memory.read_f32(candidate.y_address)
-            if abs(actual_x - target_x) > 0.01 or abs(actual_y - target_y) > 0.01:
-                raise RuntimeError(
-                    f"3.0 坐标写入读回不一致：({actual_x:g},{actual_y:g})"
-                )
-            return actual_x, actual_y
+            from war3_unit_action_protocol import ACTION_SET_POSITION
+            result = self._unit_action_result_24268(
+                ACTION_SET_POSITION,
+                x_bits=self._float_bits(target_x), y_bits=self._float_bits(target_y),
+            )
+            row = result["rows"][0]
+            return self._float_from_bits(row["actual_x_bits"]), self._float_from_bits(row["actual_y_bits"])
         x_bits, y_bits = self._float_bits(target_x), self._float_bits(target_y)
         result = self._run_bound_unit_value_action("SetUnitPosition", self.NATIVE_HELPER_OP_JASS_SET_UNIT_POSITION,
                                                    x_bits, y_bits)
@@ -5725,6 +5803,13 @@ class War3Trainer:
             raise ValueError("单位坐标必须是有限数值")
         if abs(target_x) > 1_000_000.0 or abs(target_y) > 1_000_000.0:
             raise ValueError("单位坐标超出允许范围")
+        if getattr(self, "_native_selection_unavailable", False):
+            from war3_unit_action_protocol import ACTION_SET_POSITION
+            result = self._unit_action_result_24268(
+                ACTION_SET_POSITION,
+                x_bits=self._float_bits(target_x), y_bits=self._float_bits(target_y),
+            )
+            return int(result["changed"])
         selected = self._selected_candidates_snapshot(None)
         if not selected:
             return 0
@@ -6222,6 +6307,10 @@ class War3Trainer:
         return removed
 
     def take_selected_unit_control(self) -> int:
+        if getattr(self, "_native_selection_unavailable", False):
+            from war3_unit_action_protocol import ACTION_TAKE_CONTROL
+            result = self._unit_action_result_24268(ACTION_TAKE_CONTROL)
+            return int(result["count"])
         candidate, unit_handle = self._direct_selected_context()
         handlers = self._query_native_table_handlers(("GetLocalPlayer", "SetUnitOwner", "GetOwningPlayer"))
         result = self._run_bound_unit_action_result(candidate, unit_handle, (
@@ -6608,6 +6697,8 @@ class War3Trainer:
         return int(results[1].result)
 
     def clear_selected_unit_inventory(self) -> int:
+        if getattr(self, "_native_selection_unavailable", False):
+            return int(self.item_batch_24268(4, 0, -1)["changed"])
         return self._run_bound_inventory_batch(0)
 
     def set_selected_inventory_charges(self, charges: int) -> int:
@@ -6620,9 +6711,13 @@ class War3Trainer:
         return self._run_bound_inventory_batch(1, target)
 
     def duplicate_selected_inventory_items(self) -> int:
+        if getattr(self, "_native_selection_unavailable", False):
+            return int(self.item_batch_24268(5, 0, -1)["changed"])
         return int(self._run_bound_item_create(0).result)
 
     def drop_selected_inventory_items(self) -> int:
+        if getattr(self, "_native_selection_unavailable", False):
+            return int(self.item_batch_24268(6, 0, -1)["changed"])
         return self._run_bound_inventory_batch(2)
 
     def _run_bound_ability_actions(
@@ -6666,7 +6761,7 @@ class War3Trainer:
             raise ValueError("技能 ID 无效")
         action = {"UnitAddAbility": 1, "UnitRemoveAbility": 2}[native_name]
         if getattr(self, "_native_selection_unavailable", False):
-            return self.ability_batch_24268(ability_rawcode, action)["count"]
+            return int(self.ability_batch_24268(ability_rawcode, action)["changed"])
         return int(self._run_bound_ability_actions(((action, ability_rawcode, 0, 0),))[0].result)
 
     def add_ability_to_selected_unit(self, rawcode: int | str) -> None:
@@ -6681,6 +6776,11 @@ class War3Trainer:
         ability_ids = tuple(int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF for rawcode in rawcodes)
         if not ability_ids or any(not rawcode for rawcode in ability_ids):
             raise ValueError("技能 ID 列表无效")
+        if getattr(self, "_native_selection_unavailable", False):
+            return sum(
+                int(self.ability_batch_24268(rawcode, 1, 0)["changed"])
+                for rawcode in ability_ids
+            )
         return sum(bool(item.result) for item in self._run_bound_ability_actions(
             (1, rawcode, 0, 0) for rawcode in ability_ids))
 
@@ -6694,6 +6794,12 @@ class War3Trainer:
             raise ValueError("技能组合无效")
         if any(level is not None and not 1 <= level <= 100000 for _, level in bundle):
             raise ValueError("技能组合等级必须在 1 到 100000 之间")
+        if getattr(self, "_native_selection_unavailable", False):
+            changed = sum(
+                int(self.ability_batch_24268(rawcode, 1, level or 0)["changed"])
+                for rawcode, level in bundle
+            )
+            return changed, len(bundle)
         results = self._run_bound_ability_actions((1, rawcode, level or 0, 0) for rawcode, level in bundle)
         return sum(bool(item.result) for item in results), len(bundle)
 
@@ -6723,10 +6829,31 @@ class War3Trainer:
         ability_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
         if not ability_rawcode:
             raise ValueError("技能 ID 无效")
+        if getattr(self, "_native_selection_unavailable", False):
+            result = self.ability_batch_24268(ability_rawcode, 5, 0)
+            if result["changed"] != result["count"]:
+                raise RuntimeError("游戏拒绝重置该技能")
+            return
         if not self._run_bound_ability_actions(((4, ability_rawcode, 0, 0),))[0].result:
             raise RuntimeError("游戏拒绝重置该技能；地图中可能没有该对象")
 
     def remove_all_selected_unit_abilities(self) -> int:
+        if getattr(self, "_native_selection_unavailable", False):
+            selected = self._selected_candidates_snapshot(None)
+            if not selected:
+                return 0
+            rawcodes: set[int] = set()
+            with self._process_memory() as memory:
+                for candidate, _unit_handle in selected:
+                    rawcodes.update(
+                        int(instance.rawcode) & 0xFFFFFFFF
+                        for instance in self._ability_instances_from_candidate(memory, candidate)
+                        if int(instance.rawcode) & 0xFFFFFFFF
+                    )
+            return sum(
+                int(self.ability_batch_24268(rawcode, 2, 0)["changed"])
+                for rawcode in sorted(rawcodes)
+            )
         candidate, unit_handle = self._direct_selected_context()
         native = self._native_snapshot_for_candidate(candidate)
         if native is None or native.handle != unit_handle:
@@ -6742,7 +6869,9 @@ class War3Trainer:
         if not ability_rawcode or not 1 <= target_level <= 100000:
             raise ValueError("请提供有效技能 ID，等级必须在 1 到 100000 之间")
         if getattr(self, "_native_selection_unavailable", False):
-            self.ability_batch_24268(ability_rawcode, 3, target_level)
+            result = self.ability_batch_24268(ability_rawcode, 3, target_level)
+            if result["changed"] > result["count"]:
+                raise RuntimeError("技能等级批处理返回数量异常")
             return target_level
         actual = int(self._run_bound_ability_actions(((3, ability_rawcode, target_level, 0),))[0].arg1)
         if actual != target_level:
@@ -7540,6 +7669,9 @@ class War3Trainer:
         target_level = int(level)
         if not tech_rawcode or not 0 <= target_level <= 100000:
             raise ValueError("请提供有效科技 ID，等级必须在 0 到 100000 之间")
+        if getattr(self, "_native_selection_unavailable", False):
+            result = self.world_batch_24268(1, tech_rawcode, target_level)
+            return int(result["after0"])
         handlers = self._elephant_handlers(
                 None,
                 ("GetLocalPlayer", "SetPlayerTechMaxAllowed", "SetPlayerTechResearched"),
@@ -7569,6 +7701,9 @@ class War3Trainer:
         target = float(rate)
         if not 0.0 <= target <= 10000.0:
             raise ValueError("经验倍率必须在 0 到 10000 之间")
+        if getattr(self, "_native_selection_unavailable", False):
+            result = self.world_batch_24268(2, 0, self._float_bits(target))
+            return self._float_from_bits(result["after0"])
         handlers = self._elephant_handlers(None, ("GetLocalPlayer", "SetPlayerHandicapXP"))
         self._run_native_helper_ops(
             0,
@@ -7583,6 +7718,9 @@ class War3Trainer:
         return target
 
     def get_map_fog_state(self) -> tuple[bool, bool]:
+        if getattr(self, "_native_selection_unavailable", False):
+            result = self.world_batch_24268(3, 0, 0)
+            return bool(result["after0"]), bool(result["after1"])
         handlers = self._elephant_handlers(None, ("IsFogEnabled", "IsFogMaskEnabled"))
         results = self._run_native_helper_ops(
             0,
@@ -7606,6 +7744,9 @@ class War3Trainer:
         return bool(results[0].result), bool(results[1].result)
 
     def set_map_revealed(self, revealed: bool) -> None:
+        if getattr(self, "_native_selection_unavailable", False):
+            self.world_batch_24268(4, 0, int(bool(revealed)))
+            return
         handlers = self._elephant_handlers(None, ("FogEnable", "FogMaskEnable"))
         fog_enabled = 0 if revealed else 1
         self._run_native_helper_ops(
@@ -7629,6 +7770,9 @@ class War3Trainer:
         )
 
     def set_game_paused(self, paused: bool) -> None:
+        if getattr(self, "_native_selection_unavailable", False):
+            self.world_batch_24268(5, 0, int(bool(paused)))
+            return
         handlers = self._elephant_handlers(None, ("PauseGame",))
         self._run_native_helper_ops(
             0,
@@ -7642,6 +7786,9 @@ class War3Trainer:
         )
 
     def end_current_game(self, show_score_screen: bool = True) -> None:
+        if getattr(self, "_native_selection_unavailable", False):
+            self.world_batch_24268(6, 0, int(bool(show_score_screen)))
+            return
         handlers = self._elephant_handlers(None, ("EndGame",))
         self._run_native_helper_ops(
             0,
@@ -16046,7 +16193,7 @@ def run_gui() -> None:
     def elephant_prewarm() -> str:
         count = elephant_trainer().prewarm_elephant_functions()
         if getattr(elephant_trainer(), "_native_selection_unavailable", False):
-            return f"3.0 对象链已预热：{count} 个选中单位可直接操作；引擎动作仍待适配"
+            return f"3.0 对象链已预热：{count} 个选中单位可直接操作；当前引擎批处理已启用"
         return f"大象功能已初始化：{count} 个 native 函数可用"
 
     def elephant_batch(action: Callable[[], object], label: str, *, direct_memory: bool = False) -> tuple[object, ...]:
@@ -16067,6 +16214,22 @@ def run_gui() -> None:
     def elephant_batch_suffix() -> str:
         failed = int(state.pop("last_elephant_batch_failed", 0))
         return f"，跳过/失败 {failed} 个" if failed else ""
+
+    def elephant_current_engine_batch(action: Callable[[], object], label: str) -> tuple[object, ...]:
+        batch_trainer = elephant_trainer()
+        if not getattr(batch_trainer, "_native_selection_unavailable", False):
+            return elephant_batch(action, label)
+        result = action()
+        if isinstance(result, dict) and isinstance(result.get("rows"), list):
+            rows = tuple(result["rows"])
+        elif isinstance(result, int) and not isinstance(result, bool):
+            rows = tuple(1 for _ in range(result))
+        else:
+            rows = (result,)
+        state["last_elephant_batch_failed"] = 0
+        if not rows:
+            raise RuntimeError(f"{label}未成功：没有可操作的选中单位")
+        return rows
 
     def elephant_read_hero_level() -> str:
         trainer = elephant_trainer()
@@ -16107,8 +16270,12 @@ def run_gui() -> None:
 
     def elephant_set_scale() -> str:
         scale = parse_float(elephant_unit_scale.get(), "单位大小")
+        trainer = elephant_trainer()
+        if getattr(trainer, "_native_selection_unavailable", False):
+            changed = trainer.set_selected_group_scale(scale)
+            return f"已将 {changed} 个单位的大小设置为 {scale:g}"
         results = elephant_batch(
-            lambda: elephant_trainer().set_selected_unit_scale(scale),
+            lambda: trainer.set_selected_unit_scale(scale),
             "设置单位大小",
         )
         return (
@@ -16178,8 +16345,12 @@ def run_gui() -> None:
         )
 
     def elephant_clear_inventory() -> str:
+        trainer = elephant_trainer()
+        if getattr(trainer, "_native_selection_unavailable", False):
+            result = trainer.item_batch_24268(4, 0, -1)
+            return f"已核对 {result['count']} 个单位，清空 {result['changed']} 件物品"
         results = elephant_batch(
-            elephant_trainer().clear_selected_unit_inventory,
+            trainer.clear_selected_unit_inventory,
             "清空背包",
         )
         return (
@@ -16702,8 +16873,12 @@ def run_gui() -> None:
         )
 
     def elephant_duplicate_inventory() -> str:
+        trainer = elephant_trainer()
+        if getattr(trainer, "_native_selection_unavailable", False):
+            result = trainer.item_batch_24268(5, 0, -1)
+            return f"已核对 {result['count']} 个单位，复制 {result['changed']} 件背包物品"
         results = elephant_batch(
-            elephant_trainer().duplicate_selected_inventory_items,
+            trainer.duplicate_selected_inventory_items,
             "复制背包物品",
         )
         return (
@@ -16712,8 +16887,12 @@ def run_gui() -> None:
         )
 
     def elephant_drop_inventory() -> str:
+        trainer = elephant_trainer()
+        if getattr(trainer, "_native_selection_unavailable", False):
+            result = trainer.item_batch_24268(6, 0, -1)
+            return f"已核对 {result['count']} 个单位，丢弃 {result['changed']} 件背包物品"
         results = elephant_batch(
-            elephant_trainer().drop_selected_inventory_items,
+            trainer.drop_selected_inventory_items,
             "丢弃背包物品",
         )
         return (
@@ -16744,8 +16923,12 @@ def run_gui() -> None:
 
     def elephant_set_hero_attributes() -> str:
         value = parse_int(elephant_hero_attributes.get(), "英雄属性")
+        trainer = elephant_trainer()
+        if getattr(trainer, "_native_selection_unavailable", False):
+            changed = trainer.set_selected_group_hero_attributes(value)
+            return f"已将 {changed} 个英雄的力量、敏捷、智力设置为 {value}"
         results = elephant_batch(
-            lambda: elephant_trainer().set_selected_hero_attributes(value),
+            lambda: trainer.set_selected_hero_attributes(value),
             "设置英雄属性",
             direct_memory=True,
         )
@@ -16756,8 +16939,12 @@ def run_gui() -> None:
 
     def elephant_add_skill_points() -> str:
         amount = parse_int(elephant_skill_points.get(), "增加技能点数")
+        trainer = elephant_trainer()
+        if getattr(trainer, "_native_selection_unavailable", False):
+            changed = trainer.add_selected_hero_skill_points(amount)
+            return f"已为 {changed} 个英雄增加 {amount} 点技能点"
         results = elephant_batch(
-            lambda: elephant_trainer().add_selected_hero_skill_points(amount),
+            lambda: trainer.add_selected_hero_skill_points(amount),
             "增加英雄技能点",
         )
         return (
@@ -16769,8 +16956,12 @@ def run_gui() -> None:
         rawcode = elephant_reset_ability_rawcode.get().strip()
         if not rawcode:
             raise ValueError("请填写重置技能 ID")
+        trainer = elephant_trainer()
+        if getattr(trainer, "_native_selection_unavailable", False):
+            result = trainer.ability_batch_24268(rawcode, 5, 0)
+            return f"已核对 {result['count']} 个单位，重置技能 {rawcode} {result['changed']} 个"
         results = elephant_batch(
-            lambda: elephant_trainer().reset_selected_unit_ability(rawcode),
+            lambda: trainer.reset_selected_unit_ability(rawcode),
             f"重置技能 {rawcode}",
         )
         return (
@@ -16779,8 +16970,12 @@ def run_gui() -> None:
         )
 
     def elephant_remove_all_abilities() -> str:
+        trainer = elephant_trainer()
+        if getattr(trainer, "_native_selection_unavailable", False):
+            changed = trainer.remove_all_selected_unit_abilities()
+            return f"已删除 {changed} 个非基础技能"
         results = elephant_batch(
-            elephant_trainer().remove_all_selected_unit_abilities,
+            trainer.remove_all_selected_unit_abilities,
             "删除全部技能",
         )
         return (
@@ -16806,8 +17001,12 @@ def run_gui() -> None:
             ("Aabr", None),
             ("ACac", None),
         )
+        trainer = elephant_trainer()
+        if getattr(trainer, "_native_selection_unavailable", False):
+            changed, total = trainer.add_ability_bundle_to_selected_unit(entries)
+            return f"已批量处理全光环 {total} 项，实际修改 {changed} 项"
         results = elephant_batch(
-            lambda: elephant_trainer().add_ability_bundle_to_selected_unit(entries),
+            lambda: trainer.add_ability_bundle_to_selected_unit(entries),
             "添加全光环",
         )
         return (
@@ -16826,8 +17025,12 @@ def run_gui() -> None:
             ("ACrn", None),
             ("ACpv", None),
         )
+        trainer = elephant_trainer()
+        if getattr(trainer, "_native_selection_unavailable", False):
+            changed, total = trainer.add_ability_bundle_to_selected_unit(entries)
+            return f"已批量处理全被动 {total} 项，实际修改 {changed} 项"
         results = elephant_batch(
-            lambda: elephant_trainer().add_ability_bundle_to_selected_unit(entries),
+            lambda: trainer.add_ability_bundle_to_selected_unit(entries),
             "添加全被动",
         )
         return (
@@ -16933,6 +17136,10 @@ def run_gui() -> None:
 
     def elephant_toggle_unit_pause() -> str:
         t = elephant_trainer()
+        if getattr(t, "_native_selection_unavailable", False):
+            paused = not t.is_selected_unit_paused()
+            changed = t.set_selected_unit_paused(paused)
+            return f"已{'暂停' if paused else '恢复'} {changed} 个单位"
         first_states = elephant_batch(t.is_selected_unit_paused, "读取暂停状态")
         paused = not bool(first_states[0])
         results = elephant_batch(
@@ -16967,7 +17174,7 @@ def run_gui() -> None:
         return message
 
     def elephant_batch_action(action: Callable[[], object], label: str, *, direct_memory: bool = False) -> str:
-        results = elephant_batch(action, label)
+        results = elephant_current_engine_batch(action, label)
         return f"{label}：成功 {len(results)} 个{elephant_batch_suffix()}"
 
     def send_cheat_command(command_name: str, message: str) -> str:

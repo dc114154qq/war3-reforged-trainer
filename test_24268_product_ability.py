@@ -23,15 +23,18 @@ def run(dll,count,action,level=0,initial=0,scenario=0):
     buf=c.create_string_buffer(work(action,level));count=dll.BridgeAbilityTestRun(buf,count,scenario,initial)
     return buf.raw[:832],count,tuple(dll.BridgeAbilityTestStat(i) for i in range(3))
 @pytest.mark.parametrize('count',[1,15,24])
-@pytest.mark.parametrize('action,level,initial',[(0,0,0),(0,0,2),(1,0,0),(1,0,2),(1,3,0),(1,3,1),(2,0,1),(2,0,0),(3,3,1),(3,1,1),(4,2,0),(4,2,1)])
+@pytest.mark.parametrize('action,level,initial',[(0,0,0),(0,0,2),(1,0,0),(1,0,2),(1,3,0),(1,3,1),(2,0,1),(2,0,0),(3,3,1),(3,1,1),(4,2,0),(4,2,1),(5,0,0),(5,0,1)])
 def test_compiled_batch_semantics(fixture,count,action,level,initial):
     data,n,stats=run(fixture,count,action,level,initial)
     result=decode_work(data,n);assert result['count']==count
     if action==4:
         assert all(r['after']==initial for r in result['rows'])
         assert stats[:2]==((count,count) if initial==0 else (0,0))
+    elif action==5:
+        assert all(r['after']>0 for r in result['rows'])
+        assert stats[:2]==((count,count) if initial else (count,0))
     elif action==0:assert stats==(0,0,0)
-@pytest.mark.parametrize('scenario,action,level,initial',[(1,1,0,0),(2,3,2,1),(3,2,0,1),(6,1,0,0)])
+@pytest.mark.parametrize('scenario,action,level,initial',[(1,1,0,0),(2,3,2,1),(3,2,0,1),(3,5,0,1),(6,1,0,0)])
 def test_failure_never_claimed_success(fixture,scenario,action,level,initial):
     data,n,stats=run(fixture,15,action,level,initial,scenario)
     with pytest.raises(ValueError):decode_work(data,n)
@@ -75,13 +78,14 @@ def test_gui_does_not_repeat_whole_batch(name,action):
 
 def test_product_methods_never_call_old_helper():
     trainer=object.__new__(product.War3Trainer);trainer._native_selection_unavailable=True
-    trainer.ability_batch_24268=Mock(return_value={'count':15})
+    trainer.ability_batch_24268=Mock(return_value={'count':15,'changed':15})
     trainer._run_bound_ability_actions=Mock(side_effect=AssertionError('old helper'))
     trainer.add_ability_to_selected_unit('AHad');trainer.remove_ability_from_selected_unit('AHad')
     assert trainer.set_selected_unit_ability_level('AHad',2)==2
-    assert trainer.ability_batch_24268.call_count==3
+    trainer.reset_selected_unit_ability('AHad')
+    assert trainer.ability_batch_24268.call_count==4
 
-@pytest.mark.parametrize('action,level',[(0,1),(2,1),(3,0),(4,0),(5,0)])
+@pytest.mark.parametrize('action,level',[(0,1),(2,1),(3,0),(4,0),(5,1)])
 def test_invalid_actions(action,level):
     with pytest.raises(ValueError):work(action,level)
 

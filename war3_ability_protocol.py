@@ -21,8 +21,8 @@ def validate_work(payload):
     values=struct.unpack_from('<5Q6I',payload,480);ptrs=values[:4];tls=values[4]
     rawcode,action,level,changed,error,completed=values[5:]
     if (any(not 0x10000<=p<0x800000000000 for p in ptrs) or len(set(ptrs))!=4
-        or not 0x10000<=tls<0x800000000000 or tls%8 or not rawcode or action not in range(5)
-        or not 0<=level<=100000 or (action in (3,4) and not level) or (action in (0,2) and level)
+        or not 0x10000<=tls<0x800000000000 or tls%8 or not rawcode or action not in range(6)
+        or not 0<=level<=100000 or (action in (3,4) and not level) or (action in (0,2,5) and level)
         or changed or error or completed or any(payload[544:])):raise ValueError('Invalid ability batch arguments')
 
 def decode_work(payload,count):
@@ -39,6 +39,7 @@ def decode_work(payload,count):
         elif action==2:ok &= after==0
         elif action==3:ok &= before>0 and after==level
         elif action==4:ok &= after==before and (before>0 or intermediate==level)
+        elif action==5:ok &= after>0
         else:ok=False
         valid &= ok;rows.append(dict(row,before=before,after=after,intermediate=intermediate))
     if changed>count:valid=False

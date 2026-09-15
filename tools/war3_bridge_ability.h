@@ -46,8 +46,10 @@ __declspec(dllexport) uint64_t BridgeAbilityQuery(void) {
     uint64_t count,unit;
     uint32_t i;
     if (!w) return 0;
-    if (g_dispatch->tls_value!=w->expected_tls || !w->rawcode || w->action>4 || w->target>100000 ||
-        ((w->action==3 || w->action==4) && !w->target) || !w->add || !w->remove || !w->set_level || !w->get_level) {
+    if (g_dispatch->tls_value!=w->expected_tls || !w->rawcode || w->action>5 || w->target>100000 ||
+        ((w->action==3 || w->action==4) && !w->target) ||
+        ((w->action==0 || w->action==2 || w->action==5) && w->target) ||
+        !w->add || !w->remove || !w->set_level || !w->get_level) {
         w->error=20;return 0;
     }
     count=BridgeSelect();
@@ -83,6 +85,16 @@ __declspec(dllexport) uint64_t BridgeAbilityQuery(void) {
                 if (!w->remove(unit,w->rawcode)) {w->error=27;return count;}
                 ++w->changed;
             }
+            if (w->action==5) {
+                if (before) {
+                    w->error=400+i;
+                    if (!w->remove(unit,w->rawcode) || w->get_level(unit,w->rawcode)!=0) {w->error=30;return count;}
+                    w->error=0;
+                }
+                w->error=500+i;
+                if (!w->add(unit,w->rawcode) || w->get_level(unit,w->rawcode)<=0) {w->error=31;return count;}
+                w->error=0;++w->changed;
+            }
             w->intermediate[i]=w->get_level(unit,w->rawcode);
         } __finally {
             /* Preserve the actual post-call level even when the setter faults. */
@@ -97,7 +109,8 @@ __declspec(dllexport) uint64_t BridgeAbilityQuery(void) {
             (w->action==1 && w->rows[i].after!=(w->target ? (int32_t)w->target : before ? before : 1)) ||
             (w->action==2 && w->rows[i].after!=0) ||
             (w->action==3 && w->rows[i].after!=(int32_t)w->target) ||
-            (w->action==4 && (w->rows[i].after!=before || (!before && w->intermediate[i]!=(int32_t)w->target)))) {
+            (w->action==4 && (w->rows[i].after!=before || (!before && w->intermediate[i]!=(int32_t)w->target))) ||
+            (w->action==5 && w->rows[i].after<=0)) {
             w->error=29;return count;
         }
         if (w->error) return count;

@@ -76,16 +76,16 @@ __declspec(dllexport) int32_t BridgeTestTailReadback(int32_t actual,int32_t targ
 }
 
 static uint64_t item_slots[24][6];
-static int item_sizes[24],item_case,item_create_calls,item_set_calls,item_remove_calls;
-static int32_t item_original_charges[24][6],item_new_charges[24];
-static uint32_t item_new_type[24];
+static int item_sizes[24],item_case,item_create_calls,item_set_calls,item_remove_calls,item_created_count;
+static int32_t item_original_charges[24][6],item_new_charges[144];
+static uint32_t item_new_type[144];
 static int fixture_item_index(uint64_t h) {return (int)((h-0x300000)/16);}
 static uint64_t fixture_item_slot(uint64_t u,int32_t slot) {
     int i=(int)(u-0x100000);return slot>=0 && slot<item_sizes[i] ? item_slots[i][slot] : 0;
 }
 static int32_t fixture_item_size(uint64_t u) {return item_sizes[u-0x100000];}
 static uint32_t fixture_item_type(uint64_t h) {
-    if (h>=0x300000 && h<0x300180) return item_new_type[fixture_item_index(h)];
+    if (h>=0x300000 && h<0x300900) return item_new_type[fixture_item_index(h)];
     return h>=0x200000 && h<0x200180 ? 0x73747770 : 0;
 }
 static int32_t fixture_item_charges(uint64_t h) {
@@ -98,10 +98,12 @@ static void fixture_item_set(uint64_t h,int32_t value) {
     else item_original_charges[(h-0x200000)/16][(h-0x200000)%16]=value;
 }
 static uint64_t fixture_item_create(uint64_t u,uint32_t type) {
-    int i=(int)(u-0x100000),j;uint64_t h=0x300000+i*16;
+    int i=(int)(u-0x100000),j,index;uint64_t h;
     ++item_create_calls;if(item_case==1)return 0;
     if(item_case==6)return item_slots[i][0];
-    item_new_type[i]=item_case==3 ? 0x62616421 : type;item_new_charges[i]=1;
+    index=item_created_count++;if(index>=144)return 0;
+    h=0x300000+(uint64_t)index*16;
+    item_new_type[index]=item_case==3 ? 0x62616421 : type;item_new_charges[index]=1;
     for(j=0;j<item_sizes[i];++j)if(!item_slots[i][j]){item_slots[i][j]=h;break;}
     return h;
 }
@@ -109,18 +111,18 @@ static void fixture_item_detach(uint64_t u,uint64_t h) {
     int i=(int)(u-0x100000),j;for(j=0;j<6;++j)if(item_slots[i][j]==h)item_slots[i][j]=0;
 }
 static void fixture_item_remove(uint64_t h) {
-    ++item_remove_calls;if(item_case!=4)item_new_type[fixture_item_index(h)]=0;
+    ++item_remove_calls;if(h>=0x300000 && item_case!=4)item_new_type[fixture_item_index(h)]=0;
 }
 __declspec(dllexport) uint64_t BridgeItemTestRun(ItemWork *w,int count,int scenario) {
     static BridgeCommand cmd;int i,j;
     if(count<0||count>24)return 0;
     fixture_count=count;fixture_scenario=0;fixture_type_calls=0;item_case=scenario;
-    item_create_calls=item_set_calls=item_remove_calls=0;
+    item_create_calls=item_set_calls=item_remove_calls=item_created_count=0;
     for(i=0;i<24;++i){
         fixture_levels[i]=i%3==0 ? 1 : 0;item_sizes[i]=scenario==5 ? 6 : i%3==0 ? 6 : 0;
-        item_new_type[i]=0;item_new_charges[i]=0;
         for(j=0;j<6;++j){item_original_charges[i][j]=1;item_slots[i][j]=item_sizes[i] && (j==0||scenario==5) ? 0x200000+i*16+j : 0;}
     }
+    for(i=0;i<144;++i){item_new_type[i]=0;item_new_charges[i]=0;}
     cmd.work=w;cmd.tls_value=w->expected_tls;g_dispatch=&cmd;
     w->selection.local_player=fixture_player;w->selection.create_group=fixture_group;
     w->selection.enum_selected=fixture_enum;w->selection.first_of_group=fixture_first;
@@ -212,3 +214,108 @@ __declspec(dllexport) uint64_t BridgeCloneTestRun(CloneWork *w,int count,int sce
     return BridgeCloneQuery();
 }
 __declspec(dllexport) int BridgeCloneTestStat(int kind) {return kind==0?clone_created:kind==1?clone_removed:kind==2?clone_abilities:clone_items;}
+
+static int unit_action_case,unit_action_calls[16];
+static uint8_t unit_action_invulnerable[24],unit_action_paused[24],unit_action_pathing[24];
+static uint64_t unit_action_owner[24];
+static float unit_action_x[24],unit_action_y[24],unit_action_scale_values[24];
+static int unit_action_index(uint64_t unit) {return unit>=0x100000 && unit<0x100018 ? (int)(unit-0x100000) : 0;}
+static void unit_action_set_invulnerable(uint64_t unit,uint32_t value) {
+    ++unit_action_calls[0];unit_action_invulnerable[unit_action_index(unit)]=(uint8_t)value;
+}
+static uint8_t unit_action_get_invulnerable(uint64_t unit) {++unit_action_calls[1];return unit_action_invulnerable[unit_action_index(unit)];}
+static void unit_action_set_pathing(uint64_t unit,uint32_t value) {
+    ++unit_action_calls[2];unit_action_pathing[unit_action_index(unit)]=(uint8_t)value;
+}
+static void unit_action_pause(uint64_t unit,uint32_t value) {
+    ++unit_action_calls[3];unit_action_paused[unit_action_index(unit)]=(uint8_t)value;
+}
+static uint8_t unit_action_is_paused(uint64_t unit) {++unit_action_calls[4];return unit_action_paused[unit_action_index(unit)];}
+static void unit_action_reset(uint64_t unit) {(void)unit;++unit_action_calls[5];}
+static void unit_action_kill(uint64_t unit) {(void)unit;++unit_action_calls[6];}
+static void unit_action_remove(uint64_t unit) {(void)unit;++unit_action_calls[7];}
+static void unit_action_explode(uint64_t unit,uint32_t value) {(void)unit;(void)value;++unit_action_calls[8];}
+static void unit_action_scale(uint64_t unit,float x,float y,float z) {
+    (void)y;(void)z;++unit_action_calls[9];unit_action_scale_values[unit_action_index(unit)]=x;
+}
+static void unit_action_position(uint64_t unit,float x,float y) {
+    ++unit_action_calls[10];unit_action_x[unit_action_index(unit)]=x;unit_action_y[unit_action_index(unit)]=y;
+}
+static float unit_action_get_x(uint64_t unit) {++unit_action_calls[11];return unit_action_x[unit_action_index(unit)];}
+static float unit_action_get_y(uint64_t unit) {++unit_action_calls[12];return unit_action_y[unit_action_index(unit)];}
+static void unit_action_set_owner(uint64_t unit,uint64_t owner,uint32_t color) {
+    (void)color;++unit_action_calls[13];unit_action_owner[unit_action_index(unit)]=owner;
+}
+static uint64_t unit_action_get_owner(uint64_t unit) {++unit_action_calls[14];return unit_action_owner[unit_action_index(unit)];}
+static uint8_t unit_action_modify_skill_points(uint64_t unit,uint32_t amount) {
+    (void)unit;(void)amount;++unit_action_calls[15];return unit_action_case!=1;
+}
+__declspec(dllexport) uint64_t BridgeUnitActionTestRun(UnitActionWork *w,int count,int scenario) {
+    static BridgeCommand cmd;int i;
+    if (count<0 || count>24)return 0;
+    fixture_count=count;fixture_scenario=0;unit_action_case=scenario;
+    for(i=0;i<24;++i) {
+        fixture_levels[i]=i%3==0?1:0;unit_action_invulnerable[i]=0;unit_action_paused[i]=0;
+        unit_action_pathing[i]=1;unit_action_owner[i]=0x100009;unit_action_x[i]=10.0f+i;
+        unit_action_y[i]=20.0f+i;unit_action_scale_values[i]=1.0f;
+    }
+    for(i=0;i<16;++i)unit_action_calls[i]=0;
+    cmd.work=w;cmd.tls_value=w->expected_tls;g_dispatch=&cmd;
+    w->selection.local_player=fixture_player;w->selection.create_group=fixture_group;
+    w->selection.enum_selected=fixture_enum;w->selection.first_of_group=fixture_first;
+    w->selection.remove_from_group=fixture_remove;w->selection.destroy_group=fixture_destroy;
+    w->selection.unit_type_id=fixture_type;w->selection.hero_level=fixture_level;
+    w->set_invulnerable=unit_action_set_invulnerable;w->get_invulnerable=unit_action_get_invulnerable;
+    w->set_pathing=unit_action_set_pathing;w->pause_unit=unit_action_pause;w->is_paused=unit_action_is_paused;
+    w->reset_cooldown=unit_action_reset;w->kill_unit=unit_action_kill;w->remove_unit=unit_action_remove;
+    w->set_exploded=unit_action_explode;w->set_scale=unit_action_scale;w->set_position=unit_action_position;
+    w->get_x=unit_action_get_x;w->get_y=unit_action_get_y;w->set_owner=unit_action_set_owner;
+    w->get_owner=unit_action_get_owner;w->modify_skill_points=unit_action_modify_skill_points;
+    return BridgeUnitActionQuery();
+}
+__declspec(dllexport) int BridgeUnitActionTestStat(int kind) {
+    return kind>=0 && kind<16 ? unit_action_calls[kind] : unit_action_case;
+}
+
+static int world_calls[8];
+static uint32_t world_last_rawcode,world_last_level,world_last_xp;
+static uint8_t world_fog,world_mask;
+static uint64_t world_player(void) {return 0x100008;}
+static void world_set_tech_max(uint64_t player,uint32_t rawcode,uint32_t level) {
+    (void)player;++world_calls[0];world_last_rawcode=rawcode;world_last_level=level;
+}
+static void world_set_tech_researched(uint64_t player,uint32_t rawcode,uint32_t level) {
+    (void)player;(void)rawcode;(void)level;++world_calls[1];
+}
+static void world_set_xp(uint64_t player,float value) {
+    union {float value;uint32_t bits;} bits;(void)player;bits.value=value;
+    ++world_calls[2];world_last_xp=bits.bits;
+}
+static void world_fog_enable(uint32_t value) {(void)++world_calls[3];world_fog=(uint8_t)value;}
+static void world_mask_enable(uint32_t value) {(void)++world_calls[4];world_mask=(uint8_t)value;}
+static uint8_t world_is_fog(void) {++world_calls[5];return world_fog;}
+static uint8_t world_is_mask(void) {++world_calls[6];return world_mask;}
+static void world_pause(uint32_t value) {(void)value;++world_calls[7];}
+static void world_end(uint32_t value) {(void)value;++world_calls[7];}
+__declspec(dllexport) uint64_t BridgeWorldTestRun(WorldWork *w,int action,uint32_t rawcode,uint32_t value) {
+    static BridgeCommand cmd;int i;
+    for(i=0;i<8;++i)world_calls[i]=0;
+    world_last_rawcode=world_last_level=world_last_xp=0;world_fog=1;world_mask=1;
+    cmd.work=w;cmd.tls_value=w->expected_tls;g_dispatch=&cmd;
+    w->get_local_player=world_player;w->set_tech_max=world_set_tech_max;
+    w->set_tech_researched=world_set_tech_researched;w->set_xp_rate=world_set_xp;
+    w->fog_enable=world_fog_enable;w->fog_mask_enable=world_mask_enable;
+    w->is_fog_enabled=world_is_fog;w->is_fog_mask_enabled=world_is_mask;
+    w->pause_game=world_pause;w->end_game=world_end;
+    w->action=(uint32_t)action;w->rawcode=rawcode;w->value=value;
+    return BridgeWorldQuery();
+}
+__declspec(dllexport) int BridgeWorldTestStat(int kind) {
+    if(kind>=0 && kind<8)return world_calls[kind];
+    if(kind==8)return (int)world_last_rawcode;
+    if(kind==9)return (int)world_last_level;
+    if(kind==10)return (int)world_last_xp;
+    if(kind==11)return world_fog;
+    if(kind==12)return world_mask;
+    return -1;
+}

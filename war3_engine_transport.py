@@ -110,6 +110,12 @@ def dispatch(pid,hwnd,tid,image,tls_index,work_payload,kind="hero"):
     elif kind=='clone':
         from war3_clone_protocol import ABI as expected_abi,validate_work as validate_clone
         validate_clone(work_payload);marker_name=b'clone_batch_abi';query_name=b'BridgeCloneQuery'
+    elif kind=='unit_action':
+        from war3_unit_action_protocol import ABI as expected_abi,validate_work as validate_unit_action
+        validate_unit_action(work_payload);marker_name=b'unit_action_batch_abi';query_name=b'BridgeUnitActionQuery'
+    elif kind=='world':
+        from war3_world_protocol import ABI as expected_abi,validate_work as validate_world
+        validate_world(work_payload);marker_name=b'world_batch_abi';query_name=b'BridgeWorldQuery'
     else:raise ValueError('Unknown current-engine batch kind')
     owner=U()
     if window_thread(hwnd,c.byref(owner))!=tid or owner.value!=pid:

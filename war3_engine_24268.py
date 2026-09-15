@@ -17,7 +17,7 @@ class EngineExecutionError(RuntimeError):
             phase=state.get('query_stage'),exception=state.get('exception_code'),
             retained=report.get('dispatch',{}).get('allocations_retained',False),
             ability_status=report.get('ability_status'),item_status=report.get('item_status'),
-            clone_status=report.get('clone_status')),ensure_ascii=False))
+            clone_status=report.get('clone_status'),world_status=report.get('world_status')),ensure_ascii=False))
 
 class Engine24268:
     def __init__(self,pid,hwnd,memory_factory,image=None,report_sink=None):
@@ -35,9 +35,9 @@ class Engine24268:
     def ability_batch(self,rawcode,action=0,level=0):
         from war3_ability_protocol import SIGNATURES as ABILITIES,build_work as build,decode_work as decode
         if (isinstance(rawcode,bool) or not isinstance(rawcode,int) or not 0<rawcode<=0xffffffff
-            or isinstance(action,bool) or not isinstance(action,int) or action not in range(5)
+            or isinstance(action,bool) or not isinstance(action,int) or action not in range(6)
             or isinstance(level,bool) or not isinstance(level,int) or not 0<=level<=100000
-            or (action in (3,4) and not level) or (action in (0,2) and level)):
+            or (action in (3,4) and not level) or (action in (0,2,5) and level)):
             raise ValueError('Invalid current-engine ability operation')
         names=tuple(n for n,_ in SIGNATURES+ABILITIES)
         return self._execute('ability',names,lambda entries,tls:build(entries,tls,rawcode,action,level),decode,
@@ -47,9 +47,9 @@ class Engine24268:
         from war3_item_protocol import SIGNATURES as ITEMS,build_work as build,decode_work as decode
         if any(isinstance(v,bool) or not isinstance(v,int) for v in (action,rawcode,charges)):
             raise ValueError('Item arguments must be integers')
-        if (action not in (0,1,2,3) or not 0<=rawcode<=0xffffffff or (action in (1,3) and not rawcode)
-            or (action in (0,2) and rawcode) or not -1<=charges<=1000000000
-            or (action in (2,3) and charges<1) or (action==0 and charges!=-1)):
+        if (action not in (0,1,2,3,4,5,6) or not 0<=rawcode<=0xffffffff or (action in (1,3) and not rawcode)
+            or (action in (0,2,4,5,6) and rawcode) or not -1<=charges<=1000000000
+            or (action in (2,3) and charges<1) or (action in (0,1,4,5,6) and charges!=-1)):
             raise ValueError('Invalid item operation')
         names=tuple(n for n,_ in SIGNATURES+ITEMS)
         return self._execute('item',names,lambda entries,tls:build(entries,tls,action,rawcode,charges),decode,
@@ -77,6 +77,41 @@ class Engine24268:
             decode,
             dict(keep=keep, preserve_owner=preserve_owner,
                  copy_abilities=copy_abilities, copy_items=copy_items),
+        )
+
+    def unit_action_batch(self, action, *, value=0, x_bits=0, y_bits=0,
+                          scale_x_bits=0, scale_y_bits=0, scale_z_bits=0):
+        from war3_unit_action_protocol import (
+            ACTION_SIGNATURES, build_work as build, decode_work as decode,
+        )
+        if not isinstance(action, int) or isinstance(action, bool):
+            raise ValueError('Invalid current-engine unit action')
+        names = tuple(n for n, _ in SIGNATURES + ACTION_SIGNATURES)
+        return self._execute(
+            'unit_action', names,
+            lambda entries, tls: build(
+                entries, tls, action, value=value, x_bits=x_bits, y_bits=y_bits,
+                scale_x_bits=scale_x_bits, scale_y_bits=scale_y_bits,
+                scale_z_bits=scale_z_bits,
+            ),
+            decode,
+            dict(action=action, value=value, x_bits=x_bits, y_bits=y_bits,
+                 scale_x_bits=scale_x_bits, scale_y_bits=scale_y_bits,
+                 scale_z_bits=scale_z_bits),
+        )
+
+    def world_batch(self, action, rawcode=0, value=0):
+        from war3_world_protocol import SIGNATURES as WORLD_SIGNATURES, build_work as build, decode_work as decode
+        if (isinstance(action, bool) or not isinstance(action, int) or action not in range(1, 7)
+                or isinstance(rawcode, bool) or not isinstance(rawcode, int) or not 0 <= rawcode <= 0xffffffff
+                or isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 0xffffffff):
+            raise ValueError('Invalid current-engine world operation')
+        names = tuple(n for n, _ in WORLD_SIGNATURES)
+        return self._execute(
+            'world', names,
+            lambda entries, tls: build(entries, tls, action, rawcode, value),
+            decode,
+            dict(action=action, rawcode=rawcode, value=value),
         )
 
     def _execute(self,kind,names,builder,decoder,request):
@@ -115,6 +150,16 @@ class Engine24268:
                         if len(raw)==1848:
                             changed,error,completed=struct.unpack_from('<3I',raw,676)
                             report['clone_status']=dict(changed=changed,error=error,completed=completed)
+                    if kind=='unit_action' and evidence.get('work_result_hex'):
+                        raw=bytes.fromhex(evidence['work_result_hex'])
+                        if len(raw)==1432:
+                            changed,error,completed=struct.unpack_from('<3I',raw,624)
+                            report['unit_action_status']=dict(changed=changed,error=error,completed=completed)
+                    if kind=='world' and evidence.get('work_result_hex'):
+                        raw=bytes.fromhex(evidence['work_result_hex'])
+                        if len(raw)==128:
+                            changed,error,completed=struct.unpack_from('<3I',raw,100)
+                            report['world_status']=dict(changed=changed,error=error,completed=completed)
                     if not (evidence.get('callback_verified') and evidence.get('query_completed') and evidence.get('work_freed')
                         and evidence.get('block_freed') and evidence.get('image_unmap_status')=='0x0'
                         and evidence['after_send']['tls_value']==hex(mode.tls)):

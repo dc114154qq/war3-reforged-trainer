@@ -1,38 +1,40 @@
 {
   "package": "dist-3.0.0.24268-r35",
-  "commit": "e4c03c8",
+  "commit": "5683a92",
   "branch": "codex/war3-3.0.0.24268-adaptation",
-  "built_at": "2026-09-15T17:23:41.7992899+08:00",
+  "built_at": "2026-09-15T18:05:36.3920025+08:00",
   "artifacts": {
     "exe": {
       "path": "dist-3.0.0.24268-r35/War3ReforgedTrainer-3.0.0.24268.exe",
-      "size": 18779741,
-      "sha256": "BB4BB61F469F8EC6EEBDE010A2FE89F5BD2CCBA025747D6C594B870ECDE96976"
+      "size": 18811405,
+      "sha256": "8E6634E5E0C71760DE1A80ECD58A2A5F20E25E82B8DD1D72EFD9F77F2878495B"
     },
     "bridge_dll": {
       "path": "tools/war3_bridge_24268_current_r35.dll",
-      "size": 24064,
-      "sha256": "1F913D10317C987E54ECB9DABF7AD167667D78771F6FBC81A5213957A7D86AC6"
+      "size": 30208,
+      "sha256": "DFC4DD6BA5BC706A23C8D8CC137B253A8E940D83E5E88EC8F95558AF782C3AC6"
     }
   },
   "verification": {
-    "product_tests": "329 passed in 12.09s",
+    "product_tests": "337 passed in 11.72s",
     "bridge_abi": "x64 bridge ABI verified",
     "gui_smoke": {
-      "started_pid": 21512,
+      "started_pid": 40752,
       "responding_after_seconds": 4,
       "responding": true,
-      "onefile_child_pid": 46500,
+      "onefile_child_pid": 38576,
       "same_path_processes_after_cleanup": 0
     },
     "cross_device_validation": false,
     "live_r35_item_write": false
   },
   "notes": [
-    "The package contains the current-engine r35 item bridge and exact inventory-slot replacement route.",
+    "The package contains the current-engine r35 item bridge, exact inventory-slot replacement, typed skill/item fields, bulk elephant actions, and target/immediate/point direct effects.",
+    "The 3.0 skill and item field routes use batched current-engine native callbacks with identity checks and readback validation.",
+    "The 3.0 bulk elephant routes cover local healing, local cooldown reset, selected-owner kill, and peace mode.",
     "Live r35 item write was not claimed because the available game session was not in a stable map/selection state.",
     "Cross-device validation remains pending and must be performed on the other machine.",
-    "Skill-field UI, direct ability effects, and several legacy-only elephant actions remain outside the current-engine route."
+    "Buff-constructor direct effects, create-all-loaded-items, and several legacy-only elephant actions remain outside the current-engine route."
   ],
   "website_sync": false
 }

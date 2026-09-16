@@ -484,6 +484,8 @@ _EN_TRANSLATIONS = {
     "项，新增": "items; added",
     "已遍历": "Scanned",
     "个运行时物品对象，成功创建": "runtime item objects; successfully created",
+    "已读取当前版本资源目录": "Read the current-version resource catalog",
+    "个物品，成功创建": "items; successfully created",
     "金币/木材已修改": "Gold/lumber changed",
     "金币已修改": "Gold changed",
     "木材已修改": "Lumber changed",

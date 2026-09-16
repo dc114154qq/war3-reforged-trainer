@@ -1,0 +1,37 @@
+{
+  "game_build": "3.0.0.24268",
+  "install_root": "E:\\Warcraft III",
+  "tool": {
+    "name": "jybp/casc",
+    "release_reference": "https://github.com/jybp/casc/releases/tag/v1.2",
+    "source_version": "v0.0.0-20200704130859-86bc4664bb8a",
+    "build_command": "go install github.com/jybp/casc/cmd/casc@master",
+    "binary": "tools/external/casc-1.2/casc.exe",
+    "binary_sha256": "7aef27a46cecd55c16abc7456658bc1fc657bcf501a6f36f5cc61443fdf46e25"
+  },
+  "storage_scan": {
+    "list_file": "analysis/casc-wc3-file-list-20260916.txt",
+    "exit_code": 0,
+    "file_count": 174908
+  },
+  "extracted_sources": {
+    "directory": "analysis/casc-object-data-20260916",
+    "item": {
+      "file": "ItemData.slk",
+      "sha256": "311f39bf506606d07078aedc6db4721cfc1f4fd6777cb67dfa64431bb5ce4173",
+      "rawcode_count": 648
+    },
+    "ability": {
+      "file": "AbilityData.slk",
+      "sha256": "8e0f49e848ea7d9be8866e21a766a3d4833e3747fd4ca08979fd5be7531a13b2",
+      "rawcode_count": 473
+    },
+    "unit": {
+      "file": "UnitData.slk",
+      "sha256": "b4830f02053caeebe72defb55f1f24fbeb83343ff8af60456b2b92aaf59cb0d1",
+      "rawcode_count": 928
+    }
+  },
+  "runtime_catalog": "war3_casc_catalog_24268.py",
+  "runtime_behavior": "3.0 item creation uses the extracted rawcode catalog; protected runtime-list enumeration remains diagnostic-only"
+}

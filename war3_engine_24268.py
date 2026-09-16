@@ -97,6 +97,40 @@ class Engine24268:
         return self._execute('item',names,lambda entries,tls:build(entries,tls,action,rawcode,charges),decode,
                              dict(action=action,rawcode=rawcode,charges=charges))
 
+    def item_catalog(self, action=1, limit=0, x_bits=0, y_bits=0,
+                     handles=(), rawcodes=(), dry_run=False):
+        from war3_item_catalog_protocol import (
+            ACTION_CREATE, ACTION_REMOVE, ACTION_CREATE_LIST,
+            SIGNATURES as CATALOG_SIGNATURES,
+            build_work as build, decode_work as decode, required_signatures,
+        )
+        if isinstance(action, bool) or action not in (ACTION_CREATE, ACTION_REMOVE, ACTION_CREATE_LIST):
+            raise ValueError('Invalid item catalog action')
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 0 <= limit <= 100000:
+            raise ValueError('Invalid item catalog limit')
+        handles = tuple(int(handle) for handle in handles)
+        rawcodes = tuple(int(rawcode) for rawcode in rawcodes)
+        names = tuple(name for name, _signature in required_signatures(action))
+        result = self._execute(
+            'item_catalog',
+            names,
+            lambda entries, tls: build(
+                {name: entries[name] for name, _signature in CATALOG_SIGNATURES
+                 if name in entries},
+                tls,
+                action=action,
+                limit=limit,
+                x_bits=x_bits,
+                y_bits=y_bits,
+                handles=handles,
+                rawcodes=rawcodes,
+                dry_run=dry_run,
+            ),
+            decode,
+            dict(action=action,limit=limit,handle_count=len(handles),rawcode_count=len(rawcodes),dry_run=dry_run),
+        )
+        return result
+
     def item_field_batch(self, slot, action, fields, target_unit=0):
         from war3_item_field_protocol import (
             SIGNATURES as FIELD_SIGNATURES,
@@ -350,6 +384,14 @@ class Engine24268:
                         if len(raw)==5968:
                             changed,error,completed,skipped=struct.unpack_from('<4I',raw,572)
                             report['item_status']=dict(changed=changed,error=error,completed=completed,skipped=skipped)
+                    if kind=='item_catalog' and evidence.get('work_result_hex'):
+                        raw=bytes.fromhex(evidence['work_result_hex'])
+                        if len(raw)>=72:
+                            values=struct.unpack_from('<4Q10I',raw,0)
+                            report['item_catalog_status']=dict(
+                                action=values[4],total=values[10],created=values[11],
+                                error=values[12],completed=values[13],
+                            )
                     if kind=='item_field' and evidence.get('work_result_hex'):
                         raw=bytes.fromhex(evidence['work_result_hex'])
                         if len(raw)==5136:

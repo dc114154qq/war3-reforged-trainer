@@ -313,6 +313,57 @@ __declspec(dllexport) uint64_t BridgeCloneTestRun(CloneWork *w,int count,int sce
 }
 __declspec(dllexport) int BridgeCloneTestStat(int kind) {return kind==0?clone_created:kind==1?clone_removed:kind==2?clone_abilities:clone_items;}
 
+typedef struct CatalogFixtureNode {
+    uint32_t rawcode;
+    uint32_t reserved;
+    uint64_t next;
+} CatalogFixtureNode;
+static uint32_t catalog_test_count;
+static uint64_t catalog_test_root;
+static int32_t catalog_test_link;
+static CatalogFixtureNode catalog_test_nodes[8];
+static int catalog_test_created, catalog_test_removed;
+static uint64_t fixture_catalog_create(uint32_t rawcode,float *x,float *y) {
+    (void)rawcode;
+    (void)x;(void)y;
+    ++catalog_test_created;
+    return 0xa00000u + (uint64_t)catalog_test_created;
+}
+static void fixture_catalog_remove(uint64_t item) {
+    if (item) ++catalog_test_removed;
+}
+static uint32_t fixture_catalog_choose(uint32_t level) {(void)level;return 0;}
+__declspec(dllexport) uint64_t BridgeItemCatalogTestRun(ItemCatalogWork *w,int action,int scenario) {
+    static BridgeCommand cmd;
+    int count = scenario > 0 && scenario <= 8 ? scenario : 4;
+    catalog_test_count = (uint32_t)count;
+    catalog_test_link = 0;
+    catalog_test_created = catalog_test_removed = 0;
+    for (int index=0; index<count; ++index) {
+        static const uint32_t codes[8] = {
+            0x70686561u,0x73747770u,0x636b6e67u,0x73726567u,
+            0x686f6c79u,0x706f7765u,0x736d6e74u,0x706d6e74u,
+        };
+        catalog_test_nodes[index].rawcode=codes[index];catalog_test_nodes[index].reserved=0;
+        catalog_test_nodes[index].next=index+1<count?(uint64_t)(uintptr_t)&catalog_test_nodes[index+1]:0;
+    }
+    catalog_test_root=(uint64_t)(uintptr_t)&catalog_test_nodes[0];
+    catalog_fixture_enabled=1;
+    catalog_fixture_count_pointer=&catalog_test_count;
+    catalog_fixture_root_pointer=&catalog_test_root;
+    catalog_fixture_link_pointer=&catalog_test_link;
+    catalog_fixture_rawcode_offset=0;
+    w->action=(uint32_t)action;
+    w->choose_random_item=action==1?fixture_catalog_choose:0;
+    w->create_item=(action==1 || action==3)?fixture_catalog_create:0;
+    w->remove_item=action==2?fixture_catalog_remove:0;
+    cmd.work=w;cmd.tls_value=w->expected_tls;g_dispatch=&cmd;
+    return BridgeItemCatalogQuery();
+}
+__declspec(dllexport) int BridgeItemCatalogTestStat(int kind) {
+    return kind==0?catalog_test_created:catalog_test_removed;
+}
+
 static int unit_action_case,unit_action_calls[16];
 static uint8_t unit_action_invulnerable[24],unit_action_paused[24],unit_action_pathing[24];
 static uint64_t unit_action_owner[24];

@@ -6592,6 +6592,38 @@ class War3Trainer:
         item_limit = int(limit)
         if not 0 <= item_limit <= 100000:
             raise ValueError("创建物品测试上限必须在 0 到 100000 之间")
+        if getattr(self, "_native_selection_unavailable", False):
+            from war3_casc_catalog_24268 import ITEM_RAWCODES
+            from war3_item_catalog_protocol import ACTION_CREATE_LIST
+            rawcodes = tuple(int.from_bytes(rawcode.encode("ascii"), "big") for rawcode in ITEM_RAWCODES)
+            if item_limit:
+                rawcodes = rawcodes[:item_limit]
+            if not rawcodes:
+                raise RuntimeError("当前 3.0 资源目录为空")
+            if dry_run:
+                return len(rawcodes), 0, ()
+            x, y = self.query_mouse_world_position()
+            x_bits, y_bits = self._float_bits(x), self._float_bits(y)
+            result = self._engine_instance_24268().item_catalog(
+                ACTION_CREATE_LIST,
+                0,
+                x_bits,
+                y_bits,
+                rawcodes=rawcodes,
+                dry_run=dry_run,
+            )
+            total = int(result["total"])
+            created = int(result["created"])
+            handles = tuple(int(handle) for handle in result.get("handles", ()))
+            if total != len(rawcodes):
+                raise RuntimeError(
+                    f"资源目录返回 {total} 个，期望 {len(rawcodes)} 个"
+                )
+            if not dry_run and len(handles) != created:
+                raise RuntimeError(
+                    f"物品创建返回 {created} 个，但句柄列表有 {len(handles)} 个"
+                )
+            return total, created, handles
         handlers = self._elephant_handlers(None, ("ChooseRandomItem", "CreateItem"))
         encoded_limit = item_limit | (0x80000000 if dry_run else 0)
         result = self._run_native_helper_ops(
@@ -6624,6 +6656,16 @@ class War3Trainer:
         handles = tuple(int(handle) for handle in item_handles if int(handle))
         if not handles:
             return 0
+        if getattr(self, "_native_selection_unavailable", False):
+            from war3_item_catalog_protocol import ACTION_REMOVE
+            removed = 0
+            for start in range(0, len(handles), 100000):
+                result = self._engine_instance_24268().item_catalog(
+                    ACTION_REMOVE,
+                    handles=handles[start : start + 100000],
+                )
+                removed += int(result["removed"])
+            return removed
         handler = self._elephant_handlers(None, ("RemoveItem",))["RemoveItem"].handler_address
         removed = 0
         for start in range(0, len(handles), 47):
@@ -7003,6 +7045,21 @@ class War3Trainer:
         total = int(count)
         if not 1 <= total <= 100:
             raise ValueError("批量复制数量必须在 1 到 100 之间")
+        if getattr(self, "_native_selection_unavailable", False) and rawcode is None:
+            unit_rawcode = 0
+            created = 0
+            for _ in range(total):
+                result = self.clone_batch_24268(
+                    keep=True,
+                    copy_abilities=True,
+                    copy_items=True,
+                )
+                rows = tuple(result.get("rows", ()))
+                if not rows or int(result.get("changed", 0)) != len(rows):
+                    raise RuntimeError("3.0 当前引擎批量复制返回不完整")
+                unit_rawcode = int(rows[0]["rawcode"])
+                created += len(rows)
+            return unit_rawcode, created
         position = self.query_mouse_world_position()
         created = 0
         unit_rawcode = 0
@@ -17902,8 +17959,15 @@ def run_gui() -> None:
 
     def elephant_mass_clone() -> str:
         count = parse_int(elephant_mass_clone_count.get(), "批量复制数量")
+        trainer = elephant_trainer()
+        if getattr(trainer, "_native_selection_unavailable", False):
+            unit_rawcode, created = trainer.create_local_units(count, None)
+            return (
+                f"已按当前选择批量复制 {format_rawcode(unit_rawcode)}，"
+                f"共创建 {created} 个单位"
+            )
         results = elephant_batch(
-            lambda: elephant_trainer().create_local_units(
+            lambda: trainer.create_local_units(
                 count,
                 None,
                 use_selected_lookup=True,
@@ -18034,9 +18098,22 @@ def run_gui() -> None:
         )
 
     def elephant_add_six_artifacts() -> str:
+        trainer = elephant_trainer()
+        if getattr(trainer, "_native_selection_unavailable", False):
+            trainer.add_abilities_to_selected_unit(("AInv",))
+            changed = trainer.replace_selected_inventory_items((
+                (5, "nspi"),
+                (4, "frhg"),
+                (3, "crdt"),
+                (2, "shdt"),
+                (1, "srtl"),
+                (0, "klmm"),
+            ))
+            return f"已批量处理六神器，实际写入 {changed} 个物品槽位"
+
         def add_artifacts() -> int:
-            elephant_trainer().add_abilities_to_selected_unit(("AInv",))
-            return elephant_trainer().replace_selected_inventory_items((
+            trainer.add_abilities_to_selected_unit(("AInv",))
+            return trainer.replace_selected_inventory_items((
                 (5, "nspi"),
                 (4, "frhg"),
                 (3, "crdt"),
@@ -18053,11 +18130,15 @@ def run_gui() -> None:
 
     def elephant_create_all_items() -> str:
         total, created, _last_item = elephant_trainer().create_all_loaded_items()
-        return f"已遍历 {total} 个运行时物品对象，成功创建 {created} 个"
+        return f"已读取当前版本资源目录 {total} 个物品，成功创建 {created} 个"
 
     def elephant_apply_all_debuffs() -> str:
+        trainer = elephant_trainer()
+        if getattr(trainer, "_native_selection_unavailable", False):
+            attempted, succeeded = trainer.apply_standard_debuffs_to_selected_unit()
+            return f"已对当前选择执行减益 {succeeded}/{attempted} 次"
         results = elephant_batch(
-            elephant_trainer().apply_standard_debuffs_to_selected_unit,
+            trainer.apply_standard_debuffs_to_selected_unit,
             "施加减益",
         )
         attempted = sum(int(result[0]) for result in results)
@@ -18068,8 +18149,12 @@ def run_gui() -> None:
         )
 
     def elephant_apply_all_buffs() -> str:
+        trainer = elephant_trainer()
+        if getattr(trainer, "_native_selection_unavailable", False):
+            attempted, succeeded = trainer.apply_standard_buffs_to_selected_unit()
+            return f"已对当前选择执行增益 {succeeded}/{attempted} 次"
         results = elephant_batch(
-            elephant_trainer().apply_standard_buffs_to_selected_unit,
+            trainer.apply_standard_buffs_to_selected_unit,
             "施加增益",
         )
         attempted = sum(int(result[0]) for result in results)
@@ -18105,8 +18190,15 @@ def run_gui() -> None:
         rawcode = elephant_preset_item_rawcode.get().strip()
         if not rawcode:
             raise ValueError("请填写快捷物品 ID")
+        trainer = elephant_trainer()
+        if getattr(trainer, "_native_selection_unavailable", False):
+            result = trainer.item_batch_24268(1, rawcode)
+            return (
+                f"已向当前选择创建 {result['count']} 件物品："
+                f"入包 {result['stored']} 件，落地 {result['ground']} 件"
+            )
         results = elephant_batch(
-            lambda: elephant_trainer().add_item_to_selected_unit(rawcode),
+            lambda: trainer.add_item_to_selected_unit(rawcode),
             f"添加物品 {rawcode}",
         )
         return (

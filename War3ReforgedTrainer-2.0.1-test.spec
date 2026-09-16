@@ -17,6 +17,8 @@ a = Analysis(
         'war3_ability_protocol',
         'war3_ability_field_protocol',
         'war3_item_protocol',
+        'war3_item_catalog_protocol',
+        'war3_casc_catalog_24268',
         'war3_item_field_protocol',
         'war3_selection_protocol',
         'war3_hero_protocol',

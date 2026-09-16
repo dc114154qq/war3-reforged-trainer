@@ -118,3 +118,50 @@ def test_selection_candidate_list_uses_indexed_path_when_current_native_is_disab
     trainer.persistent_native_init = Mock(side_effect=AssertionError("legacy native path"))
     assert trainer.list_selection_candidates() == [summary]
     trainer.persistent_native_init.assert_not_called()
+
+
+def test_current_engine_mass_clone_uses_one_group_batch_per_requested_copy():
+    import ast
+
+    source = ast.parse(module.Path(module.__file__).read_text(encoding="utf-8"))
+    function = next(
+        node for node in ast.walk(source)
+        if isinstance(node, ast.FunctionDef) and node.name == "elephant_mass_clone"
+    )
+    trainer = Mock()
+    trainer._native_selection_unavailable = True
+    trainer.create_local_units.return_value = (0x66647467, 48)
+    count = Mock()
+    count.get.return_value = "2"
+    env = {
+        "elephant_trainer": lambda: trainer,
+        "elephant_mass_clone_count": count,
+        "parse_int": lambda value, label: int(value),
+        "format_rawcode": lambda value: "fdtg",
+    }
+    exec(compile(ast.Module(body=[function], type_ignores=[]), "<gui-clone>", "exec"), env)
+    assert "48" in env["elephant_mass_clone"]()
+    trainer.create_local_units.assert_called_once_with(2, None)
+
+
+@pytest.mark.parametrize("name,method,result_text", [
+    ("elephant_apply_all_debuffs", "apply_standard_debuffs_to_selected_unit", "8/12"),
+    ("elephant_apply_all_buffs", "apply_standard_buffs_to_selected_unit", "12/12"),
+])
+def test_current_engine_effect_batches_are_not_repeated_per_selected_unit(
+    name, method, result_text,
+):
+    import ast
+
+    source = ast.parse(module.Path(module.__file__).read_text(encoding="utf-8"))
+    function = next(
+        node for node in ast.walk(source)
+        if isinstance(node, ast.FunctionDef) and node.name == name
+    )
+    trainer = Mock()
+    trainer._native_selection_unavailable = True
+    getattr(trainer, method).return_value = (12, 8) if "debuff" in name else (12, 12)
+    env = {"elephant_trainer": lambda: trainer}
+    exec(compile(ast.Module(body=[function], type_ignores=[]), "<gui-effect>", "exec"), env)
+    assert result_text in env[name]()
+    getattr(trainer, method).assert_called_once_with()

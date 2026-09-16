@@ -1,0 +1,29 @@
+{
+  "version": "2.0.1-test",
+  "game_build": "3.0.0.24268",
+  "branch": "codex/war3-3.0.0.24268-adaptation",
+  "exe": "dist-2.0.1-test-3.0.0.24268-r5/War3ReforgedTrainer-v2.0.1-test.exe",
+  "exe_bytes": 18846832,
+  "exe_sha256": "b35ccbf549520544c010b815810cf508fb3d3d31af3dc4e71ccf933d7d1a7ff6",
+  "bridge_sha256": "8b02431a7fa08f8ef05634f34b7b4f9021d11bdd9dc6003790d9faa51d2d63d0",
+  "catalog_counts": {
+    "item": 648,
+    "ability": 473,
+    "unit": 928
+  },
+  "tests": {
+    "war3_3_0_24268": "500 passed",
+    "live_pid": 32020,
+    "live_item_create": {
+      "rawcode": "ckng",
+      "created": 1,
+      "handle": "0x10faca",
+      "removed": 1
+    },
+    "frozen_runtime_self_test": "ok=true, frozen=true, retired_helper_present=false"
+  },
+  "residual": [
+    "Physical second-computer validation is not performed in this workspace.",
+    "Full repository test run has unrelated pre-existing Unicorn/clang/UI baseline failures; the 3.0.0.24268 product suite is green."
+  ]
+}

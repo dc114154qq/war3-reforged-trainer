@@ -1,0 +1,45 @@
+{
+  "ok": true,
+  "release": "2.0.1-test",
+  "game_build": "3.0.0.24268",
+  "source_commit": "1b9ff64",
+  "exe": "dist-2.0.1-test-3.0.0.24268-r6/War3ReforgedTrainer-v2.0.1-test.exe",
+  "exe_bytes": 18847074,
+  "exe_sha256": "382f8a7b9bcf6c1dc8aa8d29c5248e6f61cd8ecc3d4b43df6ef7bfa06250673e",
+  "bridge_sha256": "8b02431a7fa08f8ef05634f34b7b4f9021d11bdd9dc6003790d9faa51d2d63d0",
+  "decoder_sha256": "76958e18380023a68fd1714fa2e01c594cc6db1955a07ad6937b66e66dc5d6c3",
+  "retired_helper_present": false,
+  "source_checks": {
+    "py_compile": true,
+    "pytest_24268_count": 504,
+    "pytest_24268_passed": true,
+    "git_diff_check": true
+  },
+  "frozen_runtime_self_test": {
+    "ok": true,
+    "frozen": true,
+    "instruction_boundary_check": ["mov", "mov", "call", "ret"],
+    "report": "analysis/package-runtime-self-test-r6.json"
+  },
+  "portable_path_simulation": {
+    "ok": true,
+    "same_hash_in_two_nested_copies": true,
+    "report": "analysis/cross-device-sim-r6.json",
+    "physical_second_computer_test": false
+  },
+  "live_read_only_checks": {
+    "pid": 32020,
+    "game_build": "3.0.0.24268",
+    "resource_read_ok": true,
+    "resource_group_count": 28,
+    "cold_list_seconds": 0.050913999999465887,
+    "warm_list_seconds": 0.04476599999907194,
+    "formal_preflight_ok": false,
+    "formal_preflight_report": "analysis/live-selection-preflight-r6.json",
+    "formal_preflight_error": "current handler image pages were PAGE_NOACCESS",
+    "diagnostic_preflight_ok": true,
+    "diagnostic_preflight_report": "analysis/live-selection-preflight-r6-diagnostic.json",
+    "diagnostic_scope": "handler addresses remained inside the verified game image; no game handler was called"
+  },
+  "residual_test_gap": "A physical second-computer run and a live selected-unit mutation run remain for the user's environment; the current 32020 process had no stable executable handler mapping during formal preflight."
+}

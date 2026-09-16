@@ -57,7 +57,7 @@ def main() -> None:
     marker(b"item_batch_abi", (0x24268014, 216, 5968))
     marker(b"item_catalog_batch_abi", (0x2426802B, 216, 0))
     marker(b"item_field_batch_abi", (0x24268022, 216, 5136))
-    marker(b"clone_batch_abi", (0x24268015, 216, 1856))
+    marker(b"clone_batch_abi", (0x24268015, 216, 1872))
     marker(b"unit_action_batch_abi", (0x24268016, 216, 1432))
     marker(b"world_batch_abi", (0x24268017, 216, 128))
     marker(b"bulk_batch_abi", (0x24268023, 216, 624))

@@ -30,6 +30,8 @@ typedef struct CloneWork {
     void (*remove_unit)(uint64_t);
     int32_t (*get_level)(uint64_t);
     void (*set_level)(uint64_t, int32_t, uint32_t);
+    int32_t (*get_skill_points)(uint64_t);
+    uint8_t (*modify_skill_points)(uint64_t, int32_t);
     uint64_t (*ability_by_index)(uint64_t, int32_t);
     uint32_t (*ability_id)(uint64_t);
     int32_t (*ability_level)(uint64_t, uint32_t);
@@ -47,8 +49,8 @@ typedef struct CloneWork {
     uint32_t flags, spawn_x_bits, spawn_y_bits, changed, error, completed, reserved, pad;
     CloneRow rows[24];
 } CloneWork;
-_Static_assert(sizeof(CloneWork) == 1856, "CloneWork ABI");
-__declspec(dllexport) const uint32_t clone_batch_abi[3] = {0x24268015u, 216u, 1856u};
+_Static_assert(sizeof(CloneWork) == 1872, "CloneWork ABI");
+__declspec(dllexport) const uint32_t clone_batch_abi[3] = {0x24268015u, 216u, 1872u};
 
 static float clone_real(uint32_t bits) {
     union { uint32_t bits; float value; } value;
@@ -150,6 +152,7 @@ __declspec(dllexport) uint64_t BridgeCloneQuery(void) {
         !(w->flags & (CLONE_COPY_ABILITIES | CLONE_COPY_ITEMS)) ||
         !w->owner || !w->type_id || !w->get_x || !w->get_y || !w->get_facing ||
         !w->create || !w->remove_unit || !w->get_level || !w->set_level ||
+        !w->get_skill_points || !w->modify_skill_points ||
         !w->ability_by_index || !w->ability_id || !w->ability_level ||
         !w->add_ability || !w->set_ability_level || !w->item_in_slot ||
         !w->item_ability_by_index ||
@@ -172,6 +175,7 @@ __declspec(dllexport) uint64_t BridgeCloneQuery(void) {
         uint32_t source_item_abilities[CLONE_MAX_ITEM_ABILITIES] = {0};
         uint32_t source_item_ability_count = 0;
         uint32_t ability_count = 0, item_count = 0;
+        int32_t source_skill_points = 0;
         uint32_t source_x = w->get_x(source), source_y = w->get_y(source);
         uint32_t source_facing = w->get_facing(source);
         float x = (w->flags & CLONE_USE_SPAWN) ? clone_real(w->spawn_x_bits) : clone_real(source_x);
@@ -195,9 +199,19 @@ __declspec(dllexport) uint64_t BridgeCloneQuery(void) {
                 w->error = 63;
             }
             if (!w->error && w->selection.rows[i].level > 0) {
+                source_skill_points = w->get_skill_points(source);
                 row->level = w->selection.rows[i].level;
                 if (w->get_level(row->clone) != row->level &&
                     !clone_set_level(w, row->clone, row->level)) w->error = 64;
+                if (!w->error) {
+                    int32_t target_skill_points = w->get_skill_points(row->clone);
+                    int64_t delta = (int64_t)source_skill_points - target_skill_points;
+                    if (delta < -2147483648LL || delta > 2147483647LL ||
+                        (delta && !w->modify_skill_points(row->clone, (int32_t)delta)) ||
+                        w->get_skill_points(row->clone) != source_skill_points) {
+                        w->error = 71;
+                    }
+                }
             } else if (!w->error) {
                 row->level = 0;
             }

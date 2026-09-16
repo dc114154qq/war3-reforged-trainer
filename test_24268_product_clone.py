@@ -45,7 +45,7 @@ def run(dll, count=15, scenario=0, flags=CLONE_COPY_ABILITIES | CLONE_COPY_ITEMS
     payload = c.create_string_buffer(work(flags))
     returned = dll.BridgeCloneTestRun(payload, count, scenario)
     stats = tuple(dll.BridgeCloneTestStat(i) for i in range(4))
-    return payload.raw[:1856], returned, stats
+    return payload.raw[:1872], returned, stats
 
 
 def test_temporary_clone_copies_abilities_and_items_then_cleans_every_clone(fixture):
@@ -64,6 +64,18 @@ def test_keep_clone_retains_rows_and_does_not_run_cleanup(fixture):
     result = decode_work(data, count)
     assert result["kept"] and all(row["status"] == 1 for row in result["rows"])
     assert stats == (15, 0, 5, 5)
+
+
+def test_clone_preserves_hero_skill_points(fixture):
+    data, count, _stats = run(
+        fixture,
+        count=1,
+        flags=CLONE_KEEP | CLONE_COPY_ABILITIES,
+    )
+    result = decode_work(data, count)
+    assert result["count"] == 1
+    assert result["rows"][0]["level"] == 1
+    assert fixture.BridgeCloneTestStat(4) == 0
 
 
 @pytest.mark.parametrize("scenario", [1, 2, 3])
@@ -139,5 +151,5 @@ def test_gui_clone_path_uses_one_current_engine_batch():
 
 def test_keep_flag_is_part_of_the_wire_request():
     payload = work(CLONE_KEEP | CLONE_COPY_ABILITIES)
-    values = struct.unpack_from("<24Q8I", payload, 480)
-    assert values[24] & CLONE_KEEP
+    values = struct.unpack_from("<26Q8I", payload, 480)
+    assert values[26] & CLONE_KEEP

@@ -220,6 +220,7 @@ __declspec(dllexport) uint64_t BridgeItemTestRun(ItemWork *w,int count,int scena
 __declspec(dllexport) int BridgeItemTestStat(int kind) {return kind==0 ? item_create_calls : kind==1 ? item_set_calls : item_remove_calls;}
 
 static int clone_case,clone_created,clone_removed,clone_abilities,clone_items;
+static int32_t fixture_skill_points[24],clone_skill_points[24];
 static uint32_t clone_type[24],clone_ability_level[24],clone_item_type[24];
 static int32_t clone_item_charge[24];
 static uint32_t clone_bits(float value) { union {float value;uint32_t bits;} v;v.value=value;return v.bits; }
@@ -240,13 +241,21 @@ static uint32_t clone_facing(uint64_t unit) { (void)unit; return clone_bits(90.0
 static uint64_t clone_create(uint64_t owner,uint32_t rawcode,float *x,float *y,float *facing) {
     int i=clone_created;(void)owner;(void)x;(void)y;(void)facing;
     if (clone_case==1 || (clone_case==4 && i>=3) || i>=24) return 0;
-    clone_type[i]=rawcode;clone_ability_level[i]=0;clone_item_type[i]=0;clone_item_charge[i]=0;
+    clone_type[i]=rawcode;clone_ability_level[i]=0;clone_item_type[i]=0;clone_item_charge[i]=0;clone_skill_points[i]=3;
     ++clone_created;return 0x600000+i;
 }
 static void clone_set_owner(uint64_t unit,uint64_t owner,uint32_t color) {(void)unit;(void)owner;(void)color;}
 static void clone_remove_unit(uint64_t unit) { if (unit>=0x600000 && unit<0x600018) {clone_type[clone_index(unit)]=0;++clone_removed;} }
 static int32_t clone_level(uint64_t unit) { return unit>=0x600000 ? 1 : fixture_level(unit); }
 static void clone_set_hero_level_fixture(uint64_t unit,int32_t level,uint32_t eye) {(void)unit;(void)level;(void)eye;}
+static int32_t clone_get_skill_points(uint64_t unit) {
+    return unit>=0x600000 ? clone_skill_points[clone_index(unit)] : fixture_skill_points[clone_index(unit)];
+}
+static uint8_t clone_modify_skill_points(uint64_t unit,int32_t delta) {
+    if (unit < 0x600000 || unit >= 0x600018) return 0;
+    clone_skill_points[clone_index(unit)] += delta;
+    return 1;
+}
 static uint64_t clone_ability_by_index(uint64_t unit,int32_t index) {
     if (clone_case==5 && unit < 0x600000 && fixture_level(unit) > 0 && index == 0)
         return 0x720000 + clone_index(unit); /* engine buff exposed as a unit ability */
@@ -295,7 +304,7 @@ __declspec(dllexport) uint64_t BridgeCloneTestRun(CloneWork *w,int count,int sce
     static BridgeCommand cmd;int i;
     if (count<0 || count>24)return 0;
     fixture_count=count;fixture_scenario=0;clone_case=scenario;clone_created=clone_removed=clone_abilities=clone_items=0;
-    for(i=0;i<24;++i){fixture_levels[i]=i%3==0?1:0;clone_type[i]=0;clone_ability_level[i]=0;clone_item_type[i]=0;clone_item_charge[i]=0;}
+    for(i=0;i<24;++i){fixture_levels[i]=i%3==0?1:0;fixture_skill_points[i]=i%3==0?0:9;clone_type[i]=0;clone_ability_level[i]=0;clone_item_type[i]=0;clone_item_charge[i]=0;clone_skill_points[i]=0;}
     cmd.work=w;cmd.tls_value=w->expected_tls;g_dispatch=&cmd;
     w->selection.local_player=fixture_player;w->selection.create_group=fixture_group;
     w->selection.enum_selected=fixture_enum;w->selection.first_of_group=fixture_first;
@@ -303,7 +312,9 @@ __declspec(dllexport) uint64_t BridgeCloneTestRun(CloneWork *w,int count,int sce
     w->selection.unit_type_id=fixture_type;w->selection.hero_level=fixture_level;
     w->owner=clone_owner;w->type_id=clone_type_id;w->get_x=clone_x;w->get_y=clone_y;w->get_facing=clone_facing;
     w->create=clone_create;w->set_owner=clone_set_owner;w->remove_unit=clone_remove_unit;
-    w->get_level=clone_level;w->set_level=clone_set_hero_level_fixture;w->ability_by_index=clone_ability_by_index;
+    w->get_level=clone_level;w->set_level=clone_set_hero_level_fixture;
+    w->get_skill_points=clone_get_skill_points;w->modify_skill_points=clone_modify_skill_points;
+    w->ability_by_index=clone_ability_by_index;
     w->ability_id=clone_ability_id;w->ability_level=clone_get_ability_level;w->add_ability=clone_add_ability;
     w->set_ability_level=clone_set_ability_level_fn;w->item_ability_by_index=clone_item_ability_by_index;
     w->item_in_slot=clone_item_slot;w->item_type=clone_item_type_fn;
@@ -311,7 +322,7 @@ __declspec(dllexport) uint64_t BridgeCloneTestRun(CloneWork *w,int count,int sce
     w->detach_item=clone_detach_item;w->remove_item=clone_remove_item;
     return BridgeCloneQuery();
 }
-__declspec(dllexport) int BridgeCloneTestStat(int kind) {return kind==0?clone_created:kind==1?clone_removed:kind==2?clone_abilities:clone_items;}
+__declspec(dllexport) int BridgeCloneTestStat(int kind) {return kind==0?clone_created:kind==1?clone_removed:kind==2?clone_abilities:kind==3?clone_items:kind==4?clone_skill_points[0]:-1;}
 
 typedef struct CatalogFixtureNode {
     uint32_t rawcode;

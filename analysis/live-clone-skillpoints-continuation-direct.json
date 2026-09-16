@@ -1,0 +1,436 @@
+{
+  "pid": 32020,
+  "keep": false,
+  "copy_abilities": true,
+  "copy_items": true,
+  "ok": true,
+  "hwnd": 789336,
+  "result": {
+    "rows": [
+      {
+        "handle": 1112772,
+        "rawcode": 1432448633,
+        "level": 4,
+        "clone": 1137985,
+        "owner": 1048587,
+        "ability_count": 23,
+        "item_count": 4,
+        "status": 2,
+        "created_items": 4
+      },
+      {
+        "handle": 1109163,
+        "rawcode": 1432842859,
+        "level": 4,
+        "clone": 1138014,
+        "owner": 1048587,
+        "ability_count": 37,
+        "item_count": 6,
+        "status": 2,
+        "created_items": 6
+      },
+      {
+        "handle": 1055634,
+        "rawcode": 1717859431,
+        "level": 0,
+        "clone": 1138061,
+        "owner": 1048587,
+        "ability_count": 1,
+        "item_count": 0,
+        "status": 2,
+        "created_items": 0
+      },
+      {
+        "handle": 1055635,
+        "rawcode": 1717859431,
+        "level": 0,
+        "clone": 1138068,
+        "owner": 1048587,
+        "ability_count": 1,
+        "item_count": 0,
+        "status": 2,
+        "created_items": 0
+      }
+    ],
+    "count": 4,
+    "changed": 4,
+    "kept": false,
+    "copied_abilities": true,
+    "copied_items": true
+  },
+  "engine_report": {
+    "pid": 32020,
+    "operation": "clone",
+    "request": {
+      "keep": false,
+      "preserve_owner": false,
+      "copy_abilities": true,
+      "copy_items": true
+    },
+    "ok": true,
+    "mappings": {
+      "GetLocalPlayer": {
+        "address": "0x7ff7bdb973d0",
+        "kind": "image-noaccess-diagnostic-only",
+        "protection": "0x1",
+        "allocation": "0x7ff7bcef0000",
+        "code_hex": null
+      },
+      "CreateGroup": {
+        "address": "0x7ff7bdb85f40",
+        "kind": "image-noaccess-diagnostic-only",
+        "protection": "0x1",
+        "allocation": "0x7ff7bcef0000",
+        "code_hex": null
+      },
+      "GroupEnumUnitsSelected": {
+        "address": "0x7ff7bdba08a0",
+        "kind": "image-noaccess-diagnostic-only",
+        "protection": "0x1",
+        "allocation": "0x7ff7bcef0000",
+        "code_hex": null
+      },
+      "FirstOfGroup": {
+        "address": "0x7ff7bdb8bb90",
+        "kind": "image-noaccess-diagnostic-only",
+        "protection": "0x1",
+        "allocation": "0x7ff7bcef0000",
+        "code_hex": null
+      },
+      "GroupRemoveUnit": {
+        "address": "0x7ff7bdba0e80",
+        "kind": "image-noaccess-diagnostic-only",
+        "protection": "0x1",
+        "allocation": "0x7ff7bcef0000",
+        "code_hex": null
+      },
+      "DestroyGroup": {
+        "address": "0x7ff7bdb899d0",
+        "kind": "image-noaccess-diagnostic-only",
+        "protection": "0x1",
+        "allocation": "0x7ff7bcef0000",
+        "code_hex": null
+      },
+      "GetUnitTypeId": {
+        "address": "0x7ff7bdb9f560",
+        "kind": "image-noaccess-diagnostic-only",
+        "protection": "0x1",
+        "allocation": "0x7ff7bcef0000",
+        "code_hex": null
+      },
+      "GetHeroLevel": {
+        "address": "0x7ff7bdb96160",
+        "kind": "image-noaccess-diagnostic-only",
+        "protection": "0x1",
+        "allocation": "0x7ff7bcef0000",
+        "code_hex": null
+      },
+      "GetOwningPlayer": {
+        "address": "0x7ff7bdb98970",
+        "kind": "image-noaccess-diagnostic-only",
+        "protection": "0x1",
+        "allocation": "0x7ff7bcef0000",
+        "code_hex": null
+      },
+      "GetUnitX": {
+        "address": "0x7ff7bdb9fad0",
+        "kind": "image-noaccess-diagnostic-only",
+        "protection": "0x1",
+        "allocation": "0x7ff7bcef0000",
+        "code_hex": null
+      },
+      "GetUnitY": {
+        "address": "0x7ff7bdb9fb10",
+        "kind": "image-noaccess-diagnostic-only",
+        "protection": "0x1",
+        "allocation": "0x7ff7bcef0000",
+        "code_hex": null
+      },
+      "GetUnitFacing": {
+        "address": "0x7ff7bdb9e130",
+        "kind": "image-noaccess-diagnostic-only",
+        "protection": "0x1",
+        "allocation": "0x7ff7bcef0000",
+        "code_hex": null
+      },
+      "CreateUnit": {
+        "address": "0x7ff7bdb88620",
+        "kind": "image-noaccess-diagnostic-only",
+        "protection": "0x1",
+        "allocation": "0x7ff7bcef0000",
+        "code_hex": null
+      },
+      "SetUnitOwner": {
+        "address": "0x7ff7bdbea030",
+        "kind": "image-noaccess-diagnostic-only",
+        "protection": "0x1",
+        "allocation": "0x7ff7bcef0000",
+        "code_hex": null
+      },
+      "RemoveUnit": {
+        "address": "0x7ff7bdbae690",
+        "kind": "image-noaccess-diagnostic-only",
+        "protection": "0x1",
+        "allocation": "0x7ff7bcef0000",
+        "code_hex": null
+      },
+      "SetHeroLevel": {
+        "address": "0x7ff7bdbe1fa0",
+        "kind": "image-noaccess-diagnostic-only",
+        "protection": "0x1",
+        "allocation": "0x7ff7bcef0000",
+        "code_hex": null
+      },
+      "GetHeroSkillPoints": {
+        "address": "0x7ff7bdb96310",
+        "kind": "image-noaccess-diagnostic-only",
+        "protection": "0x1",
+        "allocation": "0x7ff7bcef0000",
+        "code_hex": null
+      },
+      "UnitModifySkillPoints": {
+        "address": "0x7ff7bdbf17d0",
+        "kind": "image-noaccess-diagnostic-only",
+        "protection": "0x1",
+        "allocation": "0x7ff7bcef0000",
+        "code_hex": null
+      },
+      "BlzGetUnitAbilityByIndex": {
+        "address": "0x7ff7bdb9d5f0",
+        "kind": "image-noaccess-diagnostic-only",
+        "protection": "0x1",
+        "allocation": "0x7ff7bcef0000",
+        "code_hex": null
+      },
+      "BlzGetAbilityId": {
+        "address": "0x7ff7bdb91400",
+        "kind": "image-noaccess-diagnostic-only",
+        "protection": "0x1",
+        "allocation": "0x7ff7bcef0000",
+        "code_hex": null
+      },
+      "GetUnitAbilityLevel": {
+        "address": "0x7ff7bdb9d7c0",
+        "kind": "image-noaccess-diagnostic-only",
+        "protection": "0x1",
+        "allocation": "0x7ff7bcef0000",
+        "code_hex": null
+      },
+      "UnitAddAbility": {
+        "address": "0x7ff7bdbefd30",
+        "kind": "image-noaccess-diagnostic-only",
+        "protection": "0x1",
+        "allocation": "0x7ff7bcef0000",
+        "code_hex": null
+      },
+      "SetUnitAbilityLevel": {
+        "address": "0x7ff7bdbe83a0",
+        "kind": "image-noaccess-diagnostic-only",
+        "protection": "0x1",
+        "allocation": "0x7ff7bcef0000",
+        "code_hex": null
+      },
+      "BlzGetItemAbilityByIndex": {
+        "address": "0x7ff7bdb967c0",
+        "kind": "image-noaccess-diagnostic-only",
+        "protection": "0x1",
+        "allocation": "0x7ff7bcef0000",
+        "code_hex": null
+      },
+      "UnitItemInSlot": {
+        "address": "0x7ff7bdbf1700",
+        "kind": "image-noaccess-diagnostic-only",
+        "protection": "0x1",
+        "allocation": "0x7ff7bcef0000",
+        "code_hex": null
+      },
+      "GetItemTypeId": {
+        "address": "0x7ff7bdb96e80",
+        "kind": "image-noaccess-diagnostic-only",
+        "protection": "0x1",
+        "allocation": "0x7ff7bcef0000",
+        "code_hex": null
+      },
+      "GetItemCharges": {
+        "address": "0x7ff7bdb968b0",
+        "kind": "image-noaccess-diagnostic-only",
+        "protection": "0x1",
+        "allocation": "0x7ff7bcef0000",
+        "code_hex": null
+      },
+      "UnitAddItemById": {
+        "address": "0x7ff7bdbefff0",
+        "kind": "image-noaccess-diagnostic-only",
+        "protection": "0x1",
+        "allocation": "0x7ff7bcef0000",
+        "code_hex": null
+      },
+      "SetItemCharges": {
+        "address": "0x7ff7bdbe28d0",
+        "kind": "image-noaccess-diagnostic-only",
+        "protection": "0x1",
+        "allocation": "0x7ff7bcef0000",
+        "code_hex": null
+      },
+      "UnitRemoveItem": {
+        "address": "0x7ff7bdbf1a70",
+        "kind": "image-noaccess-diagnostic-only",
+        "protection": "0x1",
+        "allocation": "0x7ff7bcef0000",
+        "code_hex": null
+      },
+      "RemoveItem": {
+        "address": "0x7ff7bdbaded0",
+        "kind": "image-noaccess-diagnostic-only",
+        "protection": "0x1",
+        "allocation": "0x7ff7bcef0000",
+        "code_hex": null
+      }
+    },
+    "preflight_ms": 147.78309999928751,
+    "dispatch": {
+      "pid": 32020,
+      "hwnd": "0xc0b58",
+      "expected_callback_tid": 26172,
+      "image": "C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\tools\\war3_bridge_24268_2_0_1.dll",
+      "image_sha256": "8937347302e2278f008939e02069ec0f7caeea35e72b495026ff5214fa5a8b54",
+      "calls_game_handlers": true,
+      "query_mode": "clone",
+      "delivery_mode": "send",
+      "image_base": "0x7ffea0580000",
+      "command_address": "0x232281a0000",
+      "work_address": "0x232313b0000",
+      "install_thread": {
+        "tid": 12632,
+        "created": true,
+        "completed": true
+      },
+      "after_install": {
+        "hook": 330960077,
+        "target_tid": 26172,
+        "message": 50401,
+        "nonce": 1131189916689717442,
+        "stage": 2,
+        "last_error": 0,
+        "callback_tid": 0,
+        "callback_count": 0,
+        "detached": 0,
+        "active": 0,
+        "query_result": "0x0",
+        "tls_value": "0x0",
+        "query_stage": 0,
+        "exception_code": "0x0",
+        "unwind_registered": 1,
+        "unwind_removed": 0
+      },
+      "send": {
+        "completed": true,
+        "error": 0
+      },
+      "after_send": {
+        "hook": 330960077,
+        "target_tid": 26172,
+        "message": 50401,
+        "nonce": 1131189916689717442,
+        "stage": 3,
+        "last_error": 0,
+        "callback_tid": 26172,
+        "callback_count": 1,
+        "detached": 1,
+        "active": 0,
+        "query_result": "0x4",
+        "tls_value": "0x231a505e9a0",
+        "query_stage": 2,
+        "exception_code": "0x0",
+        "unwind_registered": 1,
+        "unwind_removed": 0
+      },
+      "after_cleanup": {
+        "hook": 330960077,
+        "target_tid": 26172,
+        "message": 50401,
+        "nonce": 1131189916689717442,
+        "stage": 3,
+        "last_error": 0,
+        "callback_tid": 26172,
+        "callback_count": 1,
+        "detached": 1,
+        "active": 0,
+        "query_result": "0x4",
+        "tls_value": "0x231a505e9a0",
+        "query_stage": 2,
+        "exception_code": "0x0",
+        "unwind_registered": 1,
+        "unwind_removed": 1
+      },
+      "callback_verified": true,
+      "query_completed": true,
+      "fault": null,
+      "recovered_tail_faults": 0,
+      "work_result_hex": "d073b9bdf77f0000405fb8bdf77f0000a008babdf77f000090bbb8bdf77f0000800ebabdf77f0000d099b8bdf77f000060f5b9bdf77f00006061b9bdf77f00000b00100000000000405d11000000000004000000000000000100000000000000c4fa100000000000796e615504000000abec1000000000006b72675504000000921b1000000000006774646600000000931b100000000000677464660000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000007089b9bdf77f000060f5b9bdf77f0000d0fab9bdf77f000010fbb9bdf77f000030e1b9bdf77f00002086b8bdf77f000030a0bebdf77f000090e6babdf77f00006061b9bdf77f0000a01fbebdf77f00001063b9bdf77f0000d017bfbdf77f0000f0d5b9bdf77f00000014b9bdf77f0000c0d7b9bdf77f000030fdbebdf77f0000a083bebdf77f0000c067b9bdf77f00000017bfbdf77f0000806eb9bdf77f0000b068b9bdf77f0000f0ffbebdf77f0000d028bebdf77f0000701abfbdf77f0000d0debabdf77f0000a0e905a5310200000c00000000000000000000000400000000000000040000000000000000000000415d1100000000000b00100000000000796e6155040000001700000004000000020000000000000004000000000000005e5d1100000000000b001000000000006b726755040000002500000006000000020000000000000006000000000000008d5d1100000000000b001000000000006774646600000000010000000000000002000000000000000000000000000000945d1100000000000b001000000000006774646600000000010000000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "safe_to_release": true,
+      "work_freed": true,
+      "block_freed": true,
+      "image_unmap_status": "0x0"
+    },
+    "clone_status": {
+      "changed": 4,
+      "error": 0,
+      "completed": 4
+    },
+    "result": {
+      "rows": [
+        {
+          "handle": 1112772,
+          "rawcode": 1432448633,
+          "level": 4,
+          "clone": 1137985,
+          "owner": 1048587,
+          "ability_count": 23,
+          "item_count": 4,
+          "status": 2,
+          "created_items": 4
+        },
+        {
+          "handle": 1109163,
+          "rawcode": 1432842859,
+          "level": 4,
+          "clone": 1138014,
+          "owner": 1048587,
+          "ability_count": 37,
+          "item_count": 6,
+          "status": 2,
+          "created_items": 6
+        },
+        {
+          "handle": 1055634,
+          "rawcode": 1717859431,
+          "level": 0,
+          "clone": 1138061,
+          "owner": 1048587,
+          "ability_count": 1,
+          "item_count": 0,
+          "status": 2,
+          "created_items": 0
+        },
+        {
+          "handle": 1055635,
+          "rawcode": 1717859431,
+          "level": 0,
+          "clone": 1138068,
+          "owner": 1048587,
+          "ability_count": 1,
+          "item_count": 0,
+          "status": 2,
+          "created_items": 0
+        }
+      ],
+      "count": 4,
+      "changed": 4,
+      "kept": false,
+      "copied_abilities": true,
+      "copied_items": true
+    },
+    "elapsed_ms": 229.4220999992831
+  }
+}

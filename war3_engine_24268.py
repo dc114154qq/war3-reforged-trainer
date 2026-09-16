@@ -399,8 +399,8 @@ class Engine24268:
                             report['item_field_status']=dict(changed=changed,error=error,completed=completed)
                     if kind=='clone' and evidence.get('work_result_hex'):
                         raw=bytes.fromhex(evidence['work_result_hex'])
-                        if len(raw)==1856:
-                            changed,error,completed=struct.unpack_from('<3I',raw,684)
+                        if len(raw)==1872:
+                            changed,error,completed=struct.unpack_from('<3I',raw,700)
                             report['clone_status']=dict(changed=changed,error=error,completed=completed)
                     if kind=='unit_action' and evidence.get('work_result_hex'):
                         raw=bytes.fromhex(evidence['work_result_hex'])

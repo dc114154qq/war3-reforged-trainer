@@ -8,9 +8,9 @@ from war3_selection_protocol import (
     validate_work as validate_selection_work,
 )
 
-WORK_SIZE = 1856
+WORK_SIZE = 1872
 ROW_SIZE = 48
-ROWS_OFFSET = 704
+ROWS_OFFSET = 720
 MAX_ABILITIES = 128
 MAX_ITEMS = 6
 
@@ -31,6 +31,8 @@ SIGNATURES = (
     ("RemoveUnit", "(Hunit;)V"),
     ("GetHeroLevel", "(Hunit;)I"),
     ("SetHeroLevel", "(Hunit;IB)V"),
+    ("GetHeroSkillPoints", "(Hunit;)I"),
+    ("UnitModifySkillPoints", "(Hunit;I)B"),
     ("BlzGetUnitAbilityByIndex", "(Hunit;I)Hability;"),
     ("BlzGetAbilityId", "(Hability;)I"),
     ("GetUnitAbilityLevel", "(Hunit;I)I"),
@@ -59,7 +61,7 @@ def build_work(entries, tls, *, flags=CLONE_COPY_ABILITIES | CLONE_COPY_ITEMS,
         handlers.append(entry.handler)
     payload = (
         selected
-        + struct.pack("<24Q8I", *handlers, tls, flags, spawn_x_bits,
+        + struct.pack("<26Q8I", *handlers, tls, flags, spawn_x_bits,
                       spawn_y_bits, 0, 0, 0, 0, 0)
         + bytes(WORK_SIZE - ROWS_OFFSET)
     )
@@ -69,11 +71,11 @@ def build_work(entries, tls, *, flags=CLONE_COPY_ABILITIES | CLONE_COPY_ITEMS,
 
 def validate_work(payload):
     if len(payload) != WORK_SIZE:
-        raise ValueError("CloneWork must contain exactly 1856 bytes")
+        raise ValueError("CloneWork must contain exactly 1872 bytes")
     validate_selection_work(payload[:480])
-    values = struct.unpack_from("<24Q8I", payload, 480)
-    handlers, tls = values[:23], values[23]
-    flags, spawn_x, spawn_y, changed, error, completed, reserved, pad = values[24:]
+    values = struct.unpack_from("<26Q8I", payload, 480)
+    handlers, tls = values[:25], values[25]
+    flags, spawn_x, spawn_y, changed, error, completed, reserved, pad = values[26:]
     if any(not 0x10000 <= value < 0x800000000000 for value in handlers):
         raise ValueError("CloneWork contains an invalid handler")
     if len(set(handlers)) != len(handlers):
@@ -91,8 +93,8 @@ def decode_work(payload, expected_count):
     if len(payload) != WORK_SIZE:
         raise ValueError("Incomplete clone result")
     selection = decode_selection_work(payload[:480], expected_count)
-    values = struct.unpack_from("<24Q8I", payload, 480)
-    flags, spawn_x, spawn_y, changed, error, completed, reserved, pad = values[24:]
+    values = struct.unpack_from("<26Q8I", payload, 480)
+    flags, spawn_x, spawn_y, changed, error, completed, reserved, pad = values[26:]
     if error or reserved or pad or completed != expected_count or changed != expected_count:
         raise ValueError(
             f"Clone batch incomplete: error={error}, completed={completed}/{expected_count}, "

@@ -1,0 +1,121 @@
+{
+  "ok": true,
+  "target": "Warcraft III 3.0.0.24268",
+  "branch": "codex/war3-3.0.0.24268-adaptation",
+  "source_commit": "733af9af490fccf7b9ec29c05e2f686f1a450465",
+  "package": {
+    "path": "C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\dist-2.0.1-test-3.0.0.24268-r9\\War3ReforgedTrainer-v2.0.1-test.exe",
+    "version": "2.0.1.0",
+    "bytes": 18850584,
+    "sha256": "36d9369f0a99efd600987ae38a16c7e3c5165424d96c223d606fd3501b694778",
+    "runtime_self_test": true,
+    "embedded_source_matches": true,
+    "embedded_modules_match": [
+      "war3_ui_i18n",
+      "war3_engine_24268",
+      "war3_engine_transport",
+      "war3_clone_protocol",
+      "war3_ability_protocol",
+      "war3_item_protocol",
+      "war3_item_catalog_protocol",
+      "war3_unit_action_protocol"
+    ],
+    "retired_helper_keys": []
+  },
+  "capabilities": [
+    {
+      "name": "资源",
+      "status": "live_read_verified; write path covered by 3.0 tests",
+      "evidence": [
+        "analysis/player-resources-live.json",
+        "test_24268_product_*.py"
+      ],
+      "user_test": "设置/锁定金币、木材和人口"
+    },
+    {
+      "name": "多选单位上限",
+      "status": "code_and_fixture_verified",
+      "evidence": [
+        "war3_selection_protocol.py:MAX_SELECTED=24",
+        "test_24268_selection_protocol.py",
+        "test_24268_product_hero.py",
+        "test_24268_product_item.py"
+      ],
+      "user_test": "24 单位混合选择后的批量操作"
+    },
+    {
+      "name": "英雄属性/等级/技能点",
+      "status": "hero_query_live_verified; write and readback covered by code tests",
+      "evidence": [
+        "analysis/live-engine-hero-readonly-continuation.json",
+        "test_24268_product_hero.py",
+        "test_24268_product_clone.py"
+      ],
+      "user_test": "英雄属性、等级和技能点写入"
+    },
+    {
+      "name": "技能",
+      "status": "ability_query_live_verified; batch and replacement transaction covered by tests",
+      "evidence": [
+        "analysis/live-engine-ability-item-readonly-r8.json",
+        "test_24268_product_ability.py",
+        "test_24268_skill_replacement_integrity.py"
+      ],
+      "user_test": "添加、删除、改等级和英雄技能替换"
+    },
+    {
+      "name": "物品",
+      "status": "inventory query live verified; batch/catalog paths covered by tests",
+      "evidence": [
+        "analysis/live-engine-ability-item-readonly-r8.json",
+        "test_24268_product_item.py",
+        "test_24268_product_item_catalog.py"
+      ],
+      "user_test": "添加、复制、数量、槽位替换和创建全部物品"
+    },
+    {
+      "name": "复制单位",
+      "status": "live verified on 4 selected units with abilities/items and cleanup",
+      "evidence": [
+        "analysis/live-clone-skillpoints-continuation-direct.json",
+        "test_24268_product_clone.py"
+      ],
+      "user_test": "英雄、普通单位、技能点、技能和物品复制结果"
+    },
+    {
+      "name": "大象功能",
+      "status": "engine routes, 24-unit GUI batching and mouse/camera path covered",
+      "evidence": [
+        "analysis/live-engine-hero-readonly-continuation.json",
+        "analysis/live-trainer-mouse-target-continuation.json",
+        "test_24268_product_boundary.py",
+        "test_24268_product_hero.py",
+        "test_24268_product_ability.py",
+        "test_24268_product_item.py"
+      ],
+      "user_test": "预热、移动、批量操作和快捷键"
+    },
+    {
+      "name": "日志与故障留痕",
+      "status": "code_and_package_verified",
+      "evidence": [
+        "war3_reforged_trainer.py:Win10ReadLogger",
+        "analysis/package-runtime-self-test-r9.json"
+      ],
+      "user_test": "发生错误时提供最新 log 路径"
+    },
+    {
+      "name": "跨设备",
+      "status": "two-directory package simulation passed; physical test delegated to user",
+      "evidence": [
+        "analysis/cross-device-sim-r9.json"
+      ],
+      "user_test": "在另一台电脑运行 r9"
+    }
+  ],
+  "test_summary": {
+    "full_regression": "2264 passed, 17 skipped, 120 subtests passed",
+    "current_engine_24268_suite": "510 passed",
+    "physical_second_computer": "未执行"
+  }
+}

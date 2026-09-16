@@ -147,6 +147,9 @@ def dispatch(pid,hwnd,tid,image,tls_index,work_payload,kind="hero"):
     elif kind=='position':
         from war3_position_protocol import ABI as expected_abi,validate_work as validate_position
         validate_position(work_payload);marker_name=b'position_batch_abi';query_name=b'BridgePositionQuery'
+    elif kind=='terrain':
+        from war3_terrain_protocol import ABI as expected_abi,validate_work as validate_terrain
+        validate_terrain(work_payload);marker_name=b'terrain_batch_abi';query_name=b'BridgeTerrainQuery'
     else:raise ValueError('Unknown current-engine batch kind')
     owner=U()
     if window_thread(hwnd,c.byref(owner))!=tid or owner.value!=pid:

@@ -74,7 +74,8 @@ def test_gui_does_not_repeat_whole_batch(name,action):
         'parse_int':lambda value,label:int(value),'elephant_batch':Mock(side_effect=AssertionError('repeated'))}
     exec(compile(ast.Module(body=[fn],type_ignores=[]),'<gui-ability>','exec'),env)
     assert '24' in env[name]()
-    trainer.ability_batch_24268.assert_called_once_with('AHad',action,2 if action==3 else 0)
+    expected_action = 1 if action == 3 else action
+    trainer.ability_batch_24268.assert_called_once_with('AHad', expected_action, 2 if action==3 else 0)
 
 def test_product_methods_never_call_old_helper():
     trainer=object.__new__(product.War3Trainer);trainer._native_selection_unavailable=True

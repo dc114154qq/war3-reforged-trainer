@@ -45,7 +45,7 @@ def run(dll, count=15, scenario=0, flags=CLONE_COPY_ABILITIES | CLONE_COPY_ITEMS
     payload = c.create_string_buffer(work(flags))
     returned = dll.BridgeCloneTestRun(payload, count, scenario)
     stats = tuple(dll.BridgeCloneTestStat(i) for i in range(4))
-    return payload.raw[:1848], returned, stats
+    return payload.raw[:1856], returned, stats
 
 
 def test_temporary_clone_copies_abilities_and_items_then_cleans_every_clone(fixture):
@@ -94,7 +94,7 @@ def test_clone_requires_exact_current_signature(name):
         build_work(current, 0x10000000)
 
 
-@pytest.mark.parametrize("size", [0, 480, 1847, 1849, 8193])
+@pytest.mark.parametrize("size", [0, 480, 1855, 1857, 8193])
 def test_invalid_clone_work_rejected_before_target_access(monkeypatch, size):
     monkeypatch.setattr(transport, "window_thread", Mock(side_effect=AssertionError("target accessed")))
     with pytest.raises(ValueError):
@@ -124,5 +124,5 @@ def test_gui_clone_path_uses_one_current_engine_batch():
 
 def test_keep_flag_is_part_of_the_wire_request():
     payload = work(CLONE_KEEP | CLONE_COPY_ABILITIES)
-    values = struct.unpack_from("<23Q8I", payload, 480)
-    assert values[23] & CLONE_KEEP
+    values = struct.unpack_from("<24Q8I", payload, 480)
+    assert values[24] & CLONE_KEEP

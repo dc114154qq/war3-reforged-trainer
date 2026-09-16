@@ -248,9 +248,15 @@ static void clone_remove_unit(uint64_t unit) { if (unit>=0x600000 && unit<0x6000
 static int32_t clone_level(uint64_t unit) { return unit>=0x600000 ? 1 : fixture_level(unit); }
 static void clone_set_hero_level_fixture(uint64_t unit,int32_t level,uint32_t eye) {(void)unit;(void)level;(void)eye;}
 static uint64_t clone_ability_by_index(uint64_t unit,int32_t index) {
-    return unit<0x600000 && fixture_level(unit)>0 && index==0 ? 0x700000+clone_index(unit) : 0;
+    if (unit < 0x600000 && fixture_level(unit) > 0 && index == 0)
+        return 0x700000 + clone_index(unit);
+    if (unit < 0x600000 && fixture_level(unit) > 0 && index == 1)
+        return 0x710000 + clone_index(unit); /* supplied by the source item */
+    return 0;
 }
-static uint32_t clone_ability_id(uint64_t ability) {(void)ability;return 0x414f6372;}
+static uint32_t clone_ability_id(uint64_t ability) {
+    return ability >= 0x710000 && ability < 0x710018 ? 0x41496d61 : 0x414f6372;
+}
 static int32_t clone_get_ability_level(uint64_t unit,uint32_t rawcode) {
     (void)rawcode;return unit>=0x600000 ? (int32_t)clone_ability_level[clone_index(unit)] : fixture_level(unit)>0 ? 2 : 0;
 }
@@ -262,6 +268,9 @@ static int32_t clone_set_ability_level_fn(uint64_t unit,uint32_t rawcode,int32_t
 }
 static uint64_t clone_item_slot(uint64_t unit,int32_t slot) {
     return unit<0x600000 && fixture_level(unit)>0 && slot==0 ? 0x200000+clone_index(unit) : 0;
+}
+static uint64_t clone_item_ability_by_index(uint64_t item,int32_t index) {
+    return item >= 0x200000 && item < 0x200018 && index == 0 ? 0x710000 + (item - 0x200000) : 0;
 }
 static uint32_t clone_item_type_fn(uint64_t item) {
     if (item>=0x800000 && item<0x800018)return clone_item_type[item-0x800000];
@@ -292,7 +301,8 @@ __declspec(dllexport) uint64_t BridgeCloneTestRun(CloneWork *w,int count,int sce
     w->create=clone_create;w->set_owner=clone_set_owner;w->remove_unit=clone_remove_unit;
     w->get_level=clone_level;w->set_level=clone_set_hero_level_fixture;w->ability_by_index=clone_ability_by_index;
     w->ability_id=clone_ability_id;w->ability_level=clone_get_ability_level;w->add_ability=clone_add_ability;
-    w->set_ability_level=clone_set_ability_level_fn;w->item_in_slot=clone_item_slot;w->item_type=clone_item_type_fn;
+    w->set_ability_level=clone_set_ability_level_fn;w->item_ability_by_index=clone_item_ability_by_index;
+    w->item_in_slot=clone_item_slot;w->item_type=clone_item_type_fn;
     w->item_charges=clone_item_charges_fn;w->add_item=clone_add_item;w->set_item_charges=clone_set_item_charges;
     w->detach_item=clone_detach_item;w->remove_item=clone_remove_item;
     return BridgeCloneQuery();

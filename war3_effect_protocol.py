@@ -14,8 +14,8 @@ from war3_selection_protocol import (
     decode_work as decode_selection_work,
 )
 
-WORK_SIZE = 1160
-ABI = struct.pack("<3I", 0x24268025, 216, WORK_SIZE)
+WORK_SIZE = 1168
+ABI = struct.pack("<3I", 0x24268027, 216, WORK_SIZE)
 SIGNATURES = (
     ("BlzGetUnitAbility", "(Hunit;I)Hability;"),
     ("BlzGetAbilityId", "(Hability;)I"),
@@ -32,7 +32,7 @@ EFFECT_POINT = 3
 EFFECT_NOARG = 4
 
 
-def build_work(entries, tls, rawcode, action, x_bits=0, y_bits=0, area_bits=0):
+def build_work(entries, tls, rawcode, action, x_bits=0, y_bits=0, area_bits=0, *, resolver=0, unit_map=()):
     if (isinstance(rawcode, bool) or not isinstance(rawcode, int) or not rawcode <= 0xFFFFFFFF or rawcode <= 0
             or isinstance(action, bool) or action not in range(1, 5)
             or any(isinstance(value, bool) or not isinstance(value, int) for value in (x_bits, y_bits))):
@@ -46,11 +46,20 @@ def build_work(entries, tls, rawcode, action, x_bits=0, y_bits=0, area_bits=0):
     payload = bytearray(build_selection_work(entries))
     if isinstance(area_bits, bool) or not isinstance(area_bits, int) or not 0 <= area_bits <= 0xFFFFFFFF:
         raise ValueError("Invalid effect area bits")
+    ordered_pointers = pointers[:1] + [resolver] + pointers[1:]
     payload.extend(struct.pack(
-        "<9Q8I", *(pointers + [tls]), rawcode, action, x_bits, y_bits,
+        "<10Q8I", *(ordered_pointers + [tls]), rawcode, action, x_bits, y_bits,
         0, 0, 0, area_bits if action == EFFECT_POINT else 0,
     ))
+    if len(unit_map) > 24:
+        raise ValueError("Effect unit map exceeds the 24-unit selection limit")
     payload.extend(bytes(24 * 24))
+    for index, row in enumerate(unit_map):
+        if (not isinstance(row, (tuple, list)) or len(row) != 2
+                or not isinstance(row[0], int) or not 0 < row[0] <= 0xFFFFFFFFFFFFFFFF
+                or not isinstance(row[1], int) or not 0 < row[1] <= 0xFFFFFFFF):
+            raise ValueError("Invalid effect unit map row")
+        struct.pack_into("<Q4I", payload, 592 + index * 24, row[0], row[1], 0, 0, 0)
     payload = bytes(payload)
     validate_work(payload)
     return payload
@@ -60,12 +69,13 @@ def validate_work(payload):
     if len(payload) != WORK_SIZE:
         raise ValueError(f"Effect work must contain {WORK_SIZE} bytes")
     validate_selection_work(payload[:480])
-    pointers = struct.unpack_from("<9Q", payload, 480)
+    pointers = struct.unpack_from("<10Q", payload, 480)
     if (any(not 0x10000 <= value < 0x800000000000 for value in pointers[:8])
             or len(set(pointers[:8])) != 8
-            or not 0x10000 <= pointers[8] < 0x800000000000 or pointers[8] % 8):
+            or not 0x10000 <= pointers[8] < 0x800000000000
+            or not 0x10000 <= pointers[9] < 0x800000000000 or pointers[9] % 8):
         raise ValueError("Invalid effect native pointers")
-    rawcode, action, x_bits, y_bits, changed, error, completed, reserved = struct.unpack_from("<8I", payload, 552)
+    rawcode, action, x_bits, y_bits, changed, error, completed, reserved = struct.unpack_from("<8I", payload, 560)
     if (not rawcode or action not in range(1, 5) or changed or error or completed
             or (action != EFFECT_POINT and reserved)):
         raise ValueError("Invalid effect arguments")
@@ -80,12 +90,12 @@ def decode_work(payload, expected_count):
     if len(payload) != WORK_SIZE:
         raise ValueError("Incomplete effect result")
     selection = decode_selection_work(payload[:480], expected_count)
-    rawcode, action, x_bits, y_bits, changed, error, completed, reserved = struct.unpack_from("<8I", payload, 552)
+    rawcode, action, x_bits, y_bits, changed, error, completed, reserved = struct.unpack_from("<8I", payload, 560)
     if error or (action != EFFECT_POINT and reserved) or completed != expected_count or changed != expected_count:
         raise ValueError(f"Effect batch incomplete: error={error}, completed={completed}/{expected_count}")
     rows = []
     for index, selected in enumerate(selection["rows"]):
-        unit, status, temporary, reserved0, reserved1 = struct.unpack_from("<Q4I", payload, 584 + index * 24)
+        unit, status, temporary, reserved0, reserved1 = struct.unpack_from("<Q4I", payload, 592 + index * 24)
         if unit != selected["handle"] or status != 1 or reserved0 or reserved1:
             raise ValueError("Effect result identity or status mismatch")
         rows.append(dict(selected, unit=unit, status=status, temporary=temporary))

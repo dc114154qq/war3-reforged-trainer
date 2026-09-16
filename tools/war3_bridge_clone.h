@@ -4,6 +4,7 @@
 #define CLONE_COPY_ABILITIES 0x04u
 #define CLONE_COPY_ITEMS 0x08u
 #define CLONE_USE_SPAWN 0x10u
+#define CLONE_MAX_ITEM_ABILITIES (6u * 128u)
 
 typedef struct CloneRow {
     uint64_t clone;
@@ -34,6 +35,7 @@ typedef struct CloneWork {
     int32_t (*ability_level)(uint64_t, uint32_t);
     uint8_t (*add_ability)(uint64_t, uint32_t);
     int32_t (*set_ability_level)(uint64_t, uint32_t, int32_t);
+    uint64_t (*item_ability_by_index)(uint64_t, int32_t);
     uint64_t (*item_in_slot)(uint64_t, int32_t);
     uint32_t (*item_type)(uint64_t);
     int32_t (*item_charges)(uint64_t);
@@ -45,8 +47,8 @@ typedef struct CloneWork {
     uint32_t flags, spawn_x_bits, spawn_y_bits, changed, error, completed, reserved, pad;
     CloneRow rows[24];
 } CloneWork;
-_Static_assert(sizeof(CloneWork) == 1848, "CloneWork ABI");
-__declspec(dllexport) const uint32_t clone_batch_abi[3] = {0x24268015u, 216u, 1848u};
+_Static_assert(sizeof(CloneWork) == 1856, "CloneWork ABI");
+__declspec(dllexport) const uint32_t clone_batch_abi[3] = {0x24268015u, 216u, 1856u};
 
 static float clone_real(uint32_t bits) {
     union { uint32_t bits; float value; } value;
@@ -70,6 +72,39 @@ static int clone_set_ability_level(CloneWork *w, uint64_t unit, uint32_t rawcode
     ability.expected_tls = w->expected_tls;
     ability.rawcode = rawcode;
     return BridgeSetAbilityLevelChecked(&ability, unit, level) == level;
+}
+
+static int clone_is_essential_ability(uint32_t rawcode) {
+    static const uint32_t essential[] = {
+        0x416d6f76u, /* Amov */
+        0x4161746bu, /* Aatk */
+        0x41496e76u, /* AInv */
+        0x41486572u, /* AHer */
+        0x416c6f63u, /* Aloc */
+        0x41747267u, /* Atrg, 3.0 engine-owned target component */
+        0x42686561u, /* Bhea, 3.0 engine-owned component */
+    };
+    for (uint32_t index = 0; index < sizeof(essential) / sizeof(essential[0]); ++index)
+        if (rawcode == essential[index]) return 1;
+    return 0;
+}
+
+static int clone_has_ability(CloneWork *w, uint64_t unit, uint32_t rawcode) {
+    for (int32_t index = 0; index < 128; ++index) {
+        uint64_t ability = w->ability_by_index(unit, index);
+        if (!ability) return 0;
+        if (w->ability_id(ability) == rawcode) return 1;
+    }
+    return 0;
+}
+
+static int clone_is_item_ability(const uint32_t *item_abilities,
+                                 uint32_t item_ability_count,
+                                 uint32_t rawcode) {
+    uint32_t index;
+    for (index = 0; index < item_ability_count; ++index)
+        if (item_abilities[index] == rawcode) return 1;
+    return 0;
 }
 
 static void clone_remove_items(CloneWork *w, uint64_t unit, uint64_t *items, uint32_t count) {
@@ -110,6 +145,7 @@ __declspec(dllexport) uint64_t BridgeCloneQuery(void) {
         !w->create || !w->remove_unit || !w->get_level || !w->set_level ||
         !w->ability_by_index || !w->ability_id || !w->ability_level ||
         !w->add_ability || !w->set_ability_level || !w->item_in_slot ||
+        !w->item_ability_by_index ||
         !w->item_type || !w->item_charges || !w->add_item ||
         !w->set_item_charges || !w->detach_item || !w->remove_item) {
         if (w) w->error = 60;
@@ -126,6 +162,8 @@ __declspec(dllexport) uint64_t BridgeCloneQuery(void) {
         uint64_t target_owner = (w->flags & CLONE_PRESERVE_OWNER) ? source_owner : w->selection.player;
         uint64_t created_items[6] = {0};
         uint32_t created_item_count = 0;
+        uint32_t source_item_abilities[CLONE_MAX_ITEM_ABILITIES] = {0};
+        uint32_t source_item_ability_count = 0;
         uint32_t ability_count = 0, item_count = 0;
         uint32_t source_x = w->get_x(source), source_y = w->get_y(source);
         uint32_t source_facing = w->get_facing(source);
@@ -156,6 +194,34 @@ __declspec(dllexport) uint64_t BridgeCloneQuery(void) {
             } else if (!w->error) {
                 row->level = 0;
             }
+            /* Unit ability enumeration also exposes abilities granted by
+               equipped items on this build. Record the actual item-side
+               ability IDs first so the ability pass does not add them as
+               hero/unit abilities; copying the item later recreates them. */
+            if (!w->error && (w->flags & CLONE_COPY_ABILITIES)) {
+                for (j = 0; j < 6; ++j) {
+                    uint64_t source_item = w->item_in_slot(source, (int32_t)j);
+                    uint32_t item_index;
+                    if (!source_item) continue;
+                    for (item_index = 0; item_index < 128u; ++item_index) {
+                        uint64_t item_ability = w->item_ability_by_index(
+                            source_item, (int32_t)item_index);
+                        uint32_t item_rawcode;
+                        if (!item_ability) break;
+                        item_rawcode = w->ability_id(item_ability);
+                        if (!item_rawcode || source_item_ability_count >= CLONE_MAX_ITEM_ABILITIES) {
+                            w->error = 70;
+                            break;
+                        }
+                        if (!clone_is_item_ability(source_item_abilities,
+                                                   source_item_ability_count,
+                                                   item_rawcode)) {
+                            source_item_abilities[source_item_ability_count++] = item_rawcode;
+                        }
+                    }
+                    if (w->error) break;
+                }
+            }
             if (!w->error && (w->flags & CLONE_COPY_ABILITIES)) {
                 for (j = 0; j < 128; ++j) {
                     uint64_t ability = w->ability_by_index(source, (int32_t)j);
@@ -165,8 +231,23 @@ __declspec(dllexport) uint64_t BridgeCloneQuery(void) {
                     rawcode = w->ability_id(ability);
                     level = w->ability_level(source, rawcode);
                     if (!rawcode || level < 1 || ability_count >= 128) { w->error = 65; break; }
+                    if (clone_is_item_ability(source_item_abilities,
+                                              source_item_ability_count,
+                                              rawcode)) continue;
+                    if (clone_is_essential_ability(rawcode)) continue;
                     existing = w->ability_level(row->clone, rawcode);
-                    if (!existing && !w->add_ability(row->clone, rawcode)) { w->error = 66; break; }
+                    if (!existing && clone_has_ability(w, row->clone, rawcode)) {
+                        ++ability_count;
+                        continue;
+                    }
+                    if (!existing && !w->add_ability(row->clone, rawcode)) {
+                        /* Engine-owned zero-level components (Aatk/Amov/AId2, etc.)
+                           are created by CreateUnit and are not addable abilities. */
+                        if (level <= 0) continue;
+                        row->reserved = rawcode;
+                        w->error = 66;
+                        break;
+                    }
                     existing = w->ability_level(row->clone, rawcode);
                     if (existing != level && !clone_set_ability_level(w, row->clone, rawcode, level)) { w->error = 67; break; }
                     ++ability_count;

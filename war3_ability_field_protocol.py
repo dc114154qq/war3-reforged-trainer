@@ -32,7 +32,7 @@ WORK_SIZE = AFTER_OFFSET + MAX_SELECTED * MAX_FIELDS * 4
 ABI = struct.pack("<3I", 0x24268021, 216, WORK_SIZE)
 
 SIGNATURES = (
-    ("BlzGetUnitAbility", "(Hunit;I)Hability;"),
+    ("BlzGetUnitAbilityByIndex", "(Hunit;I)Hability;"),
     ("BlzGetAbilityId", "(Hability;)I"),
     ("GetUnitAbilityLevel", "(Hunit;I)I"),
     ("BlzGetAbilityBooleanField", "(Hability;Habilitybooleanfield;)B"),

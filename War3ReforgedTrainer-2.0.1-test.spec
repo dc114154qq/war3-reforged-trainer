@@ -38,12 +38,10 @@ a = Analysis(
 pyz = PYZ(a.pure)
 exe = EXE(
     pyz, a.scripts, a.binaries, a.datas, [],
-    name='War3ReforgedTrainer-3.0.0.24268',
+    name='War3ReforgedTrainer-v2.0.1-test',
     debug=False, bootloader_ignore_signals=False, strip=False, upx=True,
     upx_exclude=[], runtime_tmpdir=None, console=False,
     disable_windowed_traceback=False, uac_admin=False, argv_emulation=False,
     target_arch=None, codesign_identity=None, entitlements_file=None,
-    icon='assets/app_icon.ico', version='tools/war3-3.0-version-info.txt',
+    icon='assets/app_icon.ico', version='tools/war3-2.0.1-test-version-info.txt',
 )
-
-

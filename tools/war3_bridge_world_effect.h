@@ -17,6 +17,7 @@ typedef uint32_t (*WorldEffectPositionFn)(uint64_t);
 typedef struct WorldEffectWork {
     SelectionWork selection;
     EffectAbilityLookupFn get_ability;
+    EffectResolveFn resolve_agent;
     EffectAbilityIdFn get_ability_id;
     EffectUnitAddFn add_ability;
     EffectUnitRemoveFn remove_ability;
@@ -36,12 +37,12 @@ typedef struct WorldEffectWork {
     uint32_t rawcode, action, success_limit, attempts;
     uint32_t error, successes, completed, reserved;
 } WorldEffectWork;
-_Static_assert(sizeof(WorldEffectWork) == 648, "WorldEffectWork ABI");
-__declspec(dllexport) const uint32_t world_effect_batch_abi[3] = {0x24268026u,216u,648u};
+_Static_assert(sizeof(WorldEffectWork) == 656, "WorldEffectWork ABI");
+__declspec(dllexport) const uint32_t world_effect_batch_abi[3] = {0x24268028u,216u,656u};
 
-static uint64_t BridgeWorldEffectUnitObject(uint64_t ability) {
-    if (!BridgeEffectReadable(ability, 0x70)) return 0;
-    return *(uint64_t *)(uintptr_t)(ability + 0x68);
+static uint64_t BridgeWorldEffectUnitObject(uint64_t owner) {
+    if (!BridgeEffectReadable(owner, 0xe0)) return 0;
+    return *(uint64_t *)(uintptr_t)(owner + 0x90);
 }
 
 static int BridgeWorldEffectLive(uint32_t bits) {
@@ -52,13 +53,13 @@ static int BridgeWorldEffectLive(uint32_t bits) {
 
 __declspec(dllexport) uint64_t BridgeWorldEffectQuery(void) {
     WorldEffectWork *w = (WorldEffectWork *)g_dispatch->work;
-    uint64_t source, source_owner, source_ability = 0, group = 0;
+    uint64_t source, source_owner, source_ability_handle = 0, source_ability = 0, group = 0;
     uint64_t source_object = 0, vtable = 0, callback = 0;
     uint8_t source_temporary = 0;
     uint32_t error = 0;
     if (!w || w->expected_tls != g_dispatch->tls_value || !w->rawcode ||
         (w->action != WORLD_EFFECT_TARGET && w->action != WORLD_EFFECT_POINT) ||
-        w->success_limit > 65535u || !w->get_ability || !w->get_ability_id ||
+        w->success_limit > 65535u || !w->get_ability || !w->resolve_agent || !w->get_ability_id ||
         !w->add_ability || !w->remove_ability || !w->get_local_player ||
         !w->create_group || !w->enum_units || !w->first_of_group ||
         !w->remove_from_group || !w->destroy_group || !w->get_owner ||
@@ -76,16 +77,18 @@ __declspec(dllexport) uint64_t BridgeWorldEffectQuery(void) {
     __try {
         source_owner = w->get_owner(source);
         if (!source_owner) { error = 173; __leave; }
-        source_ability = w->get_ability(source, w->rawcode);
-        if (!source_ability) {
+        source_ability_handle = w->get_ability(source, w->rawcode);
+        if (!source_ability_handle) {
             if (!w->add_ability(source, w->rawcode)) { error = 174; __leave; }
             source_temporary = 1;
-            source_ability = w->get_ability(source, w->rawcode);
+            source_ability_handle = w->get_ability(source, w->rawcode);
         }
-        if (!source_ability || w->get_ability_id(source_ability) != w->rawcode) {
+        if (!source_ability_handle || w->get_ability_id(source_ability_handle) != w->rawcode) {
             error = 175; __leave;
         }
-        source_object = BridgeWorldEffectUnitObject(source_ability);
+        source_ability = BridgeEffectFindAbilityDataFromOwner(source_owner, 0, w->rawcode, 0);
+        if (!source_ability) { error = 175; __leave; }
+        source_object = BridgeWorldEffectUnitObject(source_owner);
         if (!source_object) { error = 176; __leave; }
         vtable = *(uint64_t *)(uintptr_t)source_ability;
         if (!BridgeEffectReadable(vtable, (w->action == WORLD_EFFECT_TARGET ? 0xa78u : 0xa60u))) {
@@ -119,18 +122,22 @@ __declspec(dllexport) uint64_t BridgeWorldEffectQuery(void) {
                             error = GetExceptionCode();
                         }
                     } else {
-                        uint64_t target_ability = w->get_ability(target, w->rawcode);
+                        uint64_t target_ability_handle = w->get_ability(target, w->rawcode);
+                        uint64_t target_ability = 0;
                         uint8_t target_temporary = 0;
                         uint64_t target_object = 0;
                         uint32_t target_error = 0;
                         __try {
-                            if (!target_ability) {
+                            if (!target_ability_handle) {
                                 if (!w->add_ability(target, w->rawcode)) target_error = 181;
-                                else { target_temporary = 1; target_ability = w->get_ability(target, w->rawcode); }
+                                else { target_temporary = 1; target_ability_handle = w->get_ability(target, w->rawcode); }
                             }
-                            if (!target_error && (!target_ability || w->get_ability_id(target_ability) != w->rawcode))
+                            if (!target_error && (!target_ability_handle ||
+                                w->get_ability_id(target_ability_handle) != w->rawcode))
                                 target_error = 182;
-                            if (!target_error) target_object = BridgeWorldEffectUnitObject(target_ability);
+                            if (!target_error) target_object = BridgeWorldEffectUnitObject(target_owner);
+                            if (!target_error) target_ability = BridgeEffectFindAbilityDataFromOwner(
+                                target_owner, target_object, w->rawcode, &target_error);
                             if (!target_error && !target_object) target_error = 183;
                             if (!target_error)
                                 ((EffectTargetFn)(uintptr_t)callback)(source_ability, target_object);
@@ -162,7 +169,7 @@ __declspec(dllexport) uint64_t BridgeWorldEffectQuery(void) {
     }
     if (source_temporary) {
         __try {
-            if (!w->remove_ability(source, w->rawcode) || w->get_ability(source, w->rawcode))
+                if (!w->remove_ability(source, w->rawcode) || w->get_ability(source, w->rawcode))
                 if (!error) error = 185;
         } __except(EXCEPTION_EXECUTE_HANDLER) {
             if (!error) error = GetExceptionCode();

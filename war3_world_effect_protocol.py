@@ -10,8 +10,8 @@ from war3_selection_protocol import (
     validate_work as validate_selection_work,
 )
 
-WORK_SIZE = 648
-ABI = struct.pack("<3I", 0x24268026, 216, WORK_SIZE)
+WORK_SIZE = 656
+ABI = struct.pack("<3I", 0x24268028, 216, WORK_SIZE)
 ACTION_TARGET = 1
 ACTION_POINT = 3
 MAX_TARGETS = 100_000
@@ -36,7 +36,7 @@ SIGNATURES = (
 )
 
 
-def build_work(entries, tls, rawcode, action, success_limit=0):
+def build_work(entries, tls, rawcode, action, success_limit=0, *, resolver=0):
     if (isinstance(rawcode, bool) or not isinstance(rawcode, int) or not 0 < rawcode <= 0xFFFFFFFF
             or isinstance(action, bool) or action not in (ACTION_TARGET, ACTION_POINT)
             or isinstance(success_limit, bool) or not 0 <= success_limit <= 65535):
@@ -47,8 +47,9 @@ def build_work(entries, tls, rawcode, action, success_limit=0):
         if entry is None or entry.name != name or entry.signature != signature:
             raise ValueError("World effect native signature differs: " + name)
         pointers.append(entry.handler)
+    ordered_pointers = pointers[:1] + [resolver] + pointers[1:]
     payload = build_selection_work(entries) + struct.pack(
-        "<17Q8I", *(pointers + [tls]),
+        "<18Q8I", *(ordered_pointers + [tls]),
         rawcode, action, success_limit, 0, 0, 0, 0, 0,
     )
     validate_work(payload)
@@ -59,13 +60,14 @@ def validate_work(payload):
     if len(payload) != WORK_SIZE:
         raise ValueError(f"World effect work must contain {WORK_SIZE} bytes")
     validate_selection_work(payload[:480])
-    pointers = struct.unpack_from("<17Q", payload, 480)
+    pointers = struct.unpack_from("<18Q", payload, 480)
     if (any(not 0x10000 <= value < 0x800000000000 for value in pointers[:16])
             or len(set(pointers[:16])) != 16
-            or not 0x10000 <= pointers[16] < 0x800000000000 or pointers[16] % 8):
+            or not 0x10000 <= pointers[16] < 0x800000000000
+            or not 0x10000 <= pointers[17] < 0x800000000000 or pointers[17] % 8):
         raise ValueError("Invalid world effect native pointers")
     rawcode, action, limit, attempts, error, successes, completed, reserved = struct.unpack_from(
-        "<8I", payload, 616,
+        "<8I", payload, 624,
     )
     if (not rawcode or action not in (ACTION_TARGET, ACTION_POINT) or limit > 65535
             or attempts or error or successes or completed or reserved):
@@ -77,7 +79,7 @@ def decode_work(payload, expected_count):
         raise ValueError("Incomplete world effect result")
     selection = decode_selection_work(payload[:480], expected_count)
     rawcode, action, limit, attempts, error, successes, completed, reserved = struct.unpack_from(
-        "<8I", payload, 616,
+        "<8I", payload, 624,
     )
     if (error or reserved or completed != 1 or successes > attempts
             or attempts > MAX_TARGETS or (limit and successes > limit)):

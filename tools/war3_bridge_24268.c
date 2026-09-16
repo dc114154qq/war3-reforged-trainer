@@ -279,6 +279,7 @@ BOOL WINAPI DllMain(HINSTANCE module,DWORD reason,LPVOID reserved) {
 #include "war3_bridge_screen.h"
 #include "war3_bridge_camera.h"
 #include "war3_bridge_position.h"
+#include "war3_bridge_terrain.h"
 #ifdef BRIDGE_TEST
 #include "war3_bridge_test_fixture.h"
 #endif

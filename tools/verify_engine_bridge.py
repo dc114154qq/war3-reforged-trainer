@@ -37,6 +37,7 @@ def main() -> None:
         b"BridgeScreenMouseQuery",
         b"BridgeCameraQuery",
         b"BridgePositionQuery",
+        b"BridgeTerrainQuery",
     )
     missing = [name.decode("ascii") for name in required if name not in exports]
     if missing:
@@ -54,17 +55,18 @@ def main() -> None:
     marker(b"ability_field_batch_abi", (0x24268021, 216, 7688))
     marker(b"item_batch_abi", (0x24268014, 216, 5968))
     marker(b"item_field_batch_abi", (0x24268022, 216, 5136))
-    marker(b"clone_batch_abi", (0x24268015, 216, 1848))
+    marker(b"clone_batch_abi", (0x24268015, 216, 1856))
     marker(b"unit_action_batch_abi", (0x24268016, 216, 1432))
     marker(b"world_batch_abi", (0x24268017, 216, 128))
     marker(b"bulk_batch_abi", (0x24268023, 216, 624))
-    marker(b"effect_batch_abi", (0x24268025, 216, 1160))
-    marker(b"world_effect_batch_abi", (0x24268026, 216, 648))
+    marker(b"effect_batch_abi", (0x24268027, 216, 1168))
+    marker(b"world_effect_batch_abi", (0x24268028, 216, 656))
     marker(b"spawn_batch_abi", (0x24268018, 216, 128))
     marker(b"mouse_batch_abi", (0x24268019, 216, 128))
     marker(b"screen_mouse_batch_abi", (0x2426801A, 216, 128))
     marker(b"camera_batch_abi", (0x2426801B, 216, 256))
     marker(b"position_batch_abi", (0x24268020, 216, 1312))
+    marker(b"terrain_batch_abi", (0x2426802A, 216, 128))
     for name in (b"BridgeUnitActionQuery",):
         if name not in exports:
             raise AssertionError("missing export: " + name.decode("ascii"))

@@ -130,7 +130,8 @@ __declspec(dllexport) uint64_t BridgeAbilityFieldQuery(void) {
     }
     for (i = 0; i < count; ++i) {
         SelectionRow *selected = &w->selection.rows[i];
-        uint64_t ability;
+        uint64_t ability = 0;
+        uint32_t ability_index;
         if (w->target_unit && selected->unit != w->target_unit) {
             w->statuses[i] = ABILITY_FIELD_STATUS_SKIPPED;
             ++w->completed;
@@ -141,7 +142,12 @@ __declspec(dllexport) uint64_t BridgeAbilityFieldQuery(void) {
             w->error = 93;
             return count;
         }
-        ability = w->get_ability(selected->unit, w->rawcode);
+        for (ability_index = 0; ability_index < 4096u; ++ability_index) {
+            ability = w->get_ability(selected->unit, ability_index);
+            if (!ability) break;
+            if (w->get_ability_id(ability) == w->rawcode) break;
+            ability = 0;
+        }
         if (!ability || w->get_ability_id(ability) != w->rawcode) {
             w->statuses[i] = ABILITY_FIELD_STATUS_MISSING;
             if (w->action == ABILITY_FIELD_WRITE) {

@@ -5612,9 +5612,19 @@ class War3Trainer:
     def camera_snapshot_24268(self) -> dict:
         return self._engine_instance_24268().camera_snapshot()
 
+    def terrain_height_24268(self, x: float, y: float) -> float:
+        result = self._engine_instance_24268().terrain_height(
+            self._float_bits(float(x)), self._float_bits(float(y)),
+        )
+        height = float(result["z"])
+        if not math.isfinite(height) or abs(height) > 1_000_000.0:
+            raise RuntimeError("3.0 地形高度返回无效")
+        return height
+
     @staticmethod
     def _mouse_world_from_camera_24268(
         snapshot: dict, client_width: int, client_height: int, screen_scale: float = 1.0,
+        plane_z: float | None = None,
     ) -> tuple[float, float]:
         if client_width <= 0 or client_height <= 0:
             raise RuntimeError("3.0 游戏客户区尺寸无效")
@@ -5661,7 +5671,10 @@ class War3Trainer:
         direction = tuple(value / direction_length for value in direction)
         if abs(direction[2]) <= 1e-6:
             raise RuntimeError("3.0 鼠标射线没有命中地图平面")
-        distance = (target[2] - eye[2]) / direction[2]
+        ground_z = target[2] if plane_z is None else float(plane_z)
+        if not math.isfinite(ground_z) or abs(ground_z) > 1_000_000.0:
+            raise RuntimeError("3.0 鼠标投影平面高度无效")
+        distance = (ground_z - eye[2]) / direction[2]
         if not math.isfinite(distance) or distance <= 0.0:
             raise RuntimeError("3.0 鼠标射线命中点无效")
         x = eye[0] + direction[0] * distance
@@ -6007,10 +6020,23 @@ class War3Trainer:
 
     def query_mouse_world_position(self) -> tuple[float, float]:
         if getattr(self, "_native_selection_unavailable", False):
-            return self._mouse_world_from_camera_24268(
-                self.camera_snapshot_24268(), *self._client_size_24268(),
-                self._screen_scale_24268(),
+            snapshot = self.camera_snapshot_24268()
+            client_size = self._client_size_24268()
+            screen_scale = self._screen_scale_24268()
+            initial = self._mouse_world_from_camera_24268(
+                snapshot, *client_size, screen_scale,
             )
+            # Target Z is a good first plane, but it is not always the terrain
+            # under the cursor. Refine once through the game terrain native;
+            # if the read-only refinement is unavailable, retain the verified
+            # camera-plane result instead of blocking movement.
+            try:
+                terrain_z = self.terrain_height_24268(*initial)
+                return self._mouse_world_from_camera_24268(
+                    snapshot, *client_size, screen_scale, plane_z=terrain_z,
+                )
+            except Exception:
+                return initial
         packed = int(self._run_native_helper_ops(
             0,
             ((
@@ -6087,8 +6113,16 @@ class War3Trainer:
         return len(rows)
 
     def move_selected_group_to_mouse(self) -> tuple[int, float, float]:
-        # The current build must never route movement through the retired
-        # per-unit helper opcode, even if an executor handshake later exists.
+        if not getattr(self, "_native_selection_unavailable", False):
+            # Preserve the 1.0.19 single-callback path for the legacy trainer.
+            handler = self._query_native_table_handlers(("SetUnitPosition",))["SetUnitPosition"].handler_address
+            result = self._run_native_helper_ops(0, ((
+                self.NATIVE_HELPER_OP_MOVE_SELECTED_GROUP_TO_MOUSE, 0, handler, 0, 0,
+            ),))[0]
+            return int(result.result), self._float_from_bits(result.arg0), self._float_from_bits(result.arg0 >> 32)
+
+        # The current build uses one verified position batch for the whole
+        # selection; it never falls back to the retired per-unit helper.
         x, y = self.query_mouse_world_position()
         count = self.set_selected_group_position(x, y)
         return int(count), x, y
@@ -7185,7 +7219,10 @@ class War3Trainer:
         if not ability_rawcode or not 1 <= target_level <= 100000:
             raise ValueError("请提供有效技能 ID，等级必须在 1 到 100000 之间")
         if getattr(self, "_native_selection_unavailable", False):
-            result = self.ability_batch_24268(ability_rawcode, 3, target_level)
+            # Action 1 sets the level for existing instances and creates the
+            # skill for selected units that do not already have it. This keeps
+            # mixed hero/non-hero selections in one batch.
+            result = self.ability_batch_24268(ability_rawcode, 1, target_level)
             if result["changed"] > result["count"]:
                 raise RuntimeError("技能等级批处理返回数量异常")
             return target_level
@@ -7300,6 +7337,22 @@ class War3Trainer:
         return row
 
     @staticmethod
+    def _bind_current_engine_ability_row_24268(
+        result: dict,
+        candidate: UnitCandidate,
+    ) -> dict:
+        rawcode = int(candidate.unit_type_id)
+        if not rawcode:
+            raise RuntimeError("当前单位没有可用于字段绑定的类型 ID")
+        rows = [
+            row for row in result.get("rows", ())
+            if row.get("status") == 1 and int(row.get("rawcode", 0)) == rawcode
+        ]
+        if len(rows) != 1:
+            raise RuntimeError("当前选中单位的技能字段身份不唯一，请减少选中单位后重试")
+        return War3Trainer._current_engine_ability_row_24268(result, int(rows[0]["handle"]))
+
+    @staticmethod
     def _current_engine_ability_field_bits(
         spec: AbilityFieldSpec,
         value: bool | int | float,
@@ -7347,6 +7400,7 @@ class War3Trainer:
         supported = [spec for spec in specs if spec.runtime_supported]
         values_by_key: dict[tuple[str, str, str], AbilityFieldValue] = {}
         ability_handle = 0
+        ability_jass_handle = 0
         current_level: int | None = None
         for start in range(0, len(supported), 32):
             batch = tuple(supported[start:start + 32])
@@ -7355,9 +7409,14 @@ class War3Trainer:
                 level_number,
                 0,
                 tuple(self._current_engine_ability_field_descriptor_24268(spec) for spec in batch),
-                target_unit=candidate.handle,
+                target_unit=ability_jass_handle,
             )
-            row = self._current_engine_ability_row_24268(result, candidate.handle)
+            row = (
+                self._bind_current_engine_ability_row_24268(result, candidate)
+                if not ability_jass_handle
+                else self._current_engine_ability_row_24268(result, ability_jass_handle)
+            )
+            ability_jass_handle = int(row["handle"])
             if ability_handle and row["ability_handle"] != ability_handle:
                 raise RuntimeError("技能实例在字段批处理期间发生变化")
             ability_handle = int(row["ability_handle"])
@@ -7446,9 +7505,10 @@ class War3Trainer:
             raise RuntimeError("运行时效果类未确认，不能写入效果类专用字段")
         descriptor = self._current_engine_ability_field_descriptor_24268(spec)
         read_result = self.ability_field_batch_24268(
-            ability_rawcode, level_number, 0, (descriptor,), target_unit=candidate.handle,
+            ability_rawcode, level_number, 0, (descriptor,), target_unit=0,
         )
-        row = self._current_engine_ability_row_24268(read_result, candidate.handle)
+        row = self._bind_current_engine_ability_row_24268(read_result, candidate)
+        ability_jass_handle = int(row["handle"])
         identity = (int(row["ability_handle"]), instance.data_address, instance.handle)
         current_level = int(row["ability_level"])
         if expected_snapshot is not None:
@@ -7471,12 +7531,12 @@ class War3Trainer:
                 level_number,
                 1,
                 (self._current_engine_ability_field_descriptor_24268(spec, target),),
-                target_unit=candidate.handle,
+                target_unit=ability_jass_handle,
             )
             verify_result = self.ability_field_batch_24268(
-                ability_rawcode, level_number, 0, (descriptor,), target_unit=candidate.handle,
+                ability_rawcode, level_number, 0, (descriptor,), target_unit=ability_jass_handle,
             )
-            verify_row = self._current_engine_ability_row_24268(verify_result, candidate.handle)
+            verify_row = self._current_engine_ability_row_24268(verify_result, ability_jass_handle)
             actual = self._decode_ability_field_value(spec, verify_row["values"][0]["before"])
             if not self._ability_field_values_equal(spec, actual, target):
                 raise RuntimeError(f"字段写入后读回不一致：{actual!s}!={target!s}")
@@ -7488,12 +7548,12 @@ class War3Trainer:
                     level_number,
                     1,
                     (self._current_engine_ability_field_descriptor_24268(spec, original),),
-                    target_unit=candidate.handle,
+                    target_unit=ability_jass_handle,
                 )
                 rollback_result = self.ability_field_batch_24268(
-                    ability_rawcode, level_number, 0, (descriptor,), target_unit=candidate.handle,
+                    ability_rawcode, level_number, 0, (descriptor,), target_unit=ability_jass_handle,
                 )
-                rollback_row = self._current_engine_ability_row_24268(rollback_result, candidate.handle)
+                rollback_row = self._current_engine_ability_row_24268(rollback_result, ability_jass_handle)
                 restored = self._decode_ability_field_value(spec, rollback_row["values"][0]["before"])
                 rollback_ok = self._ability_field_values_equal(spec, restored, original)
             except Exception:
@@ -7523,6 +7583,27 @@ class War3Trainer:
         if len(rows) != 1 or rows[0].get("status") != 1 or not rows[0].get("item_handle"):
             raise RuntimeError("当前选中单位没有可绑定的运行时物品")
         return rows[0]
+
+    @staticmethod
+    def _bind_current_engine_item_field_row_24268(
+        result: dict,
+        candidate: UnitCandidate,
+        item: InventoryItem,
+    ) -> dict:
+        rawcode = int(candidate.unit_type_id)
+        if not rawcode:
+            raise RuntimeError("当前单位没有可用于物品字段绑定的类型 ID")
+        rows = [
+            row for row in result.get("rows", ())
+            if row.get("status") == 1
+            and int(row.get("rawcode", 0)) == rawcode
+            and int(row.get("item_rawcode", 0)) == int(item.rawcode)
+        ]
+        if len(rows) != 1:
+            raise RuntimeError("当前选中单位的物品字段身份不唯一，请减少选中单位后重试")
+        return War3Trainer._current_engine_item_field_row_24268(
+            result, int(rows[0]["handle"]),
+        )
 
     @staticmethod
     def _current_engine_item_field_bits(
@@ -7562,9 +7643,9 @@ class War3Trainer:
             item.slot - 1,
             0,
             tuple(self._current_engine_item_field_descriptor_24268(spec) for spec in supported),
-            target_unit=candidate.handle,
+            target_unit=0,
         )
-        row = self._current_engine_item_field_row_24268(result, candidate.handle)
+        row = self._bind_current_engine_item_field_row_24268(result, candidate, item)
         if row["item_rawcode"] != item.rawcode:
             raise RuntimeError("物品实例在字段批处理期间发生变化")
         for spec, field in zip(supported, row["values"]):
@@ -7615,9 +7696,10 @@ class War3Trainer:
         target = self._coerce_item_field_value(spec, value)
         descriptor = self._current_engine_item_field_descriptor_24268(spec)
         read_result = self.item_field_batch_24268(
-            item.slot - 1, 0, (descriptor,), target_unit=candidate.handle,
+            item.slot - 1, 0, (descriptor,), target_unit=0,
         )
-        row = self._current_engine_item_field_row_24268(read_result, candidate.handle)
+        row = self._bind_current_engine_item_field_row_24268(read_result, candidate, item)
+        item_jass_handle = int(row["handle"])
         identity = (int(row["item_handle"]), item.item_address, item.handle)
         if (
             identity != expected_snapshot.item_identity
@@ -7632,12 +7714,12 @@ class War3Trainer:
                 item.slot - 1,
                 1,
                 (self._current_engine_item_field_descriptor_24268(spec, target),),
-                target_unit=candidate.handle,
+                target_unit=item_jass_handle,
             )
             verify = self.item_field_batch_24268(
-                item.slot - 1, 0, (descriptor,), target_unit=candidate.handle,
+                item.slot - 1, 0, (descriptor,), target_unit=item_jass_handle,
             )
-            verify_row = self._current_engine_item_field_row_24268(verify, candidate.handle)
+            verify_row = self._current_engine_item_field_row_24268(verify, item_jass_handle)
             actual = self._decode_item_field_value(spec, verify_row["values"][0]["before"])
             if not self._ability_field_values_equal(spec, actual, target):
                 raise RuntimeError(f"物品字段写入后读回不一致：{actual!s}!={target!s}")
@@ -7648,12 +7730,12 @@ class War3Trainer:
                     item.slot - 1,
                     1,
                     (self._current_engine_item_field_descriptor_24268(spec, original),),
-                    target_unit=candidate.handle,
+                    target_unit=item_jass_handle,
                 )
                 rollback = self.item_field_batch_24268(
-                    item.slot - 1, 0, (descriptor,), target_unit=candidate.handle,
+                    item.slot - 1, 0, (descriptor,), target_unit=item_jass_handle,
                 )
-                rollback_row = self._current_engine_item_field_row_24268(rollback, candidate.handle)
+                rollback_row = self._current_engine_item_field_row_24268(rollback, item_jass_handle)
                 restored = self._decode_item_field_value(spec, rollback_row["values"][0]["before"])
                 rollback_ok = self._ability_field_values_equal(spec, restored, original)
             except Exception:
@@ -10480,8 +10562,13 @@ class War3Trainer:
         if position_property:
             suffix += " pos=prop^ucp"
         unit_address = self._unit_object_from_owner(pm, owner, handle)
+        unit_type_id = 0
         if unit_address:
             suffix += f" unit=0x{unit_address:x}"
+            try:
+                unit_type_id = pm.read_u32(unit_address + 0x70)
+            except OSError:
+                unit_type_id = 0
         return UnitCandidate(
             base=hp_prop,
             score=score,
@@ -10495,6 +10582,7 @@ class War3Trainer:
             owner_address=owner,
             handle=handle,
             unit_address=unit_address,
+            unit_type_id=unit_type_id,
             x_address=x_address,
             y_address=y_address,
             position_property_address=position_property,
@@ -13793,12 +13881,17 @@ class War3Trainer:
             self._append_unit_field(pm, fields, "strength_growth", "力量成长/级", "f32", data + 0x188, "英雄", note=growth_note)
             self._append_unit_field(pm, fields, "intelligence_growth", "智力成长/级", "f32", data + 0x198, "英雄", note=growth_note)
             self._append_unit_field(pm, fields, "agility_growth", "敏捷成长/级", "f32", data + 0x1A8, "英雄", note=growth_note)
+            current_24268 = bool(getattr(self, "_native_selection_unavailable", False))
+            skill_name_offset = 0x1BC if current_24268 else 0x204
+            skill_cache_offset = 0x1D4 if current_24268 else 0x1BC
+            skill_level_offset = 0x1EC if current_24268 else 0x1D4
+            skill_requirement_offset = 0x204 if current_24268 else 0x1EC
             skill_name_note = "英雄技能栏 rawcode；替换时由引擎从地图资源创建技能"
             skill_cache_note = "旧版候选/运行时缓存；单改这里通常不改变已学技能效果"
             for index in range(self.HERO_SKILL_SLOT_COUNT):
-                config_address = data + 0x1BC + index * 4
+                name_address = data + skill_name_offset + index * 4
                 try:
-                    current_config_rawcode = pm.read_u32(config_address)
+                    current_config_rawcode = pm.read_u32(name_address)
                 except OSError:
                     current_config_rawcode = 0
                 hero_skill_config_rawcodes.append(current_config_rawcode)
@@ -13806,8 +13899,8 @@ class War3Trainer:
                 ability_instances = self._ability_instances_from_candidate(pm, candidate)
             for index in range(self.HERO_SKILL_SLOT_COUNT):
                 number = index + 1
-                config_address = data + 0x1BC + index * 4
-                cache_address = data + 0x1D4 + index * 4
+                name_address = data + skill_name_offset + index * 4
+                cache_address = data + skill_cache_offset + index * 4
                 extra_writes = [(cache_address, "rawcode")]
                 self._append_unit_field(
                     pm,
@@ -13815,7 +13908,7 @@ class War3Trainer:
                     f"skill{number}_name",
                     f"技能{number}名称",
                     "rawcode",
-                    config_address,
+                    name_address,
                     "技能",
                     note=skill_name_note,
                     extra_writes=tuple(extra_writes),
@@ -13837,7 +13930,7 @@ class War3Trainer:
                     f"skill{number}_learnable",
                     f"技能{number}可学",
                     "i32",
-                    data + 0x1D4 + index * 4,
+                    data + skill_level_offset + index * 4,
                     "技能",
                     note="英雄组件技能等级/可学数组",
                 )
@@ -13847,7 +13940,7 @@ class War3Trainer:
                     f"skill{number}_requirement",
                     f"技能{number}要求",
                     "i32",
-                    data + 0x1EC + index * 4,
+                    data + skill_requirement_offset + index * 4,
                     "技能",
                     note="英雄组件技能需求数组",
                 )
@@ -14470,9 +14563,10 @@ class War3Trainer:
         hero_data: int,
     ) -> tuple[list[int], dict[int, AbilityInstance], list[AbilityInstance]]:
         configs: list[int] = []
+        config_offset = 0x1BC if getattr(self, "_native_selection_unavailable", False) else 0x204
         for index in range(self.HERO_SKILL_SLOT_COUNT):
             try:
-                configs.append(pm.read_u32(hero_data + 0x1BC + index * 4))
+                configs.append(pm.read_u32(hero_data + config_offset + index * 4))
             except OSError:
                 configs.append(0)
         ability_instances = self._ability_instances_from_candidate(
@@ -14770,9 +14864,9 @@ class War3Trainer:
         _hero_wrapper, hero_data = hero
         if pm.read_u64(hero_data + 0x68) != candidate.unit_address:
             raise RuntimeError("3.0 英雄组件身份已经变化，请重新读取")
-        config_address = hero_data + 0x1BC + index * 4
+        name_address = hero_data + 0x1BC + index * 4
         cache_address = hero_data + 0x1D4 + index * 4
-        old_rawcode = pm.read_u32(config_address)
+        old_rawcode = pm.read_u32(name_address)
         old_cache = pm.read_u32(cache_address)
         if not old_rawcode:
             raise RuntimeError("当前英雄技能栏为空，没有可替换的技能")
@@ -14814,9 +14908,9 @@ class War3Trainer:
                 if len(added_rows) != 1 or int(added_rows[0].get("after", 0)) <= 0:
                     raise RuntimeError("新技能创建后读回不一致")
                 changed_runtime = True
-            pm.write_u32(config_address, new_rawcode)
+            pm.write_u32(name_address, new_rawcode)
             pm.write_u32(cache_address, new_rawcode)
-            if pm.read_u32(config_address) != new_rawcode or pm.read_u32(cache_address) != new_rawcode:
+            if pm.read_u32(name_address) != new_rawcode or pm.read_u32(cache_address) != new_rawcode:
                 raise RuntimeError("英雄技能配置写入后读回不一致")
         except Exception as exc:
             rollback_errors: list[str] = []
@@ -14834,8 +14928,8 @@ class War3Trainer:
                 except Exception as rollback_error:
                     rollback_errors.append(f"恢复旧技能：{rollback_error}")
             try:
-                if pm.read_u32(config_address) == new_rawcode:
-                    pm.write_u32(config_address, old_rawcode)
+                if pm.read_u32(name_address) == new_rawcode:
+                    pm.write_u32(name_address, old_rawcode)
                 if pm.read_u32(cache_address) == new_rawcode:
                     pm.write_u32(cache_address, old_cache)
             except Exception as rollback_error:
@@ -14897,12 +14991,12 @@ class War3Trainer:
         if hero is None:
             raise RuntimeError("当前选中单位没有英雄组件，不能写入英雄技能")
         _hero_wrapper, hero_data = hero
-        config_address = hero_data + 0x1BC + index * 4
-        cache_address = hero_data + 0x1D4 + index * 4
+        name_address = hero_data + 0x204 + index * 4
+        cache_address = hero_data + 0x1BC + index * 4
         configs: list[int] = []
         for slot_index in range(self.HERO_SKILL_SLOT_COUNT):
             try:
-                configs.append(pm.read_u32(hero_data + 0x1BC + slot_index * 4))
+                configs.append(pm.read_u32(hero_data + 0x204 + slot_index * 4))
             except OSError:
                 configs.append(0)
         old_rawcode = configs[index] if index < len(configs) else 0
@@ -15016,7 +15110,7 @@ class War3Trainer:
                 f"new_wrapper=0x{replacement_instance.wrapper_address:x}"
             )
 
-        pm.write_u32(config_address, new_rawcode)
+        pm.write_u32(name_address, new_rawcode)
         pm.write_u32(cache_address, new_rawcode)
         actions = [
             f"config/cache {format_rawcode(old_rawcode)}->{format_rawcode(new_rawcode)}",
@@ -15047,7 +15141,7 @@ class War3Trainer:
                 actions.append("未找到已学 ability 实例，仅更新英雄技能栏配置")
 
         time.sleep(0.05)
-        final_config = pm.read_u32(config_address)
+        final_config = pm.read_u32(name_address)
         final_cache = pm.read_u32(cache_address)
         if final_config != new_rawcode or final_cache != new_rawcode:
             raise RuntimeError(
@@ -15071,9 +15165,9 @@ class War3Trainer:
             label=field.label,
             value_type="rawcode",
             value=final_config,
-            address=config_address,
+            address=name_address,
             category=field.category,
-            write_address=config_address,
+            write_address=name_address,
             write_type="rawcode",
             note="；".join(actions),
             extra_writes=((cache_address, "rawcode"),),
@@ -17281,7 +17375,7 @@ def run_gui() -> None:
         if getattr(trainer, "_native_selection_unavailable", False):
             if not 1 <= level <= 100000:
                 raise ValueError("技能等级必须在 1 到 100000 之间")
-            result = trainer.ability_batch_24268(rawcode, 3, level)
+            result = trainer.ability_batch_24268(rawcode, 1, level)
             return f"技能操作完成：{result['count']} 个单位，实际修改 {result['changed']} 个"
         results = elephant_batch(
             lambda: elephant_trainer().set_selected_unit_ability_level(rawcode, level),

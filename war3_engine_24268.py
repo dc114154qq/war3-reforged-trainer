@@ -23,7 +23,7 @@ class Engine24268:
     def __init__(self,pid,hwnd,memory_factory,image=None,report_sink=None):
         self.pid,self.hwnd,self.memory_factory=pid,hwnd,memory_factory
         self.report_sink=report_sink
-        self.image=Path(image) if image is not None else Path(getattr(sys,'_MEIPASS',Path(__file__).resolve().parent))/'tools/war3_bridge_24268_current_r36.dll'
+        self.image=Path(image) if image is not None else Path(getattr(sys,'_MEIPASS',Path(__file__).resolve().parent))/'tools/war3_bridge_24268_current_r38.dll'
         self.lock=threading.RLock();self.last_report={};self.quarantined=False
 
     def hero_progress(self,target=0):
@@ -201,6 +201,8 @@ class Engine24268:
             'effect', names,
             lambda entries, tls: build(
                 entries, tls, rawcode, action, wire_x, wire_y, area_bits,
+                resolver=self._effect_resolver,
+                unit_map=self._effect_unit_map,
             ),
             decode,
             dict(rawcode=rawcode, action=action, x_bits=x_bits, y_bits=y_bits,
@@ -220,7 +222,10 @@ class Engine24268:
         names = tuple(n for n, _ in WORLD_EFFECT_SIGNATURES)
         return self._execute(
             'world_effect', names,
-            lambda entries, tls: build(entries, tls, rawcode, action, success_limit),
+            lambda entries, tls: build(
+                entries, tls, rawcode, action, success_limit,
+                resolver=self._effect_resolver,
+            ),
             decode,
             dict(rawcode=rawcode, action=action, success_limit=success_limit),
         )
@@ -267,6 +272,18 @@ class Engine24268:
             {},
         )
 
+    def terrain_height(self, x_bits, y_bits):
+        from war3_terrain_protocol import SIGNATURES as TERRAIN_SIGNATURES, build_work as build, decode_work as decode
+        values = (x_bits, y_bits)
+        if any(isinstance(value, bool) or not isinstance(value, int) for value in values):
+            raise ValueError('Terrain coordinates must be float bit integers')
+        return self._execute(
+            'terrain', tuple(n for n, _ in TERRAIN_SIGNATURES),
+            lambda entries, tls: build(entries, tls, x_bits, y_bits),
+            decode,
+            dict(x_bits=x_bits, y_bits=y_bits),
+        )
+
     def _execute(self,kind,names,builder,decoder,request):
         with self.lock:
             if self.quarantined:raise EngineExecutionError('Previous dispatch retained resources; inspect before reconnecting',self.last_report)
@@ -279,7 +296,21 @@ class Engine24268:
                     mode=context.read_mode(memory);registry.local_player_for_mode(memory,mode.value)
                     context5=memory.read_u64(mode.tls+0x38)
                     entries=NativeTable24268(memory,context5).require(*names)
-                    payload=builder(entries,mode.tls)
+                    if kind in ('effect', 'world_effect'):
+                        # The effect bridge uses this slot as the verified game
+                        # module base for its in-process object-table resolver.
+                        self._effect_resolver = registry.base
+                        if kind == 'effect':
+                            from war3_classic_selection import read_player_selection
+                            player = registry.local_player_for_mode(memory, mode.value)
+                            classic_selection = read_player_selection(memory, player)
+                            self._effect_unit_map = tuple(
+                                (memory.read_u64(unit + 0x18), memory.read_u32(unit + 0x70))
+                                for unit in classic_selection.units
+                            )
+                        payload=builder(entries,mode.tls)
+                    else:
+                        payload=builder(entries,mode.tls)
                     report['mappings']=inspect_entries(memory,registry.base,entries,True)
                     fresh=context.read_mode(memory)
                     if (fresh.tls!=mode.tls or fresh.value!=mode.value or memory.read_u64(fresh.tls+0x38)!=context5
@@ -310,8 +341,8 @@ class Engine24268:
                             report['item_field_status']=dict(changed=changed,error=error,completed=completed)
                     if kind=='clone' and evidence.get('work_result_hex'):
                         raw=bytes.fromhex(evidence['work_result_hex'])
-                        if len(raw)==1848:
-                            changed,error,completed=struct.unpack_from('<3I',raw,676)
+                        if len(raw)==1856:
+                            changed,error,completed=struct.unpack_from('<3I',raw,684)
                             report['clone_status']=dict(changed=changed,error=error,completed=completed)
                     if kind=='unit_action' and evidence.get('work_result_hex'):
                         raw=bytes.fromhex(evidence['work_result_hex'])
@@ -335,13 +366,13 @@ class Engine24268:
                             report['bulk_status']=dict(changed=changed,error=error,completed=completed)
                     if kind=='effect' and evidence.get('work_result_hex'):
                         raw=bytes.fromhex(evidence['work_result_hex'])
-                        if len(raw)==1160:
-                            changed,error,completed=struct.unpack_from('<3I',raw,568)
+                        if len(raw)==1168:
+                            changed,error,completed=struct.unpack_from('<3I',raw,576)
                             report['effect_status']=dict(changed=changed,error=error,completed=completed)
                     if kind=='world_effect' and evidence.get('work_result_hex'):
                         raw=bytes.fromhex(evidence['work_result_hex'])
-                        if len(raw)==648:
-                            attempts,error,successes,completed=struct.unpack_from('<4I',raw,628)
+                        if len(raw)==656:
+                            attempts,error,successes,completed=struct.unpack_from('<4I',raw,636)
                             report['world_effect_status']=dict(
                                 attempts=attempts, error=error,
                                 successes=successes, completed=completed,

@@ -105,13 +105,18 @@ def main() -> int:
             _hero_wrapper, hero_data = hero
             print(f"hero_data=0x{hero_data:x}")
             for idx in range(trainer.HERO_SKILL_SLOT_COUNT):
-                cache_addr = hero_data + 0x1BC + idx * 4
-                name_addr = hero_data + 0x204 + idx * 4
+                name_addr = hero_data + 0x1BC + idx * 4
+                cache_addr = hero_data + 0x1D4 + idx * 4
+                level_addr = hero_data + 0x1EC + idx * 4
+                requirement_addr = hero_data + 0x204 + idx * 4
                 cache = pm.read_u32(cache_addr)
                 name = pm.read_u32(name_addr)
+                level = pm.read_i32(level_addr)
+                requirement = pm.read_i32(requirement_addr)
                 print(
-                    f"skill{idx + 1}: cache={format_rawcode(cache)} @0x{cache_addr:x} "
-                    f"name={format_rawcode(name)} @0x{name_addr:x}"
+                    f"skill{idx + 1}: name={format_rawcode(name)} @0x{name_addr:x} "
+                    f"cache={format_rawcode(cache)} @0x{cache_addr:x} "
+                    f"level={level} @0x{level_addr:x} requirement={requirement} @0x{requirement_addr:x}"
                 )
 
         abilities = trainer._ability_instances_from_candidate(pm, candidate)

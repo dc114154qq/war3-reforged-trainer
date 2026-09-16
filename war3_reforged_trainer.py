@@ -14991,13 +14991,13 @@ class War3Trainer:
             raise RuntimeError(f"{format_rawcode(new_rawcode)} 已存在于当前英雄的其它技能槽")
         old_result = self.ability_batch_24268(old_rawcode, 0)
         old_rows = [row for row in old_result.get("rows", ())
-                    if row.get("unit") == candidate.handle]
+                    if row.get("handle") == candidate.handle]
         if len(old_rows) != 1:
             raise RuntimeError("当前英雄技能实例已变化，请重新读取")
         old_level = int(old_rows[0].get("after", 0))
         new_result = self.ability_batch_24268(new_rawcode, 0)
         new_rows = [row for row in new_result.get("rows", ())
-                    if row.get("unit") == candidate.handle]
+                    if row.get("handle") == candidate.handle]
         if len(new_rows) != 1:
             raise RuntimeError("当前英雄目标技能实例读取不完整")
         if int(new_rows[0].get("after", 0)) > 0:
@@ -15008,12 +15008,12 @@ class War3Trainer:
             if old_level > 0:
                 removed = self.ability_batch_24268(old_rawcode, 2)
                 removed_rows = [row for row in removed.get("rows", ())
-                                if row.get("unit") == candidate.handle]
+                                if row.get("handle") == candidate.handle]
                 if len(removed_rows) != 1 or int(removed_rows[0].get("after", -1)) != 0:
                     raise RuntimeError("旧技能移除后读回不一致")
                 added = self.ability_batch_24268(new_rawcode, 1, old_level)
                 added_rows = [row for row in added.get("rows", ())
-                              if row.get("unit") == candidate.handle]
+                              if row.get("handle") == candidate.handle]
                 if len(added_rows) != 1 or int(added_rows[0].get("after", 0)) <= 0:
                     raise RuntimeError("新技能创建后读回不一致")
                 changed_runtime = True
@@ -15031,7 +15031,7 @@ class War3Trainer:
                 try:
                     restored = self.ability_batch_24268(old_rawcode, 1, old_level)
                     rows = [row for row in restored.get("rows", ())
-                            if row.get("unit") == candidate.handle]
+                            if row.get("handle") == candidate.handle]
                     if len(rows) != 1 or int(rows[0].get("after", 0)) <= 0:
                         rollback_errors.append("旧技能读回失败")
                 except Exception as rollback_error:

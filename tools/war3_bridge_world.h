@@ -27,6 +27,20 @@ static float WorldReal(uint32_t bits) {
     union {uint32_t bits;float value;} value;value.bits=bits;return value.value;
 }
 
+/* Reforged's fog setters may raise the known post-call divide-by-zero fault
+   after applying the requested state. The persistent helper already treats
+   that fault as an acknowledged call; keep the current-engine route aligned. */
+static DWORD BridgeFogCall(void (*fn)(uint32_t), uint32_t value) {
+    if (!fn) return ERROR_INVALID_PARAMETER;
+    __try {
+        fn(value);
+    } __except(EXCEPTION_EXECUTE_HANDLER) {
+        DWORD exception = GetExceptionCode();
+        if (exception != EXCEPTION_INT_DIVIDE_BY_ZERO) return exception;
+    }
+    return ERROR_SUCCESS;
+}
+
 __declspec(dllexport) uint64_t BridgeWorldQuery(void) {
     WorldWork *w=(WorldWork *)g_dispatch->work;
     uint64_t player;
@@ -59,7 +73,9 @@ __declspec(dllexport) uint64_t BridgeWorldQuery(void) {
             w->after1=w->is_fog_mask_enabled()?1u:0u;
         } else if (w->action==WORLD_SET_FOG) {
             enabled=w->value?0u:1u;
-            w->fog_enable(enabled);w->fog_mask_enable(enabled);
+            DWORD fog_error=BridgeFogCall(w->fog_enable,enabled);
+            if (!fog_error) fog_error=BridgeFogCall(w->fog_mask_enable,enabled);
+            if (fog_error) {w->error=fog_error;return 0;}
             w->after0=w->is_fog_enabled()?1u:0u;
             w->after1=w->is_fog_mask_enabled()?1u:0u;
             if (w->after0!=enabled || w->after1!=enabled) {w->error=83;return 0;}

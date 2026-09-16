@@ -13,6 +13,7 @@ from war3_selection_protocol import (
 WORK_SIZE = 656
 ABI = struct.pack("<3I", 0x24268028, 216, WORK_SIZE)
 ACTION_TARGET = 1
+ACTION_IMMEDIATE = 2
 ACTION_POINT = 3
 MAX_TARGETS = 100_000
 
@@ -38,7 +39,7 @@ SIGNATURES = (
 
 def build_work(entries, tls, rawcode, action, success_limit=0, *, resolver=0):
     if (isinstance(rawcode, bool) or not isinstance(rawcode, int) or not 0 < rawcode <= 0xFFFFFFFF
-            or isinstance(action, bool) or action not in (ACTION_TARGET, ACTION_POINT)
+            or isinstance(action, bool) or action not in (ACTION_TARGET, ACTION_IMMEDIATE, ACTION_POINT)
             or isinstance(success_limit, bool) or not 0 <= success_limit <= 65535):
         raise ValueError("Invalid current-engine world effect operation")
     pointers = []
@@ -69,7 +70,7 @@ def validate_work(payload):
     rawcode, action, limit, attempts, error, successes, completed, reserved = struct.unpack_from(
         "<8I", payload, 624,
     )
-    if (not rawcode or action not in (ACTION_TARGET, ACTION_POINT) or limit > 65535
+    if (not rawcode or action not in (ACTION_TARGET, ACTION_IMMEDIATE, ACTION_POINT) or limit > 65535
             or attempts or error or successes or completed or reserved):
         raise ValueError("Invalid world effect arguments")
 

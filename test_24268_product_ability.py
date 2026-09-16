@@ -86,6 +86,37 @@ def test_product_methods_never_call_old_helper():
     trainer.reset_selected_unit_ability('AHad')
     assert trainer.ability_batch_24268.call_count==4
 
+
+def test_current_aura_bundle_maps_classic_default_level_sentinel_to_zero():
+    trainer = object.__new__(product.War3Trainer)
+    trainer._native_selection_unavailable = True
+    trainer._coerce_memory_value = lambda _kind, value: (
+        int.from_bytes(value.encode("ascii"), "big") if isinstance(value, str) else int(value)
+    )
+    trainer.ability_batch_24268 = Mock(return_value={"changed": 1})
+
+    changed, total = trainer.add_ability_bundle_to_selected_unit(
+        (("AHab", 112), ("Aabr", None), ("ACac", 112))
+    )
+
+    assert (changed, total) == (3, 3)
+    assert [call.args for call in trainer.ability_batch_24268.call_args_list] == [
+        (0x41486162, 1, 0),
+        (0x41616272, 1, 0),
+        (0x41436163, 1, 0),
+    ]
+
+
+def test_fullscreen_monsoon_uses_current_enemy_point_batch():
+    trainer = object.__new__(product.War3Trainer)
+    trainer._run_selected_ability_effect = Mock(side_effect=AssertionError("cursor-only effect"))
+    trainer._run_direct_ability_over_enemy_units = Mock(return_value=(7, 6))
+
+    assert trainer.cast_fullscreen_monsoon(success_limit=12) == (7, 6)
+    trainer._run_direct_ability_over_enemy_units.assert_called_once_with(
+        "ANmo", "point", success_limit=12,
+    )
+
 @pytest.mark.parametrize('action,level',[(0,1),(2,1),(3,0),(4,0),(5,1)])
 def test_invalid_actions(action,level):
     with pytest.raises(ValueError):work(action,level)

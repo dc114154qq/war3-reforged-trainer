@@ -13,6 +13,7 @@ from war3_clone_protocol import (
     CLONE_COPY_ABILITIES,
     CLONE_COPY_ITEMS,
     CLONE_KEEP,
+    CLONE_USE_SPAWN,
     SIGNATURES,
     build_work,
     decode_work,
@@ -135,6 +136,8 @@ def test_gui_clone_path_uses_one_current_engine_batch():
                     if isinstance(node, ast.FunctionDef) and node.name == "elephant_create_unit")
     trainer = Mock()
     trainer._native_selection_unavailable = True
+    trainer.query_mouse_world_position.return_value = (123.5, -45.25)
+    trainer._float_bits.side_effect = lambda value: struct.unpack("<I", struct.pack("<f", value))[0]
     trainer.clone_batch_24268.return_value = {
         "count": 15,
         "rows": [{"ability_count": 1, "item_count": 1}] * 15,
@@ -146,7 +149,13 @@ def test_gui_clone_path_uses_one_current_engine_batch():
     exec(compile(ast.Module(body=[function], type_ignores=[]), "<clone-gui>", "exec"), env)
     assert "15" in env["elephant_create_unit"](True)
     trainer.clone_batch_24268.assert_called_once_with(
-        keep=True, preserve_owner=False, copy_abilities=True, copy_items=True
+        keep=True,
+        preserve_owner=False,
+        copy_abilities=True,
+        copy_items=True,
+        spawn=True,
+        spawn_x_bits=struct.unpack("<I", struct.pack("<f", 123.5))[0],
+        spawn_y_bits=struct.unpack("<I", struct.pack("<f", -45.25))[0],
     )
 
 
@@ -154,6 +163,21 @@ def test_keep_flag_is_part_of_the_wire_request():
     payload = work(CLONE_KEEP | CLONE_COPY_ABILITIES)
     values = struct.unpack_from("<26Q8I", payload, 480)
     assert values[26] & CLONE_KEEP
+
+
+def test_spawn_flag_and_coordinates_are_part_of_the_wire_request():
+    x_bits = struct.unpack("<I", struct.pack("<f", 123.5))[0]
+    y_bits = struct.unpack("<I", struct.pack("<f", -45.25))[0]
+    payload = build_work(
+        entries(),
+        0x10000000,
+        flags=CLONE_KEEP | CLONE_COPY_ABILITIES | CLONE_USE_SPAWN,
+        spawn_x_bits=x_bits,
+        spawn_y_bits=y_bits,
+    )
+    values = struct.unpack_from("<26Q8I", payload, 480)
+    assert values[26] & CLONE_USE_SPAWN
+    assert values[27:29] == (x_bits, y_bits)
 
 
 def test_empty_hero_progress_result_is_reported_as_no_hero():

@@ -1,0 +1,27 @@
+{
+  "package": {
+    "version": "2.0.1",
+    "game_version": "3.0.0.24268",
+    "path": "dist-2.0.1-3.0.0.24268-r11/War3ReforgedTrainer-v2.0.1.exe",
+    "size": 18852412,
+    "sha256": "114436982400EFFED929F680C257C0D3C71CBD3FCE7E6C801CFE33F25E649E43"
+  },
+  "bridge": {
+    "path": "tools/war3_bridge_24268_2_0_1.dll",
+    "size": 42496,
+    "sha256": "0413CE0A636322A8D6189D10C51A5D6D64727FFC7CA3248BCA300D3A348985F0"
+  },
+  "verification": {
+    "python_compile": "passed",
+    "targeted_product_tests": "98 passed in 2.45s for world-effect and ability paths",
+    "full_regression": "2274 passed, 17 skipped, 120 subtests passed in 163.05s",
+    "bridge_compile": "x64 bridge ABI verified",
+    "packaged_runtime_self_test": "passed; frozen=true; retired_helper_present=false",
+    "file_version": "2.0.1.0",
+    "product_version": "2.0.1",
+    "embedded_bridge_sha256": "0413CE0A636322A8D6189D10C51A5D6D64727FFC7CA3248BCA300D3A348985F0",
+    "fullscreen_current_route": "world enumeration supports target, point, and immediate callbacks",
+    "live_game_validation": false,
+    "live_game_validation_note": "未执行：用户当前无法打开正版游戏进程；本轮使用离线 mock、fixture、桥接 ABI 和打包运行时自检。"
+  }
+}

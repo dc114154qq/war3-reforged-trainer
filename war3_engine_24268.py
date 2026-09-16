@@ -41,6 +41,7 @@ class Engine24268:
         self.report_sink=report_sink
         self.image=Path(image) if image is not None else _default_bridge_image()
         self.lock=threading.RLock();self.last_report={};self.quarantined=False
+        self._native_context_cache = None
 
     def hero_progress(self,target=0):
         if isinstance(target,bool) or not isinstance(target,int) or not 0<=target<=100000:
@@ -153,17 +154,19 @@ class Engine24268:
 
     def clone_batch(self, *, keep=False, preserve_owner=False,
                     copy_abilities=True, copy_items=True,
-                    spawn_x_bits=0, spawn_y_bits=0):
+                    spawn=False, spawn_x_bits=0, spawn_y_bits=0):
         from war3_clone_protocol import (
             SIGNATURES as CLONE_SIGNATURES,
             CLONE_COPY_ABILITIES, CLONE_COPY_ITEMS, CLONE_KEEP,
-            CLONE_PRESERVE_OWNER, build_work as build, decode_work as decode,
+            CLONE_PRESERVE_OWNER, CLONE_USE_SPAWN,
+            build_work as build, decode_work as decode,
         )
         flags = 0
         if keep: flags |= CLONE_KEEP
         if preserve_owner: flags |= CLONE_PRESERVE_OWNER
         if copy_abilities: flags |= CLONE_COPY_ABILITIES
         if copy_items: flags |= CLONE_COPY_ITEMS
+        if spawn: flags |= CLONE_USE_SPAWN
         names = tuple(n for n, _ in SIGNATURES + CLONE_SIGNATURES)
         return self._execute(
             'clone', names,
@@ -172,7 +175,8 @@ class Engine24268:
                                        spawn_y_bits=spawn_y_bits),
             decode,
             dict(keep=keep, preserve_owner=preserve_owner,
-                 copy_abilities=copy_abilities, copy_items=copy_items),
+                 copy_abilities=copy_abilities, copy_items=copy_items,
+                 spawn=spawn, spawn_x_bits=spawn_x_bits, spawn_y_bits=spawn_y_bits),
         )
 
     def unit_action_batch(self, action, *, value=0, x_bits=0, y_bits=0,
@@ -266,7 +270,7 @@ class Engine24268:
             decode_work as decode,
         )
         if (isinstance(rawcode, bool) or not isinstance(rawcode, int) or not 0 < rawcode <= 0xFFFFFFFF
-                or isinstance(action, bool) or action not in (1, 3)
+                or isinstance(action, bool) or action not in (1, 2, 3)
                 or isinstance(success_limit, bool) or not 0 <= success_limit <= 65535):
             raise ValueError('Invalid current-engine world effect operation')
         names = tuple(n for n, _ in WORLD_EFFECT_SIGNATURES)
@@ -341,11 +345,42 @@ class Engine24268:
             try:
                 if not self.image.is_file():raise RuntimeError('Missing current 24268 bridge module: '+str(self.image))
                 with self.memory_factory(self.pid) as memory:
-                    registry=ObjectRegistry24268.attach(memory)
-                    context=GameThreadContext24268(memory,registry.base,self.hwnd,self.pid)
-                    mode=context.read_mode(memory);registry.local_player_for_mode(memory,mode.value)
-                    context5=memory.read_u64(mode.tls+0x38)
-                    entries=NativeTable24268(memory,context5).require(*names)
+                    cache=self._native_context_cache
+                    cache_hit=False
+                    if cache is not None:
+                        try:
+                            context=cache['context']
+                            registry=cache['registry']
+                            mode=context.read_mode(memory)
+                            context5=memory.read_u64(mode.tls+0x38)
+                            if (mode.value != cache['mode'].value or mode.tls != cache['mode'].tls
+                                    or context5 != cache['context5']):
+                                cache=None
+                            else:
+                                cache_hit=True
+                        except Exception:
+                            cache=None
+                    if cache is None:
+                        registry=ObjectRegistry24268.attach(memory)
+                        context=GameThreadContext24268(memory,registry.base,self.hwnd,self.pid)
+                        mode=context.read_mode(memory)
+                        context5=memory.read_u64(mode.tls+0x38)
+                        native_table=NativeTable24268(memory,context5)
+                        cache={
+                            'context': context,
+                            'registry': registry,
+                            'mode': mode,
+                            'context5': context5,
+                            'entries': native_table.entries,
+                        }
+                        self._native_context_cache=cache
+                    registry.local_player_for_mode(memory,mode.value)
+                    all_entries=cache['entries']
+                    missing=[name for name in names if name not in all_entries]
+                    if missing:
+                        raise RuntimeError('Missing native registrations: '+', '.join(missing))
+                    entries={name: all_entries[name] for name in names}
+                    report['preflight_cached']=cache_hit
                     if kind in ('effect', 'world_effect'):
                         # The effect bridge uses this slot as the verified game
                         # module base for its in-process object-table resolver.
@@ -361,10 +396,10 @@ class Engine24268:
                         payload=builder(entries,mode.tls)
                     else:
                         payload=builder(entries,mode.tls)
-                    report['mappings']=inspect_entries(memory,registry.base,entries,True)
+                    report['mappings']=({} if cache_hit else inspect_entries(memory,registry.base,entries,True))
                     fresh=context.read_mode(memory)
                     if (fresh.tls!=mode.tls or fresh.value!=mode.value or memory.read_u64(fresh.tls+0x38)!=context5
-                        or NativeTable24268(memory,context5).require(*names)!=entries):
+                        or (not cache_hit and NativeTable24268(memory,context5).require(*names)!=entries)):
                         raise RuntimeError('Current native context changed; no hero batch dispatched')
                     report['preflight_ms']=(time.perf_counter()-start)*1000
                     evidence=dispatch(self.pid,self.hwnd,mode.thread_id,self.image,mode.tls_index,payload,kind=kind)
@@ -456,7 +491,10 @@ class Engine24268:
                         except Exception as exc:
                             raise EngineExecutionError('Operation verified but recovery log failed; do not repeat the write',report) from exc
                     return result
-            except EngineExecutionError:raise
+            except EngineExecutionError:
+                self._native_context_cache=None
+                raise
             except Exception as exc:
+                self._native_context_cache=None
                 report['error']=str(exc);raise EngineExecutionError(str(exc),report) from exc
             finally:report['elapsed_ms']=(time.perf_counter()-start)*1000

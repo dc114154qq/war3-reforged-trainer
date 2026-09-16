@@ -1,5 +1,6 @@
 /* Current-build 24268 bounded enemy enumeration for direct ability effects. */
 #define WORLD_EFFECT_TARGET 1u
+#define WORLD_EFFECT_IMMEDIATE 2u
 #define WORLD_EFFECT_POINT 3u
 
 typedef uint64_t (*WorldEffectLocalPlayerFn)(void);
@@ -58,7 +59,8 @@ __declspec(dllexport) uint64_t BridgeWorldEffectQuery(void) {
     uint8_t source_temporary = 0;
     uint32_t error = 0;
     if (!w || w->expected_tls != g_dispatch->tls_value || !w->rawcode ||
-        (w->action != WORLD_EFFECT_TARGET && w->action != WORLD_EFFECT_POINT) ||
+        (w->action != WORLD_EFFECT_TARGET && w->action != WORLD_EFFECT_IMMEDIATE &&
+         w->action != WORLD_EFFECT_POINT) ||
         w->success_limit > 65535u || !w->get_ability || !w->resolve_agent || !w->get_ability_id ||
         !w->add_ability || !w->remove_ability || !w->get_local_player ||
         !w->create_group || !w->enum_units || !w->first_of_group ||
@@ -77,25 +79,28 @@ __declspec(dllexport) uint64_t BridgeWorldEffectQuery(void) {
     __try {
         source_owner = w->get_owner(source);
         if (!source_owner) { error = 173; __leave; }
-        source_ability_handle = w->get_ability(source, w->rawcode);
-        if (!source_ability_handle) {
-            if (!w->add_ability(source, w->rawcode)) { error = 174; __leave; }
-            source_temporary = 1;
+        if (w->action != WORLD_EFFECT_IMMEDIATE) {
             source_ability_handle = w->get_ability(source, w->rawcode);
+            if (!source_ability_handle) {
+                if (!w->add_ability(source, w->rawcode)) { error = 174; __leave; }
+                source_temporary = 1;
+                source_ability_handle = w->get_ability(source, w->rawcode);
+            }
+            if (!source_ability_handle || w->get_ability_id(source_ability_handle) != w->rawcode) {
+                error = 175; __leave;
+            }
+            source_ability = BridgeEffectFindAbilityDataFromOwner(source_owner, 0, w->rawcode, 0);
+            if (!source_ability) { error = 175; __leave; }
+            source_object = BridgeWorldEffectUnitObject(source_owner);
+            if (!source_object) { error = 176; __leave; }
+            vtable = *(uint64_t *)(uintptr_t)source_ability;
+            if (!BridgeEffectReadable(vtable, (w->action == WORLD_EFFECT_TARGET ? 0xa78u : 0xa60u))) {
+                error = 177; __leave;
+            }
+            callback = *(uint64_t *)(uintptr_t)(vtable +
+                (w->action == WORLD_EFFECT_TARGET ? 0xa70u : 0xa58u));
+            if (!BridgeEffectExecutable(callback)) { error = 178; __leave; }
         }
-        if (!source_ability_handle || w->get_ability_id(source_ability_handle) != w->rawcode) {
-            error = 175; __leave;
-        }
-        source_ability = BridgeEffectFindAbilityDataFromOwner(source_owner, 0, w->rawcode, 0);
-        if (!source_ability) { error = 175; __leave; }
-        source_object = BridgeWorldEffectUnitObject(source_owner);
-        if (!source_object) { error = 176; __leave; }
-        vtable = *(uint64_t *)(uintptr_t)source_ability;
-        if (!BridgeEffectReadable(vtable, (w->action == WORLD_EFFECT_TARGET ? 0xa78u : 0xa60u))) {
-            error = 177; __leave;
-        }
-        callback = *(uint64_t *)(uintptr_t)(vtable + (w->action == WORLD_EFFECT_TARGET ? 0xa70u : 0xa58u));
-        if (!BridgeEffectExecutable(callback)) { error = 178; __leave; }
         group = w->create_group();
         if (!group) { error = 179; __leave; }
         for (int32_t player_id = 0; player_id < 24 && !error; ++player_id) {
@@ -121,7 +126,7 @@ __declspec(dllexport) uint64_t BridgeWorldEffectQuery(void) {
                         } __except(EXCEPTION_EXECUTE_HANDLER) {
                             error = GetExceptionCode();
                         }
-                    } else {
+                    } else if (w->action == WORLD_EFFECT_TARGET) {
                         uint64_t target_ability_handle = w->get_ability(target, w->rawcode);
                         uint64_t target_ability = 0;
                         uint8_t target_temporary = 0;
@@ -148,6 +153,51 @@ __declspec(dllexport) uint64_t BridgeWorldEffectQuery(void) {
                             __try {
                                 if (!w->remove_ability(target, w->rawcode) || w->get_ability(target, w->rawcode))
                                     if (!target_error) target_error = 184;
+                            } __except(EXCEPTION_EXECUTE_HANDLER) {
+                                if (!target_error) target_error = GetExceptionCode();
+                            }
+                        }
+                        if (target_error) { error = target_error; break; }
+                    } else {
+                        uint64_t target_ability_handle = w->get_ability(target, w->rawcode);
+                        uint64_t target_ability = 0;
+                        uint64_t target_vtable = 0, target_callback = 0;
+                        uint8_t target_temporary = 0;
+                        uint64_t target_object = 0;
+                        uint32_t target_error = 0;
+                        __try {
+                            if (!target_ability_handle) {
+                                if (!w->add_ability(target, w->rawcode)) target_error = 181;
+                                else {
+                                    target_temporary = 1;
+                                    target_ability_handle = w->get_ability(target, w->rawcode);
+                                }
+                            }
+                            if (!target_error && (!target_ability_handle ||
+                                w->get_ability_id(target_ability_handle) != w->rawcode))
+                                target_error = 182;
+                            if (!target_error) target_object = BridgeWorldEffectUnitObject(target_owner);
+                            if (!target_error && !target_object) target_error = 183;
+                            if (!target_error) target_ability = BridgeEffectFindAbilityDataFromOwner(
+                                target_owner, target_object, w->rawcode, &target_error);
+                            if (!target_error && !target_ability) target_error = 184;
+                            if (!target_error) {
+                                target_vtable = *(uint64_t *)(uintptr_t)target_ability;
+                                if (!BridgeEffectReadable(target_vtable, 0x9a0u)) target_error = 185;
+                            }
+                            if (!target_error) {
+                                target_callback = *(uint64_t *)(uintptr_t)(target_vtable + 0x998u);
+                                if (!BridgeEffectExecutable(target_callback)) target_error = 186;
+                            }
+                            if (!target_error)
+                                ((EffectImmediateFn)(uintptr_t)target_callback)(target_ability);
+                        } __except(EXCEPTION_EXECUTE_HANDLER) {
+                            target_error = GetExceptionCode();
+                        }
+                        if (target_temporary) {
+                            __try {
+                                if (!w->remove_ability(target, w->rawcode) || w->get_ability(target, w->rawcode))
+                                    if (!target_error) target_error = 187;
                             } __except(EXCEPTION_EXECUTE_HANDLER) {
                                 if (!target_error) target_error = GetExceptionCode();
                             }

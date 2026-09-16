@@ -5733,12 +5733,18 @@ class War3Trainer:
     def clone_batch_24268(self, *, keep: bool = True,
                           preserve_owner: bool = False,
                           copy_abilities: bool = True,
-                          copy_items: bool = True) -> dict:
+                          copy_items: bool = True,
+                          spawn: bool = False,
+                          spawn_x_bits: int = 0,
+                          spawn_y_bits: int = 0) -> dict:
         return self._engine_instance_24268().clone_batch(
             keep=keep,
             preserve_owner=preserve_owner,
             copy_abilities=copy_abilities,
             copy_items=copy_items,
+            spawn=spawn,
+            spawn_x_bits=spawn_x_bits,
+            spawn_y_bits=spawn_y_bits,
         )
 
     def unit_action_batch_24268(self, action: int, *, value: int = 0,
@@ -6272,7 +6278,7 @@ class War3Trainer:
         self, rawcode: int | str, mode: str, *, success_limit: int = 0,
     ) -> tuple[int, int]:
         ability_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
-        effect_mode = {"target": 1, "point": 3}.get(mode)
+        effect_mode = {"target": 1, "immediate": 2, "point": 3}.get(mode)
         limit = int(success_limit)
         if not ability_rawcode or effect_mode is None or not 0 <= limit <= 65535:
             raise ValueError("Invalid world ability effect parameters")
@@ -6547,6 +6553,17 @@ class War3Trainer:
 
     def cast_fullscreen_clap(self, *, success_limit: int = 0) -> tuple[int, int]:
         entries = ("AHtc", "AOws")
+        if getattr(self, "_native_selection_unavailable", False):
+            attempted = succeeded = 0
+            for ability in entries:
+                current_attempted, current_succeeded = self._run_direct_ability_over_enemy_units(
+                    ability,
+                    "immediate",
+                    success_limit=success_limit,
+                )
+                attempted += current_attempted
+                succeeded += current_succeeded
+            return attempted, succeeded
         attempted = succeeded = 0
         for ability in entries:
             current_attempted, current_succeeded = self._run_selected_ability_effect(
@@ -6559,14 +6576,22 @@ class War3Trainer:
         return attempted, succeeded
 
     def cast_fullscreen_monsoon(self, *, success_limit: int = 0) -> tuple[int, int]:
-        return self._run_selected_ability_effect(
+        # The 3.0 point-effect bridge does not carry the legacy channel timer
+        # or point-area sentinel. Enumerate enemy units directly so each point
+        # callback receives a real map coordinate instead of only the cursor.
+        return self._run_direct_ability_over_enemy_units(
             "ANmo",
             "point",
-            area=100000.0,
-            hold_seconds=12.0,
+            success_limit=success_limit,
         )
 
     def cast_fullscreen_starfall(self, *, success_limit: int = 0) -> tuple[int, int]:
+        if getattr(self, "_native_selection_unavailable", False):
+            return self._run_direct_ability_over_enemy_units(
+                "AEsb",
+                "immediate",
+                success_limit=success_limit,
+            )
         return self._run_selected_ability_effect(
             "AEsb",
             "immediate",
@@ -6583,6 +6608,12 @@ class War3Trainer:
 
     def cast_fullscreen_auto_effect(self, *, success_limit: int = 0) -> tuple[int, int]:
         passes = int(success_limit) if success_limit else 5
+        if getattr(self, "_native_selection_unavailable", False):
+            return self._run_direct_ability_over_enemy_units(
+                "AEfk",
+                "immediate",
+                success_limit=passes,
+            )
         return self._run_selected_ability_effect(
             "AEfk",
             "noarg",
@@ -6721,18 +6752,21 @@ class War3Trainer:
         use_selected_lookup: bool = True,
         preserve_owner: bool = False,
     ) -> tuple[int, int]:
+        x, y = self.query_mouse_world_position() if position is None else position
         if rawcode is None and getattr(self, "_native_selection_unavailable", False):
             result = self.clone_batch_24268(
                 keep=True,
                 preserve_owner=preserve_owner,
                 copy_abilities=True,
                 copy_items=True,
+                spawn=True,
+                spawn_x_bits=self._float_bits(float(x)),
+                spawn_y_bits=self._float_bits(float(y)),
             )
             if not result["rows"]:
                 raise RuntimeError("当前选择没有可复制单位")
             row = result["rows"][0]
             return int(row["rawcode"]), int(row["clone"])
-        x, y = self.query_mouse_world_position() if position is None else position
         unit_handle = 0
         if rawcode is None:
             if not use_selected_lookup:
@@ -7055,11 +7089,17 @@ class War3Trainer:
         if getattr(self, "_native_selection_unavailable", False) and rawcode is None:
             unit_rawcode = 0
             created = 0
+            position = self.query_mouse_world_position()
+            spawn_x_bits = self._float_bits(float(position[0]))
+            spawn_y_bits = self._float_bits(float(position[1]))
             for _ in range(total):
                 result = self.clone_batch_24268(
                     keep=True,
                     copy_abilities=True,
                     copy_items=True,
+                    spawn=True,
+                    spawn_x_bits=spawn_x_bits,
+                    spawn_y_bits=spawn_y_bits,
                 )
                 rows = tuple(result.get("rows", ()))
                 if not rows or int(result.get("changed", 0)) != len(rows):
@@ -7219,8 +7259,13 @@ class War3Trainer:
         if any(level is not None and not 1 <= level <= 100000 for _, level in bundle):
             raise ValueError("技能组合等级必须在 1 到 100000 之间")
         if getattr(self, "_native_selection_unavailable", False):
+            # The classic route used 112 as an internal "add at default level"
+            # sentinel for aura/passive bundles. Warcraft III 3.0 treats 112 as
+            # an actual SetUnitAbilityLevel request and rejects it.
             changed = sum(
-                int(self.ability_batch_24268(rawcode, 1, level or 0)["changed"])
+                int(self.ability_batch_24268(
+                    rawcode, 1, 0 if level == 112 else level or 0,
+                )["changed"])
                 for rawcode, level in bundle
             )
             return changed, len(bundle)
@@ -17385,11 +17430,15 @@ def run_gui() -> None:
         if copy_selected:
             trainer = elephant_trainer()
             if getattr(trainer, "_native_selection_unavailable", False):
+                x, y = trainer.query_mouse_world_position()
                 result = trainer.clone_batch_24268(
                     keep=True,
                     preserve_owner=preserve_owner,
                     copy_abilities=True,
                     copy_items=True,
+                    spawn=True,
+                    spawn_x_bits=trainer._float_bits(float(x)),
+                    spawn_y_bits=trainer._float_bits(float(y)),
                 )
                 return (
                     f"已复制 {result['count']} 个选中单位，技能 "

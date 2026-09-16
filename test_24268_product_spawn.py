@@ -90,3 +90,24 @@ def test_current_create_local_unit_uses_spawn_batch_for_explicit_rawcode():
 
     assert trainer.create_local_unit("hfoo", (12.5, -8.0)) == (0x68666F6F, 0x900000)
     trainer.spawn_unit_24268.assert_called_once_with(0x68666F6F, 12.5, -8.0)
+
+
+def test_current_create_local_unit_from_selection_uses_mouse_spawn_batch():
+    trainer = object.__new__(product.War3Trainer)
+    trainer._native_selection_unavailable = True
+    trainer._float_bits = lambda value: struct.unpack("<I", struct.pack("<f", value))[0]
+    trainer.query_mouse_world_position = Mock(return_value=(123.5, -45.25))
+    trainer.clone_batch_24268 = Mock(return_value={
+        "rows": [{"rawcode": 0x68666F6F, "clone": 0x900000}],
+    })
+
+    assert trainer.create_local_unit(None) == (0x68666F6F, 0x900000)
+    trainer.clone_batch_24268.assert_called_once_with(
+        keep=True,
+        preserve_owner=False,
+        copy_abilities=True,
+        copy_items=True,
+        spawn=True,
+        spawn_x_bits=struct.unpack("<I", struct.pack("<f", 123.5))[0],
+        spawn_y_bits=struct.unpack("<I", struct.pack("<f", -45.25))[0],
+    )

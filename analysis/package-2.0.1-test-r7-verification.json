@@ -1,0 +1,47 @@
+{
+  "ok": true,
+  "release": "2.0.1-test",
+  "game_build": "3.0.0.24268",
+  "source_commit": "e3713cf",
+  "exe": "dist-2.0.1-test-3.0.0.24268-r7/War3ReforgedTrainer-v2.0.1-test.exe",
+  "exe_bytes": 18847223,
+  "exe_sha256": "09bd53906e8a8cce4f00eb1a87de81c84becbcd2dffb4678812a637b44243e3b",
+  "bridge_sha256": "8937347302e2278f008939e02069ec0f7caeea35e72b495026ff5214fa5a8b54",
+  "decoder_sha256": "76958e18380023a68fd1714fa2e01c594cc6db1955a07ad6937b66e66dc5d6c3",
+  "clone_work_size": 1872,
+  "retired_helper_present": false,
+  "source_checks": {
+    "py_compile": true,
+    "pytest_24268_count": 507,
+    "pytest_24268_passed": true,
+    "clone_skill_point_fixture_passed": true,
+    "git_diff_check": true
+  },
+  "live_clone_skill_point_check": {
+    "pid": 32020,
+    "selected_count": 4,
+    "keep": false,
+    "copy_abilities": true,
+    "copy_items": true,
+    "changed": 4,
+    "completed": 4,
+    "error": 0,
+    "all_rows_cleaned": true,
+    "callback_verified": true,
+    "query_completed": true,
+    "report": "analysis/live-clone-skillpoints-continuation-direct.json"
+  },
+  "frozen_runtime_self_test": {
+    "ok": true,
+    "frozen": true,
+    "instruction_boundary_check": ["mov", "mov", "call", "ret"],
+    "report": "analysis/package-runtime-self-test-r7.json"
+  },
+  "portable_path_simulation": {
+    "ok": true,
+    "same_hash_in_two_nested_copies": true,
+    "report": "analysis/cross-device-sim-r7.json",
+    "physical_second_computer_test": false
+  },
+  "residual_test_gap": "A physical second-computer run remains for the user's environment; the current live clone transaction was a temporary keep=false verification and did not leave cloned units."
+}

@@ -1,0 +1,15 @@
+{
+  "ok": true,
+  "frozen": true,
+  "decoder": "C:\\Users\\14186\\AppData\\Local\\Temp\\_MEI298962\\capstone\\lib\\capstone.dll",
+  "decoder_sha256": "76958e18380023a68fd1714fa2e01c594cc6db1955a07ad6937b66e66dc5d6c3",
+  "bridge": "C:\\Users\\14186\\AppData\\Local\\Temp\\_MEI298962\\tools\\war3_bridge_24268_2_0_1.dll",
+  "bridge_sha256": "8937347302e2278f008939e02069ec0f7caeea35e72b495026ff5214fa5a8b54",
+  "instructions": [
+    "mov",
+    "mov",
+    "call",
+    "ret"
+  ],
+  "retired_helper_present": false
+}

@@ -13,7 +13,7 @@ import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_EXE = ROOT / "dist-2.0.1-test-3.0.0.24268-r6" / "War3ReforgedTrainer-v2.0.1-test.exe"
+DEFAULT_EXE = ROOT / "dist-2.0.1-test-3.0.0.24268-r7" / "War3ReforgedTrainer-v2.0.1-test.exe"
 
 
 def run_copy(source: Path, work_dir: Path, index: int) -> dict[str, object]:
@@ -51,7 +51,7 @@ def run_copy(source: Path, work_dir: Path, index: int) -> dict[str, object]:
 
 def main(argv: list[str]) -> int:
     source = Path(argv[1]).resolve() if len(argv) > 1 else DEFAULT_EXE
-    output = Path(argv[2]).resolve() if len(argv) > 2 else ROOT / "analysis" / "cross-device-sim-r6.json"
+    output = Path(argv[2]).resolve() if len(argv) > 2 else ROOT / "analysis" / "cross-device-sim-r7.json"
     if not source.is_file():
         raise FileNotFoundError(source)
     with tempfile.TemporaryDirectory(prefix="war3-24268-portability-") as temporary:

@@ -18,6 +18,7 @@ from war3_clone_protocol import (
     decode_work,
 )
 import war3_engine_transport as transport
+from war3_reforged_trainer import War3Trainer
 
 
 def entries():
@@ -153,3 +154,20 @@ def test_keep_flag_is_part_of_the_wire_request():
     payload = work(CLONE_KEEP | CLONE_COPY_ABILITIES)
     values = struct.unpack_from("<26Q8I", payload, 480)
     assert values[26] & CLONE_KEEP
+
+
+def test_empty_hero_progress_result_is_reported_as_no_hero():
+    trainer = object.__new__(War3Trainer)
+    trainer._native_selection_unavailable = True
+    trainer.hero_progress_24268 = lambda target=0: {"rows": []}
+    with pytest.raises(RuntimeError, match="没有可读取的英雄"):
+        trainer.get_selected_hero_level()
+
+
+def test_empty_item_creation_result_is_reported_as_no_unit():
+    trainer = object.__new__(War3Trainer)
+    trainer._native_selection_unavailable = True
+    trainer._coerce_memory_value = lambda _kind, _value: 0x69746D31
+    trainer.item_batch_24268 = lambda _action, _rawcode: {"rows": []}
+    with pytest.raises(RuntimeError, match="没有可添加物品的单位"):
+        trainer.add_item_to_selected_unit("itm1")

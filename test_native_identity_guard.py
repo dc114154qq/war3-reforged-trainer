@@ -286,6 +286,8 @@ class NativeIdentityGuardTests(unittest.TestCase):
         root = Path(cls.directory.name)
         source = root / 'guard.c'
         helper = Path(__file__).with_name('tools') / 'war3_native_helper.c'
+        if not helper.is_file():
+            raise unittest.SkipTest('legacy native helper source removed; current 3.0 bridge tests cover the active path')
         source.write_text(HARNESS.replace('HELPER_SOURCE', helper.as_posix()), encoding='utf-8')
         library = root / 'guard.dll'
         subprocess.run([compiler, '-shared', '-O2', '-Wno-microsoft-goto', str(source),

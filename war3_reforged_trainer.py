@@ -5769,7 +5769,11 @@ class War3Trainer:
 
     def get_selected_hero_level(self) -> int:
         if getattr(self, "_native_selection_unavailable", False):
-            return int(self.hero_progress_24268()["rows"][0]["after"])
+            result = self.hero_progress_24268()
+            rows = tuple(result.get("rows", ()))
+            if not rows:
+                raise RuntimeError("当前选中单位中没有可读取的英雄")
+            return int(rows[0]["after"])
         return self._query_elephant_unit_int("GetHeroLevel") & 0xFFFFFFFF
 
     def set_selected_hero_level(self, level: int) -> int:
@@ -7080,7 +7084,14 @@ class War3Trainer:
         if not item_rawcode:
             raise ValueError("物品 ID 无效")
         if getattr(self, "_native_selection_unavailable", False):
-            return int(self.item_batch_24268(1, item_rawcode)["rows"][0]["created"])
+            result = self.item_batch_24268(1, item_rawcode)
+            rows = tuple(result.get("rows", ()))
+            if not rows:
+                raise RuntimeError("当前选中单位没有可添加物品的单位")
+            created = int(rows[0].get("created", 0))
+            if not created:
+                raise RuntimeError("物品创建返回了无效句柄")
+            return created
         return int(self._run_bound_item_create(item_rawcode).arg0)
 
     def _run_bound_item_create(self, rawcode: int) -> NativeHelperOpResult:
@@ -10652,7 +10663,7 @@ class War3Trainer:
             suffix += f" unit=0x{unit_address:x}"
             try:
                 unit_type_id = pm.read_u32(unit_address + 0x70)
-            except OSError:
+            except (OSError, AttributeError):
                 unit_type_id = 0
         return UnitCandidate(
             base=hp_prop,

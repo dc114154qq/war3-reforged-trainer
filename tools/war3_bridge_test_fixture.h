@@ -248,6 +248,8 @@ static void clone_remove_unit(uint64_t unit) { if (unit>=0x600000 && unit<0x6000
 static int32_t clone_level(uint64_t unit) { return unit>=0x600000 ? 1 : fixture_level(unit); }
 static void clone_set_hero_level_fixture(uint64_t unit,int32_t level,uint32_t eye) {(void)unit;(void)level;(void)eye;}
 static uint64_t clone_ability_by_index(uint64_t unit,int32_t index) {
+    if (clone_case==5 && unit < 0x600000 && fixture_level(unit) > 0 && index == 0)
+        return 0x720000 + clone_index(unit); /* engine buff exposed as a unit ability */
     if (unit < 0x600000 && fixture_level(unit) > 0 && index == 0)
         return 0x700000 + clone_index(unit);
     if (unit < 0x600000 && fixture_level(unit) > 0 && index == 1)
@@ -255,12 +257,14 @@ static uint64_t clone_ability_by_index(uint64_t unit,int32_t index) {
     return 0;
 }
 static uint32_t clone_ability_id(uint64_t ability) {
+    if (ability >= 0x720000 && ability < 0x720018) return 0x424e6874; /* BNht */
     return ability >= 0x710000 && ability < 0x710018 ? 0x41496d61 : 0x414f6372;
 }
 static int32_t clone_get_ability_level(uint64_t unit,uint32_t rawcode) {
     (void)rawcode;return unit>=0x600000 ? (int32_t)clone_ability_level[clone_index(unit)] : fixture_level(unit)>0 ? 2 : 0;
 }
 static uint8_t clone_add_ability(uint64_t unit,uint32_t rawcode) {
+    if (clone_case==5 && rawcode==0x424e6874) return 0;
     (void)rawcode;if (clone_case==2)return 0;clone_ability_level[clone_index(unit)]=1;++clone_abilities;return 1;
 }
 static int32_t clone_set_ability_level_fn(uint64_t unit,uint32_t rawcode,int32_t level) {

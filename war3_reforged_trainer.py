@@ -10313,10 +10313,26 @@ class War3Trainer:
         current_food_cap: int | None = None,
         pm: ProcessMemory | None = None,
     ) -> ResourceCache | None:
-        # Public resource lookup is native-only.  The optional memory object
-        # remains in the signature for old diagnostic callers, but must never
-        # reactivate the historical process scan.
-        del pm
+        if getattr(self, "_native_selection_unavailable", False):
+            def matches(cache: ResourceCache) -> bool:
+                return not any(
+                    expected is not None and actual != int(expected)
+                    for actual, expected in (
+                        (cache.gold, current_gold),
+                        (cache.lumber, current_lumber),
+                        (cache.food_used, current_food),
+                        (cache.food_cap, current_food_cap),
+                    )
+                )
+
+            if pm is not None:
+                cache = self._classic_local_resource_cache(pm)
+                return cache if matches(cache) else None
+            with self._process_memory() as memory:
+                cache = self._classic_local_resource_cache(memory)
+            return cache if matches(cache) else None
+
+        # Legacy 1.0.19 keeps its native local-player shortcut.
         native = self._native_resource_cache(None)
         if (
             (current_gold is not None and native.gold != int(current_gold))
@@ -12538,9 +12554,14 @@ class War3Trainer:
     ) -> list[UnitSelectionSummary]:
         # Remembered identities need their own bound snapshot after selection
         # changes; resolving them from external addresses loses that binding.
-        self.persistent_native_init()
-        selected = self._selected_candidates_snapshot(None)
-        summaries = list(self._selected_summaries_from_snapshot(None, selected))
+        if getattr(self, "_native_selection_unavailable", False):
+            with self._process_memory() as memory:
+                selected = self._classic_selection_candidates(memory)
+                summaries = list(self._selected_summaries_from_snapshot(memory, selected))
+        else:
+            self.persistent_native_init()
+            selected = self._selected_candidates_snapshot(None)
+            summaries = list(self._selected_summaries_from_snapshot(None, selected))
         if extra_identities is not None:
             for handle, owner, unit in extra_identities:
                 summaries.append(self.selection_summary_from_identity(handle, owner, unit))

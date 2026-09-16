@@ -91,4 +91,11 @@ class IndexedResourceTests(unittest.TestCase):
         self.assertEqual(t.validate_local_player_resource_cache(c).player_value,1)
         with self.assertRaises(RuntimeError):t.validate_local_player_resource_cache(t.list_resource_caches()[0])
 
+    def test_public_locate_uses_indexed_local_cache_on_30(self):
+        t,m,p=fixture();c=t.list_resource_caches()[1]
+        t._classic_local_resource_cache=Mock(return_value=c)
+        result=t.locate_resource_cache(c.gold,c.lumber,c.food_used,c.food_cap)
+        self.assertEqual(result.player_value,1)
+        t._query_native_table_handlers.assert_not_called()
+
 if __name__=='__main__':unittest.main()

@@ -86,6 +86,21 @@ def test_keep_clone_failure_rolls_back_previously_created_clones(fixture):
     assert stats[1] == 3
 
 
+def test_engine_buff_exposed_as_unit_ability_is_skipped(fixture):
+    data, count, stats = run(
+        fixture,
+        count=1,
+        scenario=5,
+        flags=CLONE_COPY_ABILITIES,
+    )
+    result = decode_work(data, count)
+    assert result["count"] == 1
+    assert result["changed"] == 1
+    assert result["rows"][0]["status"] == 2
+    assert result["rows"][0]["ability_count"] == 0
+    assert stats == (1, 1, 0, 0)
+
+
 @pytest.mark.parametrize("name", [name for name, _ in SIGNATURES])
 def test_clone_requires_exact_current_signature(name):
     current = entries()

@@ -89,6 +89,13 @@ static int clone_is_essential_ability(uint32_t rawcode) {
     return 0;
 }
 
+static int clone_is_noncopyable_ability(uint32_t rawcode) {
+    /* 3.0 exposes engine buff objects (for example BNht) through the unit
+       ability enumerator, but BlzUnitAddAbility cannot add them to a unit. */
+    if (clone_is_essential_ability(rawcode)) return 1;
+    return (rawcode >> 24) == (uint32_t)'B';
+}
+
 static int clone_has_ability(CloneWork *w, uint64_t unit, uint32_t rawcode) {
     for (int32_t index = 0; index < 128; ++index) {
         uint64_t ability = w->ability_by_index(unit, index);
@@ -234,7 +241,7 @@ __declspec(dllexport) uint64_t BridgeCloneQuery(void) {
                     if (clone_is_item_ability(source_item_abilities,
                                               source_item_ability_count,
                                               rawcode)) continue;
-                    if (clone_is_essential_ability(rawcode)) continue;
+                    if (clone_is_noncopyable_ability(rawcode)) continue;
                     existing = w->ability_level(row->clone, rawcode);
                     if (!existing && clone_has_ability(w, row->clone, rawcode)) {
                         ++ability_count;

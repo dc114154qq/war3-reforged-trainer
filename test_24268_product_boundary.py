@@ -102,3 +102,19 @@ def test_operation_log_preserves_traceback_pid_and_operation(tmp_path):
     assert "Traceback" in text
     assert "read_u64 fixture failure" in text
     assert (tmp_path / "log" / "trainer-error-latest.log").is_file()
+
+
+def test_selection_candidate_list_uses_indexed_path_when_current_native_is_disabled():
+    trainer = object.__new__(module.War3Trainer)
+    trainer._native_selection_unavailable = True
+    memory = Mock()
+    memory.__enter__ = Mock(return_value=memory)
+    memory.__exit__ = Mock(return_value=None)
+    candidate = object()
+    summary = object()
+    trainer._process_memory = Mock(return_value=memory)
+    trainer._classic_selection_candidates = Mock(return_value=[(candidate, 11)])
+    trainer._selected_summaries_from_snapshot = Mock(return_value=(summary,))
+    trainer.persistent_native_init = Mock(side_effect=AssertionError("legacy native path"))
+    assert trainer.list_selection_candidates() == [summary]
+    trainer.persistent_native_init.assert_not_called()

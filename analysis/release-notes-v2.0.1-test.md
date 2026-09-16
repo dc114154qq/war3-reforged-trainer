@@ -9,15 +9,17 @@ Warcraft III 3.0.0.24268 测试版。
 - 资源页恢复 28 个资源组读取。
 - 混合英雄与普通单位时，技能等级操作走 add/set 路径，缺失技能可进入创建流程。
 - 复制单位时区分英雄技能与物品栏授予技能，物品栏技能不再重复当作英雄技能复制。
-- 瞬移位置在相机投影后追加一次只读地形高度校正，降低不同地形上的落点误差。
+- 瞬移位置在相机投影后进行最多 3 次只读地形高度求交，降低斜坡和高低差地形上的落点误差。
+- 冻结包会检查当前 3.0 bridge 是否存在并记录 bridge SHA256，避免跨设备运行时静默落回错误文件。
 - 保留资源、英雄、技能、物品、复制单位和大象功能的 3.0 适配代码。
 
 ## 已验证
 
-- `test_24268_*.py`：488 passed。
+- `test_24268_*.py`：491 passed。
 - clone product smoke：1856-byte ABI，物品栏技能过滤和物品复制均通过。
 - terrain product smoke：当前 3.0 运行实例完成 `Location/GetLocationZ/RemoveLocation` 查询。
 - 打包后运行时自检：`ok=true`、`frozen=true`、`retired_helper_present=false`。
+- 运行时自检同时确认 bridge 已随 EXE 携带并记录其 SHA256。
 - 打包内 Capstone 解码器和 bridge 文件均已随 EXE 发布。
 - 已完成当前运行实例上的读取、资源组枚举、英雄同值写入、字段同值写入、技能/物品复制链路 smoke 验证。
 

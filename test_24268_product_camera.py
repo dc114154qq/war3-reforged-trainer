@@ -40,3 +40,17 @@ def test_current_mouse_route_uses_camera_snapshot_not_retired_world_helper():
     x, y = trainer.query_mouse_world_position()
     assert (x, y) == pytest.approx((100.0, 200.0), abs=0.1)
     trainer.camera_snapshot_24268.assert_called_once_with()
+
+def test_current_mouse_route_iterates_terrain_intersection_on_slope():
+    trainer = object.__new__(product.War3Trainer)
+    trainer._native_selection_unavailable = True
+    trainer.hwnd = 123
+    trainer.camera_snapshot_24268 = Mock(return_value=snapshot())
+    trainer._client_size_24268 = Mock(return_value=(1706, 960))
+    trainer._screen_scale_24268 = Mock(return_value=1.0)
+    trainer.terrain_height_24268 = Mock(side_effect=[60.0, 60.0])
+    expected = trainer._mouse_world_from_camera_24268(
+        snapshot(), 1706, 960, 1.0, plane_z=60.0,
+    )
+    assert trainer.query_mouse_world_position() == pytest.approx(expected, abs=0.05)
+    assert trainer.terrain_height_24268.call_count == 2

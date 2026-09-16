@@ -108,6 +108,23 @@ def test_pending_execution_is_not_retried(tmp_path):
     with pytest.raises(EngineExecutionError,match='retained'):engine.hero_progress(2)
     memory.assert_not_called()
 
+def test_default_current_bridge_prefers_packaged_201_filename(tmp_path,monkeypatch):
+    import war3_engine_24268 as engine_module
+    tools=tmp_path/'tools';tools.mkdir()
+    stable=tools/'war3_bridge_24268_2_0_1.dll';stable.write_bytes(b'stable')
+    legacy=tools/'war3_bridge_24268_current_r38.dll';legacy.write_bytes(b'legacy')
+    monkeypatch.setattr(engine_module.sys,'_MEIPASS',str(tmp_path),raising=False)
+    engine=engine_module.Engine24268(1234,42,Mock())
+    assert engine.image==stable
+
+def test_default_current_bridge_falls_back_to_existing_r38(tmp_path,monkeypatch):
+    import war3_engine_24268 as engine_module
+    tools=tmp_path/'tools';tools.mkdir()
+    legacy=tools/'war3_bridge_24268_current_r38.dll';legacy.write_bytes(b'legacy')
+    monkeypatch.setattr(engine_module.sys,'_MEIPASS',str(tmp_path),raising=False)
+    engine=engine_module.Engine24268(1234,42,Mock())
+    assert engine.image==legacy
+
 @pytest.mark.parametrize('function_name',["elephant_read_hero_level","elephant_set_hero_level"])
 def test_gui_uses_one_batch_for_24_mixed_units(function_name):
     import ast

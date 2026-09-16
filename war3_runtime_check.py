@@ -8,6 +8,13 @@ import sys
 import traceback
 
 
+CURRENT_BRIDGE_FILENAMES = (
+    "war3_bridge_24268_2_0_1.dll",
+    "war3_bridge_24268_current_r38.dll",
+    "war3_bridge_24268_current_r31.dll",
+)
+
+
 def run(output_path):
     report = {"ok": False, "frozen": bool(getattr(sys, "frozen", False))}
     try:
@@ -19,6 +26,15 @@ def run(output_path):
         report["decoder_sha256"] = hashlib.sha256(decoder.read_bytes()).hexdigest()
         if report["frozen"] and not decoder.is_relative_to(base.resolve()):
             raise RuntimeError("Decoder was loaded from outside the executable bundle")
+        bridge = next(
+            (base / "tools" / name for name in CURRENT_BRIDGE_FILENAMES
+             if (base / "tools" / name).is_file()),
+            None,
+        )
+        if bridge is None:
+            raise RuntimeError("Current 3.0 bridge is missing from the executable bundle")
+        report["bridge"] = str(bridge)
+        report["bridge_sha256"] = hashlib.sha256(bridge.read_bytes()).hexdigest()
         # C3 inside a mov instruction is not a return; E8 inside an immediate
         # is not a call. Both caused false instruction boundaries previously.
         code = bytes.fromhex("448bc3b8e8000000e803000000c3")

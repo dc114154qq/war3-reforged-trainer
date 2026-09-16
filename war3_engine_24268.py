@@ -9,6 +9,22 @@ from war3_selection_protocol import SIGNATURES
 from war3_hero_protocol import SIGNATURES as HERO_SIGNATURES, build_work,decode_work
 from war3_engine_transport import dispatch
 
+
+_CURRENT_BRIDGE_FILENAMES = (
+    'war3_bridge_24268_2_0_1.dll',
+    'war3_bridge_24268_current_r38.dll',
+    'war3_bridge_24268_current_r31.dll',
+)
+
+
+def _default_bridge_image():
+    root = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
+    for filename in _CURRENT_BRIDGE_FILENAMES:
+        candidate = root / 'tools' / filename
+        if candidate.is_file():
+            return candidate
+    return root / 'tools' / _CURRENT_BRIDGE_FILENAMES[0]
+
 class EngineExecutionError(RuntimeError):
     def __init__(self,message,report):
         self.report=report
@@ -23,7 +39,7 @@ class Engine24268:
     def __init__(self,pid,hwnd,memory_factory,image=None,report_sink=None):
         self.pid,self.hwnd,self.memory_factory=pid,hwnd,memory_factory
         self.report_sink=report_sink
-        self.image=Path(image) if image is not None else Path(getattr(sys,'_MEIPASS',Path(__file__).resolve().parent))/'tools/war3_bridge_24268_current_r38.dll'
+        self.image=Path(image) if image is not None else _default_bridge_image()
         self.lock=threading.RLock();self.last_report={};self.quarantined=False
 
     def hero_progress(self,target=0):

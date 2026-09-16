@@ -6031,10 +6031,19 @@ class War3Trainer:
             # if the read-only refinement is unavailable, retain the verified
             # camera-plane result instead of blocking movement.
             try:
-                terrain_z = self.terrain_height_24268(*initial)
-                return self._mouse_world_from_camera_24268(
-                    snapshot, *client_size, screen_scale, plane_z=terrain_z,
-                )
+                point = initial
+                # A single plane correction is insufficient on ramps and cliffs:
+                # the new XY point can sample a different terrain height. Repeat
+                # the ray/terrain intersection until the point stops moving.
+                for _ in range(3):
+                    terrain_z = self.terrain_height_24268(*point)
+                    refined = self._mouse_world_from_camera_24268(
+                        snapshot, *client_size, screen_scale, plane_z=terrain_z,
+                    )
+                    if math.hypot(refined[0] - point[0], refined[1] - point[1]) <= 0.05:
+                        return refined
+                    point = refined
+                return point
             except Exception:
                 return initial
         packed = int(self._run_native_helper_ops(

@@ -30,6 +30,7 @@ def main() -> None:
         b"BridgeItemFieldQuery",
         b"BridgeCloneQuery",
         b"BridgeWorldQuery",
+        b"BridgeMapFlagsQuery",
         b"BridgeBulkQuery",
         b"BridgeEffectQuery",
         b"BridgeWorldEffectQuery",
@@ -60,6 +61,7 @@ def main() -> None:
     marker(b"clone_batch_abi", (0x24268015, 216, 1872))
     marker(b"unit_action_batch_abi", (0x24268016, 216, 1432))
     marker(b"world_batch_abi", (0x24268017, 216, 128))
+    marker(b"map_flags_batch_abi", (0x2426802C, 216, 128))
     marker(b"bulk_batch_abi", (0x24268023, 216, 624))
     marker(b"effect_batch_abi", (0x24268027, 216, 1168))
     marker(b"world_effect_batch_abi", (0x24268028, 216, 656))

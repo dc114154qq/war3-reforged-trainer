@@ -23,6 +23,15 @@ def entries():
     }
 
 
+def test_world_effect_does_not_require_selected_group_native():
+    payload_entries = {
+        name: LiveNativeEntry(name, signature, 0x300000 + i * 80, 0x500000 + i * 256)
+        for i, (name, signature) in enumerate(SIGNATURES)
+    }
+    payload = build_work(payload_entries, 0x10000000, 0x41457362, ACTION_IMMEDIATE, resolver=0x700000)
+    validate_work(payload)
+
+
 @pytest.mark.parametrize("action", [ACTION_TARGET, ACTION_IMMEDIATE, ACTION_POINT])
 def test_world_effect_protocol_accepts_all_current_callback_modes(action):
     payload = build_work(entries(), 0x10000000, 0x41457362, action, resolver=0x700000)

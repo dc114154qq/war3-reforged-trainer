@@ -33,7 +33,8 @@ class EngineExecutionError(RuntimeError):
             phase=state.get('query_stage'),exception=state.get('exception_code'),
             retained=report.get('dispatch',{}).get('allocations_retained',False),
             ability_status=report.get('ability_status'),item_status=report.get('item_status'),
-            clone_status=report.get('clone_status'),world_status=report.get('world_status')),ensure_ascii=False))
+            clone_status=report.get('clone_status'),world_status=report.get('world_status'),
+            map_flags_status=report.get('map_flags_status')),ensure_ascii=False))
 
 class Engine24268:
     def __init__(self,pid,hwnd,memory_factory,image=None,report_sink=None):
@@ -225,6 +226,22 @@ class Engine24268:
             lambda entries, tls: build(entries, tls, action, rawcode, value),
             decode,
             dict(action=action, rawcode=rawcode, value=value),
+        )
+
+    def map_flags(self, action=1, revealed=0):
+        from war3_map_flags_protocol import (
+            SIGNATURES as MAP_FLAG_SIGNATURES,
+            build_work as build,
+            decode_work as decode,
+        )
+        if action not in (1, 2) or revealed not in (0, 1):
+            raise ValueError('Invalid map visibility operation')
+        names = tuple(name for name, _ in MAP_FLAG_SIGNATURES)
+        return self._execute(
+            'map_flags', names,
+            lambda entries, tls: build(entries, tls, action, revealed),
+            decode,
+            dict(action=action, revealed=revealed),
         )
 
     def bulk_batch(self, action, value=0):
@@ -452,6 +469,11 @@ class Engine24268:
                         if len(raw)==128:
                             changed,error,completed=struct.unpack_from('<3I',raw,100)
                             report['world_status']=dict(changed=changed,error=error,completed=completed)
+                    if kind=='map_flags' and evidence.get('work_result_hex'):
+                        raw=bytes.fromhex(evidence['work_result_hex'])
+                        if len(raw)==128:
+                            changed,error,completed=struct.unpack_from('<3I',raw,40)
+                            report['map_flags_status']=dict(changed=changed,error=error,completed=completed)
                     if kind=='bulk' and evidence.get('work_result_hex'):
                         raw=bytes.fromhex(evidence['work_result_hex'])
                         if len(raw)==624:

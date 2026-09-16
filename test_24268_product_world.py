@@ -93,6 +93,10 @@ def test_product_world_methods_use_current_batch():
     trainer._native_selection_unavailable = True
     trainer.world_batch_24268 = Mock(side_effect=lambda action, rawcode=0, value=0:
                                      {'after0': value, 'after1': value, 'changed': 1})
+    trainer.map_flags_batch_24268 = Mock(side_effect=lambda action, revealed=0:
+                                         {'after0': 0 if action == 1 or revealed else 1,
+                                          'after1': 0 if action == 1 or revealed else 1,
+                                          'changed': 0 if action == 1 else 1})
     trainer._elephant_handlers = Mock(side_effect=AssertionError('old helper'))
     assert trainer.set_local_player_tech('Rost', 3) == 3
     assert trainer.set_local_player_xp_rate(2.5) == pytest.approx(2.5)
@@ -100,4 +104,5 @@ def test_product_world_methods_use_current_batch():
     trainer.set_map_revealed(True)
     trainer.set_game_paused(True)
     trainer.end_current_game(True)
-    assert [call.args[0] for call in trainer.world_batch_24268.call_args_list] == [1, 2, 3, 4, 5, 6]
+    assert [call.args[0] for call in trainer.world_batch_24268.call_args_list] == [1, 2, 5, 6]
+    assert [(call.args[0], call.args[1]) for call in trainer.map_flags_batch_24268.call_args_list] == [(1, 0), (2, 1)]

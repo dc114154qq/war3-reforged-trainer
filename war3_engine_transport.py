@@ -126,6 +126,9 @@ def dispatch(pid,hwnd,tid,image,tls_index,work_payload,kind="hero"):
     elif kind=='world':
         from war3_world_protocol import ABI as expected_abi,validate_work as validate_world
         validate_world(work_payload);marker_name=b'world_batch_abi';query_name=b'BridgeWorldQuery'
+    elif kind=='map_flags':
+        from war3_map_flags_protocol import ABI as expected_abi,validate_work as validate_map_flags
+        validate_map_flags(work_payload);marker_name=b'map_flags_batch_abi';query_name=b'BridgeMapFlagsQuery'
     elif kind=='bulk':
         from war3_bulk_protocol import ABI as expected_abi,validate_work as validate_bulk
         validate_bulk(work_payload);marker_name=b'bulk_batch_abi';query_name=b'BridgeBulkQuery'

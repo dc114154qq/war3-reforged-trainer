@@ -62,7 +62,7 @@ def test_3_0_mouse_route_does_not_call_retired_helper():
     trainer.camera_snapshot_24268 = Mock(return_value={
         "target": (100.0, 200.0, 50.0),
         "eye": (100.0, 0.0, 250.0),
-        "fields": (0.0, 5000.0, 5.3, 1.2217304764, 0.0, 1.5707963268, 0.0, 0.0),
+            "fields": (0.0, 5000.0, 1.2217304764, 5.3, 0.0, 1.5707963268, 0.0, 0.0),
         "screen": (32767, 32767),
     })
     trainer._client_size_24268 = Mock(return_value=(1706, 960))

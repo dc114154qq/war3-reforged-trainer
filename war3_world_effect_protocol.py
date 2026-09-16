@@ -4,18 +4,13 @@ from __future__ import annotations
 
 import struct
 
-from war3_selection_protocol import (
-    build_work as build_selection_work,
-    decode_work as decode_selection_work,
-    validate_work as validate_selection_work,
-)
-
 WORK_SIZE = 656
 ABI = struct.pack("<3I", 0x24268028, 216, WORK_SIZE)
 ACTION_TARGET = 1
 ACTION_IMMEDIATE = 2
 ACTION_POINT = 3
 MAX_TARGETS = 100_000
+SELECTION_RESERVED_SIZE = 480
 
 SIGNATURES = (
     ("BlzGetUnitAbility", "(Hunit;I)Hability;"),
@@ -49,7 +44,9 @@ def build_work(entries, tls, rawcode, action, success_limit=0, *, resolver=0):
             raise ValueError("World effect native signature differs: " + name)
         pointers.append(entry.handler)
     ordered_pointers = pointers[:1] + [resolver] + pointers[1:]
-    payload = build_selection_work(entries) + struct.pack(
+    # Keep the historical selection block reserved for ABI compatibility, but
+    # do not require GroupEnumUnitsSelected for world enumeration.
+    payload = bytes(SELECTION_RESERVED_SIZE) + struct.pack(
         "<18Q8I", *(ordered_pointers + [tls]),
         rawcode, action, success_limit, 0, 0, 0, 0, 0,
     )
@@ -60,7 +57,8 @@ def build_work(entries, tls, rawcode, action, success_limit=0, *, resolver=0):
 def validate_work(payload):
     if len(payload) != WORK_SIZE:
         raise ValueError(f"World effect work must contain {WORK_SIZE} bytes")
-    validate_selection_work(payload[:480])
+    if any(payload[:SELECTION_RESERVED_SIZE]):
+        raise ValueError("World effect selection-reserved block must be zero")
     pointers = struct.unpack_from("<18Q", payload, 480)
     if (any(not 0x10000 <= value < 0x800000000000 for value in pointers[:16])
             or len(set(pointers[:16])) != 16
@@ -78,7 +76,6 @@ def validate_work(payload):
 def decode_work(payload, expected_count):
     if len(payload) != WORK_SIZE:
         raise ValueError("Incomplete world effect result")
-    selection = decode_selection_work(payload[:480], expected_count)
     rawcode, action, limit, attempts, error, successes, completed, reserved = struct.unpack_from(
         "<8I", payload, 624,
     )
@@ -94,6 +91,6 @@ def decode_work(payload, expected_count):
         attempts=attempts,
         successes=successes,
         changed=successes,
-        count=expected_count,
-        rows=selection["rows"],
+        count=0,
+        rows=[],
     )

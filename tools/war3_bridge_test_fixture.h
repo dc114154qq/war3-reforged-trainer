@@ -523,6 +523,30 @@ __declspec(dllexport) int BridgeWorldTestStat(int kind) {
     return -1;
 }
 
+static uint8_t fixture_map_flags[8];
+static uint64_t fixture_convert_map_flag(uint32_t value) {
+    return value < 8u ? 0x200000u + value : 0;
+}
+static void fixture_set_map_flag(uint64_t handle, uint32_t value) {
+    if (handle >= 0x200000u && handle < 0x200008u)
+        fixture_map_flags[handle - 0x200000u] = (uint8_t)(value != 0);
+}
+static uint8_t fixture_is_map_flag_set(uint64_t handle) {
+    return handle >= 0x200000u && handle < 0x200008u
+        ? fixture_map_flags[handle - 0x200000u] : 0;
+}
+__declspec(dllexport) uint64_t BridgeMapFlagsTestRun(MapFlagsWork *w, int action, int revealed) {
+    static BridgeCommand cmd;
+    int i;
+    for (i = 0; i < 8; ++i) fixture_map_flags[i] = 1;
+    cmd.work = w; cmd.tls_value = w->expected_tls; g_dispatch = &cmd;
+    w->convert_map_flag = fixture_convert_map_flag;
+    w->set_map_flag = fixture_set_map_flag;
+    w->is_map_flag_set = fixture_is_map_flag_set;
+    w->action = (uint32_t)action; w->revealed = (uint32_t)revealed;
+    return BridgeMapFlagsQuery();
+}
+
 static int spawn_case, spawn_create_calls, spawn_remove_calls;
 static uint32_t spawn_requested, spawn_actual, spawn_x_bits, spawn_y_bits, spawn_facing_bits;
 static uint64_t spawn_create(uint64_t player, uint32_t rawcode, float x, float y, float facing) {

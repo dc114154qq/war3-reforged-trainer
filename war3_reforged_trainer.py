@@ -38,7 +38,8 @@ from war3_ui_i18n import detect_ui_language, translate_ui_text
 from war3_native_profile import PROFILE_ID as NATIVE_PROFILE_ID, NATIVE_INDEX
 
 
-APP_VERSION = "3.0.0.24268"
+APP_VERSION = "2.0.1"
+GAME_BUILD = "3.0.0.24268"
 PRODUCT_READ_MODE = "normal"
 PRODUCT_EDITION_LABEL = "普通读取版"
 WIN10_COMPAT_REVISION = "backup-r7-live-regions-external-native"
@@ -1788,6 +1789,7 @@ class Win10ReadLogger:
         self.log(
             "log_start",
             app_version=APP_VERSION,
+            game_build=GAME_BUILD,
             compat_revision=WIN10_COMPAT_REVISION,
             pid=self.pid,
             archive=str(self.archive_path),
@@ -5557,6 +5559,9 @@ class War3Trainer:
         code = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF if rawcode else 0
         return self._engine_instance_24268().world_batch(action, code, int(value))
 
+    def map_flags_batch_24268(self, action: int = 1, revealed: int = 0) -> dict:
+        return self._engine_instance_24268().map_flags(int(action), int(revealed))
+
     def bulk_batch_24268(self, action: int, value: int = 0) -> dict:
         return self._engine_instance_24268().bulk_batch(int(action), int(value))
 
@@ -5635,7 +5640,15 @@ class War3Trainer:
         eye = tuple(float(value) for value in snapshot["eye"])
         screen_x, screen_y = (int(value) for value in snapshot["screen"])
         fields = tuple(float(value) for value in snapshot.get("fields", ()))
-        fov = fields[3] if len(fields) > 3 and 0.1 < fields[3] < math.pi - 0.1 else math.radians(70.0)
+        # Warcraft III's CAMERA_FIELD_FIELD_OF_VIEW is index 2. Index 3 is
+        # near-Z on the JASS camera-field enum; retain it only for old
+        # synthetic snapshots that used the wrong field slot.
+        if len(fields) > 2 and 0.1 < fields[2] < math.pi - 0.1:
+            fov = fields[2]
+        elif len(fields) > 3 and 0.1 < fields[3] < math.pi - 0.1:
+            fov = fields[3]
+        else:
+            fov = math.radians(70.0)
         forward = tuple(target[index] - eye[index] for index in range(3))
         forward_length = math.sqrt(sum(value * value for value in forward))
         if not math.isfinite(forward_length) or forward_length <= 1e-5:
@@ -8664,7 +8677,7 @@ class War3Trainer:
 
     def get_map_fog_state(self) -> tuple[bool, bool]:
         if getattr(self, "_native_selection_unavailable", False):
-            result = self.world_batch_24268(3, 0, 0)
+            result = self.map_flags_batch_24268(1, 0)
             return bool(result["after0"]), bool(result["after1"])
         handlers = self._elephant_handlers(None, ("IsFogEnabled", "IsFogMaskEnabled"))
         results = self._run_native_helper_ops(
@@ -8690,7 +8703,7 @@ class War3Trainer:
 
     def set_map_revealed(self, revealed: bool) -> None:
         if getattr(self, "_native_selection_unavailable", False):
-            self.world_batch_24268(4, 0, int(bool(revealed)))
+            self.map_flags_batch_24268(2, int(bool(revealed)))
             return
         handlers = self._elephant_handlers(None, ("FogEnable", "FogMaskEnable"))
         fog_enabled = 0 if revealed else 1

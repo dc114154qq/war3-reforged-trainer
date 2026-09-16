@@ -52,6 +52,23 @@ static int BridgeWorldEffectLive(uint32_t bits) {
     return value.value > 0.405f && value.value == value.value;
 }
 
+/* Pick one live local-player unit as the caster and drain the temporary group
+   before reusing it for enemy enumeration. This route does not need the
+   optional GroupEnumUnitsSelected native. */
+static uint64_t BridgeWorldEffectFindSource(WorldEffectWork *w, uint64_t group, uint64_t player) {
+    uint64_t source = 0;
+    for (;;) {
+        uint64_t candidate = w->first_of_group(group);
+        if (!candidate) break;
+        w->remove_from_group(group, candidate);
+        if (!source && BridgeWorldEffectLive(w->get_life(candidate)) &&
+            w->get_owner(candidate) == player) {
+            source = candidate;
+        }
+    }
+    return source;
+}
+
 __declspec(dllexport) uint64_t BridgeWorldEffectQuery(void) {
     WorldEffectWork *w = (WorldEffectWork *)g_dispatch->work;
     uint64_t source, source_owner, source_ability_handle = 0, source_ability = 0, group = 0;
@@ -69,16 +86,14 @@ __declspec(dllexport) uint64_t BridgeWorldEffectQuery(void) {
         if (w) w->error = 170;
         return 0;
     }
-    if (!w->get_local_player()) { w->error = 171; return 0; }
-    if ((uint32_t)BridgeSelect() == 0 || w->selection.error ||
-        !w->selection.destroyed || !w->selection.count) {
-        w->error = 172;
-        return w->selection.count;
-    }
-    source = w->selection.rows[0].unit;
+    source_owner = w->get_local_player();
+    if (!source_owner) { w->error = 171; return 0; }
     __try {
-        source_owner = w->get_owner(source);
-        if (!source_owner) { error = 173; __leave; }
+        group = w->create_group();
+        if (!group) { error = 179; __leave; }
+        w->enum_units(group, source_owner, 0);
+        source = BridgeWorldEffectFindSource(w, group, source_owner);
+        if (!source) { error = 172; __leave; }
         if (w->action != WORLD_EFFECT_IMMEDIATE) {
             source_ability_handle = w->get_ability(source, w->rawcode);
             if (!source_ability_handle) {
@@ -101,8 +116,6 @@ __declspec(dllexport) uint64_t BridgeWorldEffectQuery(void) {
                 (w->action == WORLD_EFFECT_TARGET ? 0xa70u : 0xa58u));
             if (!BridgeEffectExecutable(callback)) { error = 178; __leave; }
         }
-        group = w->create_group();
-        if (!group) { error = 179; __leave; }
         for (int32_t player_id = 0; player_id < 24 && !error; ++player_id) {
             uint64_t player = w->player(player_id);
             if (!player) continue;

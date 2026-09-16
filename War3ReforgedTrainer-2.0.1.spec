@@ -25,6 +25,7 @@ a = Analysis(
         'war3_position_protocol',
         'war3_unit_action_protocol',
         'war3_world_protocol',
+        'war3_map_flags_protocol',
         'war3_bulk_protocol',
         'war3_effect_protocol',
         'war3_world_effect_protocol',

@@ -1,0 +1,80 @@
+{
+  "pid": 32020,
+  "preflight_only": true,
+  "player_object": "0x2323c42aac8",
+  "tls_index": 22,
+  "thread_id": 26172,
+  "work_size": 480,
+  "mappings": {
+    "GetLocalPlayer": {
+      "address": "0x7ff7bdb973d0",
+      "kind": "image-noaccess-diagnostic-only",
+      "protection": "0x1",
+      "allocation": "0x7ff7bcef0000",
+      "code_hex": null
+    },
+    "CreateGroup": {
+      "address": "0x7ff7bdb85f40",
+      "kind": "image-noaccess-diagnostic-only",
+      "protection": "0x1",
+      "allocation": "0x7ff7bcef0000",
+      "code_hex": null
+    },
+    "GroupEnumUnitsSelected": {
+      "address": "0x7ff7bdba08a0",
+      "kind": "image-noaccess-diagnostic-only",
+      "protection": "0x1",
+      "allocation": "0x7ff7bcef0000",
+      "code_hex": null
+    },
+    "FirstOfGroup": {
+      "address": "0x7ff7bdb8bb90",
+      "kind": "image-noaccess-diagnostic-only",
+      "protection": "0x1",
+      "allocation": "0x7ff7bcef0000",
+      "code_hex": null
+    },
+    "GroupRemoveUnit": {
+      "address": "0x7ff7bdba0e80",
+      "kind": "image-noaccess-diagnostic-only",
+      "protection": "0x1",
+      "allocation": "0x7ff7bcef0000",
+      "code_hex": null
+    },
+    "DestroyGroup": {
+      "address": "0x7ff7bdb899d0",
+      "kind": "image-noaccess-diagnostic-only",
+      "protection": "0x1",
+      "allocation": "0x7ff7bcef0000",
+      "code_hex": null
+    },
+    "GetUnitTypeId": {
+      "address": "0x7ff7bdb9f560",
+      "kind": "image-noaccess-diagnostic-only",
+      "protection": "0x1",
+      "allocation": "0x7ff7bcef0000",
+      "code_hex": null
+    },
+    "GetHeroLevel": {
+      "address": "0x7ff7bdb96160",
+      "kind": "image-noaccess-diagnostic-only",
+      "protection": "0x1",
+      "allocation": "0x7ff7bcef0000",
+      "code_hex": null
+    }
+  },
+  "probe_local_player": false,
+  "signatures": {
+    "GetLocalPlayer": "()Hplayer;",
+    "CreateGroup": "()Hgroup;",
+    "GroupEnumUnitsSelected": "(Hgroup;Hplayer;Hboolexpr;)V",
+    "FirstOfGroup": "(Hgroup;)Hunit;",
+    "GroupRemoveUnit": "(Hgroup;Hunit;)B",
+    "DestroyGroup": "(Hgroup;)V",
+    "GetUnitTypeId": "(Hunit;)I",
+    "GetHeroLevel": "(Hunit;)I"
+  },
+  "ok": true,
+  "game_handlers_called": false,
+  "elapsed_ms": 137.81500000004598
+}

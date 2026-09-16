@@ -3218,7 +3218,10 @@ class War3Trainer:
             return False
 
     def read_selected_panel(self) -> VisibleUnitPanel:
-        candidate = self._selected_candidates_snapshot(None)[0][0]
+        selected = self._selected_candidates_snapshot(None)
+        if not selected:
+            raise RuntimeError("游戏当前没有可操作的选中单位")
+        candidate = selected[0][0]
         return self._panel_from_candidate(None, candidate)
 
     @staticmethod
@@ -12169,7 +12172,10 @@ class War3Trainer:
 
     def locate_selected_unit_by_jass_native(self, pm: ProcessMemory | None = None) -> UnitCandidate:
         del pm
-        return self._selected_candidates_snapshot(None)[0][0]
+        selected = self._selected_candidates_snapshot(None)
+        if not selected:
+            raise RuntimeError("游戏当前没有可操作的选中单位")
+        return selected[0][0]
 
     def locate_selected_unit_by_handle(
         self,
@@ -12180,7 +12186,10 @@ class War3Trainer:
         # Retain the old public signature for callers, but this locator now
         # uses the engine selection and its complete identity on every call.
         # Neither compatibility flag enables historical slots or heap scans.
-        return self._selected_candidates_snapshot(pm)[0][0]
+        selected = self._selected_candidates_snapshot(pm)
+        if not selected:
+            raise RuntimeError("游戏当前没有可操作的选中单位")
+        return selected[0][0]
 
     def locate_selected_unit_win10(
         self,
@@ -14312,6 +14321,8 @@ class War3Trainer:
 
     def read_selected_unit_fields(self) -> tuple[VisibleUnitPanel, UnitCandidate, list[UnitMemoryField]]:
         snapshot = self._selected_candidates_snapshot(None)
+        if not snapshot:
+            raise RuntimeError("游戏当前没有可操作的选中单位")
         candidate = snapshot[0][0]
         if self._native_snapshot_for_candidate(candidate) is not None:
             panel = self._panel_from_candidate(None, candidate)
@@ -17298,9 +17309,12 @@ def run_gui() -> None:
         trainer = elephant_trainer()
         if getattr(trainer, "_native_selection_unavailable", False):
             result = trainer.hero_progress_24268()
-            level = int(result["rows"][0]["after"])
+            rows = tuple(result.get("rows", ()))
+            if not rows:
+                raise RuntimeError("当前选中单位中没有可读取的英雄")
+            level = int(rows[0]["after"])
             root.after(0, elephant_hero_level.set, str(level))
-            return f"已读取 {len(result['rows'])} 个英雄；首个等级：{level}，跳过 {result['skipped']} 个非英雄"
+            return f"已读取 {len(rows)} 个英雄；首个等级：{level}，跳过 {result['skipped']} 个非英雄"
         levels = elephant_batch(
             elephant_trainer().get_selected_hero_level,
             "读取英雄等级",

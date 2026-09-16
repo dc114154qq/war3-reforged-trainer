@@ -11,13 +11,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import war3_reforged_trainer as module
 
-report = {'protocol': module.War3Trainer.NATIVE_HELPER_VERSION,
-          'helper_sha256': hashlib.sha256((ROOT/'tools/war3_native_helper.dll').read_bytes()).hexdigest(),
+bridge_path = ROOT / 'tools' / 'war3_bridge_24268_2_0_1.dll'
+report = {'game_build': '3.0.0.24268',
+          'bridge_sha256': hashlib.sha256(bridge_path.read_bytes()).hexdigest(),
           'read_only': True}
 trainer = None
 try:
-    with patch.object(module.War3Trainer, '_start_persistent_bootstrap'), patch.object(
-        module.War3Trainer, '_process_memory', side_effect=AssertionError('External memory backend forbidden')):
+    with patch.object(module.War3Trainer, '_start_persistent_bootstrap'):
         trainer = module.War3Trainer(pid=int(sys.argv[1]))
         report['pid'] = trainer.pid
         start = time.perf_counter()

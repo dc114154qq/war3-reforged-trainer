@@ -120,6 +120,19 @@ def test_selection_candidate_list_uses_indexed_path_when_current_native_is_disab
     trainer.persistent_native_init.assert_not_called()
 
 
+@pytest.mark.parametrize("method_name", [
+    "read_selected_panel",
+    "read_selected_unit_fields",
+    "locate_selected_unit_by_jass_native",
+    "locate_selected_unit_by_handle",
+])
+def test_empty_selection_reports_runtime_error_instead_of_index_error(method_name):
+    trainer = object.__new__(module.War3Trainer)
+    trainer._selected_candidates_snapshot = Mock(return_value=[])
+    with pytest.raises(RuntimeError, match="没有可操作的选中单位"):
+        getattr(trainer, method_name)()
+
+
 def test_current_engine_mass_clone_uses_one_group_batch_per_requested_copy():
     import ast
 

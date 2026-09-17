@@ -1,0 +1,52 @@
+{
+  "ok": true,
+  "scope": "Frozen-package path/cwd portability simulation; not a physical second computer",
+  "source": "C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\dist-2.0.2-3.0.0.24268\\War3ReforgedTrainer-v2.0.2.exe",
+  "source_sha256": "e01444b4b964256a2b323dcbb3043efff0c6da6e8b7932ce384c7493cb13c809",
+  "copies": [
+    {
+      "index": 1,
+      "path": "C:\\Users\\14186\\AppData\\Local\\Temp\\war3-24268-portability-qyc0bquy\\client-1\\nested\\bin\\War3ReforgedTrainer.exe",
+      "cwd": "C:\\Users\\14186\\AppData\\Local\\Temp\\war3-24268-portability-qyc0bquy\\client-1",
+      "bytes": 18858632,
+      "sha256": "e01444b4b964256a2b323dcbb3043efff0c6da6e8b7932ce384c7493cb13c809",
+      "runtime": {
+        "ok": true,
+        "frozen": true,
+        "decoder": "C:\\Users\\14186\\AppData\\Local\\Temp\\_MEI140322\\capstone\\lib\\capstone.dll",
+        "decoder_sha256": "76958e18380023a68fd1714fa2e01c594cc6db1955a07ad6937b66e66dc5d6c3",
+        "bridge": "C:\\Users\\14186\\AppData\\Local\\Temp\\_MEI140322\\tools\\war3_bridge_24268_2_0_1.dll",
+        "bridge_sha256": "82e7bc4c21a01430cc1c631df19964ad17c10264f12da1ef603f42198b3196e2",
+        "instructions": [
+          "mov",
+          "mov",
+          "call",
+          "ret"
+        ],
+        "retired_helper_present": false
+      }
+    },
+    {
+      "index": 2,
+      "path": "C:\\Users\\14186\\AppData\\Local\\Temp\\war3-24268-portability-qyc0bquy\\client-2\\nested\\bin\\War3ReforgedTrainer.exe",
+      "cwd": "C:\\Users\\14186\\AppData\\Local\\Temp\\war3-24268-portability-qyc0bquy\\client-2",
+      "bytes": 18858632,
+      "sha256": "e01444b4b964256a2b323dcbb3043efff0c6da6e8b7932ce384c7493cb13c809",
+      "runtime": {
+        "ok": true,
+        "frozen": true,
+        "decoder": "C:\\Users\\14186\\AppData\\Local\\Temp\\_MEI230282\\capstone\\lib\\capstone.dll",
+        "decoder_sha256": "76958e18380023a68fd1714fa2e01c594cc6db1955a07ad6937b66e66dc5d6c3",
+        "bridge": "C:\\Users\\14186\\AppData\\Local\\Temp\\_MEI230282\\tools\\war3_bridge_24268_2_0_1.dll",
+        "bridge_sha256": "82e7bc4c21a01430cc1c631df19964ad17c10264f12da1ef603f42198b3196e2",
+        "instructions": [
+          "mov",
+          "mov",
+          "call",
+          "ret"
+        ],
+        "retired_helper_present": false
+      }
+    }
+  ]
+}

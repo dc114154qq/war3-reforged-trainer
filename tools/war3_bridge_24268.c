@@ -94,7 +94,7 @@ static LRESULT CALLBACK BridgeCallback(int code, WPARAM w, LPARAM l) {
             }
             cmd->detached = cmd->unhook(cmd->hook);
             if (!cmd->detached) cmd->last_error = cmd->get_error();
-            cmd->stage = 3;
+            InterlockedExchange(&cmd->stage, 3);
         }
     }
     result = cmd->next_hook(NULL, code, w, l);
@@ -103,13 +103,47 @@ static LRESULT CALLBACK BridgeCallback(int code, WPARAM w, LPARAM l) {
 }
 
 __declspec(dllexport) DWORD WINAPI BridgeInstall(BridgeCommand *cmd) {
-    cmd->stage = 1;
+    InterlockedExchange(&cmd->stage, 1);
+    cmd->query_result = 1; /* install entered */
     g_dispatch = cmd;
-    cmd->unwind_registered = cmd->add_table(cmd->unwind_table, cmd->unwind_count, cmd->image_base);
-    if (!cmd->unwind_registered) { cmd->last_error = cmd->get_error(); cmd->stage = 2; return 0; }
-    cmd->hook = cmd->set_hook(cmd->hook_kind == WH_GETMESSAGE ? WH_GETMESSAGE : WH_CALLWNDPROC, BridgeCallback, NULL, cmd->target_tid);
-    if (!cmd->hook) cmd->last_error = cmd->get_error();
-    cmd->stage = 2;
+    cmd->query_result = 2; /* dispatch pointer published */
+    if (cmd->unwind_count) {
+        cmd->query_result = 3; /* registering the manually mapped image */
+        __try {
+            cmd->unwind_registered = cmd->add_table(cmd->unwind_table, cmd->unwind_count, cmd->image_base);
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+            cmd->exception_code = GetExceptionCode();
+            cmd->last_error = cmd->get_error();
+            cmd->query_result = 0x100u | 3u;
+            InterlockedExchange(&cmd->stage, 2);
+            return 0;
+        }
+        if (!cmd->unwind_registered) {
+            cmd->last_error = cmd->get_error();
+            InterlockedExchange(&cmd->stage, 2);
+            return 0;
+        }
+    } else {
+        /* A normally loaded DLL is already registered by the loader. */
+        cmd->unwind_registered = 0;
+        cmd->query_result = 4; /* using loader-registered unwind metadata */
+    }
+    cmd->query_result = 5; /* installing the thread hook */
+    __try {
+        cmd->hook = cmd->set_hook(cmd->hook_kind == WH_GETMESSAGE ? WH_GETMESSAGE : WH_CALLWNDPROC, BridgeCallback, NULL, cmd->target_tid);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        cmd->exception_code = GetExceptionCode();
+        cmd->last_error = cmd->get_error();
+        cmd->query_result = 0x100u | 5u;
+        cmd->hook = NULL;
+    }
+    if (!cmd->hook && !cmd->exception_code) {
+        cmd->last_error = cmd->get_error();
+        cmd->query_result = 0x100u | 6u; /* hook call returned NULL */
+    } else if (cmd->hook) {
+        cmd->query_result = 6; /* hook call returned a handle */
+    }
+    InterlockedExchange(&cmd->stage, 2);
     /* Hooks belong to the installing thread; keep it alive through dispatch. */
     if (cmd->hook) {
         while (!cmd->stop_requested) cmd->sleep_ms(1);
@@ -118,7 +152,7 @@ __declspec(dllexport) DWORD WINAPI BridgeInstall(BridgeCommand *cmd) {
             if (!cmd->detached) cmd->last_error = cmd->get_error();
         }
     }
-    if ((!cmd->hook || cmd->detached) && !cmd->active)
+    if ((!cmd->hook || cmd->detached) && !cmd->active && cmd->unwind_registered)
         cmd->unwind_removed = cmd->delete_table(cmd->unwind_table);
     return 0;
 }

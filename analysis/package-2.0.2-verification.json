@@ -1,0 +1,19 @@
+{
+  "version": "2.0.2",
+  "game_build": "3.0.0.24268",
+  "tag": "v2.0.2",
+  "exe": "dist-2.0.2-3.0.0.24268/War3ReforgedTrainer-v2.0.2.exe",
+  "exe_sha256": "e01444b4b964256a2b323dcbb3043eff0c6da6e8b7932ce384c7493cb13c809",
+  "bridge": "tools/war3_bridge_24268_2_0_1.dll",
+  "bridge_sha256": "82e7bc4c21a01430cc1c631df19964ad17c10264f12da1ef603f42198b3196e2",
+  "checks": {
+    "file_version": "2.0.2.0",
+    "product_version": "2.0.2",
+    "bridge_abi": true,
+    "frozen_runtime_self_test": true,
+    "cross_directory_portability_simulation": true,
+    "cross_directory_portability_report": "analysis/cross-device-sim-2.0.2.json",
+    "full_pytest": "2277 passed, 17 skipped, 120 subtests passed"
+  },
+  "physical_second_computer_test": "not_executed"
+}

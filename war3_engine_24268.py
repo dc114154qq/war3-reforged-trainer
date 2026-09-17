@@ -12,8 +12,6 @@ from war3_engine_transport import dispatch
 
 _CURRENT_BRIDGE_FILENAMES = (
     'war3_bridge_24268_2_0_1.dll',
-    'war3_bridge_24268_current_r38.dll',
-    'war3_bridge_24268_current_r31.dll',
 )
 
 
@@ -23,7 +21,10 @@ def _default_bridge_image():
         candidate = root / 'tools' / filename
         if candidate.is_file():
             return candidate
-    return root / 'tools' / _CURRENT_BRIDGE_FILENAMES[0]
+    raise RuntimeError(
+        'The validated 24268 bridge is missing from the executable bundle: '
+        + str(root / 'tools' / _CURRENT_BRIDGE_FILENAMES[0])
+    )
 
 class EngineExecutionError(RuntimeError):
     def __init__(self,message,report):

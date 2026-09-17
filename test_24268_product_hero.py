@@ -117,13 +117,13 @@ def test_default_current_bridge_prefers_packaged_201_filename(tmp_path,monkeypat
     engine=engine_module.Engine24268(1234,42,Mock())
     assert engine.image==stable
 
-def test_default_current_bridge_falls_back_to_existing_r38(tmp_path,monkeypatch):
+def test_default_current_bridge_rejects_missing_validated_bridge(tmp_path,monkeypatch):
     import war3_engine_24268 as engine_module
     tools=tmp_path/'tools';tools.mkdir()
     legacy=tools/'war3_bridge_24268_current_r38.dll';legacy.write_bytes(b'legacy')
     monkeypatch.setattr(engine_module.sys,'_MEIPASS',str(tmp_path),raising=False)
-    engine=engine_module.Engine24268(1234,42,Mock())
-    assert engine.image==legacy
+    with pytest.raises(RuntimeError,match='validated 24268 bridge is missing'):
+        engine_module.Engine24268(1234,42,Mock())
 
 @pytest.mark.parametrize('function_name',["elephant_read_hero_level","elephant_set_hero_level"])
 def test_gui_uses_one_batch_for_24_mixed_units(function_name):

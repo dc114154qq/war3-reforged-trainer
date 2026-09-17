@@ -1,0 +1,37 @@
+{
+  "version": "2.0.3",
+  "game_build": "3.0.0.24268",
+  "artifact": {
+    "path": "E:\\360Downloads\\War3ReforgedTrainer-v2.0.3.exe",
+    "size": 18857346,
+    "sha256": "05e4e21b5e867348c21b48926449e2a347fbd43729dfa16deaf50c80ae25af80",
+    "file_version": "2.0.3.0",
+    "product_version": "2.0.3"
+  },
+  "bridge": {
+    "filename": "war3_bridge_24268_2_0_1.dll",
+    "sha256": "82e7bc4c21a01430cc1c631df19964ad17c10264f12da1ef603f42198b3196e2"
+  },
+  "transport": {
+    "route": "manual_map",
+    "unwind": "RtlAddFunctionTable",
+    "loader_fallback": false
+  },
+  "verification": {
+    "focused_24268": "268 passed",
+    "full_regression_baseline": "2277 passed, 17 skipped, 120 subtests passed",
+    "frozen_self_test": "ok=true",
+    "independent_directory_cwd_simulation": "ok=true",
+    "physical_second_computer": "未执行"
+  },
+  "live_read_only_probe": {
+    "pid": 12716,
+    "hwnd": "0x90b7e",
+    "count": 1,
+    "completed": 1,
+    "callback_verified": true,
+    "image_unmap_status": "0x0",
+    "safe_to_release": true,
+    "allocations_retained": false
+  }
+}

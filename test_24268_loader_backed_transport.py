@@ -22,7 +22,8 @@ class _FakePE:
         ],
     )
     OPTIONAL_HEADER = SimpleNamespace(
-        DATA_DIRECTORY=[SimpleNamespace(Size=0) for _ in range(4)],
+        DATA_DIRECTORY=[SimpleNamespace(Size=0, VirtualAddress=0) for _ in range(3)]
+        + [SimpleNamespace(Size=0x24, VirtualAddress=0x200)],
     )
 
     @staticmethod
@@ -32,7 +33,7 @@ class _FakePE:
         return b"X" * size
 
 
-def test_dispatch_uses_target_loader_and_unloads_after_verified_callback(tmp_path):
+def test_dispatch_uses_only_classic_manual_map_and_unmaps_after_verified_callback(tmp_path):
     image = tmp_path / "war3_bridge_24268_2_0_1.dll"
     image.write_bytes(b"loader-backed bridge")
     payload = (
@@ -97,10 +98,10 @@ def test_dispatch_uses_target_loader_and_unloads_after_verified_callback(tmp_pat
         ("kernel32", "GetCurrentThreadId"): 0x104,
         ("kernel32", "GetLastError"): 0x105,
         ("kernel32", "Sleep"): 0x106,
-        ("kernel32", "LoadLibraryW"): 0x107,
-        ("kernel32", "FreeLibrary"): 0x108,
         ("kernel32", "TlsGetValue"): 0x109,
         ("ntdll", "__C_specific_handler"): 0x10A,
+        ("ntdll", "RtlAddFunctionTable"): 0x10B,
+        ("ntdll", "RtlDeleteFunctionTable"): 0x10C,
     }
     allocations = iter((0x200000, 0x210000, 0x220000))
     thread_calls = []
@@ -146,11 +147,23 @@ def test_dispatch_uses_target_loader_and_unloads_after_verified_callback(tmp_pat
         c.cast(owner, c.POINTER(transport.U))[0] = 1234
         return 44
 
+    def fake_map(_section, _handle, view, _zero_bits, _commit_size, _section_offset, size, _inherit, _allocation_type, _protect):
+        c.cast(view, c.POINTER(transport.P))[0] = 0x700000
+        c.cast(size, c.POINTER(transport.Z))[0] = 0x4000
+        return 0
+
+    fake_x = dict(transport.x)
+    fake_x.update(
+        create_file=Mock(return_value=0x300000),
+        create_mapping=Mock(return_value=0x310000),
+        map_section=Mock(side_effect=fake_map),
+        unmap_section=Mock(return_value=0),
+    )
+
     fake_pe = patch.object(transport.pefile, "PE", return_value=_FakePE())
     with fake_pe, patch.object(transport, "p", fake_p), patch.object(transport, "h", fake_h), \
+            patch.object(transport, "x", fake_x), \
             patch.object(transport, "resolve", side_effect=fake_resolve), \
-            patch.object(transport, "module_base", side_effect=[0x700000, 0]), \
-            patch.object(transport, "remote_module_path", return_value=str(image)), \
             patch.object(transport, "window_thread", side_effect=fake_window_thread), \
             patch.object(transport, "register_message", return_value=55), \
             patch.object(transport, "fields", side_effect=fake_fields):
@@ -158,13 +171,12 @@ def test_dispatch_uses_target_loader_and_unloads_after_verified_callback(tmp_pat
             1234, 0x99, 44, image, 7, payload, kind="hero",
         )
 
-    assert result.get("image_route") == "target_loadlibrary", result
-    assert result["image_loader"]["completed"] is True
-    assert result["loaded_image_path"] == str(image)
-    assert result["loaded_exports"]["BridgeInstall"] == (b"X" * 16).hex()
-    assert result["image_unload"]["unloaded"] is True
-    assert result["image_unload"]["remaining_base"] == "0x0"
+    assert result.get("image_route") == "manual_map", result
+    assert result["image_map"]["method"] == "NtMapViewOfSection"
+    assert result["mapped_exports"]["BridgeInstall"] == (b"X" * 16).hex()
+    assert result["image_unwind"]["count"] == 3
+    assert result["image_unmap_status"] == "0x0"
     assert result["callback_verified"] is True
     assert result["query_completed"] is True
     assert result["safe_to_release"] is True
-    assert thread_calls[0] == 0x107
+    assert thread_calls[0] == 0x700030

@@ -42,7 +42,7 @@ APP_VERSION = "2.0.3"
 GAME_BUILD = "3.0.0.24268"
 PRODUCT_READ_MODE = "normal"
 PRODUCT_EDITION_LABEL = "普通读取版"
-WIN10_COMPAT_REVISION = "current-24268-compatible-manual-loader"
+WIN10_COMPAT_REVISION = "current-24268-compatible-classic-manual-map"
 
 
 if sys.platform == "win32":
@@ -19643,6 +19643,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--set-y", type=float)
     parser.add_argument("--read-selected", action="store_true", help="Read current selected unit through the selection handle")
     parser.add_argument("--read-selected-fields", action="store_true", help="Read all supported fields from the current selected unit")
+    parser.add_argument("--engine-camera-probe", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--list-selection-candidates", action="store_true", help="List plausible selected-unit candidates with full clues")
     parser.add_argument("--unit-identity", help="Manual candidate identity: HANDLE,OWNER,UNIT or handle=...,owner=...,unit=...")
     parser.add_argument("--verify-selection-locator", action="store_true", help="Verify selected-unit locator uses handle -> owner -> unit chain")
@@ -19805,6 +19806,13 @@ def run_cli(args: argparse.Namespace) -> int:
                 f"{field.key} [{field.category}] {field.label}={field.value_text()} "
                 f"type={field.value_type} addr=0x{field.address:x} {writable}{note}"
             )
+    if args.engine_camera_probe:
+        result = t.camera_snapshot_24268()
+        print(
+            "current_engine_camera "
+            f"target={result.get('target')} eye={result.get('eye')} "
+            f"screen={result.get('screen')} fields={result.get('fields')}"
+        )
     if args.list_selection_candidates:
         summaries = t.list_selection_candidates(
             extra_identities=[manual_identity] if manual_identity is not None else None
@@ -20006,6 +20014,7 @@ def main(argv: Iterable[str] | None = None) -> int:
             args.set_food_cap is not None,
             args.read_selected,
             args.read_selected_fields,
+            args.engine_camera_probe,
             args.list_selection_candidates,
             bool(args.unit_identity),
             args.verify_selection_locator,

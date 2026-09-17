@@ -1,0 +1,45 @@
+{
+  "version": "2.0.3",
+  "game_build": "3.0.0.24268",
+  "route": "manual_map",
+  "route_fallback": false,
+  "same_route_retry": "only_after_clean_hook_install_failure",
+  "bridge": {
+    "path": "tools/war3_bridge_24268_2_0_1.dll",
+    "sha256": "82e7bc4c21a01430cc1c631df19964ad17c10264f12da1ef603f42198b3196e2"
+  },
+  "package": {
+    "path": "dist-2.0.3-3.0.0.24268-r4/War3ReforgedTrainer-v2.0.3.exe",
+    "sha256": "8ac4de747f1fe6fca3e77a4f8c3f2631fb2b20c43ca26f2ef33337d45c015c85",
+    "size": 18858663
+  },
+  "checks": {
+    "24268_pytest": "525 passed",
+    "frozen_runtime_selftest": "analysis/packaged-runtime-selftest-2.0.3-r4.json",
+    "frozen_engine_camera_probe": {
+      "pid": 12716,
+      "hwnd": "0x90b7e",
+      "exit_code": 0,
+      "read_only": true
+    },
+    "source_engine_camera_probe": {
+      "pid": 12716,
+      "runs": 4,
+      "successes": 4,
+      "route": "manual_map",
+      "callback_verified": true,
+      "query_completed": true,
+      "image_unmap_status": "0x0",
+      "safe_to_release": true
+    }
+  },
+  "route_decision_evidence": {
+    "target_loadlibrary_probe": {
+      "pid": 12716,
+      "return": "0x0",
+      "bridge_module_loaded": false
+    },
+    "manual_map_probe": "selected because it is the only route verified against the current process"
+  },
+  "physical_second_computer_test": "not_executed"
+}

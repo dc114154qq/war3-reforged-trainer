@@ -56,7 +56,6 @@ def module_base(memory,name,refresh=False):
             memory.modules=modules
         finally:close(snapshot)
     return memory.modules.get(name.lower())
-
 # Transport uses only Windows exports and fresh process-local module bases.
 p=dict(api=api,open_process=open_process,close=close,read=read,write=write,alloc=alloc,free=free,
     create_thread=create_thread,wait=wait,get_module=get_module,current_process=current_process,
@@ -102,7 +101,7 @@ def query_completed(state):
     return state.get('query_stage') == 2 and state.get('exception_code') == '0x0'
 
 
-def dispatch(pid,hwnd,tid,image,tls_index,work_payload,kind="hero"):
+def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt=1):
     if kind=='hero':
         validate_work(work_payload);expected_abi=ABI;marker_name=b'bridge_abi';query_name=b'BridgeHeroQuery'
     elif kind=='ability':
@@ -175,7 +174,7 @@ def dispatch(pid,hwnd,tid,image,tls_index,work_payload,kind="hero"):
     install_rva=exports[b'BridgeInstall'];uninstall_rva=exports[b'BridgeUninstall']
     report={'pid':pid,'hwnd':hex(hwnd),'expected_callback_tid':tid,'image':str(image),
             'image_sha256':hashlib.sha256(image.read_bytes()).hexdigest(),'calls_game_handlers':True,'query_mode':query_mode,'delivery_mode':delivery_mode,
-            'image_route':'manual_map'}
+            'image_route':'manual_map','route_attempt':attempt}
     handle=file=section=block=thread=work=None;view=P()
     memory=None
     image_base=0;manual_mapped=False;image_unmapped=False
@@ -188,9 +187,9 @@ def dispatch(pid,hwnd,tid,image,tls_index,work_payload,kind="hero"):
             ('user32','UnhookWindowsHookEx'),('user32','CallNextHookEx'),
             ('kernel32','GetCurrentThreadId'),('kernel32','GetLastError')]]
         sleep_address=resolve(memory,'kernel32','Sleep')
-        # SEC_IMAGE keeps the bridge's section layout and is the single
-        # classic-chain route. Runtime API resolution below is process-local,
-        # so the mapped image does not depend on fixed system DLL addresses.
+        # SEC_IMAGE preserves the bridge's section layout while avoiding the
+        # game's LoadLibrary policy. Runtime API resolution remains
+        # process-local, so system DLL addresses are not fixed across hosts.
         report['image_map']={'method':'NtMapViewOfSection','completed':False}
         file=x['create_file'](str(image),0x80000000,5,None,3,0x80,None)
         if file==P(-1).value:
@@ -226,9 +225,8 @@ def dispatch(pid,hwnd,tid,image,tls_index,work_payload,kind="hero"):
         directory=pe.OPTIONAL_HEADER.DATA_DIRECTORY[3]
         if not directory.Size or directory.Size%12:
             raise RuntimeError('Unwind table missing')
-        # A manually mapped image is outside the loader's module list;
-        # provide its .pdata to the bridge so exceptions and cleanup use
-        # the same ABI as the previously validated classic chain.
+        # A manually mapped image is outside the loader's module list; make
+        # its .pdata available to the bridge for exception-safe cleanup.
         payload+=struct.pack('<9Q6I',resolve(memory,'kernel32','TlsGetValue'),
             resolve(memory,'ntdll','RtlAddFunctionTable'),resolve(memory,'ntdll','RtlDeleteFunctionTable'),
             image_base+directory.VirtualAddress,image_base,query,0,0,
@@ -336,7 +334,52 @@ def dispatch(pid,hwnd,tid,image,tls_index,work_payload,kind="hero"):
             elif work or block:
                 report['allocations_retained']=True
             p['close'](handle)
+        if section:
+            p['close'](section)
+        if file:
+            p['close'](file)
         report['safe_to_release']=bool(
             safe and not remote_thread_active and image_unmapped and
             not report.get('allocations_retained'))
     return report
+
+
+def _retryable_hook_install_failure(report):
+    state=report.get('after_cleanup') or report.get('after_send') or {}
+    trace=state.get('bridge_install_trace','')
+    return bool(
+        report.get('safe_to_release') and not report.get('allocations_retained')
+        and state.get('stage') == 2 and not state.get('hook')
+        and state.get('callback_count') == 0 and state.get('callback_tid') == 0
+        and state.get('query_stage') == 0
+        and (trace in ('0x105','0x106') or state.get('last_error') in (126,))
+    )
+
+
+def _retry_summary(report):
+    state=report.get('after_cleanup') or report.get('after_send') or {}
+    return dict(
+        route_attempt=report.get('route_attempt'),
+        image_loader=report.get('image_loader'),
+        bridge_install_trace=state.get('bridge_install_trace'),
+        last_error=state.get('last_error'),
+        exception_code=state.get('exception_code'),
+        safe_to_release=report.get('safe_to_release'),
+    )
+
+
+def dispatch(pid,hwnd,tid,image,tls_index,work_payload,kind="hero"):
+    first=_dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind=kind,attempt=1)
+    if not _retryable_hook_install_failure(first):
+        first['same_route_retry']={'attempted':False}
+        return first
+    # Reinitialize the same manually mapped classic chain only after the first
+    # attempt proved that no callback ran and every resource was released.
+    time.sleep(0.02)
+    second=_dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind=kind,attempt=2)
+    second['same_route_retry']={
+        'attempted':True,
+        'reason':'clean_hook_install_failure',
+        'first_attempt':_retry_summary(first),
+    }
+    return second

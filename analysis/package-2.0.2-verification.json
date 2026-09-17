@@ -15,5 +15,12 @@
     "cross_directory_portability_report": "analysis/cross-device-sim-2.0.2.json",
     "full_pytest": "2277 passed, 17 skipped, 120 subtests passed"
   },
+  "publication": {
+    "github_release": "https://github.com/dc114154qq/war3-reforged-trainer/releases/tag/v2.0.2",
+    "github_asset": "https://github.com/dc114154qq/war3-reforged-trainer/releases/download/v2.0.2/War3ReforgedTrainer-v2.0.2.exe",
+    "website_page": "https://twomengxi.xyz/trainer/",
+    "website_asset": "https://twomengxi.xyz/downloads/War3ReforgedTrainer-v2.0.2.exe",
+    "server_sync": "synced 35 trainer releases and 2 hotkey releases"
+  },
   "physical_second_computer_test": "not_executed"
 }

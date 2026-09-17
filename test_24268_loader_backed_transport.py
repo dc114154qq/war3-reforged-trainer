@@ -129,6 +129,7 @@ def test_dispatch_uses_target_loader_and_unloads_after_verified_callback(tmp_pat
         write=fake_write,
         bytes_at=Mock(return_value=b"X" * 16),
     )
+    fake_p["api"] = lambda _library, _name, *_args: Mock(return_value=True)
     fake_h = dict(transport.h)
     fake_h.update(
         module_base=Mock(return_value=0x700000),

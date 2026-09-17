@@ -1,9 +1,10 @@
 import struct
 import unittest
+from unittest.mock import patch
 
 from test_classic_player_selection import Memory
 from war3_object_registry import (
-    ObjectRegistry24268, ObjectIdentityError, TIMESTAMP, IMAGE_SIZE,
+    ObjectRegistry24268, ObjectIdentityError, GameModuleNotFoundError, TIMESTAMP, IMAGE_SIZE,
     RESOLVER_RVA, RESOLVER_CODE, ROOT_RVA, UNIT_TAG, PLAYER_TAG,
     GAME_STATE_SLOT_RVA, GAME_STATE_CHECKS, decode_game_state,
 )
@@ -59,6 +60,22 @@ class RegistryFixture(Memory):
 
 
 class ObjectRegistryTests(unittest.TestCase):
+    def test_module_lookup_uses_verified_image_when_filename_differs(self):
+        memory = RegistryFixture()
+        records = [(memory.base, "game-client-host.exe", "C:\\Game\\game-client-host.exe")]
+        with patch("war3_object_registry._enumerate_process_modules", return_value=records):
+            self.assertEqual(__import__("war3_object_registry").game_module_base(memory), memory.base)
+
+    def test_attach_retries_only_transient_missing_module(self):
+        memory = RegistryFixture()
+        with patch(
+            "war3_object_registry.game_module_base",
+            side_effect=[GameModuleNotFoundError("not ready"), memory.base],
+        ), patch("war3_object_registry.time.sleep") as sleep:
+            registry = ObjectRegistry24268.attach(memory, attempts=2, delay_seconds=0.01)
+        self.assertEqual(registry.base, memory.base)
+        sleep.assert_called_once_with(0.01)
+
     def test_local_player_uses_exact_mode_predicate(self):
         memory = RegistryFixture()
         state, players = memory.player_array(2)

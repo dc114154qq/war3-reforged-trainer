@@ -1,5 +1,5 @@
 """Current-build hero batches, with no historical helper or analysis-script dependency."""
-import json,sys,threading,time,struct
+import json,os,sys,threading,time,struct
 from pathlib import Path
 from war3_object_registry import ObjectRegistry24268
 from war3_thread_context import GameThreadContext24268
@@ -29,10 +29,23 @@ def _default_bridge_image():
 class EngineExecutionError(RuntimeError):
     def __init__(self,message,report):
         self.report=report
-        state=report.get('dispatch',{}).get('after_send',{})
+        dispatch=report.get('dispatch',{})
+        state=dispatch.get('after_send') or dispatch.get('after_cleanup') or dispatch.get('after_install') or {}
+        retry=dispatch.get('same_route_retry',{})
+        attempts=int(dispatch.get('route_attempt') or 1)
         super().__init__(message+'; engine24268='+json.dumps(dict(pid=report.get('pid'),
-            phase=state.get('query_stage'),exception=state.get('exception_code'),
-            retained=report.get('dispatch',{}).get('allocations_retained',False),
+            game_pid=report.get('pid'), trainer_pid=os.getpid(),
+            phase=state.get('query_stage'), install_stage=state.get('stage'),
+            exception=state.get('exception_code'),
+            retained=dispatch.get('allocations_retained',False),
+            route=dispatch.get('image_route'), route_attempt=attempts,
+            route_policy=dispatch.get('route_policy'),
+            hook_kind=dispatch.get('hook_kind'),
+            message_delivery=dispatch.get('message_delivery'),
+            hwnd=dispatch.get('hwnd'),
+            expected_callback_tid=dispatch.get('expected_callback_tid'),
+            transport_error=dispatch.get('error'),
+            same_route_retry=retry,
             ability_status=report.get('ability_status'),item_status=report.get('item_status'),
             clone_status=report.get('clone_status'),world_status=report.get('world_status'),
             map_flags_status=report.get('map_flags_status')),ensure_ascii=False))
@@ -506,7 +519,14 @@ class Engine24268:
                     if not (evidence.get('callback_verified') and evidence.get('query_completed') and evidence.get('work_freed')
                         and evidence.get('block_freed') and evidence.get('image_unmap_status')=='0x0'
                         and evidence['after_send']['tls_value']==hex(mode.tls)):
-                        raise EngineExecutionError('Current-engine batch execution or cleanup failed; not retried',report)
+                        dispatch_report=report.get('dispatch',{})
+                        attempts=int(dispatch_report.get('route_attempt') or 1)
+                        retry=dispatch_report.get('same_route_retry',{})
+                        if retry.get('attempted'):
+                            message=f'Current-engine batch execution or cleanup failed after same-route retry ({attempts} route attempts)'
+                        else:
+                            message=f'Current-engine batch execution or cleanup failed ({attempts} route attempt)'
+                        raise EngineExecutionError(message,report)
                     result=decoder(bytes.fromhex(evidence['work_result_hex']),int(evidence['after_send']['query_result'],16))
                     report['result']=result;report['ok']=True
                     if evidence.get('recovered_tail_faults') and self.report_sink is not None:

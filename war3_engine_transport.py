@@ -162,17 +162,22 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
     owner=U()
     if window_thread(hwnd,c.byref(owner))!=tid or owner.value!=pid:
         raise RuntimeError('Bridge target window/thread identity changed')
-    # Synchronous CallWndProc delivery is the validated route for the current
-    # build. A posted message can remain queued while the render thread is
-    # busy, which leaves the remote hook allocation live and quarantines the
-    # session before the game native is called.
-    query_mode=kind;delivery_mode='send'
+    # Deliver through the target thread's message queue. WH_GETMESSAGE avoids
+    # the intermittent CALLWNDPROC install fault observed from the GUI path.
+    query_mode=kind;delivery_mode='posted'
+    hook_kind=3 if delivery_mode == 'posted' else 4
+    hook_name='WH_GETMESSAGE' if hook_kind == 3 else 'WH_CALLWNDPROC'
     pe=pefile.PE(str(image));exports={s.name:s.address for s in pe.DIRECTORY_ENTRY_EXPORT.symbols}
     marker=exports.get(marker_name)
     if marker is None or pe.get_data(marker,len(expected_abi))!=expected_abi:
         raise ValueError('24268 bridge ABI differs; rebuild the current-engine module')
     install_rva=exports[b'BridgeInstall'];uninstall_rva=exports[b'BridgeUninstall']
-    report={'pid':pid,'hwnd':hex(hwnd),'expected_callback_tid':tid,'image':str(image),
+    report={'pid':pid,'hwnd':hex(hwnd),'expected_callback_tid':tid,
+            'target_window':{'hwnd':hex(hwnd),'pid':pid,'thread_id':tid},
+            'process_access':'0x43a','hook_kind':hook_name,
+            'message_delivery':delivery_mode,
+            'route_policy':'manual_map+WH_GETMESSAGE+PostMessage',
+            'image':str(image),
             'image_sha256':hashlib.sha256(image.read_bytes()).hexdigest(),'calls_game_handlers':True,'query_mode':query_mode,'delivery_mode':delivery_mode,
             'image_route':'manual_map','route_attempt':attempt}
     handle=file=section=block=thread=work=None;view=P()
@@ -183,10 +188,17 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
         handle=p['open_process'](0x43a,False,pid)
         if not handle:raise c.WinError(c.get_last_error())
         memory=type('Memory',(),{'handle':handle,'pid':pid})()
-        addresses=[resolve(memory,lib,name) for lib,name in [('user32','SetWindowsHookExW'),
-            ('user32','UnhookWindowsHookEx'),('user32','CallNextHookEx'),
-            ('kernel32','GetCurrentThreadId'),('kernel32','GetLastError')]]
+        api_specs=[('user32','SetWindowsHookExW'),('user32','UnhookWindowsHookEx'),
+            ('user32','CallNextHookEx'),('kernel32','GetCurrentThreadId'),
+            ('kernel32','GetLastError')]
+        addresses=[];resolved_apis={}
+        for library,name in api_specs:
+            address=resolve(memory,library,name)
+            addresses.append(address)
+            resolved_apis[f'{library}!{name}']=hex(address)
         sleep_address=resolve(memory,'kernel32','Sleep')
+        resolved_apis['kernel32!Sleep']=hex(sleep_address)
+        report['remote_api_resolution']=resolved_apis
         # SEC_IMAGE preserves the bridge's section layout while avoiding the
         # game's LoadLibrary policy. Runtime API resolution remains
         # process-local, so system DLL addresses are not fixed across hosts.
@@ -220,7 +232,7 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
         if not message:raise c.WinError(c.get_last_error())
         nonce=int.from_bytes(os.urandom(8),'little') & 0x7fffffffffffffff
         payload=struct.pack('<7QIIQ6IQII', hwnd, *addresses, 0, tid, message, nonce,
-            0, 0, 0, 0, 0, 0, sleep_address, 0, 3 if delivery_mode == "posted" else 4)
+            0, 0, 0, 0, 0, 0, sleep_address, 0, hook_kind)
         query=image_base+exports[query_name]
         directory=pe.OPTIONAL_HEADER.DATA_DIRECTORY[3]
         if not directory.Size or directory.Size%12:

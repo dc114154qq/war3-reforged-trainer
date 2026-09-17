@@ -5,6 +5,7 @@ No code execution, process memory scan, handle guessing or cached owner index.
 """
 import ctypes
 import struct
+import time
 
 TIMESTAMP = 0x6AA4DE70
 IMAGE_SIZE = 0xE155000
@@ -37,6 +38,12 @@ class ObjectIdentityError(RuntimeError):
     pass
 
 
+class GameModuleNotFoundError(ObjectIdentityError):
+    """The target process is alive, but its verified game image is not visible yet."""
+
+    pass
+
+
 def _ptr(value):
     return 0x10000 <= value < 0x800000000000 and value % 8 == 0
 
@@ -48,9 +55,15 @@ def _read(memory, address, size):
     return data
 
 
-def game_module_base(memory):
-    """Enumerate loaded modules, not virtual memory regions."""
+def _module_record(base, name, path=""):
+    return int(base), str(name or ""), str(path or "")
+
+
+def _enumerate_process_modules(memory):
+    """Return loaded module metadata using PSAPI plus a Toolhelp cross-check."""
     kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    records = {}
+
     enum = kernel.K32EnumProcessModulesEx
     enum.argtypes = (ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p), ctypes.c_ulong,
                      ctypes.POINTER(ctypes.c_ulong), ctypes.c_ulong)
@@ -63,55 +76,33 @@ def game_module_base(memory):
         modules = (ctypes.c_void_p * capacity)()
         needed = ctypes.c_ulong()
         if not enum(memory.handle, modules, ctypes.sizeof(modules), ctypes.byref(needed), 2):
-            # Some 3.0 installations reject PSAPI enumeration with
-            # ERROR_PARTIAL_COPY while Toolhelp still exposes module metadata.
-            # This remains module enumeration; it is not a memory-region scan.
-            kernel.CreateToolhelp32Snapshot.argtypes = (ctypes.c_ulong, ctypes.c_ulong)
-            kernel.CreateToolhelp32Snapshot.restype = ctypes.c_void_p
-            snap = kernel.CreateToolhelp32Snapshot(0x00000008, memory.pid)
-            if snap == ctypes.c_void_p(-1).value:
-                raise ctypes.WinError(ctypes.get_last_error())
-            class ModuleEntry(ctypes.Structure):
-                _fields_ = [("size", ctypes.c_ulong), ("module_id", ctypes.c_ulong),
-                            ("pid", ctypes.c_ulong), ("global_usage", ctypes.c_ulong),
-                            ("process_usage", ctypes.c_ulong),
-                            ("base", ctypes.c_void_p), ("module_size", ctypes.c_ulong),
-                            ("handle", ctypes.c_void_p), ("name", ctypes.c_wchar * 256),
-                            ("path", ctypes.c_wchar * 260)]
-            first, nxt = kernel.Module32FirstW, kernel.Module32NextW
-            first.argtypes = (ctypes.c_void_p, ctypes.POINTER(ModuleEntry)); first.restype = ctypes.c_int
-            nxt.argtypes = (ctypes.c_void_p, ctypes.POINTER(ModuleEntry)); nxt.restype = ctypes.c_int
-            entry = ModuleEntry(); entry.size = ctypes.sizeof(ModuleEntry)
-            try:
-                if first(snap, ctypes.byref(entry)):
-                    while True:
-                        if entry.name.lower() == "warcraft iii.exe": return int(entry.base)
-                        if not nxt(snap, ctypes.byref(entry)): break
-            finally:
-                kernel.CloseHandle(snap)
-            raise ctypes.WinError(ctypes.get_last_error())
+            break
         if needed.value > ctypes.sizeof(modules):
             capacity = (needed.value + ctypes.sizeof(ctypes.c_void_p) - 1) // ctypes.sizeof(ctypes.c_void_p)
             if capacity > 4096:
                 raise ObjectIdentityError("Unexpected module count")
             continue
         for module in modules[:needed.value // ctypes.sizeof(ctypes.c_void_p)]:
+            if not module:
+                continue
             text = ctypes.create_unicode_buffer(1024)
-            if name(memory.handle, module, text, len(text)) and text.value.lower() == "warcraft iii.exe":
-                return int(module)
+            module_name = text.value if name(memory.handle, module, text, len(text)) else ""
+            records[int(module)] = _module_record(module, module_name)
         break
-    # PSAPI can enumerate handles but fail to read names with ERROR_PARTIAL_COPY.
-    # Always give Toolhelp a final chance before rejecting the process.
+
+    # Some 3.0 installations reject PSAPI enumeration or module-name queries
+    # with ERROR_PARTIAL_COPY while Toolhelp still exposes module metadata.
     kernel.CreateToolhelp32Snapshot.argtypes = (ctypes.c_ulong, ctypes.c_ulong)
     kernel.CreateToolhelp32Snapshot.restype = ctypes.c_void_p
-    snap = kernel.CreateToolhelp32Snapshot(0x00000008, memory.pid)
+    snap = kernel.CreateToolhelp32Snapshot(0x00000018, memory.pid)
     if snap != ctypes.c_void_p(-1).value:
         class ModuleEntry(ctypes.Structure):
             _fields_ = [("size", ctypes.c_ulong), ("module_id", ctypes.c_ulong),
                         ("pid", ctypes.c_ulong), ("global_usage", ctypes.c_ulong),
-                        ("process_usage", ctypes.c_ulong), ("base", ctypes.c_void_p),
-                        ("module_size", ctypes.c_ulong), ("handle", ctypes.c_void_p),
-                        ("name", ctypes.c_wchar * 256), ("path", ctypes.c_wchar * 260)]
+                        ("process_usage", ctypes.c_ulong),
+                        ("base", ctypes.c_void_p), ("module_size", ctypes.c_ulong),
+                        ("handle", ctypes.c_void_p), ("name", ctypes.c_wchar * 256),
+                        ("path", ctypes.c_wchar * 260)]
         first, nxt = kernel.Module32FirstW, kernel.Module32NextW
         first.argtypes = (ctypes.c_void_p, ctypes.POINTER(ModuleEntry)); first.restype = ctypes.c_int
         nxt.argtypes = (ctypes.c_void_p, ctypes.POINTER(ModuleEntry)); nxt.restype = ctypes.c_int
@@ -119,10 +110,62 @@ def game_module_base(memory):
         try:
             if first(snap, ctypes.byref(entry)):
                 while True:
-                    if entry.name.lower() == "warcraft iii.exe": return int(entry.base)
-                    if not nxt(snap, ctypes.byref(entry)): break
-        finally: kernel.CloseHandle(snap)
-    raise ObjectIdentityError("Warcraft III module not found")
+                    base = int(entry.base or 0)
+                    if base:
+                        records[base] = _module_record(base, entry.name, entry.path)
+                    if not nxt(snap, ctypes.byref(entry)):
+                        break
+        finally:
+            kernel.CloseHandle(snap)
+    return list(records.values())
+
+
+def _verified_image_header(memory, base):
+    try:
+        header = _read(memory, base, 0x40)
+        if header[:2] != b"MZ":
+            return False
+        nt_offset = struct.unpack_from("<I", header, 0x3C)[0]
+        if not 0x40 <= nt_offset <= 0x1000:
+            return False
+        nt = _read(memory, base + nt_offset, 0x58)
+        return (
+            nt[:4] == b"PE\0\0"
+            and struct.unpack_from("<H", nt, 4)[0] == 0x8664
+            and struct.unpack_from("<I", nt, 8)[0] == TIMESTAMP
+            and struct.unpack_from("<I", nt, 0x50)[0] == IMAGE_SIZE
+        )
+    except (OSError, ObjectIdentityError, struct.error):
+        return False
+
+
+def _module_summary(records):
+    rows = []
+    for base, name, path in records[:96]:
+        label = name or "<unnamed>"
+        if path and path.casefold() != label.casefold():
+            label = f"{label}@{path}"
+        rows.append(f"0x{base:x}:{label}")
+    suffix = "..." if len(records) > 96 else ""
+    return ",".join(rows) + suffix
+
+
+def game_module_base(memory):
+    """Find the verified game image from loaded modules, independent of its filename."""
+    records = _enumerate_process_modules(memory)
+    named = [record for record in records if record[1].casefold() == "warcraft iii.exe"]
+    ordered = named + [record for record in records if record not in named]
+    for base, _name, _path in ordered:
+        if _verified_image_header(memory, base):
+            return base
+    # Preserve the precise profile error for a normally named image whose
+    # header is readable but belongs to another build.
+    if named:
+        return named[0][0]
+    raise GameModuleNotFoundError(
+        f"Warcraft III module not found; pid={getattr(memory, 'pid', 0)} "
+        f"enumerated_modules={_module_summary(records)}"
+    )
 
 
 class ObjectRegistry24268:
@@ -163,8 +206,19 @@ class ObjectRegistry24268:
             raise ObjectIdentityError("Game player-array code differs from verified profile")
 
     @classmethod
-    def attach(cls, memory):
-        return cls(memory, game_module_base(memory))
+    def attach(cls, memory, attempts=8, delay_seconds=0.1):
+        """Attach after the visible game window has finished loading its image."""
+        last_error = None
+        for attempt in range(max(1, int(attempts))):
+            try:
+                return cls(memory, game_module_base(memory))
+            except GameModuleNotFoundError as exc:
+                last_error = exc
+                if attempt + 1 >= max(1, int(attempts)):
+                    raise
+                time.sleep(max(0.0, float(delay_seconds)))
+        assert last_error is not None
+        raise last_error
 
     def _qword(self, memory, address):
         return struct.unpack("<Q", _read(memory, address, 8))[0]

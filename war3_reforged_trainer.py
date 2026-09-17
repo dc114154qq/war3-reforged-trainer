@@ -17,12 +17,14 @@ from capstone import Cs, CS_ARCH_X86, CS_MODE_64
 from decimal import Decimal, InvalidOperation
 import math
 import os
+import platform
 import tempfile
 import struct
 import sys
 import threading
 import time
 import traceback
+import uuid
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable, Iterable, Iterator
@@ -42,7 +44,7 @@ APP_VERSION = "2.0.3"
 GAME_BUILD = "3.0.0.24268"
 PRODUCT_READ_MODE = "normal"
 PRODUCT_EDITION_LABEL = "普通读取版"
-WIN10_COMPAT_REVISION = "current-24268-compatible-classic-manual-map"
+WIN10_COMPAT_REVISION = "current-24268-classic-manual-map-getmessage"
 
 
 if sys.platform == "win32":
@@ -61,6 +63,9 @@ PROCESS_VM_OPERATION = 0x0008
 TOKEN_ADJUST_PRIVILEGES = 0x0020
 TOKEN_QUERY = 0x0008
 SE_PRIVILEGE_ENABLED = 0x00000002
+TOKEN_SESSION_ID = 12
+TOKEN_INFORMATION_ELEVATION = 20
+TOKEN_INTEGRITY_LEVEL = 25
 
 MEM_COMMIT = 0x1000
 MEM_PRIVATE = 0x20000
@@ -167,6 +172,14 @@ user32.SendMessageTimeoutW.argtypes = (
     ctypes.POINTER(ctypes.c_void_p),
 )
 user32.SendMessageTimeoutW.restype = ctypes.c_void_p
+user32.GetForegroundWindow.restype = ctypes.c_void_p
+user32.GetWindowThreadProcessId.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(ctypes.c_ulong),
+)
+user32.GetWindowThreadProcessId.restype = ctypes.c_ulong
+user32.IsWindowVisible.argtypes = (ctypes.c_void_p,)
+user32.IsWindowVisible.restype = ctypes.c_bool
 
 
 class LUID(ctypes.Structure):
@@ -190,6 +203,21 @@ class TOKEN_PRIVILEGES(ctypes.Structure):
     ]
 
 
+class TOKEN_ELEVATION(ctypes.Structure):
+    _fields_ = [("TokenIsElevated", ctypes.c_ulong)]
+
+
+class SID_AND_ATTRIBUTES(ctypes.Structure):
+    _fields_ = [
+        ("Sid", ctypes.c_void_p),
+        ("Attributes", ctypes.c_ulong),
+    ]
+
+
+class TOKEN_MANDATORY_LABEL(ctypes.Structure):
+    _fields_ = [("Label", SID_AND_ATTRIBUTES)]
+
+
 advapi32.OpenProcessToken.argtypes = (
     ctypes.c_void_p,
     ctypes.c_ulong,
@@ -211,6 +239,96 @@ advapi32.AdjustTokenPrivileges.argtypes = (
     ctypes.c_void_p,
 )
 advapi32.AdjustTokenPrivileges.restype = ctypes.c_bool
+advapi32.GetTokenInformation.argtypes = (
+    ctypes.c_void_p,
+    ctypes.c_ulong,
+    ctypes.c_void_p,
+    ctypes.c_ulong,
+    ctypes.POINTER(ctypes.c_ulong),
+)
+advapi32.GetTokenInformation.restype = ctypes.c_bool
+advapi32.GetSidSubAuthorityCount.argtypes = (ctypes.c_void_p,)
+advapi32.GetSidSubAuthorityCount.restype = ctypes.POINTER(ctypes.c_ubyte)
+advapi32.GetSidSubAuthority.argtypes = (ctypes.c_void_p, ctypes.c_ulong)
+advapi32.GetSidSubAuthority.restype = ctypes.POINTER(ctypes.c_ulong)
+kernel32.GetCurrentProcessId.restype = ctypes.c_ulong
+kernel32.ProcessIdToSessionId.argtypes = (
+    ctypes.c_ulong,
+    ctypes.POINTER(ctypes.c_ulong),
+)
+kernel32.ProcessIdToSessionId.restype = ctypes.c_bool
+
+
+def _token_information_buffer(token: ctypes.c_void_p, information_class: int):
+    required = ctypes.c_ulong()
+    ctypes.set_last_error(0)
+    advapi32.GetTokenInformation(
+        token,
+        information_class,
+        None,
+        0,
+        ctypes.byref(required),
+    )
+    if not required.value:
+        return None, ctypes.get_last_error()
+    buffer = ctypes.create_string_buffer(required.value)
+    if not advapi32.GetTokenInformation(
+        token,
+        information_class,
+        buffer,
+        required.value,
+        ctypes.byref(required),
+    ):
+        return None, ctypes.get_last_error()
+    return buffer, 0
+
+
+def _token_runtime_diagnostics(process_handle: ctypes.c_void_p) -> dict[str, object]:
+    token = ctypes.c_void_p()
+    if not advapi32.OpenProcessToken(process_handle, TOKEN_QUERY, ctypes.byref(token)):
+        return {"token_open_error": ctypes.get_last_error()}
+    try:
+        result: dict[str, object] = {}
+        elevation, error = _token_information_buffer(token, TOKEN_INFORMATION_ELEVATION)
+        if elevation is not None:
+            result["elevated"] = bool(
+                ctypes.cast(elevation, ctypes.POINTER(TOKEN_ELEVATION)).contents.TokenIsElevated
+            )
+        elif error:
+            result["elevation_error"] = error
+
+        session, error = _token_information_buffer(token, TOKEN_SESSION_ID)
+        if session is not None:
+            result["token_session_id"] = ctypes.c_ulong.from_buffer_copy(session.raw[:4]).value
+        elif error:
+            result["token_session_error"] = error
+
+        label, error = _token_information_buffer(token, TOKEN_INTEGRITY_LEVEL)
+        if label is not None:
+            mandatory = ctypes.cast(
+                label,
+                ctypes.POINTER(TOKEN_MANDATORY_LABEL),
+            ).contents
+            sid = mandatory.Label.Sid
+            if sid:
+                count = advapi32.GetSidSubAuthorityCount(sid)
+                if count and count.contents.value:
+                    rid = advapi32.GetSidSubAuthority(sid, count.contents.value - 1)
+                    if rid:
+                        integrity_rid = int(rid.contents.value)
+                        result["integrity_rid"] = integrity_rid
+                        result["integrity"] = {
+                            0x1000: "low",
+                            0x2000: "medium",
+                            0x2100: "medium_plus",
+                            0x3000: "high",
+                            0x4000: "system",
+                        }.get(integrity_rid, f"rid_{integrity_rid}")
+        elif error:
+            result["integrity_error"] = error
+        return result
+    finally:
+        kernel32.CloseHandle(token)
 
 
 _debug_privilege_lock = threading.Lock()
@@ -1728,6 +1846,181 @@ class ProcessMemory:
         return self.scan_bytes(struct.pack("<f", float(value)))
 
 
+def _process_session_id(pid: int) -> int | None:
+    if not pid:
+        return None
+    session = ctypes.c_ulong()
+    ctypes.set_last_error(0)
+    if not kernel32.ProcessIdToSessionId(int(pid), ctypes.byref(session)):
+        return None
+    return int(session.value)
+
+
+def _process_runtime_diagnostics(pid: int) -> dict[str, object]:
+    pid = int(pid or 0)
+    result: dict[str, object] = {"pid": pid}
+    if not pid:
+        return result
+    result["session_id"] = _process_session_id(pid)
+    try:
+        result["executable"] = process_executable_path(pid)
+    except Exception as exc:
+        result["executable_error"] = repr(exc)
+    handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not handle:
+        result["open_process_error"] = ctypes.get_last_error()
+        return result
+    try:
+        result.update(_token_runtime_diagnostics(handle))
+    finally:
+        kernel32.CloseHandle(handle)
+    return result
+
+
+def _window_runtime_diagnostics(hwnd: int) -> dict[str, object]:
+    hwnd = int(hwnd or 0)
+    if not hwnd:
+        return {"hwnd": "0x0"}
+    owner = ctypes.c_ulong()
+    thread_id = int(
+        user32.GetWindowThreadProcessId(
+            ctypes.c_void_p(hwnd),
+            ctypes.byref(owner),
+        )
+    )
+    return {
+        "hwnd": hex(hwnd),
+        "title": _window_text(hwnd),
+        "visible": bool(user32.IsWindowVisible(ctypes.c_void_p(hwnd))),
+        "pid": int(owner.value),
+        "thread_id": thread_id,
+    }
+
+
+def collect_runtime_diagnostics(game_pid: int = 0) -> dict[str, object]:
+    """Capture failure context without scanning arbitrary processes."""
+    trainer_pid = int(kernel32.GetCurrentProcessId() or os.getpid())
+    foreground = int(user32.GetForegroundWindow() or 0)
+    try:
+        visible_windows = enum_war3_windows()
+    except Exception as exc:
+        visible_windows = []
+        visible_windows_error = repr(exc)
+    else:
+        visible_windows_error = None
+
+    candidates = []
+    for hwnd, pid, title in visible_windows:
+        row = {
+            "hwnd": hex(int(hwnd)),
+            "pid": int(pid),
+            "title": title,
+            "thread_id": int(
+                user32.GetWindowThreadProcessId(
+                    ctypes.c_void_p(hwnd),
+                    None,
+                )
+            ),
+        }
+        row["process"] = _process_runtime_diagnostics(pid)
+        candidates.append(row)
+
+    trainer = {
+        "pid": trainer_pid,
+        "parent_pid": os.getppid(),
+        "parent_process": _process_runtime_diagnostics(os.getppid()),
+        "session_id": _process_session_id(trainer_pid),
+        "executable": sys.executable,
+        "source": __file__,
+        "frozen": bool(getattr(sys, "frozen", False)),
+        "argv": list(sys.argv),
+        "current_thread_id": int(kernel32.GetCurrentThreadId()),
+        "token": _token_runtime_diagnostics(kernel32.GetCurrentProcess()),
+    }
+    host = {
+        "platform": platform.platform(aliased=True),
+        "release": platform.release(),
+        "version": platform.version(),
+        "machine": platform.machine(),
+        "win32_ver": platform.win32_ver(),
+        "pointer_bits": ctypes.sizeof(ctypes.c_void_p) * 8,
+    }
+    result: dict[str, object] = {
+        "schema": 2,
+        "app_version": APP_VERSION,
+        "game_build": GAME_BUILD,
+        "compat_revision": WIN10_COMPAT_REVISION,
+        "trainer": trainer,
+        "target_game_pid": int(game_pid or 0),
+        "target_game": _process_runtime_diagnostics(game_pid),
+        "visible_warcraft_windows": candidates,
+        "foreground_window": _window_runtime_diagnostics(foreground),
+        "host": host,
+        "se_debug_enabled": bool(_debug_privilege_enabled),
+    }
+    if visible_windows_error:
+        result["visible_windows_error"] = visible_windows_error
+    return result
+
+
+def summarize_engine_report(report: dict[str, object]) -> dict[str, object]:
+    dispatch = report.get("dispatch") or {}
+    if not isinstance(dispatch, dict):
+        return {"operation": report.get("operation"), "report_error": "invalid dispatch"}
+
+    def state_summary(name: str) -> dict[str, object] | None:
+        state = dispatch.get(name)
+        if not isinstance(state, dict):
+            return None
+        keys = (
+            "hook",
+            "target_tid",
+            "message",
+            "stage",
+            "last_error",
+            "callback_tid",
+            "callback_count",
+            "detached",
+            "active",
+            "query_result",
+            "bridge_install_trace",
+            "tls_value",
+            "query_stage",
+            "exception_code",
+            "unwind_registered",
+            "unwind_removed",
+        )
+        return {key: state.get(key) for key in keys if key in state}
+
+    return {
+        "schema": 1,
+        "operation": report.get("operation"),
+        "game_pid": report.get("pid"),
+        "route": dispatch.get("image_route"),
+        "route_policy": dispatch.get("route_policy"),
+        "route_attempt": dispatch.get("route_attempt"),
+        "same_route_retry": dispatch.get("same_route_retry"),
+        "bridge_sha256": dispatch.get("image_sha256"),
+        "hook_kind": dispatch.get("hook_kind"),
+        "message_delivery": dispatch.get("message_delivery"),
+        "target_window": dispatch.get("target_window"),
+        "remote_api_resolution": dispatch.get("remote_api_resolution"),
+        "image_map": dispatch.get("image_map"),
+        "install_thread": dispatch.get("install_thread"),
+        "after_install": state_summary("after_install"),
+        "after_send": state_summary("after_send"),
+        "after_cleanup": state_summary("after_cleanup"),
+        "callback_verified": dispatch.get("callback_verified"),
+        "query_completed": dispatch.get("query_completed"),
+        "work_freed": dispatch.get("work_freed"),
+        "block_freed": dispatch.get("block_freed"),
+        "image_unmap_status": dispatch.get("image_unmap_status"),
+        "allocations_retained": dispatch.get("allocations_retained"),
+        "safe_to_release": dispatch.get("safe_to_release"),
+        "transport_error": dispatch.get("error"),
+    }
+
+
 class Win10ReadLogger:
     MAX_ARCHIVE_LOGS = 128
 
@@ -1751,10 +2044,16 @@ class Win10ReadLogger:
     def __init__(self, pid: int, prefix: str = "win10-read"):
         self.pid = int(pid)
         self.prefix = str(prefix)
+        self.trainer_pid = os.getpid()
+        self.trainer_parent_pid = os.getppid()
         self.started = time.perf_counter()
         self._lock = threading.Lock()
         self._files = []
         stamp = time.strftime("%Y%m%d-%H%M%S") + f"-{int(time.time() * 1000) % 1000:03d}"
+        archive_suffix = (
+            f"-tpid{self.trainer_pid}-tid{threading.get_ident()}"
+            f"-sid{uuid.uuid4().hex[:10]}"
+        )
         preferred_root = (
             Path(sys.executable).resolve().parent
             if getattr(sys, "frozen", False)
@@ -1770,10 +2069,9 @@ class Win10ReadLogger:
             try:
                 log_root.mkdir(parents=True, exist_ok=True)
                 self._prune_archives(log_root, prefix=self.prefix)
-                archive_path = log_root / f"{self.prefix}-{stamp}-pid{self.pid}.log"
+                archive_path = log_root / f"{self.prefix}-{stamp}-pid{self.pid}{archive_suffix}.log"
                 latest_path = log_root / f"{self.prefix}-latest.log"
-                for path in (archive_path, latest_path):
-                    opened.append(path.open("w", encoding="utf-8-sig", buffering=1))
+                opened.append(archive_path.open("x", encoding="utf-8-sig", buffering=1))
             except OSError as exc:
                 last_error = exc
                 for handle in opened:
@@ -1788,13 +2086,22 @@ class Win10ReadLogger:
             raise RuntimeError(f"无法创建 Win10 读取诊断日志：{last_error}")
         self.log(
             "log_start",
+            log_schema=2,
             app_version=APP_VERSION,
             game_build=GAME_BUILD,
             compat_revision=WIN10_COMPAT_REVISION,
             pid=self.pid,
+            game_pid=self.pid,
+            trainer_pid=self.trainer_pid,
+            trainer_parent_pid=self.trainer_parent_pid,
             archive=str(self.archive_path),
             latest=str(self.latest_path),
         )
+        if self.prefix.startswith("trainer-error"):
+            try:
+                self.log("runtime_context", context=collect_runtime_diagnostics(self.pid))
+            except Exception as exc:
+                self.log("runtime_context_error", exception=repr(exc))
 
     @staticmethod
     def _format_value(value: object) -> str:
@@ -1810,7 +2117,9 @@ class Win10ReadLogger:
         )
         line = (
             f"[{timestamp}] +{elapsed_ms:010.1f}ms "
-            f"thread={threading.get_ident()} event={event}"
+            f"trainer_pid={self.trainer_pid} "
+            f"thread={threading.get_ident()} "
+            f"win_thread={int(kernel32.GetCurrentThreadId())} event={event}"
         )
         if details:
             line += " " + details
@@ -1864,17 +2173,38 @@ class Win10ReadLogger:
                 handle.close()
             except OSError:
                 pass
+        # Keep every archive intact and publish the convenience alias only
+        # after the session is complete. os.replace makes readers see either
+        # the previous complete log or this complete log, never a truncation.
+        temp_latest = self.latest_path.with_name(
+            f".{self.latest_path.name}.{self.trainer_pid}.{threading.get_ident()}.tmp"
+        )
+        try:
+            import shutil
+            shutil.copyfile(self.archive_path, temp_latest)
+            os.replace(temp_latest, self.latest_path)
+        except OSError:
+            try:
+                temp_latest.unlink()
+            except OSError:
+                pass
 
 
 # Historical UI label only; this compatibility reader is used on Win10 and Win11.
 def record_operation_failure(pid: int, operation: str, exc: BaseException) -> str:
     logger = Win10ReadLogger(pid, prefix="trainer-error")
     try:
-        logger.log("operation_failure", operation=operation,
+        logger.log("operation_failure", operation=operation, pid=int(pid),
+                   game_pid=int(pid), trainer_pid=os.getpid(),
+                   trainer_parent_pid=os.getppid(),
                    executable=sys.executable, source=__file__,
+                   exception_type=type(exc).__name__,
+                   winerror=getattr(exc, "winerror", None),
+                   hresult=getattr(exc, "hresult", None),
                    exception=repr(exc), traceback="".join(traceback.format_exception(exc)))
         engine_report = getattr(exc, "report", None)
         if isinstance(engine_report, dict):
+            logger.log("engine24268_failure_summary", summary=summarize_engine_report(engine_report))
             logger.log("engine24268_execution_report", report=engine_report)
         return str(logger.archive_path)
     finally:
@@ -16213,7 +16543,10 @@ def parse_unit_identity(text: str) -> tuple[int, int, int]:
     return values["handle"], values["owner"], values["unit"]
 
 
-def run_gui() -> None:
+def run_gui(
+    initial_pid: int | None = None,
+    initial_hotkeys_enabled: bool = False,
+) -> None:
     import tkinter as tk
     from tkinter import messagebox, ttk
 
@@ -16257,7 +16590,7 @@ def run_gui() -> None:
         value="中文" if ui_language["code"] == "zh" else "English"
     )
     status = LocalizedStringVar(value="正在连接 Warcraft III...")
-    pid_var = tk.StringVar(value="")
+    pid_var = tk.StringVar(value=str(initial_pid) if initial_pid is not None else "")
     gold_current = tk.StringVar(value="")
     lumber_current = tk.StringVar(value="")
     food_current = tk.StringVar(value="")
@@ -16326,7 +16659,7 @@ def run_gui() -> None:
     elephant_preset_tech_rawcode = tk.StringVar(value="Rost")
     elephant_reset_ability_rawcode = tk.StringVar(value="Apxf")
     elephant_auto_effect_count = tk.StringVar(value="5")
-    elephant_hotkeys_enabled = tk.BooleanVar(value=False)
+    elephant_hotkeys_enabled = tk.BooleanVar(value=initial_hotkeys_enabled)
     elephant_hotkey_status = LocalizedStringVar(value="快捷键未启用")
     elephant_hotkey_checks = {
         spec.name: tk.BooleanVar(value=True)
@@ -19644,6 +19977,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--read-selected", action="store_true", help="Read current selected unit through the selection handle")
     parser.add_argument("--read-selected-fields", action="store_true", help="Read all supported fields from the current selected unit")
     parser.add_argument("--engine-camera-probe", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--enable-hotkeys", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--list-selection-candidates", action="store_true", help="List plausible selected-unit candidates with full clues")
     parser.add_argument("--unit-identity", help="Manual candidate identity: HANDLE,OWNER,UNIT or handle=...,owner=...,unit=...")
     parser.add_argument("--verify-selection-locator", action="store_true", help="Verify selected-unit locator uses handle -> owner -> unit chain")
@@ -20048,7 +20382,7 @@ def main(argv: Iterable[str] | None = None) -> int:
         ]
     )
     if args.gui or not has_cli_action:
-        run_gui()
+        run_gui(args.pid, args.enable_hotkeys)
         return 0
     return run_cli(args)
 

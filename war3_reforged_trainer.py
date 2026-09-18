@@ -1856,17 +1856,17 @@ def _process_session_id(pid: int) -> int | None:
     return int(session.value)
 
 
-def _process_runtime_diagnostics(pid: int) -> dict[str, object]:
-    pid = int(pid or 0)
-    result: dict[str, object] = {"pid": pid}
-    if not pid:
+def _process_runtime_diagnostics(pid: int | None) -> dict[str, object]:
+    target_pid = int(pid) if pid else None
+    result: dict[str, object] = {"pid": target_pid}
+    if target_pid is None:
         return result
-    result["session_id"] = _process_session_id(pid)
+    result["session_id"] = _process_session_id(target_pid)
     try:
-        result["executable"] = process_executable_path(pid)
+        result["executable"] = process_executable_path(target_pid)
     except Exception as exc:
         result["executable_error"] = repr(exc)
-    handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, target_pid)
     if not handle:
         result["open_process_error"] = ctypes.get_last_error()
         return result
@@ -1897,35 +1897,68 @@ def _window_runtime_diagnostics(hwnd: int) -> dict[str, object]:
     }
 
 
-def diagnostic_target_identity(game_pid: int, windows=None) -> dict[str, object]:
+def diagnostic_target_identity(
+    game_pid: int | None,
+    windows=None,
+    *,
+    requested_pid: int | None = None,
+    target_hwnd: int = 0,
+) -> dict[str, object]:
     """Keep launch intent separate from the current target and observed windows."""
-    requested = None
-    for index, arg in enumerate(sys.argv[1:], 1):
-        value = arg.partition("=")[2] if arg.startswith("--pid=") else (
-            sys.argv[index + 1] if arg == "--pid" and index + 1 < len(sys.argv) else None
-        )
-        if value is not None:
-            try:
-                requested = int(value)
-            except (TypeError, ValueError):
-                pass
-    result = dict(requested_game_pid=requested, game_pid=int(game_pid),
-                  target_game_pid=int(game_pid), target_window_pid=None,
-                  target_window_hwnd=None, target_windows=[])
+    requested = int(requested_pid) if requested_pid else None
+    if requested is None:
+        for index, arg in enumerate(sys.argv[1:], 1):
+            value = arg.partition("=")[2] if arg.startswith("--pid=") else (
+                sys.argv[index + 1] if arg == "--pid" and index + 1 < len(sys.argv) else None
+            )
+            if value is not None:
+                try:
+                    requested = int(value)
+                except (TypeError, ValueError):
+                    pass
+    target = int(game_pid) if game_pid else None
+    result = dict(
+        requested_game_pid=requested,
+        game_pid=target,
+        target_game_pid=target,
+        actual_target_pid=target,
+        target_pid=target,
+        target_window_pid=None,
+        window_pid=None,
+        target_window_hwnd=None,
+        target_windows=[],
+    )
     try:
         rows = enum_war3_windows() if windows is None else windows
-        matches = [dict(hwnd=hex(int(hwnd)), pid=int(pid))
-                   for hwnd, pid, _title in rows if int(pid) == int(game_pid)]
+        matches = [
+            dict(hwnd=hex(int(hwnd)), pid=int(pid))
+            for hwnd, pid, _title in rows
+            if target is None or int(pid) == target
+        ]
         result["target_windows"] = matches
         if len(matches) == 1:
             result.update(target_window_pid=matches[0]["pid"],
+                          window_pid=matches[0]["pid"],
                           target_window_hwnd=matches[0]["hwnd"])
+        if target_hwnd:
+            observed = _window_runtime_diagnostics(target_hwnd)
+            if observed.get("pid") and (target is None or observed["pid"] == target):
+                result.update(
+                    target_window_pid=observed["pid"],
+                    window_pid=observed["pid"],
+                    target_window_hwnd=observed["hwnd"],
+                )
     except Exception as exc:
         result["target_window_lookup_error"] = repr(exc)
     return result
 
 
-def collect_runtime_diagnostics(game_pid: int = 0) -> dict[str, object]:
+def collect_runtime_diagnostics(
+    game_pid: int | None = None,
+    *,
+    requested_pid: int | None = None,
+    target_hwnd: int = 0,
+) -> dict[str, object]:
     """Capture failure context without scanning arbitrary processes."""
     trainer_pid = int(kernel32.GetCurrentProcessId() or os.getpid())
     foreground = int(user32.GetForegroundWindow() or 0)
@@ -1973,14 +2006,20 @@ def collect_runtime_diagnostics(game_pid: int = 0) -> dict[str, object]:
         "win32_ver": platform.win32_ver(),
         "pointer_bits": ctypes.sizeof(ctypes.c_void_p) * 8,
     }
+    target_pid = int(game_pid) if game_pid else None
     result: dict[str, object] = {
         "schema": 2,
         "app_version": APP_VERSION,
         "game_build": GAME_BUILD,
         "compat_revision": WIN10_COMPAT_REVISION,
         "trainer": trainer,
-        **diagnostic_target_identity(int(game_pid or 0), visible_windows),
-        "target_game": _process_runtime_diagnostics(game_pid),
+        **diagnostic_target_identity(
+            target_pid,
+            visible_windows,
+            requested_pid=requested_pid,
+            target_hwnd=target_hwnd,
+        ),
+        "target_game": _process_runtime_diagnostics(target_pid),
         "visible_warcraft_windows": candidates,
         "foreground_window": _window_runtime_diagnostics(foreground),
         "host": host,
@@ -2069,8 +2108,20 @@ class Win10ReadLogger:
             except OSError:
                 pass
 
-    def __init__(self, pid: int, prefix: str = "win10-read"):
-        self.pid = int(pid)
+    def __init__(
+        self,
+        pid: int | None,
+        prefix: str = "win10-read",
+        *,
+        requested_pid: int | None = None,
+        target_hwnd: int = 0,
+    ):
+        self.game_pid = int(pid) if pid else None
+        # Keep the legacy attribute for existing diagnostics callers while
+        # making unknown targets explicit in the log schema and filename.
+        self.pid = self.game_pid or 0
+        self.requested_pid = int(requested_pid) if requested_pid else None
+        self.target_hwnd = int(target_hwnd or 0)
         self.prefix = str(prefix)
         self.trainer_pid = os.getpid()
         self.trainer_parent_pid = os.getppid()
@@ -2097,7 +2148,8 @@ class Win10ReadLogger:
             try:
                 log_root.mkdir(parents=True, exist_ok=True)
                 self._prune_archives(log_root, prefix=self.prefix)
-                archive_path = log_root / f"{self.prefix}-{stamp}-pid{self.pid}{archive_suffix}.log"
+                archive_pid = str(self.game_pid) if self.game_pid is not None else "unknown"
+                archive_path = log_root / f"{self.prefix}-{stamp}-pid{archive_pid}{archive_suffix}.log"
                 latest_path = log_root / f"{self.prefix}-latest.log"
                 opened.append(archive_path.open("x", encoding="utf-8-sig", buffering=1))
             except OSError as exc:
@@ -2112,22 +2164,36 @@ class Win10ReadLogger:
             break
         else:
             raise RuntimeError(f"无法创建 Win10 读取诊断日志：{last_error}")
+        target_identity = diagnostic_target_identity(
+            self.game_pid,
+            requested_pid=self.requested_pid,
+            target_hwnd=self.target_hwnd,
+        )
         self.log(
             "log_start",
             log_schema=2,
             app_version=APP_VERSION,
             game_build=GAME_BUILD,
             compat_revision=WIN10_COMPAT_REVISION,
-            pid=self.pid,
-            **diagnostic_target_identity(self.pid),
-            trainer_pid=self.trainer_pid,
+            pid=self.game_pid,
+            game_pid=self.game_pid,
+            actual_target_pid=self.game_pid,
+            window_pid=target_identity.get("window_pid"),
+            target_identity=target_identity,
             trainer_parent_pid=self.trainer_parent_pid,
             archive=str(self.archive_path),
             latest=str(self.latest_path),
         )
         if self.prefix.startswith("trainer-error"):
             try:
-                self.log("runtime_context", context=collect_runtime_diagnostics(self.pid))
+                self.log(
+                    "runtime_context",
+                    context=collect_runtime_diagnostics(
+                        self.game_pid,
+                        requested_pid=self.requested_pid,
+                        target_hwnd=self.target_hwnd,
+                    ),
+                )
             except Exception as exc:
                 self.log("runtime_context_error", exception=repr(exc))
 
@@ -2219,12 +2285,31 @@ class Win10ReadLogger:
 
 
 # Historical UI label only; this compatibility reader is used on Win10 and Win11.
-def record_operation_failure(pid: int, operation: str, exc: BaseException) -> str:
-    logger = Win10ReadLogger(pid, prefix="trainer-error")
+def record_operation_failure(
+    pid: int | None,
+    operation: str,
+    exc: BaseException,
+    *,
+    requested_pid: int | None = None,
+    target_hwnd: int = 0,
+) -> str:
+    logger = Win10ReadLogger(
+        pid,
+        prefix="trainer-error",
+        requested_pid=requested_pid,
+        target_hwnd=target_hwnd,
+    )
     try:
-        logger.log("operation_failure", operation=operation, pid=int(pid),
-                   **diagnostic_target_identity(int(pid)),
-                   trainer_pid=os.getpid(),
+        target_identity = diagnostic_target_identity(
+            logger.game_pid,
+            requested_pid=requested_pid,
+            target_hwnd=target_hwnd,
+        )
+        logger.log("operation_failure", operation=operation, pid=logger.game_pid,
+                   game_pid=logger.game_pid,
+                   actual_target_pid=logger.game_pid,
+                   window_pid=target_identity.get("window_pid"),
+                   target_identity=target_identity,
                    trainer_parent_pid=os.getppid(),
                    executable=sys.executable, source=__file__,
                    exception_type=type(exc).__name__,
@@ -6494,29 +6579,20 @@ class War3Trainer:
             raise ValueError("单位坐标必须是有限数值")
         if abs(target_x) > 1_000_000.0 or abs(target_y) > 1_000_000.0:
             raise ValueError("单位坐标超出允许范围")
-        if getattr(self, "_native_selection_unavailable", False):
-            selected = self._selected_candidates_snapshot(None)
-            if not selected:
-                raise RuntimeError("当前选择没有可操作单位")
-            candidate, _handle = selected[0]
-            with self._process_memory(write=True) as memory:
-                if (memory.read_u64(candidate.owner_address + 0x20) != candidate.handle
-                        or memory.read_u64(candidate.unit_address + 0x18) != candidate.handle
-                        or memory.read_u64(candidate.owner_address + 0x90) != candidate.unit_address):
-                    raise RuntimeError("3.0 单位身份已变化")
-                memory.write_f32(candidate.x_address, target_x)
-                memory.write_f32(candidate.y_address, target_y)
-                actual_x = memory.read_f32(candidate.x_address)
-                actual_y = memory.read_f32(candidate.y_address)
-                if abs(actual_x - target_x) > 0.01 or abs(actual_y - target_y) > 0.01:
-                    raise RuntimeError("3.0 单位坐标写入读回不一致")
-            return actual_x, actual_y
-        x_bits, y_bits = self._float_bits(target_x), self._float_bits(target_y)
-        result = self._run_bound_unit_value_action("SetUnitPosition", self.NATIVE_HELPER_OP_JASS_SET_UNIT_POSITION,
-                                                   x_bits, y_bits)
-        if result != x_bits | (y_bits << 32):
-            raise RuntimeError("Native position acknowledgment differs from request")
-        return target_x, target_y
+        result = self.position_batch_24268(
+            self._float_bits(target_x), self._float_bits(target_y),
+        )
+        rows = tuple(result.get("rows", ()))
+        if (int(result.get("count", len(rows))) != 1
+                or len(rows) != 1
+                or int(result.get("completed", -1)) != 1
+                or int(result.get("changed", -1)) != 1):
+            raise RuntimeError("单选单位引擎瞬移返回不完整")
+        actual_x = self._float_from_bits(int(rows[0]["actual_x_bits"]))
+        actual_y = self._float_from_bits(int(rows[0]["actual_y_bits"]))
+        if not all(math.isfinite(value) for value in (actual_x, actual_y)):
+            raise RuntimeError("单选单位引擎瞬移坐标读回无效")
+        return actual_x, actual_y
 
     def move_selected_unit_to_mouse(self) -> tuple[float, float]:
         x, y = self.query_mouse_world_position()
@@ -16328,6 +16404,37 @@ class War3Trainer:
             close_pm = pm is None
             memory = pm or self._process_memory(write=True)
             try:
+                if target_x is not None or target_y is not None:
+                    selected = self._classic_selection_candidates(memory)
+                    matching = [
+                        selected_candidate
+                        for selected_candidate, _handle in selected
+                        if (
+                            selected_candidate.handle == candidate.handle
+                            and selected_candidate.owner_address == candidate.owner_address
+                            and selected_candidate.unit_address == candidate.unit_address
+                        )
+                    ]
+                    if len(selected) != 1 or len(matching) != 1:
+                        raise RuntimeError("坐标字段写入必须只选中目标单位")
+                    current_x = memory.read_f32(candidate.x_address)
+                    current_y = memory.read_f32(candidate.y_address)
+                    requested_x = current_x if target_x is None else target_x
+                    requested_y = current_y if target_y is None else target_y
+                    result = self.position_batch_24268(
+                        self._float_bits(requested_x), self._float_bits(requested_y),
+                    )
+                    rows = tuple(result.get("rows", ()))
+                    if (int(result.get("count", len(rows))) != 1
+                            or len(rows) != 1
+                            or int(result.get("completed", -1)) != 1
+                            or int(result.get("changed", -1)) != 1):
+                        raise RuntimeError("坐标字段引擎写入返回不完整")
+                    actual_x = self._float_from_bits(int(rows[0]["actual_x_bits"]))
+                    actual_y = self._float_from_bits(int(rows[0]["actual_y_bits"]))
+                    if not all(math.isfinite(value) for value in (actual_x, actual_y)):
+                        raise RuntimeError("坐标字段引擎写入坐标读回无效")
+                    target_x = target_y = None
                 registry = self._classic_object_registry or ObjectRegistry24268.attach(memory)
                 self._classic_object_registry = registry
                 write_basic_fields(memory, registry, candidate, {
@@ -16953,6 +17060,11 @@ def run_gui(
         if busy_widget is not None:
             busy_widget.state(["disabled"])
         set_status(busy_text)
+        requested_pid_text = pid_var.get().strip()
+        try:
+            requested_pid = int(requested_pid_text) if requested_pid_text else None
+        except ValueError:
+            requested_pid = None
 
         def finish(result: str | None, exc: Exception | None) -> None:
             if operation_key:
@@ -16980,8 +17092,10 @@ def run_gui(
                 try:
                     current_trainer = state.get("trainer")
                     path = record_operation_failure(
-                        getattr(current_trainer, "pid", 0),
+                        getattr(current_trainer, "pid", None),
                         operation_key or getattr(fn, "__name__", "operation"), exc,
+                        requested_pid=requested_pid,
+                        target_hwnd=getattr(current_trainer, "hwnd", 0),
                     )
                     exc.add_note("Diagnostic log: " + path)
                 except Exception as log_error:

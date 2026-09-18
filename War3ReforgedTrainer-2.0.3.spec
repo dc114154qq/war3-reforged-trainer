@@ -46,7 +46,7 @@ exe = EXE(
     name='War3ReforgedTrainer-v2.0.3',
     debug=False, bootloader_ignore_signals=False, strip=False, upx=True,
     upx_exclude=[], runtime_tmpdir=None, console=False,
-    disable_windowed_traceback=False, uac_admin=False, argv_emulation=False,
+    disable_windowed_traceback=False, uac_admin=True, argv_emulation=False,
     target_arch=None, codesign_identity=None, entitlements_file=None,
     icon='assets/app_icon.ico', version='tools/war3-2.0.3-version-info.txt',
 )

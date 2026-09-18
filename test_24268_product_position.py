@@ -39,6 +39,12 @@ def test_position_work_has_stable_size():
     assert WORK_SIZE == 1312
 
 
+def test_product_position_paths_do_not_write_discovered_coordinate_fields_directly():
+    source = (Path(__file__).parent / "war3_reforged_trainer.py").read_text(encoding="utf-8")
+    assert "memory.write_f32(candidate.x_address" not in source
+    assert "memory.write_f32(candidate.y_address" not in source
+
+
 @pytest.fixture(scope="module")
 def fixture():
     dll = c.WinDLL(str(Path(__file__).parent / "analysis/bridge-build-direct-r7/engine-hero-fixture.dll"))

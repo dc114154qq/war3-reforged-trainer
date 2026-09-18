@@ -176,6 +176,22 @@ PUBLIC=[('set_selected_unit_scale',(2.5,),('SetUnitScale',),75,bits(2.5)),
 
 @pytest.mark.parametrize('method,args,names,kind,ack',PUBLIC)
 def test_public_routes_bind_once_query_only_needed_functions_and_serialize(trainer,method,args,names,kind,ack):
+    if method == 'set_selected_unit_position':
+        target_x, target_y = args
+        trainer.position_batch_24268 = Mock(return_value={
+            'count': 1,
+            'changed': 1,
+            'completed': 1,
+            'rows': [{
+                'actual_x_bits': bits(target_x),
+                'actual_y_bits': bits(target_y),
+            }],
+        })
+        assert getattr(trainer,method)(*args) == args
+        trainer.position_batch_24268.assert_called_once_with(
+            bits(target_x), bits(target_y),
+        )
+        return
     trainer._query_native_table_handlers=Mock(return_value={name:module.NativeHandler(name,0,0x200000+n*0x100)
                                                          for n,name in enumerate(names)})
     trainer._run_native_helper_ops=Mock(return_value=[module.NativeHelperOpResult(136,1),module.NativeHelperOpResult(kind,ack)])
@@ -205,6 +221,11 @@ def test_invalid_user_input_precedes_selection(trainer,method,args):
 @pytest.mark.parametrize('method,args,names,kind,ack',PUBLIC)
 @pytest.mark.parametrize('bad',['empty','kind','ack'])
 def test_bad_acknowledgments_are_not_success(trainer,method,args,names,kind,ack,bad):
+    if method == 'set_selected_unit_position':
+        trainer.position_batch_24268 = Mock(return_value={})
+        with pytest.raises(RuntimeError):
+            getattr(trainer,method)(*args)
+        return
     trainer._query_native_table_handlers=Mock(return_value={name:module.NativeHandler(name,0,0x200000) for name in names})
     trainer._run_native_helper_ops=Mock(return_value=[] if bad=='empty' else
         [module.NativeHelperOpResult(136,1),module.NativeHelperOpResult(70 if bad=='kind' else kind,0 if bad=='ack' else ack)])

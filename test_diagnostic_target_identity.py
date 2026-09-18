@@ -22,3 +22,17 @@ def test_window_lookup_failure_preserves_error_logging():
         result=product.diagnostic_target_identity(3668)
     assert result['target_game_pid']==3668
     assert 'window gone' in result['target_window_lookup_error']
+
+
+def test_unknown_target_keeps_game_and_window_pids_unset():
+    result = product.diagnostic_target_identity(
+        None,
+        [(99, 3668, 'Warcraft III'), (100, 4777, 'Warcraft III')],
+        requested_pid=23604,
+    )
+    assert result['requested_game_pid'] == 23604
+    assert result['game_pid'] is None
+    assert result['actual_target_pid'] is None
+    assert result['window_pid'] is None
+    assert result['target_window_pid'] is None
+    assert len(result['target_windows']) == 2

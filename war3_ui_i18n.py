@@ -1115,6 +1115,8 @@ _EN_TRANSLATIONS.update({
     "坐标字段写入必须只选中目标单位": "coordinate-field writes require only the target unit to be selected",
     "坐标字段引擎写入返回不完整": "coordinate-field engine write returned incomplete data",
     "坐标字段引擎写入坐标读回无效": "coordinate-field engine write returned an invalid coordinate",
+    "修改器与游戏完整性级别不一致：": "Trainer and game integrity levels differ: ",
+    "请以与游戏相同权限重新启动修改器": "restart the trainer with the same permissions as the game",
     "3.0 当前引擎从地图资源创建技能；原等级=": "3.0 current engine created the ability from map resources; original level=",
     "3.0 当前引擎批量复制返回不完整": "3.0 current-engine clone batch returned incomplete data",
     "3.0 当前引擎技能栏已是目标资源": "3.0 current-engine ability slot already contains the target resource",

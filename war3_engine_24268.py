@@ -406,6 +406,8 @@ class Engine24268:
                 'hwnd':self.hwnd, 'operation':kind, 'request':request, 'ok':False,
             };self.last_report=report
             try:
+                from war3_integrity import require_matching_integrity
+                report['integrity'] = require_matching_integrity(self.pid)
                 if not self.image.is_file():raise RuntimeError('Missing current 24268 bridge module: '+str(self.image))
                 with self.memory_factory(self.pid) as memory:
                     cache=self._native_context_cache

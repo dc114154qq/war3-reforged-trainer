@@ -24,6 +24,9 @@ Branch: `codex/war3-3.0.0.24268-adaptation`
 - GUI smoke: r29 process remained responding for 4 seconds.
 - Static/live read-only investigation showed the previous `candidate.x/y`
   fields are not the engine world-coordinate source.
+- Live r29 position probe on PID `33728`: 15 selected units, `SetUnitX/Y`
+  changed `15/15`, `GetUnitX/Y` read back `15/15`, and the game process
+  remained responding after the probe.
 
 ## Live status
 
@@ -31,6 +34,10 @@ Branch: `codex/war3-3.0.0.24268-adaptation`
   one path produced a partial readback and another blocked/terminated the game
   process. Those results are retained in the generated `live-*r28*.json`
   records.
-- The current visible game PID `3928` had zero selected units at the time of
-  r29 verification. The r29 `SetUnitX/Y` write was therefore **not executed**.
+- The r29 live probe used `analysis/live-set-position-33728-r29.json` and
+  verified the current-engine world-coordinate readback. Exact restoration of
+  each unit's pre-probe world coordinate was not performed by that diagnostic;
+  the report's `restored` field only covers the old indexed fields. The next
+  diagnostic must snapshot and restore per-unit native coordinates before any
+  further mutation.
 - Cross-device acceptance remains pending.

@@ -32,12 +32,46 @@ def work(action, rawcode=0, value=0):
 
 @pytest.fixture(scope='module')
 def fixture():
-    dll = c.WinDLL(str(Path(__file__).parent / 'analysis' / 'engine-hero-fixture.dll'))
+    dll = c.WinDLL(str(
+        Path(__file__).parent / 'analysis' / 'bridge-build-direct-r4' / 'engine-hero-fixture.dll'
+    ))
     dll.BridgeWorldTestRun.argtypes = [c.c_void_p, c.c_int, c.c_uint32, c.c_uint32]
     dll.BridgeWorldTestRun.restype = c.c_uint64
     dll.BridgeWorldTestStat.argtypes = [c.c_int]
     dll.BridgeWorldTestStat.restype = c.c_int
+    dll.BridgeFogGateTest.argtypes = [
+        c.c_uint64, c.c_uint32, c.c_uint32, c.c_uint32,
+        c.c_uint32, c.c_uint64, c.c_uint64, c.c_uint64,
+    ]
+    dll.BridgeFogGateTest.restype = c.c_uint32
+    dll.BridgeFogTailTest.argtypes = dll.BridgeFogGateTest.argtypes
+    dll.BridgeFogTailTest.restype = c.c_uint32
     return dll
+
+
+@pytest.mark.parametrize(
+    ("phase", "offset", "length"),
+    [(1, 0x519, 5), (2, 0x3C9, 5), (3, 0x3D2, 3), (4, 0x3D2, 3)],
+)
+def test_fog_control_flow_gate_is_exact(fixture, phase, offset, length):
+    handler = 0x180100000
+    av = 0xC0000005
+    assert fixture.BridgeFogGateTest(handler, phase, av, 0, 2, handler + offset, 0, 0) == length
+    assert fixture.BridgeFogGateTest(handler, phase, av, 0, 2, handler + offset + 1, 0, 0) == 0
+    assert fixture.BridgeFogGateTest(handler, phase, av, 0, 2, handler + offset, 1, 0) == 0
+    assert fixture.BridgeFogGateTest(handler, phase, av, 0, 2, handler + offset, 0, 8) == 0
+    assert fixture.BridgeFogGateTest(handler, phase, av, 1, 2, handler + offset, 0, 0) == 0
+
+
+@pytest.mark.parametrize(("phase", "offset"), [(1, 0xB58), (2, 0x8A8)])
+def test_fog_setter_tail_is_exact_and_requires_null_read(fixture, phase, offset):
+    handler = 0x180100000
+    av = 0xC0000005
+    assert fixture.BridgeFogTailTest(handler, phase, av, 0, 2, handler + offset, 0, 0) == 1
+    assert fixture.BridgeFogTailTest(handler, phase, av, 0, 2, handler + offset + 1, 0, 0) == 0
+    assert fixture.BridgeFogTailTest(handler, phase, av, 0, 2, handler + offset, 1, 0) == 0
+    assert fixture.BridgeFogTailTest(handler, phase, av, 0, 2, handler + offset, 0, 8) == 0
+    assert fixture.BridgeFogTailTest(handler, 3, av, 0, 2, handler + offset, 0, 0) == 0
 
 
 def run(dll, action, rawcode=0, value=0):
@@ -93,10 +127,6 @@ def test_product_world_methods_use_current_batch():
     trainer._native_selection_unavailable = True
     trainer.world_batch_24268 = Mock(side_effect=lambda action, rawcode=0, value=0:
                                      {'after0': value, 'after1': value, 'changed': 1})
-    trainer.map_flags_batch_24268 = Mock(side_effect=lambda action, revealed=0:
-                                         {'after0': 0 if action == 1 or revealed else 1,
-                                          'after1': 0 if action == 1 or revealed else 1,
-                                          'changed': 0 if action == 1 else 1})
     trainer._elephant_handlers = Mock(side_effect=AssertionError('old helper'))
     assert trainer.set_local_player_tech('Rost', 3) == 3
     assert trainer.set_local_player_xp_rate(2.5) == pytest.approx(2.5)
@@ -104,5 +134,4 @@ def test_product_world_methods_use_current_batch():
     trainer.set_map_revealed(True)
     trainer.set_game_paused(True)
     trainer.end_current_game(True)
-    assert [call.args[0] for call in trainer.world_batch_24268.call_args_list] == [1, 2, 5, 6]
-    assert [(call.args[0], call.args[1]) for call in trainer.map_flags_batch_24268.call_args_list] == [(1, 0), (2, 1)]
+    assert [call.args[0] for call in trainer.world_batch_24268.call_args_list] == [1, 2, 3, 4, 5, 6]

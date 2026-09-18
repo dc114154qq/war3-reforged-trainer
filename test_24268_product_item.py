@@ -12,13 +12,13 @@ def entries():return {n:LiveNativeEntry(n,s,0x300000+i*80,0x500000+i*256) for i,
 def work(action=0,charges=-1):return build_work(entries(),0x10000000,action,0x70686561 if action in (1,3,7) else 0,charges)
 @pytest.fixture(scope='module')
 def fixture():
-    dll=c.WinDLL(str(Path(__file__).parent/'analysis/bridge-build-check-r35/engine-hero-fixture.dll'))
+    dll=c.WinDLL(str(Path(__file__).parent/'analysis/bridge-build-direct-r5/engine-hero-fixture.dll'))
     dll.BridgeItemTestRun.argtypes=[c.c_void_p,c.c_int,c.c_int];dll.BridgeItemTestRun.restype=c.c_uint64
     dll.BridgeItemTestStat.argtypes=[c.c_int];dll.BridgeItemTestStat.restype=c.c_int
     return dll
 
-def run(dll,count,action=0,charges=-1,scenario=0,rawcode=None):
-    payload=build_work(entries(),0x10000000,action,rawcode if rawcode is not None else (0x70686561 if action in (1,3,7) else 0),charges)
+def run(dll,count,action=0,charges=-1,scenario=0,rawcode=None,target_unit_rawcode=0):
+    payload=build_work(entries(),0x10000000,action,rawcode if rawcode is not None else (0x70686561 if action in (1,3,7) else 0),charges,target_unit_rawcode)
     buf=c.create_string_buffer(payload);n=dll.BridgeItemTestRun(buf,count,scenario)
     return buf.raw[:WORK_SIZE],n,tuple(dll.BridgeItemTestStat(i) for i in range(3))
 @pytest.mark.parametrize('count',[1,15,24])
@@ -84,8 +84,15 @@ def test_compiled_item_exact_slot_replace_is_idempotent(fixture):
     assert all(row['status']==11 and not row['created'] for row in result['rows'])
 
 
+def test_compiled_item_exact_slot_replace_does_not_need_add_by_id(fixture):
+    data,n,stats=run(fixture,15,7,2,9)
+    result=decode_work(data,n)
+    assert result['changed']==15
+    assert all(row['status']==10 and row['created_slot']==2 for row in result['rows'])
+
+
 def test_compiled_item_exact_slot_replace_failure_is_not_accepted(fixture):
-    data,n,stats=run(fixture,15,7,2,7)
+    data,n,stats=run(fixture,15,7,2,8)
     with pytest.raises(ValueError):decode_work(data,n)
 
 @pytest.mark.parametrize('scenario,action,charges',[(1,1,-1),(2,2,7),(3,1,-1),(4,3,7)])
@@ -111,7 +118,7 @@ def test_new_item_charge_failure_cleans_only_new_item(fixture):
 @pytest.mark.parametrize('name',[n for n,_ in SIGNATURES])
 def test_item_signatures(name):
     es=entries();es[name]=replace(es[name],signature='()V')
-    if name=='UnitAddItemToSlotById':
+    if name in ('UnitAddItemToSlotById','CreateItem','UnitAddItem','UnitDropItemSlot'):
         with pytest.raises(ValueError):build_work(es,0x10000000,7,0x70686561,0)
     else:
         with pytest.raises(ValueError):build_work(es,0x10000000)
@@ -168,3 +175,52 @@ def test_product_item_methods_use_new_bridge_only():
     assert t.add_item_to_selected_unit('phea')==0x100800
     assert t.set_selected_inventory_charges(7)==1
     assert t.item_batch_24268.call_count==2
+
+
+def test_product_item_field_wrapper_forwards_slot_and_item_target():
+    import war3_reforged_trainer as product
+    t=object.__new__(product.War3Trainer)
+    engine=Mock()
+    engine.item_field_batch.return_value={"completed": 1}
+    t._engine_instance_24268=Mock(return_value=engine)
+    fields=((0x1234, 1, 0, 7),)
+    result=t.item_field_batch_24268(2, 1, fields, target_unit=0xABCDEF)
+    assert result == {"completed": 1}
+    engine.item_field_batch.assert_called_once_with(2, 1, fields, 0xABCDEF)
+
+
+def test_map_item_fourcc_eeh3_keeps_big_endian_rawcode():
+    import war3_reforged_trainer as product
+    rawcode = product.War3Trainer._coerce_memory_value("rawcode", "eeh3")
+    assert rawcode == 0x65656833
+    assert product.format_rawcode(rawcode) == "eeh3"
+
+
+def test_targeted_slot_write_preserves_other_selected_inventory(fixture):
+    data,n,stats=run(fixture,3,7,0,5,0x65656833,0x4870616c)
+    result=decode_work(data,n)
+    assert result['changed']==1 and result['skipped']==2 and stats==(1,0,1)
+    assert result['rows'][0]['after'][0]['rawcode']==0x65656833
+    assert all(r['before']==r['after'] and r['status']==12 for r in result['rows'][1:])
+
+
+@pytest.mark.parametrize('count,rawcode',[(6,0x4870616c),(3,0x11111111)])
+def test_ambiguous_or_missing_slot_target_never_mutates(fixture,count,rawcode):
+    data,n,stats=run(fixture,count,7,0,5,0x65656833,rawcode)
+    assert stats==(0,0,0)
+    with pytest.raises(ValueError):decode_work(data,n)
+
+
+def test_failed_existing_item_insert_restores_original_handle(fixture):
+    data,n,stats=run(fixture,1,7,0,10,0x65656833,0x4870616c)
+    assert struct.unpack_from('<I',data,576)[0]==63
+    assert data[592:688]==data[688:784]
+    assert stats==(1,0,1)  # only the new item is removed
+    with pytest.raises(ValueError):decode_work(data,n)
+
+
+def test_target_item_changed_between_read_and_write_never_mutates(fixture):
+    payload=build_work(entries(),0x10000000,7,0x65656833,0,0x4870616c,0x100000,0xBAD)
+    buf=c.create_string_buffer(payload);n=fixture.BridgeItemTestRun(buf,3,5)
+    assert tuple(fixture.BridgeItemTestStat(i) for i in range(3))==(0,0,0)
+    with pytest.raises(ValueError):decode_work(buf.raw[:WORK_SIZE],n)

@@ -44,7 +44,7 @@ APP_VERSION = "2.0.3"
 GAME_BUILD = "3.0.0.24268"
 PRODUCT_READ_MODE = "normal"
 PRODUCT_EDITION_LABEL = "普通读取版"
-WIN10_COMPAT_REVISION = "current-24268-classic-manual-map-getmessage"
+WIN10_COMPAT_REVISION = "current-24268-classic-manual-map-getmessage-oneshot"
 
 
 if sys.platform == "win32":
@@ -1897,6 +1897,34 @@ def _window_runtime_diagnostics(hwnd: int) -> dict[str, object]:
     }
 
 
+def diagnostic_target_identity(game_pid: int, windows=None) -> dict[str, object]:
+    """Keep launch intent separate from the current target and observed windows."""
+    requested = None
+    for index, arg in enumerate(sys.argv[1:], 1):
+        value = arg.partition("=")[2] if arg.startswith("--pid=") else (
+            sys.argv[index + 1] if arg == "--pid" and index + 1 < len(sys.argv) else None
+        )
+        if value is not None:
+            try:
+                requested = int(value)
+            except (TypeError, ValueError):
+                pass
+    result = dict(requested_game_pid=requested, game_pid=int(game_pid),
+                  target_game_pid=int(game_pid), target_window_pid=None,
+                  target_window_hwnd=None, target_windows=[])
+    try:
+        rows = enum_war3_windows() if windows is None else windows
+        matches = [dict(hwnd=hex(int(hwnd)), pid=int(pid))
+                   for hwnd, pid, _title in rows if int(pid) == int(game_pid)]
+        result["target_windows"] = matches
+        if len(matches) == 1:
+            result.update(target_window_pid=matches[0]["pid"],
+                          target_window_hwnd=matches[0]["hwnd"])
+    except Exception as exc:
+        result["target_window_lookup_error"] = repr(exc)
+    return result
+
+
 def collect_runtime_diagnostics(game_pid: int = 0) -> dict[str, object]:
     """Capture failure context without scanning arbitrary processes."""
     trainer_pid = int(kernel32.GetCurrentProcessId() or os.getpid())
@@ -1951,7 +1979,7 @@ def collect_runtime_diagnostics(game_pid: int = 0) -> dict[str, object]:
         "game_build": GAME_BUILD,
         "compat_revision": WIN10_COMPAT_REVISION,
         "trainer": trainer,
-        "target_game_pid": int(game_pid or 0),
+        **diagnostic_target_identity(int(game_pid or 0), visible_windows),
         "target_game": _process_runtime_diagnostics(game_pid),
         "visible_warcraft_windows": candidates,
         "foreground_window": _window_runtime_diagnostics(foreground),
@@ -2091,7 +2119,7 @@ class Win10ReadLogger:
             game_build=GAME_BUILD,
             compat_revision=WIN10_COMPAT_REVISION,
             pid=self.pid,
-            game_pid=self.pid,
+            **diagnostic_target_identity(self.pid),
             trainer_pid=self.trainer_pid,
             trainer_parent_pid=self.trainer_parent_pid,
             archive=str(self.archive_path),
@@ -2195,7 +2223,8 @@ def record_operation_failure(pid: int, operation: str, exc: BaseException) -> st
     logger = Win10ReadLogger(pid, prefix="trainer-error")
     try:
         logger.log("operation_failure", operation=operation, pid=int(pid),
-                   game_pid=int(pid), trainer_pid=os.getpid(),
+                   **diagnostic_target_identity(int(pid)),
+                   trainer_pid=os.getpid(),
                    trainer_parent_pid=os.getppid(),
                    executable=sys.executable, source=__file__,
                    exception_type=type(exc).__name__,
@@ -3350,6 +3379,12 @@ class War3Trainer:
         stop = getattr(self, "_persistent_bootstrap_stop", None)
         if stop is not None:
             stop.set()
+        engine = getattr(self, "_engine24268", None)
+        if engine is not None:
+            try:
+                engine.close()
+            except Exception:
+                pass
         with self._native_helper_lock:
             module = self._native_helper_persistent_module
             hook = self._native_helper_persistent_hook
@@ -3385,6 +3420,12 @@ class War3Trainer:
         )
         if self.pid != old_pid:
             self._executable_path = process_executable_path(self.pid)
+            engine = getattr(self, "_engine24268", None)
+            if engine is not None:
+                try:
+                    engine.close()
+                except Exception:
+                    pass
             self._close_native_helper_persistent()
             previous_win10_session = self._win10_session_trainer
             if isinstance(previous_win10_session, BackupReadWar3Trainer):
@@ -4911,11 +4952,7 @@ class War3Trainer:
         timeout_ms: int = 10000,
     ) -> list[NativeHelperOpResult]:
         op_list = list(ops)
-        live_registration = bool(op_list) and all(
-            int(operation[0]) == self.NATIVE_HELPER_OP_PERSISTENT_REGISTER_NATIVE
-            for operation in op_list
-        )
-        if getattr(self, "_native_selection_unavailable", False) and not live_registration:
+        if getattr(self, "_native_selection_unavailable", False):
             raise RuntimeError(
                 "Warcraft III 3.0 当前未启用旧版 native helper；"
                 "该操作尚未迁移到 3.0 经典链路"
@@ -5852,6 +5889,11 @@ class War3Trainer:
         from war3_engine_24268 import Engine24268
         engine = getattr(self, "_engine24268", None)
         if engine is None or (engine.pid, engine.hwnd) != (self.pid, self.hwnd):
+            if engine is not None:
+                try:
+                    engine.close()
+                except Exception:
+                    pass
             engine = Engine24268(self.pid, self.hwnd, ProcessMemory,
                                  report_sink=lambda report: record_engine_recovery(self.pid, report))
             self._engine24268 = engine
@@ -5881,16 +5923,24 @@ class War3Trainer:
             ability, int(level), int(action), tuple(fields), int(target_unit),
         )
 
-    def item_batch_24268(self, action: int = 0, rawcode: int | str = 0, charges: int = -1) -> dict:
+    def item_batch_24268(self, action: int = 0, rawcode: int | str = 0, charges: int = -1,
+                         target_unit_rawcode: int = 0, target_unit: int = 0,
+                         expected_item: int = 0) -> dict:
         code = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF if rawcode else 0
-        return self._engine_instance_24268().item_batch(action, code, charges)
+        return self._engine_instance_24268().item_batch(
+            action, code, charges, int(target_unit_rawcode) & 0xFFFFFFFF,
+            int(target_unit), int(expected_item),
+        )
+
+    def item_field_batch_24268(self, slot: int, action: int, fields,
+                             target_unit: int = 0) -> dict:
+        return self._engine_instance_24268().item_field_batch(
+            int(slot), int(action), tuple(fields), int(target_unit),
+        )
 
     def world_batch_24268(self, action: int, rawcode: int | str = 0, value: int = 0) -> dict:
         code = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF if rawcode else 0
         return self._engine_instance_24268().world_batch(action, code, int(value))
-
-    def map_flags_batch_24268(self, action: int = 1, revealed: int = 0) -> dict:
-        return self._engine_instance_24268().map_flags(int(action), int(revealed))
 
     def bulk_batch_24268(self, action: int, value: int = 0) -> dict:
         return self._engine_instance_24268().bulk_batch(int(action), int(value))
@@ -5958,6 +6008,23 @@ class War3Trainer:
         if not math.isfinite(height) or abs(height) > 1_000_000.0:
             raise RuntimeError("3.0 地形高度返回无效")
         return height
+
+    def map_bounds_24268(self) -> dict[str, float]:
+        return self._engine_instance_24268().map_bounds()
+
+    def _clamp_mouse_world_point_24268(self, point: tuple[float, float]) -> tuple[float, float]:
+        bounds = self.map_bounds_24268()
+        margin = 32.0
+        min_x = float(bounds["min_x"]) + margin
+        max_x = float(bounds["max_x"]) - margin
+        min_y = float(bounds["min_y"]) + margin
+        max_y = float(bounds["max_y"]) - margin
+        if not min_x < max_x or not min_y < max_y:
+            raise RuntimeError("当前地图可用范围无效")
+        x, y = (float(point[0]), float(point[1]))
+        if not all(math.isfinite(value) for value in (x, y)):
+            raise RuntimeError("鼠标目标点不是有限坐标")
+        return min(max(x, min_x), max_x), min(max(y, min_y), max_y)
 
     @staticmethod
     def _mouse_world_from_camera_24268(
@@ -6397,11 +6464,11 @@ class War3Trainer:
                         snapshot, *client_size, screen_scale, plane_z=terrain_z,
                     )
                     if math.hypot(refined[0] - point[0], refined[1] - point[1]) <= 0.05:
-                        return refined
+                        return self._clamp_mouse_world_point_24268(refined)
                     point = refined
-                return point
+                return self._clamp_mouse_world_point_24268(point)
             except Exception:
-                return initial
+                return self._clamp_mouse_world_point_24268(initial)
         packed = int(self._run_native_helper_ops(
             0,
             ((
@@ -6456,26 +6523,40 @@ class War3Trainer:
         return self.set_selected_unit_position(x, y)
 
     def set_selected_group_position(self, x: float, y: float) -> int:
-        """Move every selected unit through the current-engine batch native."""
+        """Move the current 3.0 selection through the game-thread native ABI.
+
+        Do not write the discovered x/y fields directly.  Those fields can
+        make the display move while leaving the engine's pathing/collision
+        state stale; the next ordinary movement can then crash the game.
+        """
         target_x, target_y = float(x), float(y)
         if not math.isfinite(target_x) or not math.isfinite(target_y):
             raise ValueError("单位坐标必须是有限数值")
         if abs(target_x) > 1_000_000.0 or abs(target_y) > 1_000_000.0:
             raise ValueError("单位坐标超出允许范围")
         result = self.position_batch_24268(
-            self._float_bits(target_x), self._float_bits(target_y),
+            x_bits=self._float_bits(target_x),
+            y_bits=self._float_bits(target_y),
         )
-        rows = result.get("rows", ())
-        if not rows:
-            return 0
+        rows = tuple(result.get("rows", ()))
+        count = int(result.get("count", len(rows)))
+        completed = int(result.get("completed", -1))
+        changed = int(result.get("changed", -1))
+        if not rows or count != len(rows) or completed != count or changed != count:
+            raise RuntimeError(
+                f"引擎瞬移返回不完整：count={count} completed={completed} changed={changed}"
+            )
         for row in rows:
             actual_x = self._float_from_bits(int(row["actual_x_bits"]))
             actual_y = self._float_from_bits(int(row["actual_y_bits"]))
+            # SetUnitPosition may resolve a multi-unit target through the
+            # engine's collision/formation solver. The returned coordinates,
+            # rather than the requested common point, are authoritative.
             if not math.isfinite(actual_x) or not math.isfinite(actual_y):
-                raise RuntimeError("3.0 当前引擎 SetUnitPosition 读回无效")
-        if int(result.get("completed", 0)) != len(rows) or int(result.get("changed", 0)) != len(rows):
-            raise RuntimeError("3.0 当前引擎 SetUnitPosition 批处理不完整")
-        return len(rows)
+                raise RuntimeError(
+                    f"引擎瞬移坐标读回无效：({actual_x:g},{actual_y:g})"
+                )
+        return count
 
     def move_selected_group_to_mouse(self) -> tuple[int, float, float]:
         if not getattr(self, "_native_selection_unavailable", False):
@@ -6486,8 +6567,8 @@ class War3Trainer:
             ),))[0]
             return int(result.result), self._float_from_bits(result.arg0), self._float_from_bits(result.arg0 >> 32)
 
-        # The current build uses one verified position batch for the whole
-        # selection; it never falls back to the retired per-unit helper.
+        # Resolve the mouse once, then use one object snapshot and one process
+        # handle for the whole selection. No per-unit native callbacks occur.
         x, y = self.query_mouse_world_position()
         count = self.set_selected_group_position(x, y)
         return int(count), x, y
@@ -8101,6 +8182,7 @@ class War3Trainer:
         handle, owner, unit = (int(value) for value in unit_identity)
         candidate = self._candidate_from_display_identity(
             None, handle, owner, unit, "item_field_candidate", 900,
+            registry_required=False,
         )
         if candidate is None:
             raise RuntimeError("当前选中单位已变化，请重新读取字段")
@@ -8157,6 +8239,7 @@ class War3Trainer:
         handle, owner, unit = (int(item) for item in unit_identity)
         candidate = self._candidate_from_display_identity(
             None, handle, owner, unit, "item_field_candidate", 900,
+            registry_required=False,
         )
         if candidate is None:
             raise RuntimeError("当前选中单位已变化，请重新读取字段")
@@ -9007,7 +9090,7 @@ class War3Trainer:
 
     def get_map_fog_state(self) -> tuple[bool, bool]:
         if getattr(self, "_native_selection_unavailable", False):
-            result = self.map_flags_batch_24268(1, 0)
+            result = self.world_batch_24268(3, 0, 0)
             return bool(result["after0"]), bool(result["after1"])
         handlers = self._elephant_handlers(None, ("IsFogEnabled", "IsFogMaskEnabled"))
         results = self._run_native_helper_ops(
@@ -9033,7 +9116,7 @@ class War3Trainer:
 
     def set_map_revealed(self, revealed: bool) -> None:
         if getattr(self, "_native_selection_unavailable", False):
-            self.map_flags_batch_24268(2, int(bool(revealed)))
+            self.world_batch_24268(4, 0, int(bool(revealed)))
             return
         handlers = self._elephant_handlers(None, ("FogEnable", "FogMaskEnable"))
         fog_enabled = 0 if revealed else 1
@@ -12877,7 +12960,7 @@ class War3Trainer:
 
     def _candidate_from_display_identity(
         self, pm: ProcessMemory | None, handle: int, owner: int, unit: int,
-        note: str, score: int = 0,
+        note: str, score: int = 0, *, registry_required: bool = True,
     ) -> UnitCandidate | None:
         # Resolve the full object identity in the DLL, including its current
         # JASS handle. This also works after the selection cache was replaced.
@@ -12888,10 +12971,11 @@ class War3Trainer:
             close_pm = pm is None
             memory = pm or self._process_memory()
             try:
-                registry = self._classic_object_registry or ObjectRegistry24268.attach(memory)
-                self._classic_object_registry = registry
-                if registry.resolve_unit(memory, unit) != (handle, owner):
-                    raise RuntimeError("Requested unit identity is stale")
+                if registry_required:
+                    registry = self._classic_object_registry or ObjectRegistry24268.attach(memory)
+                    self._classic_object_registry = registry
+                    if registry.resolve_unit(memory, unit) != (handle, owner):
+                        raise RuntimeError("Requested unit identity is stale")
                 candidate = self._candidate_from_identity(
                     memory, handle, owner, unit, note, score,
                 )
@@ -15720,12 +15804,29 @@ class War3Trainer:
         if not self._looks_like_item_rawcode(new_rawcode):
             raise ValueError(f"物品 rawcode 无效：{format_rawcode(new_rawcode)}")
         if getattr(self, "_native_selection_unavailable", False):
-            selected = self._selected_candidates_snapshot(pm)
-            matching = [item for item in selected if item[0].unit_address == candidate.unit_address]
-            if len(selected) != 1 or len(matching) != 1:
-                raise RuntimeError("3.0 当前引擎物品字段写入需要只选中一个带物品栏的单位")
-            result = self.item_batch_24268(7, new_rawcode, slot_index)
-            rows = result.get("rows", ())
+            snapshot = self.item_batch_24268()
+            targets = [row for row in snapshot.get("rows", ())
+                       if int(row.get("rawcode", 0)) == int(candidate.unit_type_id)]
+            if len(targets) != 1:
+                raise RuntimeError("当前选中单位的物品槽身份不唯一，请重新选择目标单位")
+            target = targets[0]
+            engine = self._engine_instance_24268()
+            kind = engine.equipment(rawcode=new_rawcode)["equipment_type"]
+            if kind:
+                equipped = engine.equipment(rawcode=new_rawcode, action=1,
+                                            target_unit=int(target["handle"]))
+                self._last_equipment_write = equipped
+                slot_names = ("头部", "胸部", "手套", "靴子", "戒指", "戒指2", "主手", "副手", "饰品")
+                return replace(field, value=new_rawcode, write_address=0, write_type="",
+                               note=f"已装备到{slot_names[equipped['slot']]}装备槽；普通物品栏保持不变")
+            result = self.item_batch_24268(
+                7, new_rawcode, slot_index,
+                target_unit_rawcode=int(candidate.unit_type_id),
+                target_unit=int(target["handle"]),
+                expected_item=int(target["before"][slot_index]["handle"]),
+            )
+            rows = [row for row in result.get("rows", ())
+                    if int(row.get("handle", 0)) == int(target["handle"])]
             if len(rows) != 1 or rows[0]["after"][slot_index]["rawcode"] != new_rawcode:
                 raise RuntimeError("3.0 当前引擎物品槽写入后读回不一致")
             item = rows[0]["after"][slot_index]
@@ -16149,7 +16250,8 @@ class War3Trainer:
     ) -> UnitMemoryField:
         candidate = self._candidate_from_display_identity(
             None, handle, owner, unit,
-            f"manual_candidate handle=0x{handle:x} owner=0x{owner:x} unit=0x{unit:x}", 850)
+            f"manual_candidate handle=0x{handle:x} owner=0x{owner:x} unit=0x{unit:x}", 850,
+            registry_required=not str(key).startswith("inventory_slot_"))
         if candidate is None:
             raise RuntimeError("候选单位已经失效，请重新读取候选列表")
         if getattr(self, "_native_selection_unavailable", False):
@@ -16543,6 +16645,87 @@ def parse_unit_identity(text: str) -> tuple[int, int, int]:
     return values["handle"], values["owner"], values["unit"]
 
 
+def apply_ui_theme(root: object, style: object, dark: bool) -> dict[str, str]:
+    palette = (
+        {
+            "background": "#0f1115", "surface": "#191c22", "field": "#101318",
+            "foreground": "#f4f5f7", "muted": "#aeb4bf", "border": "#3a404a",
+            "accent": "#2f73c9", "selection": "#245a9b",
+        }
+        if dark else
+        {
+            "background": "#f0f0f0", "surface": "#ffffff", "field": "#ffffff",
+            "foreground": "#111111", "muted": "#666666", "border": "#b8b8b8",
+            "accent": "#e7e7e7", "selection": "#0a64ad",
+        }
+    )
+    if "clam" in style.theme_names():
+        style.theme_use("clam")
+    root.configure(background=palette["background"])
+    for pattern, value in (
+        ("*background", palette["background"]),
+        ("*foreground", palette["foreground"]),
+        ("*insertBackground", palette["foreground"]),
+        ("*selectBackground", palette["selection"]),
+        ("*selectForeground", "#ffffff"),
+    ):
+        root.option_add(pattern, value)
+
+    common = {"background": palette["background"], "foreground": palette["foreground"]}
+    for name in (".", "TFrame", "TLabel", "TCheckbutton", "TRadiobutton"):
+        style.configure(name, **common)
+    style.configure("TLabelframe", background=palette["background"],
+                    foreground=palette["foreground"], bordercolor=palette["border"])
+    style.configure("TLabelframe.Label", **common)
+    style.configure("TButton", background=palette["surface"], foreground=palette["foreground"],
+                    bordercolor=palette["border"], focusthickness=1, focuscolor=palette["accent"])
+    style.map("TButton", background=[("active", palette["accent"]),
+                                     ("pressed", palette["selection"])],
+              foreground=[("disabled", palette["muted"])])
+    for name in ("TEntry", "TSpinbox", "TCombobox"):
+        style.configure(name, fieldbackground=palette["field"], background=palette["field"],
+                        foreground=palette["foreground"], insertcolor=palette["foreground"],
+                        bordercolor=palette["border"], arrowcolor=palette["foreground"])
+    style.map("TCombobox", fieldbackground=[("readonly", palette["field"])],
+              foreground=[("readonly", palette["foreground"])],
+              selectbackground=[("readonly", palette["selection"])],
+              selectforeground=[("readonly", "#ffffff")])
+    style.configure("TNotebook", background=palette["background"], bordercolor=palette["border"])
+    style.configure("TNotebook.Tab", background=palette["surface"],
+                    foreground=palette["foreground"], padding=(9, 5))
+    style.map("TNotebook.Tab", background=[("selected", palette["accent"]),
+                                           ("active", palette["selection"])],
+              foreground=[("selected", "#ffffff"), ("active", "#ffffff")])
+    style.configure("Treeview", background=palette["field"], fieldbackground=palette["field"],
+                    foreground=palette["foreground"], bordercolor=palette["border"])
+    style.map("Treeview", background=[("selected", palette["selection"])],
+              foreground=[("selected", "#ffffff")])
+    style.configure("Treeview.Heading", background=palette["surface"],
+                    foreground=palette["foreground"], bordercolor=palette["border"])
+    style.map("Treeview.Heading", background=[("active", palette["accent"])])
+    style.configure("TScrollbar", background=palette["surface"],
+                    troughcolor=palette["background"], arrowcolor=palette["foreground"],
+                    bordercolor=palette["border"])
+
+    def repaint_classic(widget: object) -> None:
+        try:
+            widget_class = widget.winfo_class()
+            if widget_class == "Canvas":
+                widget.configure(background=palette["background"])
+            elif widget_class in {"Text", "Listbox"}:
+                widget.configure(background=palette["field"], foreground=palette["foreground"],
+                                 insertbackground=palette["foreground"],
+                                 selectbackground=palette["selection"], selectforeground="#ffffff")
+            children = widget.winfo_children()
+        except Exception:
+            return
+        for child in children:
+            repaint_classic(child)
+
+    repaint_classic(root)
+    return palette
+
+
 def run_gui(
     initial_pid: int | None = None,
     initial_hotkeys_enabled: bool = False,
@@ -16559,6 +16742,9 @@ def run_gui(
     root.title(ui_text(f"魔兽争霸3重制版修改器 v{APP_VERSION} {PRODUCT_EDITION_LABEL} by B站 两杯沈梦溪"))
     root.geometry("1180x780")
     root.minsize(1040, 700)
+    ui_style = ttk.Style(root)
+    apply_ui_theme(root, ui_style, True)
+    dark_mode = tk.BooleanVar(master=root, value=True)
     icon_path = (
         Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
         / "assets"
@@ -19117,12 +19303,14 @@ def run_gui(
         variable=elephant_hotkeys_enabled,
         command=refresh_elephant_hotkeys,
     ).pack(side="left", padx=(12, 0))
+    ttk.Checkbutton(
+        top,
+        text="深色模式",
+        variable=dark_mode,
+        command=lambda: apply_ui_theme(root, ui_style, bool(dark_mode.get())),
+    ).pack(side="left", padx=(12, 0))
     ttk.Label(top, text="PID").pack(side="left", padx=(16, 4))
     ttk.Entry(top, textvariable=pid_var, width=10).pack(side="left")
-    ttk.Label(
-        top,
-        text="大象功能灵感来源于经典版大象修改器，本软件完全免费，谨防倒卖",
-    ).pack(side="left", padx=(12, 0))
     language_frame = ttk.Frame(top)
     language_frame.pack(side="right")
     ttk.Label(language_frame, text="语言").pack(side="left", padx=(8, 4))
@@ -19136,6 +19324,10 @@ def run_gui(
     language_selector.pack(side="left")
     language_selector.bind("<<ComboboxSelected>>", on_language_changed)
     ttk.Label(top, textvariable=status).pack(side="right", padx=(8, 0))
+    ttk.Label(
+        top,
+        text="大象功能灵感来源于经典版大象修改器，本软件完全免费，谨防倒卖",
+    ).pack(side="left", padx=(12, 0))
 
     notebook = ttk.Notebook(outer)
     notebook.pack(fill="both", expand=True, pady=(12, 8))
@@ -19922,6 +20114,7 @@ def run_gui(
 
     ttk.Label(outer, textvariable=status, anchor="w", wraplength=1000).pack(fill="x", pady=(0, 2))
 
+    apply_ui_theme(root, ui_style, bool(dark_mode.get()))
     refresh_gui_language()
 
     def init() -> None:

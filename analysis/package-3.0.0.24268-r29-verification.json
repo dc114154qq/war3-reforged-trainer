@@ -21,10 +21,19 @@
     "test_pid": 39784
   },
   "live_write": {
-    "status": "not_executed",
-    "pid": 3928,
-    "selected_count": 0,
-    "reason": "No selected units in the current map process"
+    "status": "verified",
+    "pid": 33728,
+    "selected_count": 15,
+    "target": [
+      556.8925476074219,
+      623.8735656738281
+    ],
+    "changed": 15,
+    "completed": 15,
+    "native_readback_rows": 15,
+    "process_responding_after_probe": true,
+    "world_state_restored": "not_verified",
+    "evidence": "analysis/live-set-position-33728-r29.json"
   },
   "website_sync": false,
   "cross_device_validation": false

@@ -128,9 +128,6 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
     elif kind=='world':
         from war3_world_protocol import ABI as expected_abi,validate_work as validate_world
         validate_world(work_payload);marker_name=b'world_batch_abi';query_name=b'BridgeWorldQuery'
-    elif kind=='map_flags':
-        from war3_map_flags_protocol import ABI as expected_abi,validate_work as validate_map_flags
-        validate_map_flags(work_payload);marker_name=b'map_flags_batch_abi';query_name=b'BridgeMapFlagsQuery'
     elif kind=='bulk':
         from war3_bulk_protocol import ABI as expected_abi,validate_work as validate_bulk
         validate_bulk(work_payload);marker_name=b'bulk_batch_abi';query_name=b'BridgeBulkQuery'
@@ -155,9 +152,18 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
     elif kind=='position':
         from war3_position_protocol import ABI as expected_abi,validate_work as validate_position
         validate_position(work_payload);marker_name=b'position_batch_abi';query_name=b'BridgePositionQuery'
+    elif kind=='position_target':
+        from war3_position_target_protocol import ABI as expected_abi,validate_work as validate_position_target
+        validate_position_target(work_payload);marker_name=b'position_batch_abi';query_name=b'BridgePositionQuery'
     elif kind=='terrain':
         from war3_terrain_protocol import ABI as expected_abi,validate_work as validate_terrain
         validate_terrain(work_payload);marker_name=b'terrain_batch_abi';query_name=b'BridgeTerrainQuery'
+    elif kind=='equipment':
+        from war3_equipment_protocol import ABI as expected_abi,validate_work as validate_equipment
+        validate_equipment(work_payload);marker_name=b'equipment_batch_abi';query_name=b'BridgeEquipmentQuery'
+    elif kind=='map_bounds':
+        from war3_map_bounds_protocol import ABI as expected_abi,validate_work as validate_bounds
+        validate_bounds(work_payload);marker_name=b'map_bounds_batch_abi';query_name=b'BridgeMapBoundsQuery'
     else:raise ValueError('Unknown current-engine batch kind')
     owner=U()
     if window_thread(hwnd,c.byref(owner))!=tid or owner.value!=pid:

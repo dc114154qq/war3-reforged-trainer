@@ -5,6 +5,7 @@ import pytest
 
 from war3_native_table import LiveNativeEntry
 from war3_position_protocol import SIGNATURES, WORK_SIZE, build_work, decode_work
+from war3_position_target_protocol import build_work as build_target_work, decode_work as decode_target_work
 from war3_selection_protocol import SIGNATURES as SELECTION_SIGNATURES
 
 
@@ -40,11 +41,13 @@ def test_position_work_has_stable_size():
 
 @pytest.fixture(scope="module")
 def fixture():
-    dll = c.WinDLL(str(Path(__file__).parent / "analysis/bridge-build-check-r32/engine-hero-fixture.dll"))
+    dll = c.WinDLL(str(Path(__file__).parent / "analysis/bridge-build-direct-r7/engine-hero-fixture.dll"))
     dll.BridgePositionTestRun.argtypes = [c.c_void_p, c.c_int]
     dll.BridgePositionTestRun.restype = c.c_uint64
     dll.BridgePositionTestStat.argtypes = [c.c_int]
     dll.BridgePositionTestStat.restype = c.c_int
+    dll.BridgePositionTargetTestRun.argtypes = [c.c_void_p]
+    dll.BridgePositionTargetTestRun.restype = c.c_uint64
     return dll
 
 
@@ -56,3 +59,17 @@ def test_position_fixture_preserves_offsets_and_reads_before_and_after(fixture):
     result = decode_work(payload.raw[:WORK_SIZE], count)
     assert result["count"] == result["changed"] == result["completed"] == 15
     assert [fixture.BridgePositionTestStat(i) for i in range(4)] == [15, 15, 30, 30]
+
+
+def test_position_fixture_supports_targeted_engine_restore(fixture):
+    x_bits = struct.unpack("<I", struct.pack("<f", -12.5))[0]
+    y_bits = struct.unpack("<I", struct.pack("<f", 33.25))[0]
+    payload = c.create_string_buffer(
+        build_target_work(entries(), 0x10000000, 0x100005, x_bits, y_bits)
+    )
+    count = fixture.BridgePositionTargetTestRun(payload)
+    result = decode_target_work(payload.raw[:WORK_SIZE], count)
+    assert result["target_unit"] == 0x100005
+    assert result["actual_x"] == -12.5
+    assert result["actual_y"] == 33.25
+    assert [fixture.BridgePositionTestStat(i) for i in range(4)] == [1, 1, 2, 2]

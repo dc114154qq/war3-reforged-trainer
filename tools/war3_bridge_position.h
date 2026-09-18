@@ -33,11 +33,42 @@ __declspec(dllexport) uint64_t BridgePositionQuery(void) {
     union { uint32_t bits; float value; } x, y;
     if (!w || w->expected_tls != g_dispatch->tls_value ||
         !w->set_position || !w->get_x || !w->get_y ||
-        w->reserved_handler ||
         !PositionRealIsFinite(w->x_bits) || !PositionRealIsFinite(w->y_bits)) {
         if (w) w->error = 80;
         return 0;
     }
+
+    x.bits = w->x_bits;
+    y.bits = w->y_bits;
+    /* A non-zero reserved_handler is the targeted cleanup form. */
+    if (w->reserved_handler) {
+        PositionRow *row = &w->rows[0];
+        uint64_t unit = w->reserved_handler;
+        uint32_t before_x, before_y;
+        row->unit = unit;
+        __try {
+            before_x = w->get_x(unit);
+            before_y = w->get_y(unit);
+            row->before = before_x;
+            row->after = before_y;
+            w->set_position(unit, &x.value, &y.value);
+            row->actual_x_bits = w->get_x(unit);
+            row->actual_y_bits = w->get_y(unit);
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+            w->error = GetExceptionCode();
+            return 1;
+        }
+        if (!PositionRealIsFinite(before_x) || !PositionRealIsFinite(before_y) ||
+            !PositionRealIsFinite(row->actual_x_bits) || !PositionRealIsFinite(row->actual_y_bits)) {
+            w->error = 83;
+            return 1;
+        }
+        row->status = 1;
+        ++w->changed;
+        ++w->completed;
+        return 1;
+    }
+
     count = BridgeSelect();
     if (!count || w->selection.error || !w->selection.destroyed || count != w->selection.count) {
         w->error = 81;

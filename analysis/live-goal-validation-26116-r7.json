@@ -1,0 +1,10 @@
+{
+  "pid": 26116,
+  "bridge": "tools\\war3_bridge_24268.dll",
+  "ok": false,
+  "equipment": {},
+  "item_field": {},
+  "teleport": {},
+  "error": "RuntimeError('Expected the current multi-unit selection, got 1')",
+  "traceback": "Traceback (most recent call last):\n  File \"C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\analysis\\live_goal_validation_24268.py\", line 155, in main\n    raise RuntimeError(f\"Expected the current multi-unit selection, got {len(selected)}\")\nRuntimeError: Expected the current multi-unit selection, got 1\n"
+}

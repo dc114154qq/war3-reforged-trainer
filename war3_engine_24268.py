@@ -11,7 +11,7 @@ from war3_engine_transport import dispatch
 
 
 _CURRENT_BRIDGE_FILENAMES = (
-    'war3_bridge_24268_2_0_1.dll',
+    'war3_bridge_24268.dll',
 )
 
 
@@ -33,8 +33,11 @@ class EngineExecutionError(RuntimeError):
         state=dispatch.get('after_send') or dispatch.get('after_cleanup') or dispatch.get('after_install') or {}
         retry=dispatch.get('same_route_retry',{})
         attempts=int(dispatch.get('route_attempt') or 1)
-        super().__init__(message+'; engine24268='+json.dumps(dict(pid=report.get('pid'),
-            game_pid=report.get('pid'), trainer_pid=os.getpid(),
+        super().__init__(message+'; engine24268='+json.dumps(dict(
+            pid=report.get('pid'),
+            game_pid=report.get('pid'), target_game_pid=report.get('pid'),
+            target_window_hwnd=report.get('hwnd'),
+            trainer_pid=report.get('trainer_pid', os.getpid()),
             phase=state.get('query_stage'), install_stage=state.get('stage'),
             exception=state.get('exception_code'),
             retained=dispatch.get('allocations_retained',False),
@@ -47,8 +50,9 @@ class EngineExecutionError(RuntimeError):
             transport_error=dispatch.get('error'),
             same_route_retry=retry,
             ability_status=report.get('ability_status'),item_status=report.get('item_status'),
+            equipment_status=report.get('equipment_status'),
             clone_status=report.get('clone_status'),world_status=report.get('world_status'),
-            map_flags_status=report.get('map_flags_status')),ensure_ascii=False))
+            ),ensure_ascii=False))
 
 class Engine24268:
     def __init__(self,pid,hwnd,memory_factory,image=None,report_sink=None):
@@ -57,6 +61,12 @@ class Engine24268:
         self.image=Path(image) if image is not None else _default_bridge_image()
         self.lock=threading.RLock();self.last_report={};self.quarantined=False
         self._native_context_cache = None
+
+    def close(self):
+        return {'closed':True,'retained':False}
+
+    def __del__(self):
+        pass
 
     def hero_progress(self,target=0):
         if isinstance(target,bool) or not isinstance(target,int) or not 0<=target<=100000:
@@ -99,19 +109,21 @@ class Engine24268:
                  field_count=len(fields), target_unit=target_unit),
         )
 
-    def item_batch(self,action=0,rawcode=0,charges=-1):
+    def item_batch(self,action=0,rawcode=0,charges=-1,target_unit_rawcode=0,target_unit=0,expected_item=0):
         from war3_item_protocol import SIGNATURES as ITEMS,build_work as build,decode_work as decode
-        if any(isinstance(v,bool) or not isinstance(v,int) for v in (action,rawcode,charges)):
+        if any(isinstance(v,bool) or not isinstance(v,int) for v in (action,rawcode,charges,target_unit_rawcode,target_unit,expected_item)):
             raise ValueError('Item arguments must be integers')
         if (action not in (0,1,2,3,4,5,6,7) or not 0<=rawcode<=0xffffffff or (action in (1,3,7) and not rawcode)
             or (action in (0,2,4,5,6) and rawcode) or not -1<=charges<=1000000000
             or (action in (2,3) and charges<1) or (action in (0,1,4,5,6) and charges!=-1)
-            or (action==7 and not 0<=charges<6)):
+            or (action==7 and not 0<=charges<6) or not 0<=target_unit_rawcode<=0xffffffff
+            or (target_unit_rawcode and action!=7) or not 0<=target_unit<=0xffffffffffffffff
+            or not 0<=expected_item<=0xffffffffffffffff or ((target_unit or expected_item) and action!=7)):
             raise ValueError('Invalid item operation')
         from war3_item_protocol import required_signatures
         names=tuple(n for n,_ in SIGNATURES)+tuple(n for n,_ in required_signatures(action))
-        return self._execute('item',names,lambda entries,tls:build(entries,tls,action,rawcode,charges),decode,
-                             dict(action=action,rawcode=rawcode,charges=charges))
+        return self._execute('item',names,lambda entries,tls:build(entries,tls,action,rawcode,charges,target_unit_rawcode,target_unit,expected_item),decode,
+                             dict(action=action,rawcode=rawcode,charges=charges,target_unit_rawcode=target_unit_rawcode,target_unit=target_unit,expected_item=expected_item))
 
     def item_catalog(self, action=1, limit=0, x_bits=0, y_bits=0,
                      handles=(), rawcodes=(), dry_run=False):
@@ -228,6 +240,25 @@ class Engine24268:
             dict(x_bits=x_bits, y_bits=y_bits),
         )
 
+    def position_target_batch(self, target_unit, x_bits, y_bits):
+        from war3_position_target_protocol import (
+            SIGNATURES as POSITION_SIGNATURES,
+            build_work as build,
+            decode_work as decode,
+        )
+        if (isinstance(target_unit, bool) or not isinstance(target_unit, int)
+                or not 0 < target_unit <= 0xFFFFFFFFFFFFFFFF
+                or isinstance(x_bits, bool) or not isinstance(x_bits, int)
+                or isinstance(y_bits, bool) or not isinstance(y_bits, int)):
+            raise ValueError('Invalid targeted position operation')
+        names = tuple(n for n, _ in SIGNATURES + POSITION_SIGNATURES)
+        return self._execute(
+            'position_target', names,
+            lambda entries, tls: build(entries, tls, target_unit, x_bits, y_bits),
+            decode,
+            dict(target_unit=target_unit, x_bits=x_bits, y_bits=y_bits),
+        )
+
     def world_batch(self, action, rawcode=0, value=0):
         from war3_world_protocol import SIGNATURES as WORLD_SIGNATURES, build_work as build, decode_work as decode
         if (isinstance(action, bool) or not isinstance(action, int) or action not in range(1, 7)
@@ -240,22 +271,6 @@ class Engine24268:
             lambda entries, tls: build(entries, tls, action, rawcode, value),
             decode,
             dict(action=action, rawcode=rawcode, value=value),
-        )
-
-    def map_flags(self, action=1, revealed=0):
-        from war3_map_flags_protocol import (
-            SIGNATURES as MAP_FLAG_SIGNATURES,
-            build_work as build,
-            decode_work as decode,
-        )
-        if action not in (1, 2) or revealed not in (0, 1):
-            raise ValueError('Invalid map visibility operation')
-        names = tuple(name for name, _ in MAP_FLAG_SIGNATURES)
-        return self._execute(
-            'map_flags', names,
-            lambda entries, tls: build(entries, tls, action, revealed),
-            decode,
-            dict(action=action, revealed=revealed),
         )
 
     def bulk_batch(self, action, value=0):
@@ -369,10 +384,27 @@ class Engine24268:
             dict(x_bits=x_bits, y_bits=y_bits),
         )
 
+    def equipment(self,rawcode=0,action=0,target_unit=0,created=0,replaced=0):
+        from war3_equipment_protocol import SIGNATURES as EQ,build_work as build,decode_work as decode
+        return self._execute('equipment',tuple(n for n,_ in SIGNATURES+EQ),
+            lambda entries,tls:build(entries,tls,rawcode,action,target_unit,created,replaced),decode,
+            dict(rawcode=rawcode,action=action,target_unit=target_unit,created=created,replaced=replaced))
+
+    def map_bounds(self):
+        from war3_map_bounds_protocol import SIGNATURES as BOUNDS_SIGNATURES, build_work as build, decode_work as decode
+        return self._execute(
+            'map_bounds', tuple(n for n, _ in BOUNDS_SIGNATURES),
+            lambda entries, tls: build(entries, tls), decode, {},
+        )
+
     def _execute(self,kind,names,builder,decoder,request):
         with self.lock:
             if self.quarantined:raise EngineExecutionError('Previous dispatch retained resources; inspect before reconnecting',self.last_report)
-            start=time.perf_counter();report={'pid':self.pid,'operation':kind,'request':request,'ok':False};self.last_report=report
+            start=time.perf_counter();report={
+                'pid':self.pid, 'game_pid':self.pid,
+                'target_game_pid':self.pid, 'trainer_pid':os.getpid(),
+                'hwnd':self.hwnd, 'operation':kind, 'request':request, 'ok':False,
+            };self.last_report=report
             try:
                 if not self.image.is_file():raise RuntimeError('Missing current 24268 bridge module: '+str(self.image))
                 with self.memory_factory(self.pid) as memory:
@@ -433,7 +465,14 @@ class Engine24268:
                         or (not cache_hit and NativeTable24268(memory,context5).require(*names)!=entries)):
                         raise RuntimeError('Current native context changed; no hero batch dispatched')
                     report['preflight_ms']=(time.perf_counter()-start)*1000
-                    evidence=dispatch(self.pid,self.hwnd,mode.thread_id,self.image,mode.tls_index,payload,kind=kind)
+                    # A single callback still processes the entire selected-unit
+                    # batch. The hook itself is deliberately one-shot: a reused
+                    # thread hook can remain installed after the game rebuilds
+                    # its UI queue and then stall a later operation.
+                    evidence=dispatch(
+                        self.pid,self.hwnd,mode.thread_id,self.image,
+                        mode.tls_index,payload,kind=kind,
+                    )
                     report['dispatch']=evidence;self.quarantined=bool(evidence.get('allocations_retained'))
                     if kind=='ability' and evidence.get('work_result_hex'):
                         raw=bytes.fromhex(evidence['work_result_hex'])
@@ -447,9 +486,13 @@ class Engine24268:
                             report['ability_field_status']=dict(changed=changed,error=error,completed=completed)
                     if kind=='item' and evidence.get('work_result_hex'):
                         raw=bytes.fromhex(evidence['work_result_hex'])
-                        if len(raw)==5968:
+                        if len(raw)==6008:
                             changed,error,completed,skipped=struct.unpack_from('<4I',raw,572)
                             report['item_status']=dict(changed=changed,error=error,completed=completed,skipped=skipped)
+                            report['item_rows']=[dict(index=i,created=struct.unpack_from('<Q',raw,592+224*i+192)[0],
+                                status=struct.unpack_from('<I',raw,592+224*i+212)[0],
+                                trace=struct.unpack_from('<I',raw,592+224*i+220)[0])
+                                for i in range(min(24,struct.unpack_from('<I',raw,80)[0]))]
                     if kind=='item_catalog' and evidence.get('work_result_hex'):
                         raw=bytes.fromhex(evidence['work_result_hex'])
                         if len(raw)>=72:
@@ -458,6 +501,13 @@ class Engine24268:
                                 action=values[4],total=values[10],created=values[11],
                                 error=values[12],completed=values[13],
                             )
+                    if kind=='equipment' and evidence.get('work_result_hex'):
+                        raw=bytes.fromhex(evidence['work_result_hex'])
+                        if len(raw)==872:
+                            rawcode,action,error,completed,equipment_type,changed,rollback_error,_=struct.unpack_from('<8I',raw,584)
+                            report['equipment_status']=dict(rawcode=rawcode,action=action,error=error,
+                                completed=completed,equipment_type=equipment_type,changed=changed,
+                                rollback_error=rollback_error)
                     if kind=='item_field' and evidence.get('work_result_hex'):
                         raw=bytes.fromhex(evidence['work_result_hex'])
                         if len(raw)==5136:
@@ -473,7 +523,7 @@ class Engine24268:
                         if len(raw)==1432:
                             changed,error,completed=struct.unpack_from('<3I',raw,624)
                             report['unit_action_status']=dict(changed=changed,error=error,completed=completed)
-                    if kind=='position' and evidence.get('work_result_hex'):
+                    if kind in ('position', 'position_target') and evidence.get('work_result_hex'):
                         raw=bytes.fromhex(evidence['work_result_hex'])
                         if len(raw)==1312:
                             changed,error,completed=struct.unpack_from('<3I',raw,528)
@@ -481,13 +531,27 @@ class Engine24268:
                     if kind=='world' and evidence.get('work_result_hex'):
                         raw=bytes.fromhex(evidence['work_result_hex'])
                         if len(raw)==128:
-                            changed,error,completed=struct.unpack_from('<3I',raw,100)
-                            report['world_status']=dict(changed=changed,error=error,completed=completed)
-                    if kind=='map_flags' and evidence.get('work_result_hex'):
-                        raw=bytes.fromhex(evidence['work_result_hex'])
-                        if len(raw)==128:
-                            changed,error,completed=struct.unpack_from('<3I',raw,40)
-                            report['map_flags_status']=dict(changed=changed,error=error,completed=completed)
+                            (action,diagnostic_phase,value,changed,error,completed,
+                             after0,after1,fault_low,fault_high)=struct.unpack_from('<10I',raw,88)
+                            report['world_status']=dict(
+                                action=action, value=value, changed=changed,
+                                error=error, completed=completed,
+                                after0=after0, after1=after1,
+                                diagnostic_phase=diagnostic_phase,
+                                fault_address=hex((fault_high<<32)|fault_low) if (fault_low or fault_high) else None,
+                            )
+                            if diagnostic_phase and (fault_low or fault_high):
+                                registers=struct.unpack_from('<8Q',raw,0)
+                                labels=(
+                                    ('first_rip','second_rip','first_access','first_address',
+                                     'second_access','second_address','is_fog_handler','is_mask_handler')
+                                    if diagnostic_phase<=2 else
+                                    ('first_rip','second_rip','rsp','rbx','rax','rcx','rdx','r8')
+                                )
+                                report['world_status']['fault_context']=dict(zip(
+                                    labels,
+                                    (hex(value) for value in registers),
+                                ))
                     if kind=='bulk' and evidence.get('work_result_hex'):
                         raw=bytes.fromhex(evidence['work_result_hex'])
                         if len(raw)==624:
@@ -516,9 +580,15 @@ class Engine24268:
                         if len(raw)==128:
                             changed,error,completed=struct.unpack_from('<3I',raw,48)
                             report['mouse_status']=dict(changed=changed,error=error,completed=completed)
-                    if not (evidence.get('callback_verified') and evidence.get('query_completed') and evidence.get('work_freed')
-                        and evidence.get('block_freed') and evidence.get('image_unmap_status')=='0x0'
-                        and evidence['after_send']['tls_value']==hex(mode.tls)):
+                    released_ok = (
+                        evidence.get('callback_verified')
+                        and evidence.get('query_completed')
+                        and evidence.get('work_freed')
+                        and evidence.get('block_freed')
+                        and evidence.get('image_unmap_status') == '0x0'
+                        and evidence.get('after_send',{}).get('tls_value') == hex(mode.tls)
+                    )
+                    if not released_ok:
                         dispatch_report=report.get('dispatch',{})
                         attempts=int(dispatch_report.get('route_attempt') or 1)
                         retry=dispatch_report.get('same_route_retry',{})

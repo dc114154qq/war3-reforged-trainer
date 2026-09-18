@@ -1,0 +1,911 @@
+{
+  "ok": true,
+  "pid": 23604,
+  "rows": [
+    {
+      "step": "before",
+      "state": [
+        false,
+        false
+      ],
+      "report": {
+        "pid": 23604,
+        "operation": "world",
+        "request": {
+          "action": 3,
+          "rawcode": 0,
+          "value": 0
+        },
+        "ok": true,
+        "preflight_cached": false,
+        "mappings": {
+          "GetLocalPlayer": {
+            "address": "0x7ff6e4f373d0",
+            "kind": "readable-executable",
+            "protection": "0x20",
+            "allocation": "0x7ff6e4290000",
+            "code_hex": "40534883ec2066660f1f840000000000"
+          },
+          "SetPlayerTechMaxAllowed": {
+            "address": "0x7ff6e4f849b0",
+            "kind": "image-noaccess-diagnostic-only",
+            "protection": "0x1",
+            "allocation": "0x7ff6e4290000",
+            "code_hex": null
+          },
+          "SetPlayerTechResearched": {
+            "address": "0x7ff6e4f849f0",
+            "kind": "image-noaccess-diagnostic-only",
+            "protection": "0x1",
+            "allocation": "0x7ff6e4290000",
+            "code_hex": null
+          },
+          "SetPlayerHandicapXP": {
+            "address": "0x7ff6e4f84510",
+            "kind": "image-noaccess-diagnostic-only",
+            "protection": "0x1",
+            "allocation": "0x7ff6e4290000",
+            "code_hex": null
+          },
+          "FogEnable": {
+            "address": "0x7ff6e4f2c8d0",
+            "kind": "image-noaccess-diagnostic-only",
+            "protection": "0x1",
+            "allocation": "0x7ff6e4290000",
+            "code_hex": null
+          },
+          "FogMaskEnable": {
+            "address": "0x7ff6e4f2d460",
+            "kind": "readable-executable",
+            "protection": "0x20",
+            "allocation": "0x7ff6e4290000",
+            "code_hex": "40555357488bec4881ec800000000fb6"
+          },
+          "IsFogEnabled": {
+            "address": "0x7ff6e4f42ae0",
+            "kind": "readable-executable",
+            "protection": "0x20",
+            "allocation": "0x7ff6e4290000",
+            "code_hex": "40534883ec4066660f1f840000000000"
+          },
+          "IsFogMaskEnabled": {
+            "address": "0x7ff6e4f42f80",
+            "kind": "readable-executable",
+            "protection": "0x20",
+            "allocation": "0x7ff6e4290000",
+            "code_hex": "40534883ec4066660f1f840000000000"
+          },
+          "PauseGame": {
+            "address": "0x7ff6e4f4b460",
+            "kind": "readable-executable",
+            "protection": "0x20",
+            "allocation": "0x7ff6e4290000",
+            "code_hex": "40534883ec300fb6d933d2b101e82e85"
+          },
+          "EndGame": {
+            "address": "0x7ff6e4f2ac50",
+            "kind": "readable-executable",
+            "protection": "0x20",
+            "allocation": "0x7ff6e4290000",
+            "code_hex": "4883ec280fb6d1660f1f840000000000"
+          }
+        },
+        "preflight_ms": 215.67330000107177,
+        "dispatch": {
+          "pid": 23604,
+          "hwnd": "0x180b5e",
+          "expected_callback_tid": 36788,
+          "target_window": {
+            "hwnd": "0x180b5e",
+            "pid": 23604,
+            "thread_id": 36788
+          },
+          "process_access": "0x43a",
+          "hook_kind": "WH_GETMESSAGE",
+          "message_delivery": "posted",
+          "route_policy": "manual_map+WH_GETMESSAGE+PostMessage",
+          "image": "C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\tools\\war3_bridge_24268.dll",
+          "image_sha256": "cdcdca4845d0adc8cdaf4674f11671a27c519d3f9bb170c7bc401fd697368574",
+          "calls_game_handlers": true,
+          "query_mode": "world",
+          "delivery_mode": "posted",
+          "image_route": "manual_map",
+          "route_attempt": 1,
+          "remote_api_resolution": {
+            "user32!SetWindowsHookExW": "0x7ffcdd730ae0",
+            "user32!UnhookWindowsHookEx": "0x7ffcdd732ba0",
+            "user32!CallNextHookEx": "0x7ffcdd726020",
+            "kernel32!GetCurrentThreadId": "0x7ffcdda2e070",
+            "kernel32!GetLastError": "0x7ffcdda38a50",
+            "kernel32!Sleep": "0x7ffcdda3f680"
+          },
+          "image_map": {
+            "method": "NtMapViewOfSection",
+            "status": "0x0",
+            "size": 61440,
+            "completed": true
+          },
+          "image_base": "0x7ffc56be0000",
+          "mapped_exports": {
+            "BridgeInstall": "55564883ec38488d6c24309048894d00",
+            "BridgeUninstall": "564883ec20488379300074278b415885"
+          },
+          "command_address": "0x2c815400000",
+          "image_unwind": {
+            "method": "RtlAddFunctionTable",
+            "table": "0x7ffc56bee000",
+            "count": 58,
+            "registered_by_loader": false
+          },
+          "work_address": "0x2c8154b0000",
+          "install_thread": {
+            "tid": 18792,
+            "created": true,
+            "completed": true
+          },
+          "after_install": {
+            "hook": 327225997,
+            "target_tid": 36788,
+            "message": 50100,
+            "nonce": 2754017593781169840,
+            "stage": 2,
+            "last_error": 0,
+            "callback_tid": 0,
+            "callback_count": 0,
+            "detached": 0,
+            "active": 0,
+            "query_result": "0x6",
+            "bridge_install_trace": "0x6",
+            "tls_value": "0x0",
+            "query_stage": 0,
+            "exception_code": "0x0",
+            "unwind_registered": 1,
+            "unwind_removed": 0
+          },
+          "post": {
+            "enqueued": true,
+            "error": 0
+          },
+          "after_send": {
+            "hook": 327225997,
+            "target_tid": 36788,
+            "message": 50100,
+            "nonce": 2754017593781169840,
+            "stage": 3,
+            "last_error": 0,
+            "callback_tid": 36788,
+            "callback_count": 1,
+            "detached": 1,
+            "active": 0,
+            "query_result": "0x1",
+            "bridge_install_trace": "0x1",
+            "tls_value": "0x2c7dd1cea00",
+            "query_stage": 2,
+            "exception_code": "0x0",
+            "unwind_registered": 1,
+            "unwind_removed": 0
+          },
+          "after_cleanup": {
+            "hook": 327225997,
+            "target_tid": 36788,
+            "message": 50100,
+            "nonce": 2754017593781169840,
+            "stage": 3,
+            "last_error": 0,
+            "callback_tid": 36788,
+            "callback_count": 1,
+            "detached": 1,
+            "active": 0,
+            "query_result": "0x1",
+            "bridge_install_trace": "0x1",
+            "tls_value": "0x2c7dd1cea00",
+            "query_stage": 2,
+            "exception_code": "0x0",
+            "unwind_registered": 1,
+            "unwind_removed": 1
+          },
+          "callback_verified": true,
+          "query_completed": true,
+          "fault": null,
+          "recovered_tail_faults": 2,
+          "work_result_hex": "d073f3e4f67f0000b049f8e4f67f0000f049f8e4f67f00001045f8e4f67f0000d0c8f2e4f67f000060d4f2e4f67f0000e02af4e4f67f0000802ff4e4f67f000060b4f4e4f67f000050acf2e4f67f000000ea1cddc702000003000000000000000000000000000000000000000100000000000000000000000000000000000000",
+          "image_unmap_status": "0x0",
+          "work_freed": true,
+          "block_freed": true,
+          "safe_to_release": true,
+          "same_route_retry": {
+            "attempted": false
+          }
+        },
+        "world_status": {
+          "action": 3,
+          "value": 0,
+          "changed": 0,
+          "error": 0,
+          "completed": 1,
+          "after0": 0,
+          "after1": 0,
+          "diagnostic_phase": 0,
+          "fault_address": null
+        },
+        "result": {
+          "action": 3,
+          "rawcode": 0,
+          "value": 0,
+          "changed": 0,
+          "count": 1,
+          "after0": 0,
+          "after1": 0
+        },
+        "recovery_log": "C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\log\\engine24268-recovery-20260918-112724-322-pid23604-tpid32284-tid24144-sid1b71a215d5.log",
+        "elapsed_ms": 260.0292000006448
+      }
+    },
+    {
+      "step": "toggle_write",
+      "revealed": false,
+      "report": {
+        "pid": 23604,
+        "operation": "world",
+        "request": {
+          "action": 4,
+          "rawcode": 0,
+          "value": 0
+        },
+        "ok": true,
+        "preflight_cached": true,
+        "mappings": {},
+        "preflight_ms": 4.917399999612826,
+        "dispatch": {
+          "pid": 23604,
+          "hwnd": "0x180b5e",
+          "expected_callback_tid": 36788,
+          "target_window": {
+            "hwnd": "0x180b5e",
+            "pid": 23604,
+            "thread_id": 36788
+          },
+          "process_access": "0x43a",
+          "hook_kind": "WH_GETMESSAGE",
+          "message_delivery": "posted",
+          "route_policy": "manual_map+WH_GETMESSAGE+PostMessage",
+          "image": "C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\tools\\war3_bridge_24268.dll",
+          "image_sha256": "cdcdca4845d0adc8cdaf4674f11671a27c519d3f9bb170c7bc401fd697368574",
+          "calls_game_handlers": true,
+          "query_mode": "world",
+          "delivery_mode": "posted",
+          "image_route": "manual_map",
+          "route_attempt": 1,
+          "remote_api_resolution": {
+            "user32!SetWindowsHookExW": "0x7ffcdd730ae0",
+            "user32!UnhookWindowsHookEx": "0x7ffcdd732ba0",
+            "user32!CallNextHookEx": "0x7ffcdd726020",
+            "kernel32!GetCurrentThreadId": "0x7ffcdda2e070",
+            "kernel32!GetLastError": "0x7ffcdda38a50",
+            "kernel32!Sleep": "0x7ffcdda3f680"
+          },
+          "image_map": {
+            "method": "NtMapViewOfSection",
+            "status": "0x0",
+            "size": 61440,
+            "completed": true
+          },
+          "image_base": "0x7ffc56be0000",
+          "mapped_exports": {
+            "BridgeInstall": "55564883ec38488d6c24309048894d00",
+            "BridgeUninstall": "564883ec20488379300074278b415885"
+          },
+          "command_address": "0x2c815400000",
+          "image_unwind": {
+            "method": "RtlAddFunctionTable",
+            "table": "0x7ffc56bee000",
+            "count": 58,
+            "registered_by_loader": false
+          },
+          "work_address": "0x2c8154b0000",
+          "install_thread": {
+            "tid": 15400,
+            "created": true,
+            "completed": true
+          },
+          "after_install": {
+            "hook": 375722463,
+            "target_tid": 36788,
+            "message": 50028,
+            "nonce": 7267287237427208830,
+            "stage": 2,
+            "last_error": 0,
+            "callback_tid": 0,
+            "callback_count": 0,
+            "detached": 0,
+            "active": 0,
+            "query_result": "0x6",
+            "bridge_install_trace": "0x6",
+            "tls_value": "0x0",
+            "query_stage": 0,
+            "exception_code": "0x0",
+            "unwind_registered": 1,
+            "unwind_removed": 0
+          },
+          "post": {
+            "enqueued": true,
+            "error": 0
+          },
+          "after_send": {
+            "hook": 375722463,
+            "target_tid": 36788,
+            "message": 50028,
+            "nonce": 7267287237427208830,
+            "stage": 3,
+            "last_error": 0,
+            "callback_tid": 36788,
+            "callback_count": 1,
+            "detached": 1,
+            "active": 0,
+            "query_result": "0x1",
+            "bridge_install_trace": "0x1",
+            "tls_value": "0x2c7dd1cea00",
+            "query_stage": 2,
+            "exception_code": "0x0",
+            "unwind_registered": 1,
+            "unwind_removed": 0
+          },
+          "after_cleanup": {
+            "hook": 375722463,
+            "target_tid": 36788,
+            "message": 50028,
+            "nonce": 7267287237427208830,
+            "stage": 3,
+            "last_error": 0,
+            "callback_tid": 36788,
+            "callback_count": 1,
+            "detached": 1,
+            "active": 0,
+            "query_result": "0x1",
+            "bridge_install_trace": "0x1",
+            "tls_value": "0x2c7dd1cea00",
+            "query_stage": 2,
+            "exception_code": "0x0",
+            "unwind_registered": 1,
+            "unwind_removed": 1
+          },
+          "callback_verified": true,
+          "query_completed": true,
+          "fault": null,
+          "recovered_tail_faults": 6,
+          "work_result_hex": "d073f3e4f67f0000b049f8e4f67f0000f049f8e4f67f00001045f8e4f67f0000d0c8f2e4f67f000060d4f2e4f67f0000e02af4e4f67f0000802ff4e4f67f000060b4f4e4f67f000050acf2e4f67f000000ea1cddc702000004000000000000000000000001000000000000000100000001000000010000000000000000000000",
+          "image_unmap_status": "0x0",
+          "work_freed": true,
+          "block_freed": true,
+          "safe_to_release": true,
+          "same_route_retry": {
+            "attempted": false
+          }
+        },
+        "world_status": {
+          "action": 4,
+          "value": 0,
+          "changed": 1,
+          "error": 0,
+          "completed": 1,
+          "after0": 1,
+          "after1": 1,
+          "diagnostic_phase": 0,
+          "fault_address": null
+        },
+        "result": {
+          "action": 4,
+          "rawcode": 0,
+          "value": 0,
+          "changed": 1,
+          "count": 1,
+          "after0": 1,
+          "after1": 1
+        },
+        "recovery_log": "C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\log\\engine24268-recovery-20260918-112724-380-pid23604-tpid32284-tid24144-sid624682ac8a.log",
+        "elapsed_ms": 54.056900000432506
+      }
+    },
+    {
+      "step": "toggle_read",
+      "state": [
+        true,
+        true
+      ],
+      "report": {
+        "pid": 23604,
+        "operation": "world",
+        "request": {
+          "action": 3,
+          "rawcode": 0,
+          "value": 0
+        },
+        "ok": true,
+        "preflight_cached": true,
+        "mappings": {},
+        "preflight_ms": 3.9402999991580145,
+        "dispatch": {
+          "pid": 23604,
+          "hwnd": "0x180b5e",
+          "expected_callback_tid": 36788,
+          "target_window": {
+            "hwnd": "0x180b5e",
+            "pid": 23604,
+            "thread_id": 36788
+          },
+          "process_access": "0x43a",
+          "hook_kind": "WH_GETMESSAGE",
+          "message_delivery": "posted",
+          "route_policy": "manual_map+WH_GETMESSAGE+PostMessage",
+          "image": "C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\tools\\war3_bridge_24268.dll",
+          "image_sha256": "cdcdca4845d0adc8cdaf4674f11671a27c519d3f9bb170c7bc401fd697368574",
+          "calls_game_handlers": true,
+          "query_mode": "world",
+          "delivery_mode": "posted",
+          "image_route": "manual_map",
+          "route_attempt": 1,
+          "remote_api_resolution": {
+            "user32!SetWindowsHookExW": "0x7ffcdd730ae0",
+            "user32!UnhookWindowsHookEx": "0x7ffcdd732ba0",
+            "user32!CallNextHookEx": "0x7ffcdd726020",
+            "kernel32!GetCurrentThreadId": "0x7ffcdda2e070",
+            "kernel32!GetLastError": "0x7ffcdda38a50",
+            "kernel32!Sleep": "0x7ffcdda3f680"
+          },
+          "image_map": {
+            "method": "NtMapViewOfSection",
+            "status": "0x0",
+            "size": 61440,
+            "completed": true
+          },
+          "image_base": "0x7ffc56be0000",
+          "mapped_exports": {
+            "BridgeInstall": "55564883ec38488d6c24309048894d00",
+            "BridgeUninstall": "564883ec20488379300074278b415885"
+          },
+          "command_address": "0x2c815400000",
+          "image_unwind": {
+            "method": "RtlAddFunctionTable",
+            "table": "0x7ffc56bee000",
+            "count": 58,
+            "registered_by_loader": false
+          },
+          "work_address": "0x2c8154b0000",
+          "install_thread": {
+            "tid": 10060,
+            "created": true,
+            "completed": true
+          },
+          "after_install": {
+            "hook": 674565027,
+            "target_tid": 36788,
+            "message": 50101,
+            "nonce": 3341430638526849811,
+            "stage": 2,
+            "last_error": 0,
+            "callback_tid": 0,
+            "callback_count": 0,
+            "detached": 0,
+            "active": 0,
+            "query_result": "0x6",
+            "bridge_install_trace": "0x6",
+            "tls_value": "0x0",
+            "query_stage": 0,
+            "exception_code": "0x0",
+            "unwind_registered": 1,
+            "unwind_removed": 0
+          },
+          "post": {
+            "enqueued": true,
+            "error": 0
+          },
+          "after_send": {
+            "hook": 674565027,
+            "target_tid": 36788,
+            "message": 50101,
+            "nonce": 3341430638526849811,
+            "stage": 3,
+            "last_error": 0,
+            "callback_tid": 36788,
+            "callback_count": 1,
+            "detached": 1,
+            "active": 0,
+            "query_result": "0x1",
+            "bridge_install_trace": "0x1",
+            "tls_value": "0x2c7dd1cea00",
+            "query_stage": 2,
+            "exception_code": "0x0",
+            "unwind_registered": 1,
+            "unwind_removed": 0
+          },
+          "after_cleanup": {
+            "hook": 674565027,
+            "target_tid": 36788,
+            "message": 50101,
+            "nonce": 3341430638526849811,
+            "stage": 3,
+            "last_error": 0,
+            "callback_tid": 36788,
+            "callback_count": 1,
+            "detached": 1,
+            "active": 0,
+            "query_result": "0x1",
+            "bridge_install_trace": "0x1",
+            "tls_value": "0x2c7dd1cea00",
+            "query_stage": 2,
+            "exception_code": "0x0",
+            "unwind_registered": 1,
+            "unwind_removed": 1
+          },
+          "callback_verified": true,
+          "query_completed": true,
+          "fault": null,
+          "recovered_tail_faults": 2,
+          "work_result_hex": "d073f3e4f67f0000b049f8e4f67f0000f049f8e4f67f00001045f8e4f67f0000d0c8f2e4f67f000060d4f2e4f67f0000e02af4e4f67f0000802ff4e4f67f000060b4f4e4f67f000050acf2e4f67f000000ea1cddc702000003000000000000000000000000000000000000000100000001000000010000000000000000000000",
+          "image_unmap_status": "0x0",
+          "work_freed": true,
+          "block_freed": true,
+          "safe_to_release": true,
+          "same_route_retry": {
+            "attempted": false
+          }
+        },
+        "world_status": {
+          "action": 3,
+          "value": 0,
+          "changed": 0,
+          "error": 0,
+          "completed": 1,
+          "after0": 1,
+          "after1": 1,
+          "diagnostic_phase": 0,
+          "fault_address": null
+        },
+        "result": {
+          "action": 3,
+          "rawcode": 0,
+          "value": 0,
+          "changed": 0,
+          "count": 1,
+          "after0": 1,
+          "after1": 1
+        },
+        "recovery_log": "C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\log\\engine24268-recovery-20260918-112724-432-pid23604-tpid32284-tid24144-sid35c3e01597.log",
+        "elapsed_ms": 51.57189999954426
+      }
+    },
+    {
+      "step": "restore_write",
+      "revealed": true,
+      "report": {
+        "pid": 23604,
+        "operation": "world",
+        "request": {
+          "action": 4,
+          "rawcode": 0,
+          "value": 1
+        },
+        "ok": true,
+        "preflight_cached": true,
+        "mappings": {},
+        "preflight_ms": 3.700699999171775,
+        "dispatch": {
+          "pid": 23604,
+          "hwnd": "0x180b5e",
+          "expected_callback_tid": 36788,
+          "target_window": {
+            "hwnd": "0x180b5e",
+            "pid": 23604,
+            "thread_id": 36788
+          },
+          "process_access": "0x43a",
+          "hook_kind": "WH_GETMESSAGE",
+          "message_delivery": "posted",
+          "route_policy": "manual_map+WH_GETMESSAGE+PostMessage",
+          "image": "C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\tools\\war3_bridge_24268.dll",
+          "image_sha256": "cdcdca4845d0adc8cdaf4674f11671a27c519d3f9bb170c7bc401fd697368574",
+          "calls_game_handlers": true,
+          "query_mode": "world",
+          "delivery_mode": "posted",
+          "image_route": "manual_map",
+          "route_attempt": 1,
+          "remote_api_resolution": {
+            "user32!SetWindowsHookExW": "0x7ffcdd730ae0",
+            "user32!UnhookWindowsHookEx": "0x7ffcdd732ba0",
+            "user32!CallNextHookEx": "0x7ffcdd726020",
+            "kernel32!GetCurrentThreadId": "0x7ffcdda2e070",
+            "kernel32!GetLastError": "0x7ffcdda38a50",
+            "kernel32!Sleep": "0x7ffcdda3f680"
+          },
+          "image_map": {
+            "method": "NtMapViewOfSection",
+            "status": "0x0",
+            "size": 61440,
+            "completed": true
+          },
+          "image_base": "0x7ffc56be0000",
+          "mapped_exports": {
+            "BridgeInstall": "55564883ec38488d6c24309048894d00",
+            "BridgeUninstall": "564883ec20488379300074278b415885"
+          },
+          "command_address": "0x2c815400000",
+          "image_unwind": {
+            "method": "RtlAddFunctionTable",
+            "table": "0x7ffc56bee000",
+            "count": 58,
+            "registered_by_loader": false
+          },
+          "work_address": "0x2c8154b0000",
+          "install_thread": {
+            "tid": 31840,
+            "created": true,
+            "completed": true
+          },
+          "after_install": {
+            "hook": 674696099,
+            "target_tid": 36788,
+            "message": 50102,
+            "nonce": 1405656613625650004,
+            "stage": 2,
+            "last_error": 0,
+            "callback_tid": 0,
+            "callback_count": 0,
+            "detached": 0,
+            "active": 0,
+            "query_result": "0x6",
+            "bridge_install_trace": "0x6",
+            "tls_value": "0x0",
+            "query_stage": 0,
+            "exception_code": "0x0",
+            "unwind_registered": 1,
+            "unwind_removed": 0
+          },
+          "post": {
+            "enqueued": true,
+            "error": 0
+          },
+          "after_send": {
+            "hook": 674696099,
+            "target_tid": 36788,
+            "message": 50102,
+            "nonce": 1405656613625650004,
+            "stage": 3,
+            "last_error": 0,
+            "callback_tid": 36788,
+            "callback_count": 1,
+            "detached": 1,
+            "active": 0,
+            "query_result": "0x1",
+            "bridge_install_trace": "0x1",
+            "tls_value": "0x2c7dd1cea00",
+            "query_stage": 2,
+            "exception_code": "0x0",
+            "unwind_registered": 1,
+            "unwind_removed": 0
+          },
+          "after_cleanup": {
+            "hook": 674696099,
+            "target_tid": 36788,
+            "message": 50102,
+            "nonce": 1405656613625650004,
+            "stage": 3,
+            "last_error": 0,
+            "callback_tid": 36788,
+            "callback_count": 1,
+            "detached": 1,
+            "active": 0,
+            "query_result": "0x1",
+            "bridge_install_trace": "0x1",
+            "tls_value": "0x2c7dd1cea00",
+            "query_stage": 2,
+            "exception_code": "0x0",
+            "unwind_registered": 1,
+            "unwind_removed": 1
+          },
+          "callback_verified": true,
+          "query_completed": true,
+          "fault": null,
+          "recovered_tail_faults": 6,
+          "work_result_hex": "d073f3e4f67f0000b049f8e4f67f0000f049f8e4f67f00001045f8e4f67f0000d0c8f2e4f67f000060d4f2e4f67f0000e02af4e4f67f0000802ff4e4f67f000060b4f4e4f67f000050acf2e4f67f000000ea1cddc702000004000000000000000100000001000000000000000100000000000000000000000000000000000000",
+          "image_unmap_status": "0x0",
+          "work_freed": true,
+          "block_freed": true,
+          "safe_to_release": true,
+          "same_route_retry": {
+            "attempted": false
+          }
+        },
+        "world_status": {
+          "action": 4,
+          "value": 1,
+          "changed": 1,
+          "error": 0,
+          "completed": 1,
+          "after0": 0,
+          "after1": 0,
+          "diagnostic_phase": 0,
+          "fault_address": null
+        },
+        "result": {
+          "action": 4,
+          "rawcode": 0,
+          "value": 1,
+          "changed": 1,
+          "count": 1,
+          "after0": 0,
+          "after1": 0
+        },
+        "recovery_log": "C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\log\\engine24268-recovery-20260918-112724-484-pid23604-tpid32284-tid24144-sid82d1729495.log",
+        "elapsed_ms": 52.714299999934155
+      }
+    },
+    {
+      "step": "restore_read",
+      "state": [
+        false,
+        false
+      ],
+      "report": {
+        "pid": 23604,
+        "operation": "world",
+        "request": {
+          "action": 3,
+          "rawcode": 0,
+          "value": 0
+        },
+        "ok": true,
+        "preflight_cached": true,
+        "mappings": {},
+        "preflight_ms": 4.271800000424264,
+        "dispatch": {
+          "pid": 23604,
+          "hwnd": "0x180b5e",
+          "expected_callback_tid": 36788,
+          "target_window": {
+            "hwnd": "0x180b5e",
+            "pid": 23604,
+            "thread_id": 36788
+          },
+          "process_access": "0x43a",
+          "hook_kind": "WH_GETMESSAGE",
+          "message_delivery": "posted",
+          "route_policy": "manual_map+WH_GETMESSAGE+PostMessage",
+          "image": "C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\tools\\war3_bridge_24268.dll",
+          "image_sha256": "cdcdca4845d0adc8cdaf4674f11671a27c519d3f9bb170c7bc401fd697368574",
+          "calls_game_handlers": true,
+          "query_mode": "world",
+          "delivery_mode": "posted",
+          "image_route": "manual_map",
+          "route_attempt": 1,
+          "remote_api_resolution": {
+            "user32!SetWindowsHookExW": "0x7ffcdd730ae0",
+            "user32!UnhookWindowsHookEx": "0x7ffcdd732ba0",
+            "user32!CallNextHookEx": "0x7ffcdd726020",
+            "kernel32!GetCurrentThreadId": "0x7ffcdda2e070",
+            "kernel32!GetLastError": "0x7ffcdda38a50",
+            "kernel32!Sleep": "0x7ffcdda3f680"
+          },
+          "image_map": {
+            "method": "NtMapViewOfSection",
+            "status": "0x0",
+            "size": 61440,
+            "completed": true
+          },
+          "image_base": "0x7ffc56be0000",
+          "mapped_exports": {
+            "BridgeInstall": "55564883ec38488d6c24309048894d00",
+            "BridgeUninstall": "564883ec20488379300074278b415885"
+          },
+          "command_address": "0x2c815400000",
+          "image_unwind": {
+            "method": "RtlAddFunctionTable",
+            "table": "0x7ffc56bee000",
+            "count": 58,
+            "registered_by_loader": false
+          },
+          "work_address": "0x2c8154b0000",
+          "install_thread": {
+            "tid": 7804,
+            "created": true,
+            "completed": true
+          },
+          "after_install": {
+            "hook": 282923777,
+            "target_tid": 36788,
+            "message": 50103,
+            "nonce": 4663795009312892844,
+            "stage": 2,
+            "last_error": 0,
+            "callback_tid": 0,
+            "callback_count": 0,
+            "detached": 0,
+            "active": 0,
+            "query_result": "0x6",
+            "bridge_install_trace": "0x6",
+            "tls_value": "0x0",
+            "query_stage": 0,
+            "exception_code": "0x0",
+            "unwind_registered": 1,
+            "unwind_removed": 0
+          },
+          "post": {
+            "enqueued": true,
+            "error": 0
+          },
+          "after_send": {
+            "hook": 282923777,
+            "target_tid": 36788,
+            "message": 50103,
+            "nonce": 4663795009312892844,
+            "stage": 3,
+            "last_error": 0,
+            "callback_tid": 36788,
+            "callback_count": 1,
+            "detached": 1,
+            "active": 0,
+            "query_result": "0x1",
+            "bridge_install_trace": "0x1",
+            "tls_value": "0x2c7dd1cea00",
+            "query_stage": 2,
+            "exception_code": "0x0",
+            "unwind_registered": 1,
+            "unwind_removed": 0
+          },
+          "after_cleanup": {
+            "hook": 282923777,
+            "target_tid": 36788,
+            "message": 50103,
+            "nonce": 4663795009312892844,
+            "stage": 3,
+            "last_error": 0,
+            "callback_tid": 36788,
+            "callback_count": 1,
+            "detached": 1,
+            "active": 0,
+            "query_result": "0x1",
+            "bridge_install_trace": "0x1",
+            "tls_value": "0x2c7dd1cea00",
+            "query_stage": 2,
+            "exception_code": "0x0",
+            "unwind_registered": 1,
+            "unwind_removed": 1
+          },
+          "callback_verified": true,
+          "query_completed": true,
+          "fault": null,
+          "recovered_tail_faults": 2,
+          "work_result_hex": "d073f3e4f67f0000b049f8e4f67f0000f049f8e4f67f00001045f8e4f67f0000d0c8f2e4f67f000060d4f2e4f67f0000e02af4e4f67f0000802ff4e4f67f000060b4f4e4f67f000050acf2e4f67f000000ea1cddc702000003000000000000000000000000000000000000000100000000000000000000000000000000000000",
+          "image_unmap_status": "0x0",
+          "work_freed": true,
+          "block_freed": true,
+          "safe_to_release": true,
+          "same_route_retry": {
+            "attempted": false
+          }
+        },
+        "world_status": {
+          "action": 3,
+          "value": 0,
+          "changed": 0,
+          "error": 0,
+          "completed": 1,
+          "after0": 0,
+          "after1": 0,
+          "diagnostic_phase": 0,
+          "fault_address": null
+        },
+        "result": {
+          "action": 3,
+          "rawcode": 0,
+          "value": 0,
+          "changed": 0,
+          "count": 1,
+          "after0": 0,
+          "after1": 0
+        },
+        "recovery_log": "C:\\Users\\14186\\Desktop\\xiugai\\work\\reforged-persistent-native\\log\\engine24268-recovery-20260918-112724-535-pid23604-tpid32284-tid24144-sid4d37fb1f0b.log",
+        "elapsed_ms": 49.30670000067039
+      }
+    }
+  ]
+}

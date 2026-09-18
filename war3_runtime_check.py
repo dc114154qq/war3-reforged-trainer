@@ -9,7 +9,7 @@ import traceback
 
 
 CURRENT_BRIDGE_FILENAMES = (
-    "war3_bridge_24268_2_0_1.dll",
+    "war3_bridge_24268.dll",
 )
 
 

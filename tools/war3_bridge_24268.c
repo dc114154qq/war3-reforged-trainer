@@ -37,6 +37,7 @@ typedef struct BridgeCommand {
     void *work;
 } BridgeCommand;
 _Static_assert(sizeof(BridgeCommand) == 216, "BridgeCommand ABI");
+#define BRIDGE_PERSISTENT_HOOK 0x80000000u
 static BridgeCommand *g_dispatch;
 typedef EXCEPTION_DISPOSITION (*BridgeHandler)(PEXCEPTION_RECORD,void *,PCONTEXT,PDISPATCHER_CONTEXT);
 EXCEPTION_DISPOSITION BridgeSpecificHandler(PEXCEPTION_RECORD e,void *f,PCONTEXT c,PDISPATCHER_CONTEXT d) {
@@ -63,14 +64,16 @@ static LONG BridgeExceptionFilter(EXCEPTION_POINTERS *info) {
 }
 static LRESULT CALLBACK BridgeCallback(int code, WPARAM w, LPARAM l) {
     BridgeCommand *cmd = g_dispatch;
+    DWORD hook_kind;
     LRESULT result;
     if (!cmd) return 0;
+    hook_kind = cmd->hook_kind & ~BRIDGE_PERSISTENT_HOOK;
     InterlockedIncrement(&cmd->active);
     if (code >= 0 && l) {
         HWND hwnd;
         UINT message;
         WPARAM nonce;
-        if (cmd->hook_kind == WH_GETMESSAGE) {
+        if (hook_kind == WH_GETMESSAGE) {
             const MSG *msg=(const MSG *)l;
             hwnd=msg->hwnd;message=msg->message;nonce=msg->wParam;
         } else {
@@ -78,7 +81,7 @@ static LRESULT CALLBACK BridgeCallback(int code, WPARAM w, LPARAM l) {
             hwnd=msg->hwnd;message=msg->message;nonce=msg->wParam;
         }
         if (hwnd == cmd->window && message == cmd->message && nonce == cmd->nonce &&
-            cmd->stage == 2 && (cmd->hook_kind != WH_GETMESSAGE || w == PM_REMOVE)) {
+            cmd->stage == 2 && (hook_kind != WH_GETMESSAGE || w == PM_REMOVE)) {
             cmd->callback_tid = cmd->current_tid();
             InterlockedIncrement(&cmd->callback_count);
             __try {
@@ -92,8 +95,10 @@ static LRESULT CALLBACK BridgeCallback(int code, WPARAM w, LPARAM l) {
                 cmd->exception_code = GetExceptionCode();
                 cmd->query_stage = 3;
             }
-            cmd->detached = cmd->unhook(cmd->hook);
-            if (!cmd->detached) cmd->last_error = cmd->get_error();
+            if (!(cmd->hook_kind & BRIDGE_PERSISTENT_HOOK)) {
+                cmd->detached = cmd->unhook(cmd->hook);
+                if (!cmd->detached) cmd->last_error = cmd->get_error();
+            }
             InterlockedExchange(&cmd->stage, 3);
         }
     }
@@ -103,6 +108,7 @@ static LRESULT CALLBACK BridgeCallback(int code, WPARAM w, LPARAM l) {
 }
 
 __declspec(dllexport) DWORD WINAPI BridgeInstall(BridgeCommand *cmd) {
+    DWORD hook_kind = cmd->hook_kind & ~BRIDGE_PERSISTENT_HOOK;
     InterlockedExchange(&cmd->stage, 1);
     cmd->query_result = 1; /* install entered */
     g_dispatch = cmd;
@@ -130,7 +136,7 @@ __declspec(dllexport) DWORD WINAPI BridgeInstall(BridgeCommand *cmd) {
     }
     cmd->query_result = 5; /* installing the thread hook */
     __try {
-        cmd->hook = cmd->set_hook(cmd->hook_kind == WH_GETMESSAGE ? WH_GETMESSAGE : WH_CALLWNDPROC, BridgeCallback, NULL, cmd->target_tid);
+        cmd->hook = cmd->set_hook(hook_kind == WH_GETMESSAGE ? WH_GETMESSAGE : WH_CALLWNDPROC, BridgeCallback, NULL, cmd->target_tid);
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         cmd->exception_code = GetExceptionCode();
         cmd->last_error = cmd->get_error();
@@ -309,13 +315,14 @@ BOOL WINAPI DllMain(HINSTANCE module,DWORD reason,LPVOID reserved) {
 #include "war3_bridge_clone.h"
 #include "war3_bridge_unit_action.h"
 #include "war3_bridge_world.h"
-#include "war3_bridge_map_flags.h"
 #include "war3_bridge_spawn.h"
 #include "war3_bridge_mouse.h"
 #include "war3_bridge_screen.h"
 #include "war3_bridge_camera.h"
 #include "war3_bridge_position.h"
 #include "war3_bridge_terrain.h"
+#include "war3_bridge_map_bounds.h"
+#include "war3_bridge_equipment.h"
 #ifdef BRIDGE_TEST
 #include "war3_bridge_test_fixture.h"
 #endif

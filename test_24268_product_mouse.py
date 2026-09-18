@@ -67,6 +67,8 @@ def test_3_0_mouse_route_does_not_call_retired_helper():
     })
     trainer._client_size_24268 = Mock(return_value=(1706, 960))
     trainer._screen_scale_24268 = Mock(return_value=1.0)
+    trainer.map_bounds_24268 = Mock(return_value={"min_x": -1000.0, "max_x": 1000.0,
+                                                   "min_y": -1000.0, "max_y": 1000.0})
     trainer._run_native_helper_ops = Mock(side_effect=AssertionError("retired helper"))
     assert trainer.query_mouse_world_position() == pytest.approx((100.0, 200.0), abs=0.1)
     trainer.camera_snapshot_24268.assert_called_once_with()

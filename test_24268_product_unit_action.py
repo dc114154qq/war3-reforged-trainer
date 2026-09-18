@@ -149,16 +149,52 @@ def test_current_engine_group_move_uses_one_position_batch_after_mouse_query():
     trainer.set_selected_group_position.assert_called_once_with(123.5, -45.25)
 
 
-def test_current_engine_group_position_uses_verified_native_batch():
+def test_current_engine_group_position_uses_game_thread_position_batch():
     trainer = object.__new__(product.War3Trainer)
-    x_bits = struct.unpack("<I", struct.pack("<f", 123.5))[0]
-    y_bits = struct.unpack("<I", struct.pack("<f", -45.25))[0]
+    target_x, target_y = 123.5, -45.25
     trainer.position_batch_24268 = Mock(return_value={
-        "completed": 15,
+        "count": 15,
         "changed": 15,
+        "completed": 15,
         "rows": [
-            {"actual_x_bits": x_bits, "actual_y_bits": y_bits}
-        ] * 15,
+            {"actual_x_bits": trainer._float_bits(target_x),
+             "actual_y_bits": trainer._float_bits(target_y)}
+            for _ in range(15)
+        ],
     })
-    assert trainer.set_selected_group_position(123.5, -45.25) == 15
-    trainer.position_batch_24268.assert_called_once()
+
+    assert trainer.set_selected_group_position(target_x, target_y) == 15
+    trainer.position_batch_24268.assert_called_once_with(
+        x_bits=trainer._float_bits(target_x), y_bits=trainer._float_bits(target_y),
+    )
+
+
+def test_current_engine_group_position_rejects_nonfinite_engine_readback():
+    trainer = object.__new__(product.War3Trainer)
+    trainer.position_batch_24268 = Mock(return_value={
+        "count": 1,
+        "changed": 1,
+        "completed": 1,
+        "rows": [{
+            "actual_x_bits": 0x7FC00000,
+            "actual_y_bits": trainer._float_bits(-45.25),
+        }],
+    })
+
+    with pytest.raises(RuntimeError, match="坐标读回无效"):
+        trainer.set_selected_group_position(123.5, -45.25)
+
+
+def test_current_engine_group_position_accepts_engine_formation_adjustment():
+    trainer = object.__new__(product.War3Trainer)
+    trainer.position_batch_24268 = Mock(return_value={
+        "count": 3,
+        "changed": 3,
+        "completed": 3,
+        "rows": [
+            {"actual_x_bits": trainer._float_bits(100.0 + index * 48.0),
+             "actual_y_bits": trainer._float_bits(200.0 - index * 32.0)}
+            for index in range(3)
+        ],
+    })
+    assert trainer.set_selected_group_position(123.5, -45.25) == 3

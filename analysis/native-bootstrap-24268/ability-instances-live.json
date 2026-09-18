@@ -1,263 +1,312 @@
 {
-  "pid": 23652,
+  "pid": 32868,
   "read_only": true,
   "heroes": [
     {
       "handle": "0x97d6000097b0",
-      "unit": "0x7ff465a1e428",
-      "count": 15,
+      "unit": "0x1cf83c30838",
+      "count": 21,
       "abilities": [
         {
           "slot": 1,
-          "rawcode": "0x41363954",
-          "wrapper": "0x2df18f41eb0",
-          "data": "0x2df1959a8a8",
-          "full_handle": "0x97ec000097c6"
+          "rawcode": "0x41363258",
+          "wrapper": "0x1cf8388f9f8",
+          "data": "0x1cf855489b8",
+          "full_handle": "0x143e900002431"
         },
         {
           "slot": 2,
-          "rawcode": "0x414f7366",
-          "wrapper": "0x2df18f44700",
-          "data": "0x2df7efada18",
-          "full_handle": "0x9811000097eb"
+          "rawcode": "0x41363253",
+          "wrapper": "0x1cf8388f8a0",
+          "data": "0x1cf85549278",
+          "full_handle": "0x143e700002456"
         },
         {
           "slot": 3,
-          "rawcode": "0x414f636c",
-          "wrapper": "0x2df18f44858",
-          "data": "0x2df195a36d8",
-          "full_handle": "0x9813000097ed"
+          "rawcode": "0x4136324b",
+          "wrapper": "0x1cf8388f748",
+          "data": "0x1cf8553f5f8",
+          "full_handle": "0x143e5000038b0"
         },
         {
           "slot": 4,
-          "rawcode": "0x41364249",
-          "wrapper": "0x2df18f45318",
-          "data": "0x2df79cf4068",
-          "full_handle": "0x9823000097fd"
+          "rawcode": "0x41363246",
+          "wrapper": "0x1cf8388f5f0",
+          "data": "0x1cf58287ba8",
+          "full_handle": "0x143e3000039aa"
         },
         {
           "slot": 5,
-          "rawcode": "0x41496134",
-          "wrapper": "0x2df18f45720",
-          "data": "0x2df195a3cd8",
-          "full_handle": "0x982a00009804"
+          "rawcode": "0x41364741",
+          "wrapper": "0x1cf8388f498",
+          "data": "0x1cf85545948",
+          "full_handle": "0x143e1000039ae"
         },
         {
           "slot": 6,
-          "rawcode": "0x41497334",
-          "wrapper": "0x2df18f459d0",
-          "data": "0x2df195a3e08",
-          "full_handle": "0x982d00009807"
+          "rawcode": "0x41364739",
+          "wrapper": "0x1cf8388f340",
+          "data": "0x1cf85542f88",
+          "full_handle": "0x143df000039db"
         },
         {
           "slot": 7,
-          "rawcode": "0x4136354f",
-          "wrapper": "0x2df18f45b28",
-          "data": "0x2df195a3f38",
-          "full_handle": "0x98300000980a"
+          "rawcode": "0x41364733",
+          "wrapper": "0x1cf8388f1e8",
+          "data": "0x1cf85542bc8",
+          "full_handle": "0x143dd000039df"
         },
         {
           "slot": 8,
-          "rawcode": "0x4136344e",
-          "wrapper": "0x2df18f45dd8",
-          "data": "0x2df7a541f68",
-          "full_handle": "0x983800009812"
+          "rawcode": "0x41496175",
+          "wrapper": "0x1cf8623a298",
+          "data": "0x1cf65426178",
+          "full_handle": "0x98520000982c"
         },
         {
           "slot": 9,
-          "rawcode": "0x4136424c",
-          "wrapper": "0x2df18f45f30",
-          "data": "0x2df195a4068",
-          "full_handle": "0x983900009813"
+          "rawcode": "0x41496933",
+          "wrapper": "0x1cf86239e90",
+          "data": "0x1cf65426048",
+          "full_handle": "0x984a00009824"
         },
         {
           "slot": 10,
-          "rawcode": "0x41496936",
-          "wrapper": "0x2df18f46088",
-          "data": "0x2df195a41d8",
-          "full_handle": "0x983b00009815"
+          "rawcode": "0x41497436",
+          "wrapper": "0x1cf86239be0",
+          "data": "0x1cf65425f08",
+          "full_handle": "0x98440000981e"
         },
         {
           "slot": 11,
           "rawcode": "0x41363836",
-          "wrapper": "0x2df18f46338",
-          "data": "0x2df195a4308",
+          "wrapper": "0x1cf86239a88",
+          "data": "0x1cf65425e08",
           "full_handle": "0x98430000981d"
         },
         {
           "slot": 12,
-          "rawcode": "0x41497436",
-          "wrapper": "0x2df18f46490",
-          "data": "0x2df195a4408",
-          "full_handle": "0x98440000981e"
+          "rawcode": "0x41496936",
+          "wrapper": "0x1cf862397d8",
+          "data": "0x1cf65425cd8",
+          "full_handle": "0x983b00009815"
         },
         {
           "slot": 13,
-          "rawcode": "0x41496933",
-          "wrapper": "0x2df18f46740",
-          "data": "0x2df195a4548",
-          "full_handle": "0x984a00009824"
+          "rawcode": "0x4136424c",
+          "wrapper": "0x1cf86239680",
+          "data": "0x1cf65425b68",
+          "full_handle": "0x983900009813"
         },
         {
           "slot": 14,
-          "rawcode": "0x41496175",
-          "wrapper": "0x2df18f46b48",
-          "data": "0x2df195a4678",
-          "full_handle": "0x98520000982c"
+          "rawcode": "0x4136344e",
+          "wrapper": "0x1cf86239528",
+          "data": "0x1cf888f0498",
+          "full_handle": "0x983800009812"
         },
         {
           "slot": 15,
-          "rawcode": "0x42556175",
-          "wrapper": "0x2df18f46ca0",
-          "data": "0x2df195a47e8",
-          "full_handle": "0x98540000982e"
-        }
-      ]
-    },
-    {
-      "handle": "0x979c00009776",
-      "unit": "0x7ff465a1dad0",
-      "count": 7,
-      "abilities": [
+          "rawcode": "0x4136354f",
+          "wrapper": "0x1cf86239278",
+          "data": "0x1cf65425a38",
+          "full_handle": "0x98300000980a"
+        },
         {
-          "slot": 1,
+          "slot": 16,
+          "rawcode": "0x41497334",
+          "wrapper": "0x1cf86239120",
+          "data": "0x1cf65425908",
+          "full_handle": "0x982d00009807"
+        },
+        {
+          "slot": 17,
+          "rawcode": "0x41496134",
+          "wrapper": "0x1cf86238e70",
+          "data": "0x1cf654257d8",
+          "full_handle": "0x982a00009804"
+        },
+        {
+          "slot": 18,
+          "rawcode": "0x41364249",
+          "wrapper": "0x1cf86238910",
+          "data": "0x1cf8ffdfc58",
+          "full_handle": "0x9823000097fd"
+        },
+        {
+          "slot": 19,
+          "rawcode": "0x414f636c",
+          "wrapper": "0x1cf86237e50",
+          "data": "0x1cf654251d8",
+          "full_handle": "0x9813000097ed"
+        },
+        {
+          "slot": 20,
+          "rawcode": "0x414f7366",
+          "wrapper": "0x1cf86237ba0",
+          "data": "0x1cf658593c8",
+          "full_handle": "0x9811000097eb"
+        },
+        {
+          "slot": 21,
           "rawcode": "0x41363954",
-          "wrapper": "0x2df18f3f508",
-          "data": "0x2df19599d78",
-          "full_handle": "0x97b20000978c"
-        },
-        {
-          "slot": 2,
-          "rawcode": "0x41363153",
-          "wrapper": "0x2df18f3fd18",
-          "data": "0x2df19599eb8",
-          "full_handle": "0x97b800009792"
-        },
-        {
-          "slot": 3,
-          "rawcode": "0x41363152",
-          "wrapper": "0x2df18f40278",
-          "data": "0x2df1959a0d8",
-          "full_handle": "0x97be00009798"
-        },
-        {
-          "slot": 4,
-          "rawcode": "0x41363439",
-          "wrapper": "0x2df18f403d0",
-          "data": "0x2df1959a1d8",
-          "full_handle": "0x97bf00009799"
-        },
-        {
-          "slot": 5,
-          "rawcode": "0x4136414f",
-          "wrapper": "0x2df18f407d8",
-          "data": "0x2df77455458",
-          "full_handle": "0x97c6000097a0"
-        },
-        {
-          "slot": 6,
-          "rawcode": "0x41497832",
-          "wrapper": "0x2df18f40930",
-          "data": "0x2df1959a408",
-          "full_handle": "0x97c8000097a2"
-        },
-        {
-          "slot": 7,
-          "rawcode": "0x41496861",
-          "wrapper": "0x2df18f40e90",
-          "data": "0x2df1959a538",
-          "full_handle": "0x97d1000097ab"
+          "wrapper": "0x1cf86235600",
+          "data": "0x1cf6541fa38",
+          "full_handle": "0x97ec000097c6"
         }
       ]
     },
     {
       "handle": "0x974600009720",
-      "unit": "0x7ff465a1d178",
+      "unit": "0x1cf83c2f588",
       "count": 12,
       "abilities": [
         {
           "slot": 1,
-          "rawcode": "0x4136334a",
-          "wrapper": "0x2df18f3b890",
-          "data": "0x2df78107ec8",
-          "full_handle": "0x975c00009736"
+          "rawcode": "0x41496831",
+          "wrapper": "0x1cf86231830",
+          "data": "0x1cf63fd3d88",
+          "full_handle": "0x979700009771"
         },
         {
           "slot": 2,
-          "rawcode": "0x41363954",
-          "wrapper": "0x2df18f3b9e8",
-          "data": "0x2df195993c8",
-          "full_handle": "0x975e00009738"
-        },
-        {
-          "slot": 3,
-          "rawcode": "0x41363342",
-          "wrapper": "0x2df18f3c600",
-          "data": "0x2df7eeaf518",
-          "full_handle": "0x976700009741"
-        },
-        {
-          "slot": 4,
-          "rawcode": "0x41487765",
-          "wrapper": "0x2df18f3ca08",
-          "data": "0x2df19599508",
-          "full_handle": "0x976b00009745"
-        },
-        {
-          "slot": 5,
-          "rawcode": "0x41363345",
-          "wrapper": "0x2df18f3cb60",
-          "data": "0x2df79d0cf88",
-          "full_handle": "0x976d00009747"
-        },
-        {
-          "slot": 6,
-          "rawcode": "0x41363346",
-          "wrapper": "0x2df18f3ce10",
-          "data": "0x2df195996a8",
-          "full_handle": "0x97700000974a"
-        },
-        {
-          "slot": 7,
-          "rawcode": "0x41496f62",
-          "wrapper": "0x2df18f3d0c0",
-          "data": "0x2df7a265608",
-          "full_handle": "0x977600009750"
-        },
-        {
-          "slot": 8,
-          "rawcode": "0x41497436",
-          "wrapper": "0x2df18f3d4c8",
-          "data": "0x2df77454568",
-          "full_handle": "0x977c00009756"
-        },
-        {
-          "slot": 9,
-          "rawcode": "0x41497832",
-          "wrapper": "0x2df18f3d8d0",
-          "data": "0x2df195998f8",
-          "full_handle": "0x97820000975c"
-        },
-        {
-          "slot": 10,
-          "rawcode": "0x4149746a",
-          "wrapper": "0x2df18f3dcd8",
-          "data": "0x2df19599a28",
-          "full_handle": "0x978a00009764"
-        },
-        {
-          "slot": 11,
           "rawcode": "0x41496d31",
-          "wrapper": "0x2df18f3e0e0",
-          "data": "0x2df79cd4fd8",
+          "wrapper": "0x1cf862312d0",
+          "data": "0x1cf69c80e58",
           "full_handle": "0x97900000976a"
         },
         {
+          "slot": 3,
+          "rawcode": "0x4149746a",
+          "wrapper": "0x1cf86230ec8",
+          "data": "0x1cf6541ea88",
+          "full_handle": "0x978a00009764"
+        },
+        {
+          "slot": 4,
+          "rawcode": "0x41497832",
+          "wrapper": "0x1cf86230ac0",
+          "data": "0x1cf6541e958",
+          "full_handle": "0x97820000975c"
+        },
+        {
+          "slot": 5,
+          "rawcode": "0x41497436",
+          "wrapper": "0x1cf862306b8",
+          "data": "0x1cf8f3328e8",
+          "full_handle": "0x977c00009756"
+        },
+        {
+          "slot": 6,
+          "rawcode": "0x41496f62",
+          "wrapper": "0x1cf862302b0",
+          "data": "0x1cf8befd248",
+          "full_handle": "0x977600009750"
+        },
+        {
+          "slot": 7,
+          "rawcode": "0x41363346",
+          "wrapper": "0x1cf8622fea8",
+          "data": "0x1cf6541e708",
+          "full_handle": "0x97700000974a"
+        },
+        {
+          "slot": 8,
+          "rawcode": "0x41363345",
+          "wrapper": "0x1cf8622faa0",
+          "data": "0x1cf8af6b688",
+          "full_handle": "0x976d00009747"
+        },
+        {
+          "slot": 9,
+          "rawcode": "0x41487765",
+          "wrapper": "0x1cf8622f948",
+          "data": "0x1cf6541e568",
+          "full_handle": "0x976b00009745"
+        },
+        {
+          "slot": 10,
+          "rawcode": "0x41363342",
+          "wrapper": "0x1cf8622f540",
+          "data": "0x1cf8c0c1908",
+          "full_handle": "0x976700009741"
+        },
+        {
+          "slot": 11,
+          "rawcode": "0x41363954",
+          "wrapper": "0x1cf8622e928",
+          "data": "0x1cf6541e428",
+          "full_handle": "0x975e00009738"
+        },
+        {
           "slot": 12,
-          "rawcode": "0x41496831",
-          "wrapper": "0x2df18f3e4e8",
-          "data": "0x2df79cd1c48",
-          "full_handle": "0x979700009771"
+          "rawcode": "0x4136334a",
+          "wrapper": "0x1cf8622e678",
+          "data": "0x1cf812f94f8",
+          "full_handle": "0x975c00009736"
+        }
+      ]
+    },
+    {
+      "handle": "0x979c00009776",
+      "unit": "0x1cf83c2fee0",
+      "count": 8,
+      "abilities": [
+        {
+          "slot": 1,
+          "rawcode": "0x41496861",
+          "wrapper": "0x1cf862345e0",
+          "data": "0x1cf6541f588",
+          "full_handle": "0x97d1000097ab"
+        },
+        {
+          "slot": 2,
+          "rawcode": "0x41497832",
+          "wrapper": "0x1cf86234080",
+          "data": "0x1cf6541f458",
+          "full_handle": "0x97c8000097a2"
+        },
+        {
+          "slot": 3,
+          "rawcode": "0x4136414f",
+          "wrapper": "0x1cf86233f28",
+          "data": "0x1cf884f7848",
+          "full_handle": "0x97c6000097a0"
+        },
+        {
+          "slot": 4,
+          "rawcode": "0x41363439",
+          "wrapper": "0x1cf86233b20",
+          "data": "0x1cf6541f228",
+          "full_handle": "0x97bf00009799"
+        },
+        {
+          "slot": 5,
+          "rawcode": "0x41363152",
+          "wrapper": "0x1cf862339c8",
+          "data": "0x1cf6541f128",
+          "full_handle": "0x97be00009798"
+        },
+        {
+          "slot": 6,
+          "rawcode": "0x41364654",
+          "wrapper": "0x1cf862335c0",
+          "data": "0x1cf005d9168",
+          "full_handle": "0x97bb00009795"
+        },
+        {
+          "slot": 7,
+          "rawcode": "0x41363153",
+          "wrapper": "0x1cf862331b8",
+          "data": "0x1cf6541ef08",
+          "full_handle": "0x97b800009792"
+        },
+        {
+          "slot": 8,
+          "rawcode": "0x41363954",
+          "wrapper": "0x1cf862329a8",
+          "data": "0x1cf6541edc8",
+          "full_handle": "0x97b20000978c"
         }
       ]
     }

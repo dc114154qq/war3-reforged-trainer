@@ -108,14 +108,37 @@ def test_pending_execution_is_not_retried(tmp_path):
     with pytest.raises(EngineExecutionError,match='retained'):engine.hero_progress(2)
     memory.assert_not_called()
 
-def test_default_current_bridge_prefers_packaged_201_filename(tmp_path,monkeypatch):
+def test_default_current_bridge_prefers_packaged_oneshot_filename(tmp_path,monkeypatch):
     import war3_engine_24268 as engine_module
     tools=tmp_path/'tools';tools.mkdir()
-    stable=tools/'war3_bridge_24268_2_0_1.dll';stable.write_bytes(b'stable')
+    stable=tools/'war3_bridge_24268.dll';stable.write_bytes(b'stable')
     legacy=tools/'war3_bridge_24268_current_r38.dll';legacy.write_bytes(b'legacy')
     monkeypatch.setattr(engine_module.sys,'_MEIPASS',str(tmp_path),raising=False)
     engine=engine_module.Engine24268(1234,42,Mock())
     assert engine.image==stable
+
+def test_product_engine_has_no_persistent_hook_session():
+    source=(Path(__file__).parent/'war3_engine_24268.py').read_text(encoding='utf-8')
+    transport=(Path(__file__).parent/'war3_engine_transport.py').read_text(encoding='utf-8')
+    assert 'PersistentBridgeSession' not in source
+    assert 'session=self._persistent_transport' not in source
+    assert 'session=None' not in source
+    assert 'persistent_transport' not in transport
+    assert 'session.dispatch' not in transport
+
+
+def test_3_0_route_rejects_every_legacy_helper_operation_before_hook_install():
+    from war3_reforged_trainer import War3Trainer
+
+    trainer=object.__new__(War3Trainer)
+    trainer._native_selection_unavailable=True
+    trainer._ensure_native_helper_persistent_hook=Mock(
+        side_effect=AssertionError('legacy hook installation must be unreachable')
+    )
+    register=(trainer.NATIVE_HELPER_OP_PERSISTENT_REGISTER_NATIVE,0,0x10000,0,0)
+    with pytest.raises(RuntimeError,match='未启用旧版 native helper'):
+        trainer._run_native_helper_ops(0,(register,))
+    trainer._ensure_native_helper_persistent_hook.assert_not_called()
 
 def test_default_current_bridge_rejects_missing_validated_bridge(tmp_path,monkeypatch):
     import war3_engine_24268 as engine_module

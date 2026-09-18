@@ -1,0 +1,123 @@
+{
+  "pid": 26116,
+  "bridge": "tools\\war3_bridge_24268.dll",
+  "ok": true,
+  "equipment": {
+    "status": "not_executed",
+    "reason": "eeh3 live equipment placement is reserved for user validation because 3.0 routes non-consumables through the slot-1 technical backpack",
+    "offline_fixture_verified": true
+  },
+  "item_field": {
+    "write": {
+      "slot": 2,
+      "item_handle": "0x101142",
+      "item_rawcode": "0x7370726f",
+      "field": "iuse",
+      "before": 1,
+      "after": 2
+    },
+    "restore": {
+      "value": 1,
+      "restored": true
+    }
+  },
+  "teleport": {
+    "before": [
+      {
+        "unit": 1052992,
+        "before_x": 2099.16845703125,
+        "before_y": -3096.10693359375
+      },
+      {
+        "unit": 1052781,
+        "before_x": 2120.4580078125,
+        "before_y": -2831.2939453125
+      },
+      {
+        "unit": 1053037,
+        "before_x": 2162.45263671875,
+        "before_y": -2992.4951171875
+      }
+    ],
+    "target": [
+      2163.16845703125,
+      -3032.10693359375
+    ],
+    "position_batch": {
+      "count": 3,
+      "changed": 3,
+      "completed": 3
+    },
+    "after_teleport": [
+      {
+        "unit": 1052992,
+        "x": 2128.0,
+        "y": -3088.0
+      },
+      {
+        "unit": 1052781,
+        "x": 2224.0,
+        "y": -3088.0
+      },
+      {
+        "unit": 1053037,
+        "x": 2192.0,
+        "y": -2992.0
+      }
+    ],
+    "right_click": {
+      "client": [
+        1706,
+        960
+      ],
+      "point": [
+        853,
+        480
+      ],
+      "posted": true
+    },
+    "after_right_click": [
+      {
+        "unit": 1052992,
+        "x": 2282.0849609375,
+        "y": -3093.24755859375
+      },
+      {
+        "unit": 1052781,
+        "x": 2436.53369140625,
+        "y": -3148.372802734375
+      },
+      {
+        "unit": 1053037,
+        "x": 2390.14697265625,
+        "y": -2976.6416015625
+      }
+    ],
+    "moved_after_right_click": true,
+    "process_exit_code": 259,
+    "process_alive": true,
+    "restore": {
+      "restored_units": [
+        1052992,
+        1052781,
+        1053037
+      ],
+      "count": 3
+    },
+    "restored": false
+  },
+  "identity": {
+    "trainer_pid": 38752,
+    "game_pid": 26116,
+    "target_pid": 26116,
+    "window": {
+      "hwnd": "0x170b72"
+    },
+    "selected_count": 3,
+    "selected_handles": [
+      "0x63a800005fbe",
+      "0x5fe3000051a0",
+      "0x61c000004c1e"
+    ]
+  }
+}

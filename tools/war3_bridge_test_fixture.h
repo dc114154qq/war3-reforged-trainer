@@ -178,7 +178,7 @@ static void fixture_item_set(uint64_t h,int32_t value) {
 }
 static uint64_t fixture_item_create(uint64_t u,uint32_t type) {
     int i=(int)(u-0x100000),j,index;uint64_t h;
-    ++item_create_calls;if(item_case==1)return 0;
+    ++item_create_calls;if(item_case==1 || item_case==8)return 0;
     if(item_case==6)return item_slots[i][0];
     index=item_created_count++;if(index>=144)return 0;
     h=0x300000+(uint64_t)index*16;
@@ -194,8 +194,29 @@ static void fixture_item_remove(uint64_t h) {
 }
 static uint8_t fixture_item_add_slot(uint64_t u,uint32_t type,int32_t slot) {
     int i=(int)(u-0x100000),index=item_created_count++;uint64_t h;
-    if (slot<0 || slot>=item_sizes[i] || item_slots[i][slot] || index>=144 || item_case==7) return 0;
+    if (slot<0 || slot>=item_sizes[i] || item_slots[i][slot] || index>=144 || item_case==7 || item_case==8 || item_case==9) return 0;
     ++item_create_calls;h=0x300000+(uint64_t)index*16;item_new_type[index]=type;item_new_charges[index]=1;item_slots[i][slot]=h;return 1;
+}
+static uint64_t fixture_item_create_ground(uint32_t type,float *x,float *y) {
+    int index;uint64_t h;(void)x;(void)y;++item_create_calls;
+    if(item_case==1 || item_case==8)return 0;
+    index=item_created_count++;if(index>=144)return 0;
+    h=0x300000+(uint64_t)index*16;
+    item_new_type[index]=type;item_new_charges[index]=1;return h;
+}
+static uint8_t fixture_item_add_existing(uint64_t unit,uint64_t item) {
+    int i=(int)(unit-0x100000),j;
+    if(item_case==10 && item>=0x300000)return 0;
+    for(j=0;j<item_sizes[i];++j)if(!item_slots[i][j]){item_slots[i][j]=item;return 1;}
+    return 0;
+}
+static uint8_t fixture_item_move_slot(uint64_t unit,uint64_t item,int32_t slot) {
+    int i=(int)(unit-0x100000),j;
+    if(slot<0 || slot>=item_sizes[i])return 0;
+    for(j=0;j<item_sizes[i];++j)if(item_slots[i][j]==item){
+        item_slots[i][j]=item_slots[i][slot];item_slots[i][slot]=item;return 1;
+    }
+    return 0;
 }
 __declspec(dllexport) uint64_t BridgeItemTestRun(ItemWork *w,int count,int scenario) {
     static BridgeCommand cmd;int i,j;
@@ -203,8 +224,8 @@ __declspec(dllexport) uint64_t BridgeItemTestRun(ItemWork *w,int count,int scena
     fixture_count=count;fixture_scenario=0;fixture_type_calls=0;item_case=scenario;
     item_create_calls=item_set_calls=item_remove_calls=item_created_count=0;
     for(i=0;i<24;++i){
-        fixture_levels[i]=i%3==0 ? 1 : 0;item_sizes[i]=scenario==5 ? 6 : i%3==0 ? 6 : 0;
-        for(j=0;j<6;++j){item_original_charges[i][j]=1;item_slots[i][j]=item_sizes[i] && (j==0||scenario==5) ? 0x200000+i*16+j : 0;}
+        fixture_levels[i]=i%3==0 ? 1 : 0;item_sizes[i]=(scenario==5 || scenario==9) ? 6 : i%3==0 ? 6 : 0;
+        for(j=0;j<6;++j){item_original_charges[i][j]=1;item_slots[i][j]=item_sizes[i] && (j==0||scenario==5||scenario==9) ? 0x200000+i*16+j : 0;}
     }
     for(i=0;i<144;++i){item_new_type[i]=0;item_new_charges[i]=0;}
     cmd.work=w;cmd.tls_value=w->expected_tls;g_dispatch=&cmd;
@@ -215,9 +236,47 @@ __declspec(dllexport) uint64_t BridgeItemTestRun(ItemWork *w,int count,int scena
     w->create=fixture_item_create;w->add_slot=fixture_item_add_slot;w->in_slot=fixture_item_slot;w->size=fixture_item_size;
     w->type=fixture_item_type;w->charges=fixture_item_charges;w->set_charges=fixture_item_set;
     w->remove=fixture_item_remove;w->detach=fixture_item_detach;
+    w->create_ground=fixture_item_create_ground;w->add_existing=fixture_item_add_existing;
+    w->move_slot=fixture_item_move_slot;
     return BridgeItemQuery();
 }
 __declspec(dllexport) int BridgeItemTestStat(int kind) {return kind==0 ? item_create_calls : kind==1 ? item_set_calls : item_remove_calls;}
+
+static uint64_t equipment_fixture_slots[9];
+static uint32_t equipment_fixture_code;static int equipment_fixture_case;
+static uint64_t equipment_fixture_create(uint32_t code,float *x,float *y) {
+    (void)x;(void)y;equipment_fixture_code=code;return 0xA00000;
+}
+static uint32_t equipment_fixture_type(uint64_t item) {return item==0xA00000 ? equipment_fixture_code : 0x65656831;}
+static uint64_t equipment_fixture_kind(uint64_t item) {(void)item;return 1;}
+static uint64_t equipment_fixture_slot(int32_t i){return (uint64_t)i;}
+static uint64_t equipment_fixture_in(uint64_t unit,uint64_t slot){(void)unit;return equipment_fixture_slots[slot];}
+static uint8_t equipment_fixture_equip(uint64_t unit,uint64_t item){
+    (void)unit;if(item==0xA00000 && equipment_fixture_case==1)return 0;
+    if(equipment_fixture_slots[0])return 0;equipment_fixture_slots[0]=item;return 1;
+}
+static void equipment_fixture_unequip(uint64_t unit,uint64_t item){
+    (void)unit;for(int i=0;i<9;++i)if(equipment_fixture_slots[i]==item)equipment_fixture_slots[i]=0;
+}
+static void equipment_fixture_remove(uint64_t item){(void)item;}
+static uint64_t equipment_fixture_inventory(uint64_t unit,int32_t slot){(void)unit;return 0xB00000+(uint64_t)slot;}
+static int32_t equipment_fixture_size(uint64_t unit){(void)unit;return 6;}
+__declspec(dllexport) uint64_t BridgeEquipmentTestRun(EquipmentWork *w,int scenario){
+    static BridgeCommand cmd;fixture_count=1;fixture_scenario=0;fixture_type_calls=0;fixture_levels[0]=1;
+    equipment_fixture_case=scenario;
+    for(int i=0;i<9;++i)equipment_fixture_slots[i]=0xC00000+(uint64_t)i;
+    if(w->action==2)equipment_fixture_slots[0]=w->expected_created;
+    cmd.work=w;cmd.tls_value=w->expected_tls;g_dispatch=&cmd;
+    w->selection.local_player=fixture_player;w->selection.create_group=fixture_group;
+    w->selection.enum_selected=fixture_enum;w->selection.first_of_group=fixture_first;
+    w->selection.remove_from_group=fixture_remove;w->selection.destroy_group=fixture_destroy;
+    w->selection.unit_type_id=fixture_type;w->selection.hero_level=fixture_level;
+    w->create=equipment_fixture_create;w->type=equipment_fixture_type;w->equipment_type=equipment_fixture_kind;
+    w->slot_enum=equipment_fixture_slot;w->in_equipment=equipment_fixture_in;w->equip=equipment_fixture_equip;
+    w->unequip=equipment_fixture_unequip;w->remove=equipment_fixture_remove;
+    w->in_inventory=equipment_fixture_inventory;w->inventory_size=equipment_fixture_size;
+    return BridgeEquipmentQuery();
+}
 
 static int clone_case,clone_created,clone_removed,clone_abilities,clone_items;
 static int32_t fixture_skill_points[24],clone_skill_points[24];
@@ -479,6 +538,17 @@ __declspec(dllexport) uint64_t BridgePositionTestRun(PositionWork *w, int count)
 __declspec(dllexport) int BridgePositionTestStat(int kind) {
     return kind >= 0 && kind < 4 ? position_calls[kind] : -1;
 }
+__declspec(dllexport) uint64_t BridgePositionTargetTestRun(PositionWork *w) {
+    static BridgeCommand cmd; int i;
+    for (i = 0; i < 24; ++i) {
+        position_x[i] = 10.0f + i; position_y[i] = 20.0f + i;
+    }
+    position_calls[0] = position_calls[1] = position_calls[2] = position_calls[3] = 0;
+    cmd.work = w; cmd.tls_value = w->expected_tls; g_dispatch = &cmd;
+    w->set_position = position_set_position;
+    w->get_x = position_get_x; w->get_y = position_get_y;
+    return BridgePositionQuery();
+}
 
 static int world_calls[8];
 static uint32_t world_last_rawcode,world_last_level,world_last_xp;
@@ -523,28 +593,23 @@ __declspec(dllexport) int BridgeWorldTestStat(int kind) {
     return -1;
 }
 
-static uint8_t fixture_map_flags[8];
-static uint64_t fixture_convert_map_flag(uint32_t value) {
-    return value < 8u ? 0x200000u + value : 0;
+__declspec(dllexport) uint32_t BridgeFogGateTest(
+    uint64_t fn,uint32_t phase,uint32_t code,uint32_t flags,uint32_t parameters,
+    uint64_t instruction,uint64_t access,uint64_t address
+) {
+    uint32_t length=0;
+    return BridgeKnownFogGate(
+        fn,phase,code,flags,parameters,instruction,access,address,&length
+    ) ? length : 0u;
 }
-static void fixture_set_map_flag(uint64_t handle, uint32_t value) {
-    if (handle >= 0x200000u && handle < 0x200008u)
-        fixture_map_flags[handle - 0x200000u] = (uint8_t)(value != 0);
-}
-static uint8_t fixture_is_map_flag_set(uint64_t handle) {
-    return handle >= 0x200000u && handle < 0x200008u
-        ? fixture_map_flags[handle - 0x200000u] : 0;
-}
-__declspec(dllexport) uint64_t BridgeMapFlagsTestRun(MapFlagsWork *w, int action, int revealed) {
-    static BridgeCommand cmd;
-    int i;
-    for (i = 0; i < 8; ++i) fixture_map_flags[i] = 1;
-    cmd.work = w; cmd.tls_value = w->expected_tls; g_dispatch = &cmd;
-    w->convert_map_flag = fixture_convert_map_flag;
-    w->set_map_flag = fixture_set_map_flag;
-    w->is_map_flag_set = fixture_is_map_flag_set;
-    w->action = (uint32_t)action; w->revealed = (uint32_t)revealed;
-    return BridgeMapFlagsQuery();
+
+__declspec(dllexport) uint32_t BridgeFogTailTest(
+    uint64_t fn,uint32_t phase,uint32_t code,uint32_t flags,uint32_t parameters,
+    uint64_t instruction,uint64_t access,uint64_t address
+) {
+    return BridgeKnownFogTail(
+        fn,phase,code,flags,parameters,instruction,access,address
+    ) ? 1u : 0u;
 }
 
 static int spawn_case, spawn_create_calls, spawn_remove_calls;

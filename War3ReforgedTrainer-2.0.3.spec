@@ -5,7 +5,7 @@ a = Analysis(
     pathex=[],
     binaries=[
         ('tools/capstone.dll', 'capstone/lib'),
-        ('tools/war3_bridge_24268_2_0_1.dll', 'tools'),
+        ('tools/war3_bridge_24268.dll', 'tools'),
     ],
     datas=[('assets/app_icon.png', 'assets')],
     hiddenimports=[
@@ -23,9 +23,9 @@ a = Analysis(
         'war3_selection_protocol',
         'war3_hero_protocol',
         'war3_position_protocol',
+        'war3_position_target_protocol',
         'war3_unit_action_protocol',
         'war3_world_protocol',
-        'war3_map_flags_protocol',
         'war3_bulk_protocol',
         'war3_effect_protocol',
         'war3_world_effect_protocol',
@@ -34,6 +34,8 @@ a = Analysis(
         'war3_screen_protocol',
         'war3_camera_protocol',
         'war3_terrain_protocol',
+        'war3_map_bounds_protocol',
+        'war3_equipment_protocol',
     ],
     hookspath=[], hooksconfig={}, runtime_hooks=[], excludes=[],
     noarchive=False, optimize=0,
@@ -44,7 +46,7 @@ exe = EXE(
     name='War3ReforgedTrainer-v2.0.3',
     debug=False, bootloader_ignore_signals=False, strip=False, upx=True,
     upx_exclude=[], runtime_tmpdir=None, console=False,
-    disable_windowed_traceback=False, uac_admin=True, argv_emulation=False,
+    disable_windowed_traceback=False, uac_admin=False, argv_emulation=False,
     target_arch=None, codesign_identity=None, entitlements_file=None,
     icon='assets/app_icon.ico', version='tools/war3-2.0.3-version-info.txt',
 )

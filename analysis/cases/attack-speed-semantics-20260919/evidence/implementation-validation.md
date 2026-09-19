@@ -46,8 +46,9 @@ The product now distinguishes these values:
 - `Expected Attack Speed`: the highest true attacks-per-second value observed
   for the same unit rawcode and weapon during the current trainer session. The
   value survives a map-side object rebuild and makes a later speed loss visible.
-- `True Attack Speed`: the reciprocal of the effective interval returned by the
-  current game's internal final-interval function. This field is writable.
+- `True Attack Speed`: the reciprocal of the effective interval read from the
+  current runtime attack component with the verified equivalent of the game's
+  final-interval function. This field is writable.
 
 A true-speed write calculates the required base cooldown from the game's
 current aggregate factor, calls `BlzSetUnitAttackCooldown`, calls the internal
@@ -55,10 +56,17 @@ final-interval function again, and accepts the write only if the requested
 attacks-per-second value is read back. A failed verification restores the
 captured base cooldown.
 
+The display read itself does not dispatch a game-thread callback. This avoids a
+read callback immediately followed by a write callback; that live stress case
+completed the write readback but left cleanup active, after which the game
+window exited. Only an explicit write uses the one-shot game-thread transaction.
+
 The transaction resolves the actual selected JASS `Hunit` inside the callback.
-It binds that handle to the displayed object with `GetHandleId`, object-table
-owner resolution, unit-object address, full handle, rawcode, and attack pointer.
-It does not pass an object-table full handle as a JASS handle.
+It uses the same current-build unit resolver called by
+`BlzGet/SetUnitAttackCooldown` and requires the result to equal the displayed
+unit object. Object-table owner resolution, full handle, rawcode, and attack
+pointer are also checked. It does not pass an object-table full handle as a
+JASS handle.
 
 `Ctrl+K` failed with spawn error 93 because its standalone `CreateUnit` bridge
 passed JASS real parameters by value. The bridge now passes pointers, matching
@@ -71,6 +79,19 @@ subtests passed`. `test_avx_copy_model.py` was excluded from that final run
 because its bundled Unicorn runtime raises a process-level access violation on
 this host; it is unrelated to the changed product paths.
 
-Live game write and live `Ctrl+K` validation were not executed in this follow-up
-because the Warcraft III visible window had exited before the live test. The
-attempt stopped during process/window attachment, before any game mutation.
+Final live validation used Warcraft III PID 36464:
+
+- Zero-callback display read returned base cooldown `2.22`, speed factor
+  `1.4799998`, true interval `1.5000002`, and true/expected speed
+  `0.6666666` attacks per second.
+- One explicit same-value true-speed write returned `0.6666665` attacks per
+  second and confirmed base cooldown `2.22 -> 2.22`. The game remained
+  responsive after the transaction.
+- The `Ctrl+K` equivalent created rawcode `hcth` and returned handle `0x100f5e`.
+  The game remained responsive after creation.
+
+An earlier live stress attempt dispatched a read callback and an immediate
+same-value write callback. The write itself returned `completed=1,error=0`, but
+the second cleanup reported active/retained state and the game window later
+exited. That sequence was removed from the product: display reads now use no
+callback, and only an explicit write dispatches one transaction.

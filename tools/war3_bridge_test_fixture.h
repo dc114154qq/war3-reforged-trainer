@@ -106,8 +106,8 @@ static uint8_t fixture_attack_speed_table[0x30 * 16];
 static uint64_t fixture_attack_speed_root_pointer;
 static float fixture_attack_speed_base, fixture_attack_speed_factor;
 static uint32_t fixture_attack_speed_rawcode;
-static uint32_t fixture_attack_speed_get_handle_id(uint64_t unit) {
-    (void)unit; return 0x2fu;
+static uint64_t fixture_attack_speed_resolve_unit(uint64_t unit) {
+    return unit == 0x100000 ? (uint64_t)(uintptr_t)fixture_attack_speed_unit : 0;
 }
 static uint32_t fixture_attack_speed_get_cooldown(uint64_t unit, int32_t weapon) {
     (void)unit; (void)weapon; return AttackSpeedBits(fixture_attack_speed_base);
@@ -163,7 +163,7 @@ __declspec(dllexport) uint64_t BridgeAttackSpeedTestRun(AttackSpeedWork *w) {
     w->selection.enum_selected = fixture_enum; w->selection.first_of_group = fixture_first;
     w->selection.remove_from_group = fixture_remove; w->selection.destroy_group = fixture_destroy;
     w->selection.unit_type_id = fixture_type; w->selection.hero_level = fixture_level;
-    w->get_handle_id = fixture_attack_speed_get_handle_id;
+    w->resolve_unit = fixture_attack_speed_resolve_unit;
     w->get_cooldown = fixture_attack_speed_get_cooldown;
     w->set_cooldown = fixture_attack_speed_set_cooldown;
     w->get_factor = fixture_attack_speed_get_factor;

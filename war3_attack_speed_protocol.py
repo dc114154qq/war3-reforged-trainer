@@ -13,8 +13,8 @@ WORK_SIZE = 640
 ABI = struct.pack("<3I", 0x24268032, 216, WORK_SIZE)
 SPEED_FACTOR_RVA = 0x509670
 EFFECTIVE_INTERVAL_RVA = 0x5099A0
+UNIT_RESOLVER_RVA = 0x8EDD10
 SIGNATURES = (
-    ("GetHandleId", "(Hhandle;)I"),
     ("BlzGetUnitAttackCooldown", "(Hunit;I)R"),
     ("BlzSetUnitAttackCooldown", "(Hunit;RI)V"),
 )
@@ -42,6 +42,7 @@ def build_work(entries, tls, unit_object, attack, full_handle,
         *handlers,
         module_base + SPEED_FACTOR_RVA,
         module_base + EFFECTIVE_INTERVAL_RVA,
+        module_base + UNIT_RESOLVER_RVA,
         tls,
         module_base,
         unit_object,

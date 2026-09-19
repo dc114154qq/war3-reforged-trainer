@@ -13744,7 +13744,7 @@ class War3Trainer:
                 speed_factor = float(timing_24268["speed_factor"])
                 effective_interval = float(timing_24268["after_effective_interval"])
                 true_aps = float(timing_24268["after_true_aps"])
-                exact_note = "由 3.0 游戏内部最终攻击间隔函数直接读取"
+                exact_note = "按 3.0 游戏内部最终攻击间隔函数的等价公式从当前运行时组件读取"
                 expected_note = (
                     "本次修改器会话中同单位类型观察到的最高真正攻速；"
                     "跨地图对象重建后保留，用于识别攻速丢失"
@@ -13790,6 +13790,31 @@ class War3Trainer:
         self._append_unit_field(pm, fields, f"{key_prefix}_projectile_speed", f"{label_prefix}投射物速度", "f32", data + 0x398, "攻击", note=timing_note)
         self._append_unit_field(pm, fields, f"{key_prefix}_range", f"{label_prefix}范围", "f32", data + 0x3A8, "攻击", note=timing_note)
         self._append_unit_field(pm, fields, f"{key_prefix}_range_buffer", f"{label_prefix}范围缓冲", "f32", data + 0x3C0, "攻击", note=timing_note)
+
+    @staticmethod
+    def _attack_timing_24268_from_memory(pm: ProcessMemory, data: int) -> dict:
+        attack_kind = pm.read_i32(data + 0x35C)
+        base_cooldown = pm.read_f32(data + 0x228)
+        if attack_kind in {1, 64, 128, 256}:
+            speed_factor = 1.0
+        else:
+            speed_factor = pm.read_f32(data + 0x2B8)
+            negative_modifier = pm.read_f32(data + 0x2D0)
+            if negative_modifier < 0.0 and abs(negative_modifier) >= 0.001:
+                speed_factor += negative_modifier
+            speed_factor = min(5.0, max(0.2, speed_factor))
+        if (
+            not math.isfinite(base_cooldown) or not 0.001 <= base_cooldown <= 1000.0
+            or not math.isfinite(speed_factor) or not 0.2 <= speed_factor <= 5.0
+        ):
+            raise RuntimeError("3.0 攻速运行时字段超出有效范围")
+        effective_interval = base_cooldown / speed_factor
+        return {
+            "base_cooldown": base_cooldown,
+            "speed_factor": speed_factor,
+            "after_effective_interval": effective_interval,
+            "after_true_aps": 1.0 / effective_interval,
+        }
 
     @staticmethod
     def _looks_like_rawcode(value: int) -> bool:
@@ -14812,7 +14837,7 @@ class War3Trainer:
             timing_24268 = None
             expected_speed_24268 = 0.0
             if current_24268:
-                timing_24268 = self.attack_speed_24268(candidate, data)
+                timing_24268 = self._attack_timing_24268_from_memory(pm, data)
                 expected_speed_24268 = self._observe_expected_attack_speed(
                     candidate.unit_type_id, 0, timing_24268["after_true_aps"],
                 )

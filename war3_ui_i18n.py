@@ -43,6 +43,8 @@ _EN_TRANSLATIONS = {
     "应该有的攻速(次/秒)": "Expected Attack Speed (attacks/s)",
     "真正的攻速(次/秒)": "True Attack Speed (attacks/s)",
     "由 3.0 游戏内部最终攻击间隔函数直接读取": "Read directly from the Warcraft III 3.0 final attack-interval function",
+    "按 3.0 游戏内部最终攻击间隔函数的等价公式从当前运行时组件读取": "Read from the current runtime component using the equivalent formula of the Warcraft III 3.0 final attack-interval function",
+    "3.0 攻速运行时字段超出有效范围": "The 3.0 runtime attack-speed fields are outside valid bounds",
     "本次修改器会话中同单位类型观察到的最高真正攻速；跨地图对象重建后保留，用于识别攻速丢失": "Highest true attack speed observed for this unit type in the current trainer session; retained across map object rebuilds to detect lost attack speed",
     "；可写：输入目标每秒攻击次数，修改器会通过游戏接口反算基础冷却并以最终攻击间隔读回确认": "; writable: enter target attacks per second; the trainer calculates base cooldown through the game interface and verifies the final interval",
     "真正的攻速必须是 0.001 到 1000 的有限数值": "True attack speed must be a finite value from 0.001 to 1000",

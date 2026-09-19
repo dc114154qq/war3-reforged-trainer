@@ -1,11 +1,11 @@
 /* Exact current-build attack-speed query/set transaction. */
 typedef struct AttackSpeedWork {
     SelectionWork selection;
-    uint32_t (*get_handle_id)(uint64_t);
     uint32_t (*get_cooldown)(uint64_t, int32_t);
     void (*set_cooldown)(uint64_t, float *, int32_t);
     void *(*get_factor)(void *, float *, uint32_t, int32_t);
     void *(*get_effective)(void *, float *, int32_t);
+    uint64_t (*resolve_unit)(uint64_t);
     void *expected_tls;
     uint64_t module_base, unit_object, attack, full_handle;
     uint32_t rawcode, weapon, action, target_aps_bits;
@@ -67,7 +67,7 @@ __declspec(dllexport) uint64_t BridgeAttackSpeedQuery(void) {
     float after_base, after_effective = 0.0f, after_true_aps;
     if (!w || w->expected_tls != g_dispatch->tls_value || !w->module_base ||
         !w->unit_object || !w->attack || !w->full_handle || !w->rawcode ||
-        w->weapon > 1 || w->action > 1 || !w->get_handle_id || !w->get_cooldown ||
+        w->weapon > 1 || w->action > 1 || !w->resolve_unit || !w->get_cooldown ||
         !w->set_cooldown || !w->get_factor || !w->get_effective) {
         if (w) w->error = 100;
         return 0;
@@ -89,7 +89,7 @@ __declspec(dllexport) uint64_t BridgeAttackSpeedQuery(void) {
         for (i = 0; i < count; ++i) {
             SelectionRow *row = &w->selection.rows[i];
             if (row->rawcode == w->rawcode &&
-                w->get_handle_id(row->unit) == (uint32_t)w->full_handle) {
+                w->resolve_unit(row->unit) == w->unit_object) {
                 if (target_unit) { w->error = 108; return 0; }
                 target_unit = row->unit;
             }

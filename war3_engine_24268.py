@@ -52,6 +52,8 @@ class EngineExecutionError(RuntimeError):
             ability_status=report.get('ability_status'),item_status=report.get('item_status'),
             equipment_status=report.get('equipment_status'),
             clone_status=report.get('clone_status'),world_status=report.get('world_status'),
+            spawn_status=report.get('spawn_status'),
+            attack_speed_status=report.get('attack_speed_status'),
             ),ensure_ascii=False))
 
 class Engine24268:
@@ -93,6 +95,33 @@ class Engine24268:
             lambda entries, tls: build(entries, tls, target),
             decode,
             dict(target=target),
+        )
+
+    def attack_speed(self, unit_object, attack, full_handle,
+                     rawcode, target_aps=0.0, weapon=0):
+        from war3_attack_speed_protocol import (
+            SIGNATURES as ATTACK_SPEED_SIGNATURES,
+            build_work as build,
+            decode_work as decode,
+        )
+        values = (unit_object, attack, full_handle, rawcode, weapon)
+        if any(isinstance(value, bool) or not isinstance(value, int) for value in values):
+            raise ValueError('Attack-speed identities must be integers')
+        if not all(values[:4]) or weapon not in (0, 1):
+            raise ValueError('Invalid attack-speed identity')
+        target_aps = float(target_aps)
+        if not 0.0 <= target_aps <= 1000.0:
+            raise ValueError('True attack speed must be in 0..1000 attacks per second')
+        names = tuple(name for name, _signature in SIGNATURES + ATTACK_SPEED_SIGNATURES)
+        return self._execute(
+            'attack_speed', names,
+            lambda entries, tls: build(
+                entries, tls, unit_object, attack, full_handle,
+                rawcode, self._attack_speed_module_base, target_aps, weapon,
+            ),
+            decode,
+            dict(unit_object=unit_object, attack=attack, full_handle=full_handle,
+                 rawcode=rawcode, target_aps=target_aps, weapon=weapon),
         )
 
     def ability_batch(self,rawcode,action=0,level=0):
@@ -480,6 +509,9 @@ class Engine24268:
                                 for unit in classic_selection.units
                             )
                         payload=builder(entries,mode.tls)
+                    elif kind == 'attack_speed':
+                        self._attack_speed_module_base = registry.base
+                        payload=builder(entries,mode.tls)
                     else:
                         payload=builder(entries,mode.tls)
                     report['mappings']=({} if cache_hit else inspect_entries(memory,registry.base,entries,True))
@@ -598,6 +630,20 @@ class Engine24268:
                         if len(raw)==128:
                             changed,error,completed=struct.unpack_from('<3I',raw,56)
                             report['spawn_status']=dict(changed=changed,error=error,completed=completed)
+                    if kind=='attack_speed' and evidence.get('work_result_hex'):
+                        raw=bytes.fromhex(evidence['work_result_hex'])
+                        if len(raw)==640:
+                            changed,error,completed=struct.unpack_from('<3I',raw,604)
+                            report['attack_speed_status']=dict(
+                                changed=changed,error=error,completed=completed,
+                                base_bits=hex(struct.unpack_from('<I',raw,576)[0]),
+                                factor_bits=hex(struct.unpack_from('<I',raw,580)[0]),
+                                effective_bits=hex(struct.unpack_from('<I',raw,584)[0]),
+                                true_aps_bits=hex(struct.unpack_from('<I',raw,588)[0]),
+                                after_base_bits=hex(struct.unpack_from('<I',raw,592)[0]),
+                                after_effective_bits=hex(struct.unpack_from('<I',raw,596)[0]),
+                                after_true_aps_bits=hex(struct.unpack_from('<I',raw,600)[0]),
+                            )
                     if kind=='mouse' and evidence.get('work_result_hex'):
                         raw=bytes.fromhex(evidence['work_result_hex'])
                         if len(raw)==128:

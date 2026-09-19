@@ -23,6 +23,7 @@ a = Analysis(
         'war3_selection_protocol',
         'war3_hero_protocol',
         'war3_hero_attributes_protocol',
+        'war3_attack_speed_protocol',
         'war3_position_protocol',
         'war3_position_target_protocol',
         'war3_unit_action_protocol',

@@ -1,7 +1,7 @@
 /* Current-build 24268 batch for one local-player unit creation. */
 typedef struct SpawnWork {
     uint64_t (*get_local_player)(void);
-    uint64_t (*create_unit)(uint64_t, uint32_t, float, float, float);
+    uint64_t (*create_unit)(uint64_t, uint32_t, float *, float *, float *);
     uint32_t (*type_id)(uint64_t);
     void (*remove_unit)(uint64_t);
     void *expected_tls;
@@ -36,8 +36,10 @@ __declspec(dllexport) uint64_t BridgeSpawnQuery(void) {
     player = w->get_local_player();
     if (!player) { w->error = 91; return 0; }
     __try {
-        unit = w->create_unit(player, w->rawcode, spawn_real(w->x_bits),
-                              spawn_real(w->y_bits), spawn_real(w->facing_bits));
+        float x = spawn_real(w->x_bits);
+        float y = spawn_real(w->y_bits);
+        float facing = spawn_real(w->facing_bits);
+        unit = w->create_unit(player, w->rawcode, &x, &y, &facing);
         if (!unit || w->type_id(unit) != w->rawcode) {
             w->error = 92;
             if (unit) w->remove_unit(unit);

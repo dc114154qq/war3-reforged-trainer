@@ -98,6 +98,87 @@ __declspec(dllexport) int BridgeHeroAttributesTestStat(int kind, int index) {
     return -1;
 }
 
+static uint8_t fixture_attack_speed_unit[0x800];
+static uint8_t fixture_attack_speed_component[0x400];
+static uint8_t fixture_attack_speed_owner[0x100];
+static uint8_t fixture_attack_speed_root[0x80];
+static uint8_t fixture_attack_speed_table[0x30 * 16];
+static uint64_t fixture_attack_speed_root_pointer;
+static float fixture_attack_speed_base, fixture_attack_speed_factor;
+static uint32_t fixture_attack_speed_rawcode;
+static uint32_t fixture_attack_speed_get_handle_id(uint64_t unit) {
+    (void)unit; return 0x2fu;
+}
+static uint32_t fixture_attack_speed_get_cooldown(uint64_t unit, int32_t weapon) {
+    (void)unit; (void)weapon; return AttackSpeedBits(fixture_attack_speed_base);
+}
+static void fixture_attack_speed_set_cooldown(
+    uint64_t unit, float *value, int32_t weapon
+) {
+    (void)unit; (void)weapon; fixture_attack_speed_base = *value;
+}
+static void *fixture_attack_speed_get_factor(
+    void *attack, float *value, uint32_t include, int32_t weapon
+) {
+    (void)attack; (void)include; (void)weapon;
+    *value = fixture_attack_speed_factor; return value;
+}
+static void *fixture_attack_speed_get_effective(
+    void *attack, float *value, int32_t weapon
+) {
+    (void)attack; (void)weapon;
+    *value = fixture_attack_speed_base / fixture_attack_speed_factor; return value;
+}
+__declspec(dllexport) uint64_t BridgeAttackSpeedTestRun(AttackSpeedWork *w) {
+    static BridgeCommand cmd;
+    uint64_t unit = (uint64_t)(uintptr_t)fixture_attack_speed_unit;
+    uint64_t attack = (uint64_t)(uintptr_t)fixture_attack_speed_component;
+    uint64_t owner = (uint64_t)(uintptr_t)fixture_attack_speed_owner;
+    uint64_t root = (uint64_t)(uintptr_t)fixture_attack_speed_root;
+    uint64_t table = (uint64_t)(uintptr_t)fixture_attack_speed_table;
+    uint64_t full_handle = 0x97550000002fu;
+    uint64_t module_base = (uint64_t)(uintptr_t)&fixture_attack_speed_root_pointer - 0x2f807f0ull;
+    memset(fixture_attack_speed_unit, 0, sizeof(fixture_attack_speed_unit));
+    memset(fixture_attack_speed_component, 0, sizeof(fixture_attack_speed_component));
+    memset(fixture_attack_speed_owner, 0, sizeof(fixture_attack_speed_owner));
+    memset(fixture_attack_speed_root, 0, sizeof(fixture_attack_speed_root));
+    memset(fixture_attack_speed_table, 0, sizeof(fixture_attack_speed_table));
+    fixture_attack_speed_base = 2.2f;
+    fixture_attack_speed_factor = 1.5f;
+    fixture_attack_speed_rawcode = 0x68666f6fu;
+    *(uint64_t *)(fixture_attack_speed_unit + 0x18) = full_handle;
+    *(uint32_t *)(fixture_attack_speed_unit + 0x70) = fixture_attack_speed_rawcode;
+    *(uint64_t *)(fixture_attack_speed_unit + 0x760) = attack;
+    *(uint64_t *)(fixture_attack_speed_owner + 0x20) = full_handle;
+    *(uint64_t *)(fixture_attack_speed_owner + 0x90) = unit;
+    *(uint64_t *)(fixture_attack_speed_root + 0x18) = table;
+    *(uint32_t *)(fixture_attack_speed_root + 0x30) = 0x30u;
+    *(uint32_t *)(fixture_attack_speed_table + 0x2f * 16) = 0xfffffffeu;
+    *(uint64_t *)(fixture_attack_speed_table + 0x2f * 16 + 8) = owner;
+    fixture_attack_speed_root_pointer = root;
+    cmd.work = w; cmd.tls_value = w->expected_tls; g_dispatch = &cmd;
+    fixture_count = 1; fixture_index = 0; fixture_scenario = 0;
+    fixture_levels[0] = 0;
+    w->selection.local_player = fixture_player; w->selection.create_group = fixture_group;
+    w->selection.enum_selected = fixture_enum; w->selection.first_of_group = fixture_first;
+    w->selection.remove_from_group = fixture_remove; w->selection.destroy_group = fixture_destroy;
+    w->selection.unit_type_id = fixture_type; w->selection.hero_level = fixture_level;
+    w->get_handle_id = fixture_attack_speed_get_handle_id;
+    w->get_cooldown = fixture_attack_speed_get_cooldown;
+    w->set_cooldown = fixture_attack_speed_set_cooldown;
+    w->get_factor = fixture_attack_speed_get_factor;
+    w->get_effective = fixture_attack_speed_get_effective;
+    w->module_base = module_base;
+    w->unit_object = unit;
+    w->attack = attack;
+    w->full_handle = full_handle;
+    w->rawcode = fixture_attack_speed_rawcode;
+    return BridgeAttackSpeedQuery();
+}
+__declspec(dllexport) uint32_t BridgeAttackSpeedTestBase(void) {
+    return AttackSpeedBits(fixture_attack_speed_base);
+}
+
 static int32_t ability_levels[24];
 static int ability_scenario,ability_adds,ability_removes,ability_sets;
 static uint8_t fixture_ability_add(uint64_t u,uint32_t id) {
@@ -672,10 +753,10 @@ __declspec(dllexport) uint32_t BridgeFogTailTest(
 
 static int spawn_case, spawn_create_calls, spawn_remove_calls;
 static uint32_t spawn_requested, spawn_actual, spawn_x_bits, spawn_y_bits, spawn_facing_bits;
-static uint64_t spawn_create(uint64_t player, uint32_t rawcode, float x, float y, float facing) {
+static uint64_t spawn_create(uint64_t player, uint32_t rawcode, float *x, float *y, float *facing) {
     union { float value; uint32_t bits; } xb, yb, fb;
     (void)player;
-    xb.value = x; yb.value = y; fb.value = facing;
+    xb.value = *x; yb.value = *y; fb.value = *facing;
     ++spawn_create_calls;
     spawn_x_bits = xb.bits; spawn_y_bits = yb.bits; spawn_facing_bits = fb.bits;
     if (spawn_case == 1) return 0;

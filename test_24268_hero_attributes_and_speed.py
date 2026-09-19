@@ -109,13 +109,24 @@ def test_3_0_attack_fields_show_effective_speed_and_keep_them_read_only():
     trainer = object.__new__(War3Trainer)
     base = 0x200000
     fields = []
-    trainer._append_attack_fields(AttackMemory(base), fields, "attack1", "攻击1", base, current_24268=True)
+    trainer._append_attack_fields(
+        AttackMemory(base), fields, "attack1", "攻击1", base,
+        current_24268=True,
+        timing_24268={
+            "speed_factor": 1.4,
+            "after_effective_interval": 2.0 / 1.4,
+            "after_true_aps": 0.7,
+        },
+        expected_speed_24268=0.75,
+    )
     by_key = {field.key: field for field in fields}
     assert by_key["attack1_interval"].address == base + 0x228
     assert "attack1_first_delay" not in by_key
     assert by_key["attack1_speed_factor"].value == pytest.approx(1.4)
     assert by_key["attack1_effective_interval"].value == pytest.approx(2.0 / 1.4)
-    assert by_key["attack1_attacks_per_second"].value == pytest.approx(0.7)
+    assert by_key["attack1_expected_speed"].value == pytest.approx(0.75)
+    assert by_key["attack1_true_speed"].value == pytest.approx(0.7)
     assert not by_key["attack1_speed_factor"].writable
     assert not by_key["attack1_effective_interval"].writable
-    assert not by_key["attack1_attacks_per_second"].writable
+    assert not by_key["attack1_expected_speed"].writable
+    assert by_key["attack1_true_speed"].writable

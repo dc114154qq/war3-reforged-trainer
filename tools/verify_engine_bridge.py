@@ -24,6 +24,7 @@ def main() -> None:
         b"BridgeUninstall",
         b"BridgeHeroQuery",
         b"BridgeHeroAttributesQuery",
+        b"BridgeAttackSpeedQuery",
         b"BridgeAbilityQuery",
         b"BridgeAbilityFieldQuery",
         b"BridgeItemQuery",
@@ -56,6 +57,7 @@ def main() -> None:
 
     marker(b"bridge_abi", (0x2426801C, 216, 632))
     marker(b"hero_attributes_batch_abi", (0x24268030, 216, 1144))
+    marker(b"attack_speed_batch_abi", (0x24268032, 216, 640))
     marker(b"ability_batch_abi", (0x24268011, 216, 832))
     marker(b"ability_field_batch_abi", (0x24268021, 216, 7688))
     marker(b"item_batch_abi", (0x2426802D, 216, 6008))

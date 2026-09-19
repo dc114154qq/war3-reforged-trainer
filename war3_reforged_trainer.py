@@ -5987,6 +5987,9 @@ class War3Trainer:
     def hero_progress_24268(self, target: int = 0) -> dict:
         return self._engine_instance_24268().hero_progress(target)
 
+    def hero_attributes_24268(self, target: int) -> dict:
+        return self._engine_instance_24268().hero_attributes(target)
+
     def ability_batch_24268(self, rawcode: int | str, action: int = 0, level: int = 0) -> dict:
         ability = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
         if not ability:
@@ -6307,23 +6310,9 @@ class War3Trainer:
         if not 0 <= target <= 1_000_000_000:
             raise ValueError("英雄属性必须在 0 到 1000000000 之间")
         if getattr(self, "_native_selection_unavailable", False):
-            candidate, _handle = self._direct_selected_context()
-            with self._process_memory(write=True) as memory:
-                fields = self._unit_fields_from_candidate(memory, candidate)
-                by_key = {field.key: field for field in fields}
-                requested = ("base_strength", "base_agility", "intelligence_total")
-                missing = [key for key in requested if key not in by_key]
-                if missing:
-                    raise RuntimeError("当前选中单位缺少可写英雄字段：" + ",".join(missing))
-                for key in requested:
-                    field = by_key[key]
-                    if not field.write_address or field.write_type not in {"i32", "f32"}:
-                        raise RuntimeError(f"英雄字段不可写：{key}")
-                    self._write_memory_value(memory, field.write_address, field.write_type, target)
-                refreshed = self._unit_fields_from_candidate(memory, candidate)
-            actual = {field.key: int(field.value) for field in refreshed if field.key in requested}
-            if any(actual.get(key) != target for key in requested):
-                raise RuntimeError(f"3.0 英雄属性写入读回不一致：{actual}")
+            result = self.hero_attributes_24268(target)
+            if not result.get("rows"):
+                raise RuntimeError("当前选中单位中没有英雄")
             return target
         candidate, unit_handle = self._direct_selected_context()
         results = self._run_native_helper_ops(unit_handle, (
@@ -6343,26 +6332,8 @@ class War3Trainer:
             raise ValueError("英雄属性必须在 0 到 1000000000 之间")
         if not getattr(self, "_native_selection_unavailable", False):
             return int(bool(self.set_selected_hero_attributes(target)))
-        selected = self._selected_candidates_snapshot(None)
-        changed = 0
-        requested = ("base_strength", "base_agility", "intelligence_total")
-        with self._process_memory(write=True) as memory:
-            for candidate, _unit_handle in selected:
-                fields = self._unit_fields_from_candidate(memory, candidate)
-                by_key = {field.key: field for field in fields}
-                if any(key not in by_key for key in requested):
-                    continue
-                for key in requested:
-                    field = by_key[key]
-                    if not field.write_address or field.write_type not in {"i32", "f32"}:
-                        raise RuntimeError(f"英雄字段不可写：{key}")
-                    self._write_memory_value(memory, field.write_address, field.write_type, target)
-                refreshed = self._unit_fields_from_candidate(memory, candidate)
-                actual = {field.key: int(field.value) for field in refreshed if field.key in requested}
-                if any(actual.get(key) != target for key in requested):
-                    raise RuntimeError(f"3.0 英雄属性写入读回不一致：{actual}")
-                changed += 1
-        return changed
+        result = self.hero_attributes_24268(target)
+        return len(result["rows"])
 
     def add_selected_hero_skill_points(self, amount: int = 1) -> int:
         delta = int(amount)
@@ -13713,6 +13684,7 @@ class War3Trainer:
         key_prefix: str,
         label_prefix: str,
         data: int,
+        current_24268: bool = False,
     ) -> None:
         damage_note = "运行时攻击组件字段；用于实际选中单位，面板黄字可能有缓存"
         timing_note = "运行时攻击组件字段；已按当前选中单位链读写验证"
@@ -13730,8 +13702,62 @@ class War3Trainer:
         self._append_unit_field(pm, fields, f"{key_prefix}_damage_loss_factor", f"{label_prefix}丢失因子(候选只读)", "f32", data + 0x11C, "攻击", writable=False, note=readonly_candidate_note)
         self._append_unit_field(pm, fields, f"{key_prefix}_type", f"{label_prefix}种类", "i32", data + 0x16C, "攻击")
         self._append_unit_field(pm, fields, f"{key_prefix}_max_targets", f"{label_prefix}最大目标数(候选)", "i32", data + 0x178, "攻击", note=candidate_note)
-        self._append_unit_field(pm, fields, f"{key_prefix}_interval", f"{label_prefix}间隔/冷却", "f32", data + 0x200, "攻击", note=timing_note)
-        self._append_unit_field(pm, fields, f"{key_prefix}_first_delay", f"{label_prefix}首次延时", "f32", data + 0x228, "攻击", note=timing_note)
+        if current_24268:
+            self._append_unit_field(
+                pm, fields, f"{key_prefix}_interval", f"{label_prefix}基础间隔/冷却",
+                "f32", data + 0x228, "攻击",
+                note="3.0 当前武器基础冷却；不是敏捷和攻速加成后的最终攻击间隔",
+            )
+            try:
+                attack_kind = pm.read_i32(data + 0x35C)
+                raw_factor = pm.read_f32(data + 0x2B8)
+                negative_modifier = pm.read_f32(data + 0x2D0)
+                base_cooldown = pm.read_f32(data + 0x228)
+                if attack_kind in {1, 64, 128, 256}:
+                    speed_factor = 1.0
+                else:
+                    speed_factor = raw_factor
+                    if negative_modifier < 0.0 and abs(negative_modifier) >= 0.001:
+                        speed_factor += negative_modifier
+                    speed_factor = min(5.0, max(0.2, speed_factor))
+                if (
+                    math.isfinite(base_cooldown) and 0.0 < base_cooldown < 1000.0
+                    and math.isfinite(speed_factor) and 0.0 < speed_factor <= 5.0
+                ):
+                    effective_interval = base_cooldown / speed_factor
+                    attacks_per_second = speed_factor / base_cooldown
+                    real_note = (
+                        "3.0 运行时攻击组件按游戏当前公式计算；包含敏捷和攻速加成，"
+                        "只读显示"
+                    )
+                    fields.extend((
+                        UnitMemoryField(
+                            key=f"{key_prefix}_speed_factor",
+                            label=f"{label_prefix}当前攻速倍率",
+                            value_type="f32", value=speed_factor,
+                            address=data + 0x2B8, category="攻击",
+                            write_address=0, write_type="", note=real_note,
+                        ),
+                        UnitMemoryField(
+                            key=f"{key_prefix}_effective_interval",
+                            label=f"{label_prefix}真实攻击间隔(秒)",
+                            value_type="f32", value=effective_interval,
+                            address=data + 0x228, category="攻击",
+                            write_address=0, write_type="", note=real_note,
+                        ),
+                        UnitMemoryField(
+                            key=f"{key_prefix}_attacks_per_second",
+                            label=f"{label_prefix}真实每秒攻击次数",
+                            value_type="f32", value=attacks_per_second,
+                            address=data + 0x228, category="攻击",
+                            write_address=0, write_type="", note=real_note,
+                        ),
+                    ))
+            except OSError:
+                pass
+        else:
+            self._append_unit_field(pm, fields, f"{key_prefix}_interval", f"{label_prefix}间隔/冷却", "f32", data + 0x200, "攻击", note=timing_note)
+            self._append_unit_field(pm, fields, f"{key_prefix}_first_delay", f"{label_prefix}首次延时", "f32", data + 0x228, "攻击", note=timing_note)
         self._append_unit_field(pm, fields, f"{key_prefix}_acquire_range", f"{label_prefix}主动攻击范围", "f32", data + 0x370, "攻击", note=timing_note)
         self._append_unit_field(pm, fields, f"{key_prefix}_projectile_speed", f"{label_prefix}投射物速度", "f32", data + 0x398, "攻击", note=timing_note)
         self._append_unit_field(pm, fields, f"{key_prefix}_range", f"{label_prefix}范围", "f32", data + 0x3A8, "攻击", note=timing_note)
@@ -14754,7 +14780,10 @@ class War3Trainer:
         attack = components.get("attack")
         if attack is not None:
             _wrapper, data = attack
-            self._append_attack_fields(pm, fields, "attack1", "攻击1", data)
+            self._append_attack_fields(
+                pm, fields, "attack1", "攻击1", data,
+                current_24268=bool(getattr(self, "_native_selection_unavailable", False)),
+            )
             try:
                 attack2_data = data + 0x638
                 has_attack2 = pm.attack2 if native is not None else (

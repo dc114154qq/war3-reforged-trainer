@@ -40,6 +40,64 @@ __declspec(dllexport) uint64_t BridgeTestRun(HeroWork *w,int count,int scenario)
 }
 __declspec(dllexport) int BridgeTestWrites(void) {return fixture_writes;}
 
+static int32_t fixture_attributes[24][3];
+static int fixture_attribute_case, fixture_attribute_writes;
+static int fixture_attribute_index(uint64_t unit) { return (int)(unit - 0x100000); }
+static int32_t fixture_get_strength(uint64_t unit, uint32_t bonuses) {
+    (void)bonuses; return fixture_attributes[fixture_attribute_index(unit)][0];
+}
+static int32_t fixture_get_agility(uint64_t unit, uint32_t bonuses) {
+    (void)bonuses; return fixture_attributes[fixture_attribute_index(unit)][1];
+}
+static int32_t fixture_get_intelligence(uint64_t unit, uint32_t bonuses) {
+    (void)bonuses; return fixture_attributes[fixture_attribute_index(unit)][2];
+}
+static void fixture_set_strength(uint64_t unit, int32_t value, uint32_t permanent) {
+    (void)permanent; ++fixture_attribute_writes;
+    fixture_attributes[fixture_attribute_index(unit)][0] = value;
+}
+static void fixture_set_agility(uint64_t unit, int32_t value, uint32_t permanent) {
+    (void)permanent; ++fixture_attribute_writes;
+    fixture_attributes[fixture_attribute_index(unit)][1] = value;
+}
+static void fixture_set_intelligence(uint64_t unit, int32_t value, uint32_t permanent) {
+    (void)permanent; ++fixture_attribute_writes;
+    if (fixture_attribute_case != 1)
+        fixture_attributes[fixture_attribute_index(unit)][2] = value;
+}
+__declspec(dllexport) uint64_t BridgeHeroAttributesTestRun(
+    HeroAttributesWork *w, int count, int scenario
+) {
+    static BridgeCommand cmd;
+    int i;
+    if (count < 0 || count > 24) return 0;
+    fixture_count = count; fixture_index = 0; fixture_type_calls = 0;
+    fixture_scenario = scenario == 2 ? 2 : 0;
+    fixture_attribute_case = scenario; fixture_attribute_writes = 0;
+    for (i = 0; i < 24; ++i) {
+        fixture_levels[i] = i % 3 == 0 ? 1 : 0;
+        fixture_attributes[i][0] = 10 + i;
+        fixture_attributes[i][1] = 20 + i;
+        fixture_attributes[i][2] = 30 + i;
+    }
+    cmd.work = w; cmd.tls_value = w->expected_tls; g_dispatch = &cmd;
+    w->selection.local_player = fixture_player; w->selection.create_group = fixture_group;
+    w->selection.enum_selected = fixture_enum; w->selection.first_of_group = fixture_first;
+    w->selection.remove_from_group = fixture_remove; w->selection.destroy_group = fixture_destroy;
+    w->selection.unit_type_id = fixture_type; w->selection.hero_level = fixture_level;
+    w->get_strength = fixture_get_strength; w->get_agility = fixture_get_agility;
+    w->get_intelligence = fixture_get_intelligence;
+    w->set_strength = fixture_set_strength; w->set_agility = fixture_set_agility;
+    w->set_intelligence = fixture_set_intelligence;
+    return BridgeHeroAttributesQuery();
+}
+__declspec(dllexport) int BridgeHeroAttributesTestStat(int kind, int index) {
+    if (kind == 0) return fixture_attribute_writes;
+    if (kind >= 1 && kind <= 3 && index >= 0 && index < 24)
+        return fixture_attributes[index][kind - 1];
+    return -1;
+}
+
 static int32_t ability_levels[24];
 static int ability_scenario,ability_adds,ability_removes,ability_sets;
 static uint8_t fixture_ability_add(uint64_t u,uint32_t id) {

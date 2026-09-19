@@ -35,6 +35,14 @@ def detect_ui_language(locale_name: str | None = None) -> str:
 
 
 _EN_TRANSLATIONS = {
+    "基础间隔/冷却": "Base Interval/Cooldown",
+    "当前攻速倍率": "Current Attack-Speed Multiplier",
+    "真实攻击间隔(秒)": "Effective Attack Interval (s)",
+    "真实每秒攻击次数": "Effective Attacks per Second",
+    "3.0 当前武器基础冷却；不是敏捷和攻速加成后的最终攻击间隔": "3.0 current weapon base cooldown; this is not the final interval after agility and attack-speed modifiers",
+    "3.0 运行时攻击组件按游戏当前公式计算；包含敏捷和攻速加成，": "Calculated from the 3.0 runtime attack component using the current game formula; includes agility and attack-speed modifiers, ",
+    "只读显示": "read-only",
+    "当前选中单位中没有英雄": "No hero is present in the current selection",
     "深色模式": "Dark mode",
     "头部": "Head",
     "胸部": "Chest",

@@ -104,6 +104,9 @@ def query_completed(state):
 def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt=1):
     if kind=='hero':
         validate_work(work_payload);expected_abi=ABI;marker_name=b'bridge_abi';query_name=b'BridgeHeroQuery'
+    elif kind=='hero_attributes':
+        from war3_hero_attributes_protocol import ABI as expected_abi,validate_work as validate_hero_attributes
+        validate_hero_attributes(work_payload);marker_name=b'hero_attributes_batch_abi';query_name=b'BridgeHeroAttributesQuery'
     elif kind=='ability':
         from war3_ability_protocol import ABI as expected_abi,validate_work as validate_ability
         validate_ability(work_payload);marker_name=b'ability_batch_abi';query_name=b'BridgeAbilityQuery'

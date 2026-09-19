@@ -74,6 +74,27 @@ class Engine24268:
         names=tuple(n for n,_ in SIGNATURES)+tuple(n for n,_ in HERO_SIGNATURES)
         return self._execute('hero',names,lambda entries,tls:build_work(entries,tls,target),decode_work,dict(target=target))
 
+    def hero_attributes(self, target=None):
+        from war3_hero_attributes_protocol import (
+            SIGNATURES as ATTRIBUTE_SIGNATURES,
+            build_work as build,
+            decode_work as decode,
+        )
+        if target is not None:
+            values = (target,) * 3 if isinstance(target, int) and not isinstance(target, bool) else tuple(target)
+            if len(values) != 3 or any(
+                isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 1_000_000_000
+                for value in values
+            ):
+                raise ValueError('Hero attributes must contain three integers in 0..1000000000')
+        names = tuple(name for name, _signature in SIGNATURES + ATTRIBUTE_SIGNATURES)
+        return self._execute(
+            'hero_attributes', names,
+            lambda entries, tls: build(entries, tls, target),
+            decode,
+            dict(target=target),
+        )
+
     def ability_batch(self,rawcode,action=0,level=0):
         from war3_ability_protocol import SIGNATURES as ABILITIES,build_work as build,decode_work as decode
         if (isinstance(rawcode,bool) or not isinstance(rawcode,int) or not 0<rawcode<=0xffffffff

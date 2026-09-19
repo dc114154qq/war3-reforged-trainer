@@ -3431,8 +3431,6 @@ class War3Trainer:
         self._component_index_misses: set[int] = set()
         self._unit_component_layout_confirmed = False
         self._ability_instances_cache: dict[tuple[int, int, int, bool], list[AbilityInstance]] = {}
-        self._expected_attack_speed_by_type: dict[tuple[int, int], float] = {}
-        self._expected_attack_speed_lock = threading.RLock()
         self._ability_field_write_disabled = False
         self._item_field_write_disabled = False
         self._selection_manager_offset = self.CPLAYER_SELECTION_MANAGER_OFFSET
@@ -6010,16 +6008,6 @@ class War3Trainer:
             int(weapon),
         )
 
-    def _observe_expected_attack_speed(
-        self, unit_type_id: int, weapon: int, true_aps: float,
-    ) -> float:
-        key = (int(unit_type_id) & 0xFFFFFFFF, int(weapon))
-        with self._expected_attack_speed_lock:
-            previous = self._expected_attack_speed_by_type.get(key, 0.0)
-            expected = max(previous, float(true_aps))
-            self._expected_attack_speed_by_type[key] = expected
-            return expected
-
     def ability_batch_24268(self, rawcode: int | str, action: int = 0, level: int = 0) -> dict:
         ability = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
         if not ability:
@@ -7054,17 +7042,6 @@ class War3Trainer:
 
     def cast_fullscreen_clap(self, *, success_limit: int = 0) -> tuple[int, int]:
         entries = ("AHtc", "AOws")
-        if getattr(self, "_native_selection_unavailable", False):
-            attempted = succeeded = 0
-            for ability in entries:
-                current_attempted, current_succeeded = self._run_direct_ability_over_enemy_units(
-                    ability,
-                    "immediate",
-                    success_limit=success_limit,
-                )
-                attempted += current_attempted
-                succeeded += current_succeeded
-            return attempted, succeeded
         attempted = succeeded = 0
         for ability in entries:
             current_attempted, current_succeeded = self._run_selected_ability_effect(
@@ -7087,12 +7064,6 @@ class War3Trainer:
         )
 
     def cast_fullscreen_starfall(self, *, success_limit: int = 0) -> tuple[int, int]:
-        if getattr(self, "_native_selection_unavailable", False):
-            return self._run_direct_ability_over_enemy_units(
-                "AEsb",
-                "immediate",
-                success_limit=success_limit,
-            )
         return self._run_selected_ability_effect(
             "AEsb",
             "immediate",
@@ -7109,12 +7080,6 @@ class War3Trainer:
 
     def cast_fullscreen_auto_effect(self, *, success_limit: int = 0) -> tuple[int, int]:
         passes = int(success_limit) if success_limit else 5
-        if getattr(self, "_native_selection_unavailable", False):
-            return self._run_direct_ability_over_enemy_units(
-                "AEfk",
-                "immediate",
-                success_limit=passes,
-            )
         return self._run_selected_ability_effect(
             "AEfk",
             "noarg",
@@ -13716,7 +13681,6 @@ class War3Trainer:
         data: int,
         current_24268: bool = False,
         timing_24268: dict | None = None,
-        expected_speed_24268: float = 0.0,
     ) -> None:
         damage_note = "运行时攻击组件字段；用于实际选中单位，面板黄字可能有缓存"
         timing_note = "运行时攻击组件字段；已按当前选中单位链读写验证"
@@ -13745,10 +13709,6 @@ class War3Trainer:
                 effective_interval = float(timing_24268["after_effective_interval"])
                 true_aps = float(timing_24268["after_true_aps"])
                 exact_note = "按 3.0 游戏内部最终攻击间隔函数的等价公式从当前运行时组件读取"
-                expected_note = (
-                    "本次修改器会话中同单位类型观察到的最高真正攻速；"
-                    "跨地图对象重建后保留，用于识别攻速丢失"
-                )
                 fields.extend((
                     UnitMemoryField(
                         key=f"{key_prefix}_speed_factor",
@@ -13759,26 +13719,20 @@ class War3Trainer:
                     ),
                     UnitMemoryField(
                         key=f"{key_prefix}_effective_interval",
-                        label=f"{label_prefix}真正攻击间隔(秒)",
+                        label=f"{label_prefix}当前引擎实际攻击间隔(秒)",
                         value_type="f32", value=effective_interval,
                         address=data + 0x228, category="攻击",
                         write_address=0, write_type="", note=exact_note,
                     ),
                     UnitMemoryField(
-                        key=f"{key_prefix}_expected_speed",
-                        label=f"{label_prefix}应该有的攻速(次/秒)",
-                        value_type="f32", value=expected_speed_24268,
-                        address=data + 0x228, category="攻击",
-                        write_address=0, write_type="", note=expected_note,
-                    ),
-                    UnitMemoryField(
                         key=f"{key_prefix}_true_speed",
-                        label=f"{label_prefix}真正的攻速(次/秒)",
+                        label=f"{label_prefix}当前引擎实际攻速(次/秒)",
                         value_type="f32", value=true_aps,
                         address=data + 0x228, category="攻击",
                         write_address=0, write_type="", native_write=True,
                         note=(
-                            exact_note + "；可写：输入目标每秒攻击次数，修改器会通过游戏接口"
+                            exact_note + "；这是当前游戏实际使用的数值，可能已经受换图敏捷 bug 影响；"
+                            "可写：输入目标每秒攻击次数，修改器会通过游戏接口"
                             "反算基础冷却并以最终攻击间隔读回确认"
                         ),
                     ),
@@ -14835,17 +14789,12 @@ class War3Trainer:
             _wrapper, data = attack
             current_24268 = bool(getattr(self, "_native_selection_unavailable", False))
             timing_24268 = None
-            expected_speed_24268 = 0.0
             if current_24268:
                 timing_24268 = self._attack_timing_24268_from_memory(pm, data)
-                expected_speed_24268 = self._observe_expected_attack_speed(
-                    candidate.unit_type_id, 0, timing_24268["after_true_aps"],
-                )
             self._append_attack_fields(
                 pm, fields, "attack1", "攻击1", data,
                 current_24268=current_24268,
                 timing_24268=timing_24268,
-                expected_speed_24268=expected_speed_24268,
             )
             try:
                 attack2_data = data + 0x638
@@ -16275,16 +16224,16 @@ class War3Trainer:
         try:
             target_aps = float(str(value).strip()) if isinstance(value, str) else float(value)
         except (TypeError, ValueError) as exc:
-            raise ValueError("真正的攻速必须是 0.001 到 1000 的有限数值") from exc
+            raise ValueError("当前引擎实际攻速必须是 0.001 到 1000 的有限数值") from exc
         if not math.isfinite(target_aps) or not 0.001 <= target_aps <= 1000.0:
-            raise ValueError("真正的攻速必须是 0.001 到 1000 的有限数值")
+            raise ValueError("当前引擎实际攻速必须是 0.001 到 1000 的有限数值")
         components = self._selected_components(pm, candidate.owner_address)
         attack = components.get("attack")
         if attack is None or field.key != "attack1_true_speed":
             raise RuntimeError("当前单位没有经过校验的第一攻击组件")
         attack_data = attack[1]
         if field.address != attack_data + 0x228:
-            raise RuntimeError("真正攻速字段绑定的攻击组件已经变化，请重新读取")
+            raise RuntimeError("当前引擎实际攻速字段绑定的攻击组件已经变化，请重新读取")
         result = self.attack_speed_24268(candidate, attack_data, target_aps, 0)
         actual = float(result["after_true_aps"])
         return replace(
@@ -16295,7 +16244,7 @@ class War3Trainer:
             write_type="",
             native_write=True,
             note=(
-                f"游戏接口读回确认：真正攻速 {result['true_aps']:.6g}->{actual:.6g} 次/秒；"
+                f"游戏接口读回确认：当前引擎实际攻速 {result['true_aps']:.6g}->{actual:.6g} 次/秒；"
                 f"基础冷却 {result['base_cooldown']:.6g}->{result['after_base_cooldown']:.6g} 秒"
             ),
         )

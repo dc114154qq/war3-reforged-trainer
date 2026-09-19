@@ -117,16 +117,15 @@ def test_3_0_attack_fields_show_effective_speed_and_keep_them_read_only():
             "after_effective_interval": 2.0 / 1.4,
             "after_true_aps": 0.7,
         },
-        expected_speed_24268=0.75,
     )
     by_key = {field.key: field for field in fields}
     assert by_key["attack1_interval"].address == base + 0x228
     assert "attack1_first_delay" not in by_key
     assert by_key["attack1_speed_factor"].value == pytest.approx(1.4)
     assert by_key["attack1_effective_interval"].value == pytest.approx(2.0 / 1.4)
-    assert by_key["attack1_expected_speed"].value == pytest.approx(0.75)
+    assert "attack1_expected_speed" not in by_key
     assert by_key["attack1_true_speed"].value == pytest.approx(0.7)
+    assert "当前引擎实际攻速" in by_key["attack1_true_speed"].label
     assert not by_key["attack1_speed_factor"].writable
     assert not by_key["attack1_effective_interval"].writable
-    assert not by_key["attack1_expected_speed"].writable
     assert by_key["attack1_true_speed"].writable

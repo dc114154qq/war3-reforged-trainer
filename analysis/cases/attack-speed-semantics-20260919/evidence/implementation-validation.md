@@ -39,16 +39,15 @@ Target process: Warcraft III 3.0.0.24268, PID 5592.
   `tools/war3_bridge_24268.dll`.
 - PE file version: `2.0.3.0`; product version: `2.0.3`.
 
-## True-speed restoration and Ctrl+K follow-up
+## Current engine speed restoration and Ctrl+K follow-up
 
-The product now distinguishes these values:
-
-- `Expected Attack Speed`: the highest true attacks-per-second value observed
-  for the same unit rawcode and weapon during the current trainer session. The
-  value survives a map-side object rebuild and makes a later speed loss visible.
-- `True Attack Speed`: the reciprocal of the effective interval read from the
-  current runtime attack component with the verified equivalent of the game's
-  final-interval function. This field is writable.
+The product exposes `Current Engine Attack Speed`: the reciprocal of the
+effective interval read from the current runtime attack component with the
+verified equivalent of the game's final-interval function. This field is
+writable. The former `Expected Attack Speed` field and its session high-watermark
+cache were removed because neither can reconstruct equipment, ability, aura,
+slow, or custom-map contributions when the first observation is already made
+after the campaign transition bug.
 
 A true-speed write calculates the required base cooldown from the game's
 current aggregate factor, calls `BlzSetUnitAttackCooldown`, calls the internal
@@ -82,7 +81,7 @@ this host; it is unrelated to the changed product paths.
 Final live validation used Warcraft III PID 36464:
 
 - Zero-callback display read returned base cooldown `2.22`, speed factor
-  `1.4799998`, true interval `1.5000002`, and true/expected speed
+  `1.4799998`, effective interval `1.5000002`, and current engine speed
   `0.6666666` attacks per second.
 - One explicit same-value true-speed write returned `0.6666665` attacks per
   second and confirmed base cooldown `2.22 -> 2.22`. The game remained
@@ -95,3 +94,19 @@ same-value write callback. The write itself returned `completed=1,error=0`, but
 the second cleanup reported active/retained state and the game window later
 exited. That sequence was removed from the product: display reads now use no
 callback, and only an explicit write dispatches one transaction.
+
+## Full-screen effect routing follow-up
+
+The 3.0 immediate-effect route previously added the ability to every enemy and
+invoked the enemy's own immediate callback. A successful callback therefore did
+not prove that the local player's attack affected that enemy. Thunder Clap,
+Starfall, and the automatic area effect now remain on the selected local caster,
+temporarily expand their area to `100000`, invoke the caster callback, and then
+restore the field. Point and unit-target effects continue to enumerate live,
+unique enemies and invoke the local source ability at each validated target.
+
+Focused attack-speed, hero-attribute, product routing, native world-effect, and
+localization regression: `55 passed`. Native world-effect coverage includes
+enemy filtering, stale identities, bounded enumeration, callback faults, and
+cleanup. Gameplay visual/damage validation was not executed because no Warcraft
+III process was running after the change.

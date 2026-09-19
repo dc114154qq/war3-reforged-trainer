@@ -609,7 +609,7 @@ static int war3_executable_pointer(uint64_t address) {
         protection == PAGE_EXECUTE_WRITECOPY;
 }
 
-#include "C:/Users/14186/Desktop/xiugai/work/reforged-persistent-native/tools/war3_native_bootstrap.h"
+#include "../../tools/war3_native_bootstrap.h"
 
 static DWORD war3_persistent_resolve_natives(uint32_t *resolved_count) {
     uint32_t count = 0;
@@ -962,7 +962,7 @@ static DWORD war3_bound_ability_metadata(const NativeCommand *cmd, const NativeO
     return ERROR_SUCCESS;
 }
 
-#include "C:/Users/14186/Desktop/xiugai/work/reforged-persistent-native/tools/war3_native_ability_actions.h"
+#include "../../tools/war3_native_ability_actions.h"
 
 /* No engine callbacks between this check and a direct call or cleanup. */
 static DWORD war3_direct_identity_memory(const NativeCommand *cmd,uint32_t id,const uint64_t *v) {
@@ -983,7 +983,7 @@ static DWORD war3_direct_identity_memory(const NativeCommand *cmd,uint32_t id,co
     return ERROR_SUCCESS;
 }
 
-#include "C:/Users/14186/Desktop/xiugai/work/reforged-persistent-native/tools/war3_native_buff.h"
+#include "../../tools/war3_native_buff.h"
 
 /* Execute one direct ability effect while the unit and ability generations
    remain pinned inside the game-thread callback. The controller supplies no
@@ -1065,10 +1065,10 @@ static DWORD war3_bound_direct_ability(NativeCommand *cmd, NativeOp *op) {
     return error ? error : cleanup;
 }
 
-#include "C:/Users/14186/Desktop/xiugai/work/reforged-persistent-native/tools/war3_native_effect_lifecycle.h"
-#include "C:/Users/14186/Desktop/xiugai/work/reforged-persistent-native/tools/war3_native_toggle.h"
-#include "C:/Users/14186/Desktop/xiugai/work/reforged-persistent-native/tools/war3_native_world_effect.h"
-#include "C:/Users/14186/Desktop/xiugai/work/reforged-persistent-native/tools/war3_native_owner_kill.h"
+#include "../../tools/war3_native_effect_lifecycle.h"
+#include "../../tools/war3_native_toggle.h"
+#include "../../tools/war3_native_world_effect.h"
+#include "../../tools/war3_native_owner_kill.h"
 
 /* Six slots plus the engine's usable slot count. Slot membership, item
    generation and object-table backlinks replace external inventory records. */
@@ -1130,7 +1130,7 @@ static DWORD war3_bound_inventory(const NativeCommand *cmd, uint64_t *values) {
     return war3_validate_unit_identity(cmd, &cmd->ops[0]);
 }
 
-#include "C:/Users/14186/Desktop/xiugai/work/reforged-persistent-native/tools/war3_native_inventory_batch.h"
+#include "../../tools/war3_native_inventory_batch.h"
 
 typedef struct War3ItemIdentity {
     uint64_t handle, object, full;
@@ -1154,7 +1154,7 @@ static DWORD war3_item_identity(const War3ItemIdentity *item) {
     return ERROR_SUCCESS;
 }
 
-#include "C:/Users/14186/Desktop/xiugai/work/reforged-persistent-native/tools/war3_native_item_create.h"
+#include "../../tools/war3_native_item_create.h"
 
 static DWORD war3_same_inventory(const NativeCommand *cmd,const uint64_t *before,unsigned slot,
                                   const War3ItemIdentity *expected) {
@@ -1172,7 +1172,7 @@ static DWORD war3_same_inventory(const NativeCommand *cmd,const uint64_t *before
     return ERROR_SUCCESS;
 }
 
-#include "C:/Users/14186/Desktop/xiugai/work/reforged-persistent-native/tools/war3_native_slot_resolver.h"
+#include "../../tools/war3_native_slot_resolver.h"
 
 /* Return success only after the new object occupies the exact slot. Retain
    the old object until then; never restore into a slot claimed by a trigger. */
@@ -1408,9 +1408,9 @@ static DWORD war3_set_bound_hero_int(NativeCommand *cmd,NativeOp *op) {
     return error;
 }
 
-#include "C:/Users/14186/Desktop/xiugai/work/reforged-persistent-native/tools/war3_native_hero_skill.h"
-#include "C:/Users/14186/Desktop/xiugai/work/reforged-persistent-native/tools/war3_native_hero_base.h"
-#include "C:/Users/14186/Desktop/xiugai/work/reforged-persistent-native/tools/war3_native_hero_progress.h"
+#include "../../tools/war3_native_hero_skill.h"
+#include "../../tools/war3_native_hero_base.h"
+#include "../../tools/war3_native_hero_progress.h"
 
 static int war3_is_ability_field_op(uint32_t kind) {
     return kind == WAR3_NATIVE_OP_JASS_ABILITY_FIELD_GET ||
@@ -2361,7 +2361,7 @@ static int war3_is_essential_ability(uint32_t rawcode) {
     return 0;
 }
 
-#include "C:/Users/14186/Desktop/xiugai/work/reforged-persistent-native/tools/war3_native_clone_guard.h"
+#include "../../tools/war3_native_clone_guard.h"
 
 static int war3_copy_item_instance_fields(
     War3CloneGuard *clone_guard,

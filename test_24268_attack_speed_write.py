@@ -88,17 +88,6 @@ def test_ctrl_k_spawn_uses_pointer_real_arguments(fixture_dll):
     assert fixture_dll.BridgeSpawnTestStat(6) & 0xFFFFFFFF == facing_bits
 
 
-def test_expected_speed_keeps_session_high_watermark_by_unit_type():
-    trainer = object.__new__(War3Trainer)
-    trainer._expected_attack_speed_by_type = {}
-    import threading
-    trainer._expected_attack_speed_lock = threading.RLock()
-    assert trainer._observe_expected_attack_speed(0x486D6B67, 0, 0.7) == pytest.approx(0.7)
-    assert trainer._observe_expected_attack_speed(0x486D6B67, 0, 0.6) == pytest.approx(0.7)
-    assert trainer._observe_expected_attack_speed(0x486D6B67, 0, 0.8) == pytest.approx(0.8)
-    assert trainer._observe_expected_attack_speed(0x486D6B67, 1, 0.5) == pytest.approx(0.5)
-
-
 def test_product_true_speed_write_uses_exact_engine_transaction():
     trainer = object.__new__(War3Trainer)
     candidate = UnitCandidate(

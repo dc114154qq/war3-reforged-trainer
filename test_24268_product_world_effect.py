@@ -42,12 +42,12 @@ def test_world_effect_protocol_accepts_all_current_callback_modes(action):
 @pytest.mark.parametrize(
     "method,expected",
     [
-        ("cast_fullscreen_clap", [("AHtc", "immediate"), ("AOws", "immediate")]),
-        ("cast_fullscreen_starfall", [("AEsb", "immediate")]),
-        ("cast_fullscreen_auto_effect", [("AEfk", "immediate")]),
+        ("cast_fullscreen_swarm", [("ACca", "point"), ("ACcv", "point"), ("AOsh", "point")]),
+        ("cast_fullscreen_monsoon", [("ANmo", "point")]),
+        ("cast_fullscreen_forked_lightning", [("ACfl", "target")]),
     ],
 )
-def test_current_fullscreen_immediate_features_use_world_enumeration(method, expected):
+def test_current_fullscreen_targeted_features_use_world_enumeration(method, expected):
     trainer = object.__new__(product.War3Trainer)
     trainer._native_selection_unavailable = True
     trainer._run_selected_ability_effect = Mock(side_effect=AssertionError("selected-only effect"))
@@ -55,6 +55,29 @@ def test_current_fullscreen_immediate_features_use_world_enumeration(method, exp
 
     result = getattr(trainer, method)(success_limit=9)
 
-    assert result == ((8, 6) if len(expected) == 2 else (4, 3))
+    assert result == (4 * len(expected), 3 * len(expected))
     assert [call.args[:2] for call in trainer._run_direct_ability_over_enemy_units.call_args_list] == expected
     assert all(call.kwargs["success_limit"] == 9 for call in trainer._run_direct_ability_over_enemy_units.call_args_list)
+
+
+@pytest.mark.parametrize(
+    "method,args,expected",
+    [
+        ("cast_fullscreen_clap", {}, [("AHtc", "noarg"), ("AOws", "noarg")]),
+        ("cast_fullscreen_starfall", {}, [("AEsb", "immediate")]),
+        ("cast_fullscreen_auto_effect", {"success_limit": 9}, [("AEfk", "noarg")]),
+    ],
+)
+def test_current_fullscreen_area_features_stay_on_local_caster(method, args, expected):
+    trainer = object.__new__(product.War3Trainer)
+    trainer._native_selection_unavailable = True
+    trainer._run_direct_ability_over_enemy_units = Mock(
+        side_effect=AssertionError("enemy units must not become the caster")
+    )
+    trainer._run_selected_ability_effect = Mock(return_value=(1, 1))
+
+    result = getattr(trainer, method)(**args)
+
+    assert result == ((2, 2) if len(expected) == 2 else (1, 1))
+    assert [call.args[:2] for call in trainer._run_selected_ability_effect.call_args_list] == expected
+    assert all(call.kwargs["area"] == 100000.0 for call in trainer._run_selected_ability_effect.call_args_list)

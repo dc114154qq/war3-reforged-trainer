@@ -6929,6 +6929,7 @@ class War3Trainer:
                     mode,
                     packed_point & 0xFFFFFFFF,
                     (packed_point >> 32) & 0xFFFFFFFF,
+                    area=area,
                 )
             else:
                 result = self.effect_batch_24268(
@@ -7031,10 +7032,11 @@ class War3Trainer:
         entries = ("ACca", "ACcv", "AOsh")
         attempted = succeeded = 0
         for ability in entries:
-            current_attempted, current_succeeded = self._run_direct_ability_over_enemy_units(
+            current_attempted, current_succeeded = self._run_selected_ability_effect(
                 ability,
                 "point",
-                success_limit=success_limit,
+                area=100000.0,
+                point=(0.0, 0.0),
             )
             attempted += current_attempted
             succeeded += current_succeeded
@@ -7054,13 +7056,12 @@ class War3Trainer:
         return attempted, succeeded
 
     def cast_fullscreen_monsoon(self, *, success_limit: int = 0) -> tuple[int, int]:
-        # The 3.0 point-effect bridge does not carry the legacy channel timer
-        # or point-area sentinel. Enumerate enemy units directly so each point
-        # callback receives a real map coordinate instead of only the cursor.
-        return self._run_direct_ability_over_enemy_units(
+        return self._run_selected_ability_effect(
             "ANmo",
             "point",
-            success_limit=success_limit,
+            area=100000.0,
+            point=(0.0, 0.0),
+            hold_seconds=12.0,
         )
 
     def cast_fullscreen_starfall(self, *, success_limit: int = 0) -> tuple[int, int]:
@@ -7072,10 +7073,10 @@ class War3Trainer:
         )
 
     def cast_fullscreen_forked_lightning(self, *, success_limit: int = 0) -> tuple[int, int]:
-        return self._run_direct_ability_over_enemy_units(
+        return self._run_selected_ability_effect(
             "ACfl",
-            "target",
-            success_limit=success_limit,
+            "immediate",
+            area=100000.0,
         )
 
     def cast_fullscreen_auto_effect(self, *, success_limit: int = 0) -> tuple[int, int]:

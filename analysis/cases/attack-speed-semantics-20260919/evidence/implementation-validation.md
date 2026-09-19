@@ -99,14 +99,28 @@ callback, and only an explicit write dispatches one transaction.
 
 The 3.0 immediate-effect route previously added the ability to every enemy and
 invoked the enemy's own immediate callback. A successful callback therefore did
-not prove that the local player's attack affected that enemy. Thunder Clap,
-Starfall, and the automatic area effect now remain on the selected local caster,
-temporarily expand their area to `100000`, invoke the caster callback, and then
-restore the field. Point and unit-target effects continue to enumerate live,
-unique enemies and invoke the local source ability at each validated target.
+not prove that the local player's attack affected that enemy. An initial fix
+kept Thunder Clap, Starfall, and the automatic area effect on the selected local
+caster but incorrectly left Swarm, Monsoon, and Forked Lightning on the old
+world-enumeration route.
+
+The follow-up failure log for PID 22456 reported `error=175, attempts=0` for
+Monsoon. Injection, window-thread delivery, and callback completion were all
+verified. The failure occurred before enemy enumeration because the bridge
+treated a JASS player handle as an internal unit owner while locating the
+temporary source ability. Directly calling the protected `UnitAddAbility`
+conversion target was rejected after a diagnostic run produced an execute
+access violation; that experiment is not part of the product DLL.
+
+All six full-screen commands now use the same selected-caster effect bridge.
+Area effects temporarily set `aare` to `100000`; point effects also pass a
+stable finite origin `(0, 0)`. Swarm and Monsoon use point callbacks, while
+Forked Lightning uses its verified immediate callback. The temporary ability
+and area restoration remain owned by one game-thread callback, and none of the
+six commands enters the failing world-enumeration path.
 
 Focused attack-speed, hero-attribute, product routing, native world-effect, and
-localization regression: `55 passed`. Native world-effect coverage includes
-enemy filtering, stale identities, bounded enumeration, callback faults, and
-cleanup. Gameplay visual/damage validation was not executed because no Warcraft
-III process was running after the change.
+localization regression: `58 passed`. Live callback validation on Warcraft III
+PID 19232 returned `changed=6, count=6` for Monsoon, all three Swarm abilities,
+and Forked Lightning; the game process remained responsive. Visual damage and
+animation coverage still requires direct observation in the running game.

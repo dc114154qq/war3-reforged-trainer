@@ -16,8 +16,13 @@ from urllib.request import Request, urlopen
 
 DEFAULT_REPOSITORY = "dc114154qq/war3-reforged-trainer"
 DEFAULT_COMPATIBILITY = "Warcraft III 2.0.4.23745"
+REFORGED_3_COMPATIBILITY = "Warcraft III 3.0.0.24268"
 HOTKEY_TAG_PREFIX = "hotkeys-"
 USER_AGENT = "war3-release-mirror/1.0"
+
+
+def release_compatibility(tag: str) -> str:
+    return REFORGED_3_COMPATIBILITY if tag.startswith("v2.") else DEFAULT_COMPATIBILITY
 
 
 def request_json(url: str) -> Any:
@@ -160,7 +165,7 @@ def normalize_github_release(
         "tag": release["tag_name"],
         "name": release.get("name") or release["tag_name"],
         "published_at": release.get("published_at") or release.get("created_at"),
-        "compatibility": DEFAULT_COMPATIBILITY,
+        "compatibility": release_compatibility(str(release["tag_name"])),
         "body": release.get("body") or "该版本未提供更新说明。",
         "source": "github",
         "source_url": release.get("html_url"),

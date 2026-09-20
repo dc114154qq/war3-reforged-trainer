@@ -40,7 +40,7 @@ from war3_ui_i18n import detect_ui_language, translate_ui_text
 from war3_native_profile import PROFILE_ID as NATIVE_PROFILE_ID, NATIVE_INDEX
 
 
-APP_VERSION = "2.0.3"
+APP_VERSION = "2.0.4"
 GAME_BUILD = "3.0.0.24268"
 PRODUCT_READ_MODE = "normal"
 PRODUCT_EDITION_LABEL = "普通读取版"

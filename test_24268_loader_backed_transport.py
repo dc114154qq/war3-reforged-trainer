@@ -6,6 +6,12 @@ from unittest.mock import Mock, patch
 import war3_engine_transport as transport
 
 
+def test_remote_entry_allows_process_local_instrumentation():
+    assert transport.remote_entry_valid(b"\xE9" + b"\x90" * 15)
+    assert not transport.remote_entry_valid(bytes(16))
+    assert not transport.remote_entry_valid(b"\x90" * 15)
+
+
 class _Export:
     def __init__(self, name, address):
         self.name = name

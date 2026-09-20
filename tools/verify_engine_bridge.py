@@ -43,6 +43,7 @@ def main() -> None:
         b"BridgeTerrainQuery",
         b"BridgeMapBoundsQuery",
         b"BridgeEquipmentQuery",
+        b"BridgeExtensionQuery",
     )
     missing = [name.decode("ascii") for name in required if name not in exports]
     if missing:
@@ -77,6 +78,7 @@ def main() -> None:
     marker(b"terrain_batch_abi", (0x2426802A, 216, 128))
     marker(b"map_bounds_batch_abi", (0x2426802C, 216, 128))
     marker(b"equipment_batch_abi", (0x2426802E, 216, 872))
+    marker(b"extension_batch_abi", (0x24268039, 216, 1808))
     for name in (b"BridgeUnitActionQuery",):
         if name not in exports:
             raise AssertionError("missing export: " + name.decode("ascii"))

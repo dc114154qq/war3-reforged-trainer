@@ -36,11 +36,20 @@ from war3_ability_fields import (
 )
 from war3_id_catalog import CATALOG_COUNTS, search_id_entries
 from war3_item_fields import ITEM_FIELD_BY_KEY, ITEM_FIELD_CATALOG, ItemFieldSpec
+from war3_3_extension_catalog import (
+    EQUIPMENT_SLOT_NAMES,
+    EQUIPMENT_SLOT_TYPES,
+    EQUIPMENT_TYPE_NAMES,
+    GENERIC_TALENT_RAWCODES,
+    GENERIC_TALENT_TIERS,
+    OFFICIAL_FRAMEWORK_ITEMS,
+    TALENT_CONTROLLERS,
+)
 from war3_ui_i18n import detect_ui_language, translate_ui_text
 from war3_native_profile import PROFILE_ID as NATIVE_PROFILE_ID, NATIVE_INDEX
 
 
-APP_VERSION = "2.0.4"
+APP_VERSION = "2.0.5"
 GAME_BUILD = "3.0.0.24268"
 PRODUCT_READ_MODE = "normal"
 PRODUCT_EDITION_LABEL = "普通读取版"
@@ -6037,6 +6046,545 @@ class War3Trainer:
             action, code, charges, int(target_unit_rawcode) & 0xFFFFFFFF,
             int(target_unit), int(expected_item),
         )
+
+    def extension_snapshot_24268(self) -> dict:
+        engine = self._engine_instance_24268()
+        controller_codes = tuple(
+            int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
+            for rawcode in (*TALENT_CONTROLLERS, *GENERIC_TALENT_RAWCODES)
+        )
+        snapshot = engine.extension(controller_codes)
+        abilities = dict(snapshot["abilities"])
+        active_choices = []
+        for controller, (_name, tiers) in TALENT_CONTROLLERS.items():
+            controller_code = int(self._coerce_memory_value("rawcode", controller)) & 0xFFFFFFFF
+            if abilities.get(controller_code, 0) > 0:
+                active_choices.extend(choice for tier in tiers for choice in tier)
+        target = int(snapshot["target_unit"])
+        for start in range(0, len(active_choices), 24):
+            codes = tuple(
+                int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
+                for rawcode in active_choices[start:start + 24]
+            )
+            detail = engine.extension(codes, target_unit=target)
+            abilities.update(detail["abilities"])
+            snapshot = detail
+        snapshot["abilities"] = abilities
+        return snapshot
+
+    def enable_generic_extension_template_24268(self) -> dict:
+        before = self.extension_snapshot_24268()
+        official = self.talent_state_24268(before)
+        if official["controller"] and official["controller"] != "GENERIC":
+            raise RuntimeError("当前单位已有官方专属天赋树，不应再挂载通用模板")
+        existing = [rawcode for rawcode in GENERIC_TALENT_RAWCODES
+                    if int(before["abilities"].get(
+                        int.from_bytes(rawcode.encode("ascii"), "big"), 0,
+                    )) > 0]
+        if existing and not official.get("generic"):
+            raise RuntimeError("当前单位已带有通用模板使用的基础能力，无法区分原有效果")
+        for rawcode in ("AIni", "AEqu", "ASde"):
+            result = self.ability_batch_24268(rawcode, 0, 0)
+            rows = [row for row in result.get("rows", ())
+                    if int(row.get("handle", 0)) == int(before["target_unit"])]
+            if len(rows) != 1:
+                raise RuntimeError(f"无法确认 {rawcode} 的当前能力状态")
+            if int(rows[0].get("after", 0)) <= 0:
+                self.ability_batch_24268(rawcode, 1, 1)
+        after = self.extension_snapshot_24268()
+        if int(after["target_unit"]) != int(before["target_unit"]) or int(after["bag_size"]) != 30:
+            raise RuntimeError("通用模板挂载后未读回 30 格扩展背包")
+        points = getattr(self, "_generic_talent_points", None)
+        if points is None:
+            points = self._generic_talent_points = {}
+        points.setdefault(int(after["target_unit"]), 0)
+        return after
+
+    def add_extension_item_24268(self, rawcode: int | str) -> dict:
+        code = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
+        if not code:
+            raise ValueError("物品 ID 无效")
+        before = self.extension_snapshot_24268()
+        bag_size = int(before["bag_size"])
+        occupied = sum(bool(int(item["handle"])) for item in before["bag"][:bag_size])
+        if bag_size <= 0:
+            raise RuntimeError("当前单位尚未启用 3.0 扩展背包；请先添加官方背包框架")
+        if occupied >= bag_size:
+            raise RuntimeError("扩展背包已满，拒绝创建会落在地面的物品")
+        self._engine_instance_24268().extension(
+            action=1,
+            target_unit=int(before["target_unit"]),
+            item_rawcode=code,
+        )
+        after = self.extension_snapshot_24268()
+        before_handles = {int(item["handle"]) for item in before["bag"] if int(item["handle"])}
+        created = [item for item in after["bag"]
+                   if int(item["handle"]) not in before_handles and int(item["rawcode"]) == code]
+        if len(created) != 1:
+            raise RuntimeError("物品创建后未在扩展背包中发现唯一新实例")
+        return after
+
+    def add_extension_framework_24268(self, rawcode: int | str) -> dict:
+        code_text = str(rawcode).strip()
+        if code_text not in OFFICIAL_FRAMEWORK_ITEMS:
+            raise ValueError("请选择受支持的官方 3.0 背包框架")
+        code = int(self._coerce_memory_value("rawcode", code_text)) & 0xFFFFFFFF
+        before = self.extension_snapshot_24268()
+        self._engine_instance_24268().extension(
+            action=1, target_unit=int(before["target_unit"]), item_rawcode=code,
+        )
+        after = self.extension_snapshot_24268()
+        if int(after["bag_size"]) <= 0:
+            raise RuntimeError("官方背包物品已创建，但当前地图没有启用扩展背包接口")
+        return after
+
+    @staticmethod
+    def _extension_bag_item(snapshot: dict, slot: int) -> dict:
+        slot = int(slot)
+        if not 0 <= slot < int(snapshot["bag_size"]):
+            raise ValueError("扩展背包槽无效")
+        item = snapshot["bag"][slot]
+        if not int(item["handle"]) or not int(item["rawcode"]):
+            raise ValueError("所选扩展背包槽为空")
+        return item
+
+    def set_extension_bag_charges_24268(self, slot: int, charges: int) -> dict:
+        charges = int(charges)
+        if not 0 <= charges <= 1_000_000_000:
+            raise ValueError("物品数量必须在 0 到 1000000000 之间")
+        before = self.extension_snapshot_24268()
+        item = self._extension_bag_item(before, slot)
+        self._engine_instance_24268().extension(
+            action=6,
+            target_unit=int(before["target_unit"]),
+            slot=charges,
+            item_rawcode=int(item["rawcode"]),
+            item_handle=int(item["handle"]),
+        )
+        after = self.extension_snapshot_24268()
+        same = [row for row in after["bag"] if int(row["handle"]) == int(item["handle"])]
+        if len(same) != 1 or int(same[0]["charges"]) != charges:
+            raise RuntimeError("物品数量写入后实例或读回值不一致")
+        return after
+
+    def drop_extension_bag_item_24268(self, slot: int) -> dict:
+        before = self.extension_snapshot_24268()
+        item = self._extension_bag_item(before, slot)
+        engine = self._engine_instance_24268()
+        result = engine.extension(
+            action=5,
+            target_unit=int(before["target_unit"]),
+            item_rawcode=int(item["rawcode"]),
+            item_handle=int(item["handle"]),
+        )
+        if int(before["bag_size"]) > 0 and int(result["bag_size"]) == 0:
+            engine.extension(
+                action=3,
+                target_unit=int(before["target_unit"]),
+                item_rawcode=int(item["rawcode"]),
+                item_handle=int(item["handle"]),
+            )
+            raise RuntimeError("所选物品承载当前扩展背包，已自动放回并拒绝丢弃")
+        after = self.extension_snapshot_24268()
+        if any(int(row["handle"]) == int(item["handle"]) for row in after["bag"]):
+            raise RuntimeError("物品丢弃后仍存在于扩展背包")
+        return after
+
+    def duplicate_extension_bag_item_24268(self, slot: int) -> dict:
+        before = self.extension_snapshot_24268()
+        source = self._extension_bag_item(before, slot)
+        bag_size = int(before["bag_size"])
+        occupied = sum(bool(int(item["handle"])) for item in before["bag"][:bag_size])
+        if occupied >= bag_size:
+            raise RuntimeError("扩展背包已满，无法复制物品")
+        engine = self._engine_instance_24268()
+        engine.extension(
+            action=1,
+            target_unit=int(before["target_unit"]),
+            item_rawcode=int(source["rawcode"]),
+        )
+        middle = self.extension_snapshot_24268()
+        before_handles = {int(item["handle"]) for item in before["bag"] if int(item["handle"])}
+        created = [item for item in middle["bag"]
+                   if int(item["handle"]) not in before_handles
+                   and int(item["rawcode"]) == int(source["rawcode"])]
+        if len(created) != 1:
+            raise RuntimeError("复制后未发现唯一的新物品实例")
+        copied = created[0]
+        try:
+            if int(copied["charges"]) != int(source["charges"]):
+                engine.extension(
+                    action=6,
+                    target_unit=int(before["target_unit"]),
+                    slot=int(source["charges"]),
+                    item_rawcode=int(copied["rawcode"]),
+                    item_handle=int(copied["handle"]),
+                )
+            after = self.extension_snapshot_24268()
+            matches = [item for item in after["bag"]
+                       if int(item["handle"]) == int(copied["handle"])]
+            if len(matches) != 1 or int(matches[0]["charges"]) != int(source["charges"]):
+                raise RuntimeError("复制物品的实例或数量读回不一致")
+            return after
+        except Exception as exc:
+            rollback_error = ""
+            try:
+                engine.extension(
+                    action=8,
+                    target_unit=int(before["target_unit"]),
+                    item_rawcode=int(copied["rawcode"]),
+                    item_handle=int(copied["handle"]),
+                )
+            except Exception as rollback_exc:
+                rollback_error = f"；删除复制实例失败：{rollback_exc}"
+            raise RuntimeError(f"复制物品事务失败：{exc}{rollback_error}") from exc
+
+    def _delete_extension_bag_item_24268(self, item_handle: int, item_rawcode: int) -> dict:
+        snapshot = self.extension_snapshot_24268()
+        matches = [row for row in snapshot["bag"]
+                   if int(row["handle"]) == int(item_handle)
+                   and int(row["rawcode"]) == int(item_rawcode)]
+        if len(matches) != 1:
+            raise RuntimeError("待删除的扩展背包实例不是唯一当前物品")
+        self._engine_instance_24268().extension(
+            action=8,
+            target_unit=int(snapshot["target_unit"]),
+            item_rawcode=int(item_rawcode),
+            item_handle=int(item_handle),
+        )
+        after = self.extension_snapshot_24268()
+        if any(int(row["handle"]) == int(item_handle) for row in after["bag"]):
+            raise RuntimeError("扩展背包实例删除后仍可见")
+        return after
+
+    def equip_extension_bag_slot_24268(self, slot: int) -> dict:
+        slot = int(slot)
+        snapshot = self.extension_snapshot_24268()
+        if not 0 <= slot < int(snapshot["bag_size"]):
+            raise ValueError("扩展背包槽无效")
+        item = snapshot["bag"][slot]
+        if not int(item["handle"]) or not int(item["rawcode"]):
+            raise ValueError("所选扩展背包槽为空")
+        target = int(snapshot["target_unit"])
+        self._engine_instance_24268().extension(
+            action=4,
+            target_unit=target,
+            item_rawcode=int(item["rawcode"]),
+            item_handle=int(item["handle"]),
+        )
+        return self.extension_snapshot_24268()
+
+    def unequip_extension_slot_24268(self, slot: int) -> dict:
+        slot = int(slot)
+        if not 0 <= slot < len(EQUIPMENT_SLOT_NAMES):
+            raise ValueError("装备槽无效")
+        snapshot = self.extension_snapshot_24268()
+        if sum(bool(item["handle"]) for item in snapshot["bag"]) >= int(snapshot["bag_size"]):
+            raise RuntimeError("扩展背包已满，卸下装备会导致物品丢失；请先腾出一个背包槽")
+        self._engine_instance_24268().extension(
+            action=2, target_unit=int(snapshot["target_unit"]), slot=slot,
+        )
+        return self.extension_snapshot_24268()
+
+    def save_extension_loadout_24268(self) -> dict:
+        snapshot = self.extension_snapshot_24268()
+        self._extension_saved_loadout = dict(
+            target_unit=int(snapshot["target_unit"]),
+            equipment=tuple(
+                (int(row["handle"]), int(row["rawcode"]))
+                for row in snapshot["equipment"]
+            ),
+        )
+        return snapshot
+
+    def _restore_extension_loadout_handles_24268(
+        self, desired: tuple[tuple[int, int], ...], target_unit: int,
+    ) -> dict:
+        if len(desired) != len(EQUIPMENT_SLOT_NAMES):
+            raise ValueError("套装记录槽位数无效")
+        engine = self._engine_instance_24268()
+        snapshot = self.extension_snapshot_24268()
+        if int(snapshot["target_unit"]) != int(target_unit):
+            raise RuntimeError("当前选中单位与套装记录不是同一个实例")
+
+        def locations(current: dict) -> dict[int, tuple[str, int, int]]:
+            found = {}
+            for area in ("bag", "equipment"):
+                for row in current[area]:
+                    handle = int(row["handle"])
+                    if handle:
+                        if handle in found:
+                            raise RuntimeError("同一物品实例同时出现在多个槽位")
+                        found[handle] = (area, int(row["slot"]), int(row["rawcode"]))
+            return found
+
+        initial_locations = locations(snapshot)
+        for handle, rawcode in desired:
+            if not handle:
+                continue
+            location = initial_locations.get(handle)
+            if location is None or location[2] != rawcode:
+                raise RuntimeError(
+                    f"套装物品实例 0x{handle:x}/{format_rawcode(rawcode)} 已不在当前背包或装备栏"
+                )
+
+        for slot, (wanted_handle, wanted_rawcode) in enumerate(desired):
+            snapshot = self.extension_snapshot_24268()
+            current_handle = int(snapshot["equipment"][slot]["handle"])
+            if current_handle == wanted_handle:
+                continue
+            current_locations = locations(snapshot)
+            if wanted_handle:
+                area, current_slot, actual_rawcode = current_locations[wanted_handle]
+                if actual_rawcode != wanted_rawcode:
+                    raise RuntimeError("套装物品实例身份在恢复期间发生变化")
+                if area == "equipment":
+                    bag_size = int(snapshot["bag_size"])
+                    occupied = sum(bool(int(row["handle"])) for row in snapshot["bag"][:bag_size])
+                    if occupied >= bag_size:
+                        raise RuntimeError("扩展背包已满，无法交换装备槽")
+                    engine.extension(action=2, target_unit=target_unit, slot=current_slot)
+                    snapshot = self.extension_snapshot_24268()
+                engine.extension(
+                    action=4,
+                    target_unit=target_unit,
+                    item_rawcode=wanted_rawcode,
+                    item_handle=wanted_handle,
+                )
+            elif current_handle:
+                bag_size = int(snapshot["bag_size"])
+                occupied = sum(bool(int(row["handle"])) for row in snapshot["bag"][:bag_size])
+                if occupied >= bag_size:
+                    raise RuntimeError("扩展背包已满，无法恢复空装备槽")
+                engine.extension(action=2, target_unit=target_unit, slot=slot)
+
+        after = self.extension_snapshot_24268()
+        actual = tuple((int(row["handle"]), int(row["rawcode"])) for row in after["equipment"])
+        if actual != desired:
+            raise RuntimeError("套装恢复后的九槽实例与保存记录不一致")
+        return after
+
+    def restore_extension_loadout_24268(self) -> dict:
+        saved = getattr(self, "_extension_saved_loadout", None)
+        if not saved:
+            raise RuntimeError("尚未保存当前单位的九槽套装")
+        before = self.extension_snapshot_24268()
+        before_layout = tuple(
+            (int(row["handle"]), int(row["rawcode"])) for row in before["equipment"]
+        )
+        target = int(saved["target_unit"])
+        try:
+            return self._restore_extension_loadout_handles_24268(tuple(saved["equipment"]), target)
+        except Exception as exc:
+            rollback_error = ""
+            try:
+                self._restore_extension_loadout_handles_24268(before_layout, target)
+            except Exception as rollback_exc:
+                rollback_error = f"；恢复操作前套装失败：{rollback_exc}"
+            raise RuntimeError(f"套装恢复失败：{exc}{rollback_error}") from exc
+
+    def audit_extension_equipment_24268(self, repair: bool = False) -> dict:
+        snapshot = self.extension_snapshot_24268()
+        issues = []
+        bad_slots = []
+        seen = {}
+        for area in ("bag", "equipment"):
+            for row in snapshot[area]:
+                handle = int(row["handle"])
+                if not handle:
+                    continue
+                if handle in seen:
+                    issues.append(
+                        f"实例 0x{handle:x} 同时位于 {seen[handle]} 与 {area}:{int(row['slot']) + 1}"
+                    )
+                else:
+                    seen[handle] = f"{area}:{int(row['slot']) + 1}"
+        for row in snapshot["equipment"]:
+            slot = int(row["slot"])
+            if not int(row["handle"]):
+                continue
+            item_type = int(row.get("equipment_type", 0))
+            expected = int(EQUIPMENT_SLOT_TYPES[slot])
+            if item_type not in (expected, 9):
+                issues.append(
+                    f"{EQUIPMENT_SLOT_NAMES[slot]}槽中的 {format_rawcode(int(row['rawcode']))} "
+                    f"类型为{EQUIPMENT_TYPE_NAMES.get(item_type, str(item_type))}"
+                )
+                bad_slots.append(slot)
+        repaired = []
+        if repair and bad_slots:
+            bag_size = int(snapshot["bag_size"])
+            occupied = sum(bool(int(row["handle"])) for row in snapshot["bag"][:bag_size])
+            if bag_size - occupied < len(bad_slots):
+                raise RuntimeError("扩展背包空位不足，无法安全卸下全部错槽装备")
+            for slot in bad_slots:
+                self._engine_instance_24268().extension(
+                    action=2, target_unit=int(snapshot["target_unit"]), slot=slot,
+                )
+                repaired.append(slot)
+            snapshot = self.extension_snapshot_24268()
+            remaining = self.audit_extension_equipment_24268(False)
+            if remaining["issues"]:
+                raise RuntimeError("装备结构修复后仍存在异常：" + "；".join(remaining["issues"]))
+        return dict(snapshot=snapshot, issues=tuple(issues), repaired=tuple(repaired))
+
+    def grant_talent_point_24268(self) -> dict:
+        snapshot = self.extension_snapshot_24268()
+        state = self.talent_state_24268(snapshot)
+        controller = state["controller"]
+        if not controller:
+            raise RuntimeError("当前单位没有官方天赋控制器")
+        if int(state["total_points"]) >= int(state["tier_count"]):
+            raise RuntimeError("当前天赋树已经达到可消费点数上限")
+        if controller == "GENERIC":
+            points = getattr(self, "_generic_talent_points", None)
+            if points is None:
+                points = self._generic_talent_points = {}
+            points[int(snapshot["target_unit"])] = int(state["total_points"]) + 1
+            return self.extension_snapshot_24268()
+        self._engine_instance_24268().extension(
+            (int(self._coerce_memory_value("rawcode", controller)) & 0xFFFFFFFF,),
+            action=7,
+            target_unit=int(snapshot["target_unit"]),
+            item_rawcode=int(self._coerce_memory_value("rawcode", "ttal")) & 0xFFFFFFFF,
+        )
+        after = self.extension_snapshot_24268()
+        after_state = self.talent_state_24268(after)
+        if int(after_state["total_points"]) != int(state["total_points"]) + 1:
+            raise RuntimeError("增加天赋点后控制器等级读回不一致")
+        return after
+
+    def talent_state_24268(self, snapshot: dict | None = None) -> dict:
+        snapshot = snapshot or self.extension_snapshot_24268()
+        levels = {int(code): int(level) for code, level in snapshot.get("abilities", {}).items()}
+        active = []
+        for controller, (name, tiers) in TALENT_CONTROLLERS.items():
+            level = levels.get(int.from_bytes(controller.encode("ascii"), "big"), 0)
+            if level > 0:
+                active.append((controller, name, tiers, level))
+        if len(active) > 1:
+            return dict(controller="", name="多个控制器", tier_count=0, controller_level=0,
+                        total_points=0, used_points=0, remaining_points=0, tiers=(),
+                        anomalies=("检测到多个官方天赋控制器",), generic=False)
+        if not active:
+            if int(snapshot.get("bag_size", 0)) <= 0:
+                return dict(controller="", name="", tier_count=0, controller_level=0,
+                            total_points=0, used_points=0, remaining_points=0, tiers=(),
+                            anomalies=(), generic=False)
+            tier_rows = []
+            for index, tier in enumerate(GENERIC_TALENT_TIERS):
+                choices = tuple(rawcode for rawcode, _label in tier)
+                labels = {rawcode: label for rawcode, label in tier}
+                selected = tuple(choice for choice in choices
+                                 if levels.get(int.from_bytes(choice.encode("ascii"), "big"), 0) > 0)
+                tier_rows.append(dict(index=index, choices=choices, labels=labels, selected=selected))
+            used = sum(bool(row["selected"]) for row in tier_rows)
+            target = int(snapshot.get("target_unit", 0))
+            points = getattr(self, "_generic_talent_points", None)
+            if points is None:
+                points = self._generic_talent_points = {}
+            total = max(int(points.get(target, used)), used)
+            points[target] = total
+            return dict(
+                controller="GENERIC", name="通用天赋模板", tier_count=len(tier_rows),
+                controller_level=total + 1, total_points=total, used_points=used,
+                remaining_points=max(total - used, 0), tiers=tuple(tier_rows),
+                anomalies=(), generic=True,
+            )
+        controller, name, tiers, controller_level = active[0]
+        tier_rows = []
+        anomalies = []
+        for index, choices in enumerate(tiers):
+            selected = tuple(choice for choice in choices
+                             if levels.get(int.from_bytes(choice.encode("ascii"), "big"), 0) > 0)
+            if len(selected) > 1:
+                anomalies.append(f"第 {index + 1} 层同时存在多个天赋")
+            tier_rows.append(dict(index=index, choices=tuple(choices), selected=selected))
+        total = min(max(int(controller_level) - 1, 0), len(tiers))
+        used = sum(bool(row["selected"]) for row in tier_rows)
+        return dict(
+            controller=controller,
+            name=name,
+            tier_count=len(tiers),
+            controller_level=int(controller_level),
+            total_points=total,
+            used_points=used,
+            remaining_points=max(total - used, 0),
+            tiers=tuple(tier_rows),
+            anomalies=tuple(anomalies),
+            generic=False,
+        )
+
+    def set_talent_choice_24268(self, controller: str, tier: int, choice: str) -> dict:
+        before = self.extension_snapshot_24268()
+        state = self.talent_state_24268(before)
+        if state["controller"] != controller:
+            raise RuntimeError("当前天赋控制器已经变化，请重新读取")
+        tier = int(tier)
+        if not 0 <= tier < int(state["tier_count"]):
+            raise ValueError("天赋层无效")
+        row = state["tiers"][tier]
+        if choice not in row["choices"]:
+            raise ValueError("目标天赋不属于所选层")
+        previous = tuple(row["selected"])
+        if previous == (choice,):
+            return before
+        if not previous and int(state["remaining_points"]) <= 0:
+            raise RuntimeError("没有剩余天赋点；请先增加天赋点或替换本层已有选项")
+        removed = []
+        target_added = False
+        try:
+            for old in previous:
+                self.ability_batch_24268(old, 2, 0)
+                removed.append(old)
+            self.ability_batch_24268(choice, 1, 1)
+            target_added = True
+            after = self.extension_snapshot_24268()
+            after_state = self.talent_state_24268(after)
+            selected = tuple(after_state["tiers"][tier]["selected"])
+            if after_state["controller"] != controller or selected != (choice,):
+                raise RuntimeError("天赋替换后控制器或选项读回不一致")
+            return after
+        except Exception as exc:
+            rollback_errors = []
+            if target_added:
+                try:
+                    self.ability_batch_24268(choice, 2, 0)
+                except Exception as rollback_error:
+                    rollback_errors.append(f"移除新天赋失败：{rollback_error}")
+            for old in removed:
+                try:
+                    self.ability_batch_24268(old, 1, 1)
+                except Exception as rollback_error:
+                    rollback_errors.append(f"恢复 {old} 失败：{rollback_error}")
+            suffix = f"；回滚异常：{'；'.join(rollback_errors)}" if rollback_errors else ""
+            raise RuntimeError(f"天赋替换失败：{exc}{suffix}") from exc
+
+    def reset_talents_24268(self) -> dict:
+        before = self.extension_snapshot_24268()
+        state = self.talent_state_24268(before)
+        if not state["controller"]:
+            raise RuntimeError("当前单位没有唯一的官方天赋控制器")
+        selected = tuple(choice for tier in state["tiers"] for choice in tier["selected"])
+        removed = []
+        try:
+            for choice in selected:
+                self.ability_batch_24268(choice, 2, 0)
+                removed.append(choice)
+            after = self.extension_snapshot_24268()
+            after_state = self.talent_state_24268(after)
+            if after_state["controller"] != state["controller"] or after_state["used_points"]:
+                raise RuntimeError("洗点后仍检测到已选择天赋")
+            return after
+        except Exception as exc:
+            rollback_errors = []
+            for choice in removed:
+                try:
+                    self.ability_batch_24268(choice, 1, 1)
+                except Exception as rollback_error:
+                    rollback_errors.append(f"恢复 {choice} 失败：{rollback_error}")
+            suffix = f"；回滚异常：{'；'.join(rollback_errors)}" if rollback_errors else ""
+            raise RuntimeError(f"洗点失败：{exc}{suffix}") from exc
 
     def item_field_batch_24268(self, slot: int, action: int, fields,
                              target_unit: int = 0) -> dict:
@@ -16800,6 +17348,20 @@ def parse_float(text: str, name: str) -> float:
         raise ValueError(f"{name} 必须是数字") from exc
 
 
+def parse_changed_coordinate(target_text: str, current_text: str, name: str) -> float | None:
+    """Return a coordinate only when the editable target differs from its readback."""
+    target_text = target_text.strip()
+    if not target_text:
+        return None
+    target = parse_float(target_text, name)
+    current_text = current_text.strip()
+    if current_text:
+        current = parse_float(current_text, f"当前{name}")
+        if math.isclose(target, current, rel_tol=0.0, abs_tol=0.0005):
+            return None
+    return target
+
+
 def parse_unit_identity(text: str) -> tuple[int, int, int]:
     raw_parts = [part.strip() for part in text.replace(";", ",").split(",") if part.strip()]
     values: dict[str, int] = {}
@@ -17009,6 +17571,11 @@ def run_gui(
     item_field_detail = LocalizedStringVar(value="")
     item_field_show_zero = tk.BooleanVar(value=True)
     item_field_show_unsupported = tk.BooleanVar(value=True)
+    extension_item_rawcode = tk.StringVar(value="")
+    extension_item_charges = tk.StringVar(value="1")
+    extension_framework_item = tk.StringVar(value=next(iter(OFFICIAL_FRAMEWORK_ITEMS)))
+    extension_talent_choice = tk.StringVar(value="")
+    extension_status = LocalizedStringVar(value="尚未读取 3.0 扩展状态")
     id_catalog_queries = {
         kind: tk.StringVar(value="")
         for kind in ("item", "ability", "unit")
@@ -17066,6 +17633,7 @@ def run_gui(
         "ability_field_rows": {},
         "item_field_snapshot": None,
         "item_field_rows": {},
+        "extension_snapshot": None,
         "closing": False,
     }
 
@@ -17911,8 +18479,8 @@ def run_gui(
         mp_new = parse_float(mp_target.get(), "目标魔法") if mp_target.get().strip() else None
         hp_regen_new = parse_float(hp_regen_target.get(), "目标 HP 回复率") if hp_regen_target.get().strip() else None
         mp_regen_new = parse_float(mp_regen_target.get(), "目标 MP 回复率") if mp_regen_target.get().strip() else None
-        x_new = parse_float(x_target.get(), "目标 X") if x_target.get().strip() else None
-        y_new = parse_float(y_target.get(), "目标 Y") if y_target.get().strip() else None
+        x_new = parse_changed_coordinate(x_target.get(), x_current.get(), "目标 X")
+        y_new = parse_changed_coordinate(y_target.get(), y_current.get(), "目标 Y")
         if hp_new is None and mp_new is None and hp_regen_new is None and mp_regen_new is None and x_new is None and y_new is None:
             raise ValueError("至少填写一个目标生命、魔法、回复率或坐标")
         target_identity = current_display_unit_identity()
@@ -19060,6 +19628,221 @@ def run_gui(
         results = elephant_current_engine_batch(action, label)
         return f"{label}：成功 {len(results)} 个{elephant_batch_suffix()}"
 
+    def extension_rawcode_value(rawcode: str) -> int:
+        return int.from_bytes(rawcode.encode("ascii"), "big")
+
+    def populate_extension_snapshot(snapshot: dict) -> None:
+        state["extension_snapshot"] = snapshot
+        extension_bag_tree.delete(*extension_bag_tree.get_children())
+        extension_equipment_tree.delete(*extension_equipment_tree.get_children())
+        extension_talent_tree.delete(*extension_talent_tree.get_children())
+
+        bag_size = int(snapshot.get("bag_size", 0))
+        bag_rows = tuple(snapshot.get("bag", ()))
+        for row in bag_rows[:bag_size]:
+            rawcode = int(row.get("rawcode", 0))
+            extension_bag_tree.insert(
+                "", "end", iid=f"bag:{row['slot']}",
+                values=(
+                    int(row["slot"]) + 1,
+                    format_rawcode(rawcode) if rawcode else "",
+                    int(row.get("charges", 0)) if rawcode else "",
+                    f"0x{int(row.get('handle', 0)):x}" if rawcode else "",
+                ),
+            )
+
+        equipment_rows = tuple(snapshot.get("equipment", ()))
+        for row in equipment_rows:
+            slot = int(row["slot"])
+            rawcode = int(row.get("rawcode", 0))
+            extension_equipment_tree.insert(
+                "", "end", iid=f"equipment:{slot}",
+                values=(
+                    EQUIPMENT_SLOT_NAMES[slot],
+                    format_rawcode(rawcode) if rawcode else "",
+                    EQUIPMENT_TYPE_NAMES.get(int(row.get("equipment_type", 0)), "") if rawcode else "",
+                    int(row.get("charges", 0)) if rawcode else "",
+                    f"0x{int(row.get('handle', 0)):x}" if rawcode else "",
+                ),
+            )
+
+        ability_levels = {
+            int(rawcode): int(level)
+            for rawcode, level in dict(snapshot.get("abilities", {})).items()
+        }
+        talent_state = trainer().talent_state_24268(snapshot)
+        active_controllers = []
+        if talent_state["controller"]:
+            active_controllers.append(
+                f"{talent_state['name']} {talent_state['controller']}/"
+                f"{talent_state['controller_level']}；点数 "
+                f"{talent_state['remaining_points']}/{talent_state['total_points']}"
+            )
+            for row in talent_state["tiers"]:
+                extension_talent_tree.insert(
+                    "", "end",
+                    iid=f"talent:{talent_state['controller']}:{int(row['index'])}",
+                    values=(
+                        talent_state["name"], int(row["index"]) + 1,
+                        " / ".join(
+                            f"{choice} {row.get('labels', {}).get(choice, '')}".strip()
+                            for choice in row["choices"]
+                        ),
+                        " / ".join(row["selected"]),
+                    ),
+                )
+        elif talent_state["anomalies"]:
+            active_controllers.append("；".join(talent_state["anomalies"]))
+
+        occupied_bag = sum(bool(int(row.get("rawcode", 0))) for row in bag_rows[:bag_size])
+        occupied_equipment = sum(bool(int(row.get("rawcode", 0))) for row in equipment_rows)
+        controller_text = "，".join(active_controllers) if active_controllers else "未检测到官方天赋控制器"
+        extension_status.set(
+            f"扩展背包 {occupied_bag}/{bag_size}；装备 {occupied_equipment}/9；{controller_text}"
+        )
+
+    def refresh_extension_snapshot() -> str:
+        snapshot = trainer().extension_snapshot_24268()
+        root.after(0, populate_extension_snapshot, snapshot)
+        return "已读取 3.0 扩展背包、装备和天赋状态"
+
+    def extension_add_item() -> str:
+        rawcode = extension_item_rawcode.get().strip()
+        if not rawcode:
+            raise ValueError("请填写物品 ID")
+        trainer_obj = trainer()
+        snapshot = trainer_obj.add_extension_item_24268(rawcode)
+        root.after(0, populate_extension_snapshot, snapshot)
+        return f"已添加物品 {rawcode} 并刷新 3.0 扩展状态"
+
+    def extension_selected_bag_slot() -> int:
+        selected = extension_bag_tree.selection()
+        if not selected or not str(selected[0]).startswith("bag:"):
+            raise ValueError("请先选择一个扩展背包物品")
+        return int(str(selected[0]).split(":", 1)[1])
+
+    def extension_set_bag_charges() -> str:
+        slot = extension_selected_bag_slot()
+        charges = parse_int(extension_item_charges.get().strip(), "物品数量")
+        snapshot = trainer().set_extension_bag_charges_24268(slot, charges)
+        root.after(0, populate_extension_snapshot, snapshot)
+        return f"已将扩展背包第 {slot + 1} 格数量设置为 {charges} 并读回验证"
+
+    def extension_duplicate_bag_item() -> str:
+        slot = extension_selected_bag_slot()
+        snapshot = trainer().duplicate_extension_bag_item_24268(slot)
+        root.after(0, populate_extension_snapshot, snapshot)
+        return f"已复制扩展背包第 {slot + 1} 格物品及其数量"
+
+    def extension_drop_bag_item() -> str:
+        slot = extension_selected_bag_slot()
+        snapshot = trainer().drop_extension_bag_item_24268(slot)
+        root.after(0, populate_extension_snapshot, snapshot)
+        return f"已将扩展背包第 {slot + 1} 格物品丢到角色脚下"
+
+    def extension_add_framework() -> str:
+        rawcode = extension_framework_item.get().strip()
+        snapshot = trainer().add_extension_framework_24268(rawcode)
+        root.after(0, populate_extension_snapshot, snapshot)
+        name, controller = OFFICIAL_FRAMEWORK_ITEMS[rawcode]
+        return f"已添加{name}（{rawcode}）；专属天赋控制器为 {controller}"
+
+    def extension_enable_generic_template() -> str:
+        snapshot = trainer().enable_generic_extension_template_24268()
+        root.after(0, populate_extension_snapshot, snapshot)
+        return "已启用 30 格背包、9 槽装备和通用六层天赋模板"
+
+    def extension_selected_equipment_slot() -> int:
+        selected = extension_equipment_tree.selection()
+        if not selected or not str(selected[0]).startswith("equipment:"):
+            raise ValueError("请先选择一个装备槽")
+        return int(str(selected[0]).split(":", 1)[1])
+
+    def extension_unequip_item() -> str:
+        slot = extension_selected_equipment_slot()
+        snapshot = trainer().unequip_extension_slot_24268(slot)
+        root.after(0, populate_extension_snapshot, snapshot)
+        return f"已卸下{EQUIPMENT_SLOT_NAMES[slot]}装备并验证槽位"
+
+    def extension_save_loadout() -> str:
+        snapshot = trainer().save_extension_loadout_24268()
+        root.after(0, populate_extension_snapshot, snapshot)
+        return "已按九个物品实例保存当前套装"
+
+    def extension_restore_loadout() -> str:
+        snapshot = trainer().restore_extension_loadout_24268()
+        root.after(0, populate_extension_snapshot, snapshot)
+        return "已恢复保存的九槽套装并逐槽验证物品实例"
+
+    def extension_audit_equipment(repair: bool = False) -> str:
+        result = trainer().audit_extension_equipment_24268(repair)
+        root.after(0, populate_extension_snapshot, result["snapshot"])
+        if result["repaired"]:
+            return "已卸下并复核错槽装备：" + "、".join(
+                EQUIPMENT_SLOT_NAMES[slot] for slot in result["repaired"]
+            )
+        if result["issues"]:
+            return "检测到装备结构异常：" + "；".join(result["issues"])
+        return "装备实例、槽位类型及背包重叠检查均正常"
+
+    def extension_selected_talent() -> tuple[str, int]:
+        selected = extension_talent_tree.selection()
+        if not selected or not str(selected[0]).startswith("talent:"):
+            raise ValueError("请先选择一个天赋层")
+        _prefix, controller, tier = str(selected[0]).split(":", 2)
+        return controller, int(tier)
+
+    def extension_talent_tree_selected(_event=None) -> None:
+        try:
+            controller, tier = extension_selected_talent()
+            if controller == "GENERIC":
+                choices = tuple(rawcode for rawcode, _label in GENERIC_TALENT_TIERS[tier])
+            else:
+                choices = TALENT_CONTROLLERS[controller][1][tier]
+            extension_talent_choice_box.configure(values=choices)
+            snapshot = state.get("extension_snapshot", {})
+            talent_state = trainer().talent_state_24268(snapshot)
+            selected = talent_state["tiers"][tier]["selected"] if talent_state["controller"] == controller else ()
+            extension_talent_choice.set(selected[0] if selected else choices[0])
+        except Exception:
+            extension_talent_choice_box.configure(values=())
+            extension_talent_choice.set("")
+
+    def extension_set_talent_choice() -> str:
+        controller, tier = extension_selected_talent()
+        choice = extension_talent_choice.get().strip()
+        snapshot = trainer().set_talent_choice_24268(controller, tier, choice)
+        root.after(0, populate_extension_snapshot, snapshot)
+        return f"已将第 {tier + 1} 层天赋设置为 {choice} 并读回验证"
+
+    def extension_reset_talents() -> str:
+        snapshot = trainer().reset_talents_24268()
+        root.after(0, populate_extension_snapshot, snapshot)
+        return "已清除当前树的已选天赋；控制器与可用点数保留"
+
+    def extension_drop_clicked() -> None:
+        try:
+            slot = extension_selected_bag_slot()
+        except Exception as exc:
+            messagebox.showerror("错误", str(exc))
+            return
+        if messagebox.askyesno("确认丢弃", f"把扩展背包第 {slot + 1} 格物品丢到角色脚下？"):
+            call_async(extension_drop_bag_item)
+
+    def extension_reset_talents_clicked() -> None:
+        if messagebox.askyesno("确认洗点", "清除当前官方天赋树的全部已选天赋并保留点数？"):
+            call_async(extension_reset_talents)
+
+    def extension_repair_equipment_clicked() -> None:
+        if messagebox.askyesno("确认修复", "卸下所有类型与槽位不匹配的装备？"):
+            call_async(lambda: extension_audit_equipment(True))
+
+    def extension_grant_talent_point() -> str:
+        snapshot = trainer().grant_talent_point_24268()
+        root.after(0, populate_extension_snapshot, snapshot)
+        talent_state = trainer().talent_state_24268(snapshot)
+        return f"已增加并验证 1 点天赋；剩余 {talent_state['remaining_points']} 点"
+
     def send_cheat_command(command_name: str, message: str) -> str:
         t = trainer()
         command = t.CHEATS.get(command_name)
@@ -19964,6 +20747,163 @@ def run_gui(
     ).grid(row=3, column=0, sticky="ew", pady=(8, 0))
     item_fields_tab.rowconfigure(1, weight=1)
     item_fields_tab.columnconfigure(0, weight=1)
+
+    extension_tab = ttk.Frame(notebook, padding=10)
+    notebook.add(extension_tab, text="3.0 扩展")
+    extension_toolbar = ttk.Frame(extension_tab)
+    extension_toolbar.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 8))
+    extension_refresh_button = ttk.Button(
+        extension_toolbar,
+        text="读取扩展状态",
+        command=lambda: call_async(
+            refresh_extension_snapshot,
+            operation_key="extension-read",
+            busy_widget=extension_refresh_button,
+            busy_text="正在读取 3.0 扩展状态...",
+        ),
+    )
+    extension_refresh_button.pack(side="left")
+    ttk.Label(extension_toolbar, textvariable=extension_status).pack(side="left", padx=(12, 0))
+
+    extension_bag_frame = ttk.LabelFrame(extension_tab, text="30 格扩展背包", padding=8)
+    extension_bag_frame.grid(row=1, column=0, sticky="nsew", padx=(0, 5), pady=(0, 8))
+    extension_bag_tree = ttk.Treeview(
+        extension_bag_frame,
+        columns=("slot", "rawcode", "charges", "handle"),
+        show="headings",
+        height=13,
+        selectmode="browse",
+    )
+    for column, heading, width in (
+        ("slot", "槽位", 54), ("rawcode", "物品 ID", 86),
+        ("charges", "数量", 70), ("handle", "handle", 142),
+    ):
+        extension_bag_tree.heading(column, text=heading)
+        extension_bag_tree.column(column, width=width, anchor="w")
+    extension_bag_scroll = ttk.Scrollbar(
+        extension_bag_frame, orient="vertical", command=extension_bag_tree.yview,
+    )
+    extension_bag_tree.configure(yscrollcommand=extension_bag_scroll.set)
+    extension_bag_tree.grid(row=0, column=0, columnspan=5, sticky="nsew")
+    extension_bag_scroll.grid(row=0, column=5, sticky="ns")
+    ttk.Entry(extension_bag_frame, textvariable=extension_item_rawcode, width=10).grid(
+        row=1, column=0, sticky="w", pady=(8, 0),
+    )
+    ttk.Button(
+        extension_bag_frame, text="添加物品", command=lambda: call_async(extension_add_item),
+    ).grid(row=1, column=1, sticky="w", padx=(6, 0), pady=(8, 0))
+    ttk.Entry(extension_bag_frame, textvariable=extension_item_charges, width=10).grid(
+        row=2, column=0, sticky="w", pady=(6, 0),
+    )
+    ttk.Button(
+        extension_bag_frame, text="设置数量", command=lambda: call_async(extension_set_bag_charges),
+    ).grid(row=2, column=1, sticky="w", padx=(6, 0), pady=(6, 0))
+    ttk.Button(
+        extension_bag_frame, text="复制所选", command=lambda: call_async(extension_duplicate_bag_item),
+    ).grid(row=2, column=2, sticky="w", padx=(6, 0), pady=(6, 0))
+    ttk.Button(
+        extension_bag_frame, text="丢弃所选", command=extension_drop_clicked,
+    ).grid(row=2, column=3, sticky="w", padx=(6, 0), pady=(6, 0))
+    extension_framework_box = ttk.Combobox(
+        extension_bag_frame,
+        textvariable=extension_framework_item,
+        values=tuple(OFFICIAL_FRAMEWORK_ITEMS),
+        state="readonly",
+        width=9,
+    )
+    extension_framework_box.grid(row=3, column=0, sticky="w", pady=(6, 0))
+    ttk.Button(
+        extension_bag_frame,
+        text="启用官方背包框架",
+        command=lambda: call_async(extension_add_framework),
+    ).grid(row=3, column=1, columnspan=2, sticky="w", padx=(6, 0), pady=(6, 0))
+    ttk.Button(
+        extension_bag_frame,
+        text="启用通用背包+天赋",
+        command=lambda: call_async(extension_enable_generic_template),
+    ).grid(row=3, column=3, columnspan=2, sticky="w", padx=(6, 0), pady=(6, 0))
+    extension_bag_frame.rowconfigure(0, weight=1)
+    extension_bag_frame.columnconfigure(0, weight=1)
+
+    extension_equipment_frame = ttk.LabelFrame(extension_tab, text="9 槽装备", padding=8)
+    extension_equipment_frame.grid(row=1, column=1, sticky="nsew", padx=(5, 0), pady=(0, 8))
+    extension_equipment_tree = ttk.Treeview(
+        extension_equipment_frame,
+        columns=("slot", "rawcode", "type", "charges", "handle"),
+        show="headings",
+        height=13,
+        selectmode="browse",
+    )
+    for column, heading, width in (
+        ("slot", "装备槽", 72), ("rawcode", "物品 ID", 86),
+        ("type", "类型", 70), ("charges", "数量", 60), ("handle", "handle", 130),
+    ):
+        extension_equipment_tree.heading(column, text=heading)
+        extension_equipment_tree.column(column, width=width, anchor="w")
+    extension_equipment_tree.grid(row=0, column=0, columnspan=5, sticky="nsew")
+    ttk.Button(
+        extension_equipment_frame, text="卸下所选", command=lambda: call_async(extension_unequip_item),
+    ).grid(row=1, column=0, sticky="w", pady=(8, 0))
+    ttk.Button(
+        extension_equipment_frame, text="保存套装", command=lambda: call_async(extension_save_loadout),
+    ).grid(row=1, column=1, sticky="w", padx=(6, 0), pady=(8, 0))
+    ttk.Button(
+        extension_equipment_frame, text="恢复套装", command=lambda: call_async(extension_restore_loadout),
+    ).grid(row=1, column=2, sticky="w", padx=(6, 0), pady=(8, 0))
+    ttk.Button(
+        extension_equipment_frame, text="审计装备", command=lambda: call_async(extension_audit_equipment),
+    ).grid(row=2, column=0, sticky="w", pady=(6, 0))
+    ttk.Button(
+        extension_equipment_frame, text="修复错槽", command=extension_repair_equipment_clicked,
+    ).grid(row=2, column=1, sticky="w", padx=(6, 0), pady=(6, 0))
+    extension_equipment_frame.rowconfigure(0, weight=1)
+    extension_equipment_frame.columnconfigure(0, weight=1)
+
+    extension_talent_frame = ttk.LabelFrame(extension_tab, text="天赋", padding=8)
+    extension_talent_frame.grid(row=2, column=0, columnspan=2, sticky="nsew")
+    extension_talent_tree = ttk.Treeview(
+        extension_talent_frame,
+        columns=("hero", "tier", "choices", "selected"),
+        show="headings",
+        height=8,
+        selectmode="browse",
+    )
+    for column, heading, width, stretch in (
+        ("hero", "天赋树", 130, False), ("tier", "层", 42, False),
+        ("choices", "候选", 250, True), ("selected", "已选择", 130, False),
+    ):
+        extension_talent_tree.heading(column, text=heading)
+        extension_talent_tree.column(column, width=width, anchor="w", stretch=stretch)
+    extension_talent_tree.grid(row=0, column=0, columnspan=5, sticky="nsew")
+    extension_talent_choice_box = ttk.Combobox(
+        extension_talent_frame,
+        textvariable=extension_talent_choice,
+        state="readonly",
+        width=10,
+    )
+    extension_talent_choice_box.grid(row=1, column=0, sticky="w", pady=(8, 0))
+    extension_talent_tree.bind("<<TreeviewSelect>>", extension_talent_tree_selected)
+    ttk.Button(
+        extension_talent_frame,
+        text="点亮/替换所选层",
+        command=lambda: call_async(extension_set_talent_choice),
+    ).grid(row=1, column=1, sticky="w", padx=(6, 0), pady=(8, 0))
+    ttk.Button(
+        extension_talent_frame,
+        text="增加 1 天赋点",
+        command=lambda: call_async(extension_grant_talent_point),
+    ).grid(row=1, column=2, sticky="w", padx=(6, 0), pady=(8, 0))
+    ttk.Button(
+        extension_talent_frame,
+        text="洗点",
+        command=extension_reset_talents_clicked,
+    ).grid(row=1, column=3, sticky="w", padx=(6, 0), pady=(8, 0))
+    extension_talent_frame.rowconfigure(0, weight=1)
+    extension_talent_frame.columnconfigure(0, weight=1)
+    extension_tab.rowconfigure(1, weight=3)
+    extension_tab.rowconfigure(2, weight=2)
+    extension_tab.columnconfigure(0, weight=1, uniform="extension")
+    extension_tab.columnconfigure(1, weight=1, uniform="extension")
 
     elephant_tab = ttk.Frame(notebook, padding=8)
     notebook.add(elephant_tab, text="大象功能")

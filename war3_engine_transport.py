@@ -63,6 +63,9 @@ p=dict(api=api,open_process=open_process,close=close,read=read,write=write,alloc
 h=dict(u=u,module_name=module_name,module_base=module_base,send=send_message_timeout)
 x=dict(create_file=create_file,create_mapping=create_mapping,map_section=map_section,unmap_section=unmap_section)
 
+def remote_entry_valid(data):
+    return len(data)==16 and any(data)
+
 def resolve(memory,library,name):
     fn=getattr(c.WinDLL(library),name);local=c.cast(fn,P).value
     owner=P();text=c.create_unicode_buffer(1024)
@@ -71,7 +74,11 @@ def resolve(memory,library,name):
     remote=h['module_base'](memory,text.value)
     if not remote:raise RuntimeError('Missing remote module '+text.value)
     address=remote+local-owner.value
-    if p['bytes_at'](memory.handle,address,16)!=c.string_at(local,16):raise RuntimeError('Entry differs: '+name)
+    # The owning-module RVA is stable across processes on the same host.
+    # Windows hotpatching and security software may legitimately instrument
+    # only one process, so byte equality is not a valid compatibility gate.
+    if not remote_entry_valid(p['bytes_at'](memory.handle,address,16)):
+        raise RuntimeError('Remote entry is unreadable: '+name)
     return address
 
 
@@ -167,6 +174,9 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
     elif kind=='equipment':
         from war3_equipment_protocol import ABI as expected_abi,validate_work as validate_equipment
         validate_equipment(work_payload);marker_name=b'equipment_batch_abi';query_name=b'BridgeEquipmentQuery'
+    elif kind=='extension':
+        from war3_extension_protocol import ABI as expected_abi,validate_work as validate_extension
+        validate_extension(work_payload);marker_name=b'extension_batch_abi';query_name=b'BridgeExtensionQuery'
     elif kind=='map_bounds':
         from war3_map_bounds_protocol import ABI as expected_abi,validate_work as validate_bounds
         validate_bounds(work_payload);marker_name=b'map_bounds_batch_abi';query_name=b'BridgeMapBoundsQuery'

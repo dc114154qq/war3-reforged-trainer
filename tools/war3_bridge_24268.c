@@ -325,6 +325,7 @@ BOOL WINAPI DllMain(HINSTANCE module,DWORD reason,LPVOID reserved) {
 #include "war3_bridge_terrain.h"
 #include "war3_bridge_map_bounds.h"
 #include "war3_bridge_equipment.h"
+#include "war3_bridge_extension.h"
 #ifdef BRIDGE_TEST
 #include "war3_bridge_test_fixture.h"
 #endif

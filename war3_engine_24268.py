@@ -440,6 +440,14 @@ class Engine24268:
             lambda entries,tls:build(entries,tls,rawcode,action,target_unit,created,replaced),decode,
             dict(rawcode=rawcode,action=action,target_unit=target_unit,created=created,replaced=replaced))
 
+    def extension(self,ability_rawcodes=(),action=0,target_unit=0,slot=0,item_rawcode=0,item_handle=0):
+        from war3_extension_protocol import SIGNATURES as EXT,build_work as build,decode_work as decode
+        values=tuple(int(value) for value in ability_rawcodes)
+        return self._execute('extension',tuple(n for n,_ in SIGNATURES+EXT),
+            lambda entries,tls:build(entries,tls,values,action,target_unit,slot,item_rawcode,item_handle),decode,
+            dict(action=action,target_unit=target_unit,slot=slot,item_rawcode=item_rawcode,
+                 item_handle=item_handle,ability_count=len(values)))
+
     def map_bounds(self):
         from war3_map_bounds_protocol import SIGNATURES as BOUNDS_SIGNATURES, build_work as build, decode_work as decode
         return self._execute(

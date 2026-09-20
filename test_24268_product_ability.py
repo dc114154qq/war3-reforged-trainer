@@ -107,14 +107,16 @@ def test_current_aura_bundle_maps_classic_default_level_sentinel_to_zero():
     ]
 
 
-def test_fullscreen_monsoon_uses_current_enemy_point_batch():
+def test_fullscreen_monsoon_uses_current_caster_area_effect():
     trainer = object.__new__(product.War3Trainer)
-    trainer._run_selected_ability_effect = Mock(side_effect=AssertionError("cursor-only effect"))
-    trainer._run_direct_ability_over_enemy_units = Mock(return_value=(7, 6))
+    trainer._run_selected_ability_effect = Mock(return_value=(1, 1))
+    trainer._run_direct_ability_over_enemy_units = Mock(
+        side_effect=AssertionError("enemy units must not become the caster")
+    )
 
-    assert trainer.cast_fullscreen_monsoon(success_limit=12) == (7, 6)
-    trainer._run_direct_ability_over_enemy_units.assert_called_once_with(
-        "ANmo", "point", success_limit=12,
+    assert trainer.cast_fullscreen_monsoon(success_limit=12) == (1, 1)
+    trainer._run_selected_ability_effect.assert_called_once_with(
+        "ANmo", "point", area=100000.0, point=(0.0, 0.0), hold_seconds=12.0,
     )
 
 @pytest.mark.parametrize('action,level',[(0,1),(2,1),(3,0),(4,0),(5,1)])

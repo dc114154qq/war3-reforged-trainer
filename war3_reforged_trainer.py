@@ -188,6 +188,8 @@ user32.GetWindowThreadProcessId.argtypes = (
 user32.GetWindowThreadProcessId.restype = ctypes.c_ulong
 user32.IsWindowVisible.argtypes = (ctypes.c_void_p,)
 user32.IsWindowVisible.restype = ctypes.c_bool
+user32.IsIconic.argtypes = (ctypes.c_void_p,)
+user32.IsIconic.restype = ctypes.c_bool
 
 
 class LUID(ctypes.Structure):
@@ -3493,12 +3495,13 @@ class War3Trainer:
         if stop is not None:
             stop.set()
         display = getattr(self, "_talent_icon_display", None)
-        self._talent_icon_display = None
         if display is not None:
             try:
                 display.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                self._talent_icon_display_error = f"天赋图标模块关闭未确认，映射引用已保留：{exc}"
+            else:
+                self._talent_icon_display = None
         engine = getattr(self, "_engine24268", None)
         if engine is not None:
             try:
@@ -3534,19 +3537,22 @@ class War3Trainer:
         if is_war3_window(self.hwnd, self.pid):
             return
         old_pid = self.pid
-        self.hwnd, self.pid = find_war3_with_retry(
+        new_hwnd, new_pid = find_war3_with_retry(
             None if allow_pid_change else self.pid,
             executable_path=getattr(self, "_executable_path", "") or None,
         )
-        if self.pid != old_pid:
-            self._executable_path = process_executable_path(self.pid)
+        if new_pid != old_pid:
             display = getattr(self, "_talent_icon_display", None)
-            self._talent_icon_display = None
             if display is not None:
                 try:
                     display.close()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    self._talent_icon_display_error = f"旧游戏的天赋图标模块清理未确认，PID 切换已中止：{exc}"
+                    raise RuntimeError(self._talent_icon_display_error) from exc
+                self._talent_icon_display = None
+        self.hwnd, self.pid = new_hwnd, new_pid
+        if self.pid != old_pid:
+            self._executable_path = process_executable_path(self.pid)
             engine = getattr(self, "_engine24268", None)
             if engine is not None:
                 try:
@@ -7148,20 +7154,31 @@ class War3Trainer:
 
     def refresh_talent_icon_display_24268(self) -> dict:
         """Install the UI predicate extension when the native talent panel is loaded."""
-        from war3_talent_icon_display import TalentIconDisplay
-
         display = getattr(self, "_talent_icon_display", None)
         if display is not None:
             try:
                 state = display.snapshot()
                 self._talent_icon_display_error = ""
                 return state
-            except Exception:
+            except Exception as exc:
                 try:
                     display.close()
-                except Exception:
-                    pass
+                except Exception as cleanup_exc:
+                    reason = f"天赋图标模块状态不确定，映射已保留；原错误：{exc}；清理错误：{cleanup_exc}"
+                    self._talent_icon_display_error = reason
+                    return {"installed": False, "reason": "cleanup_uncertain", "retained": True, "error": reason}
                 self._talent_icon_display = None
+        hwnd = getattr(self, "hwnd", 0)
+        if not hwnd:
+            reason = "游戏窗口尚未绑定，图标刷新未执行"
+            self._talent_icon_display_error = reason
+            return {"installed": False, "reason": "window_unavailable", "error": reason}
+        if user32.IsIconic(ctypes.c_void_p(hwnd)):
+            reason = "游戏窗口已最小化，天赋界面代码当前不可用；请保持天赋页可见后重试"
+            self._talent_icon_display_error = reason
+            return {"installed": False, "reason": "window_minimized", "error": reason}
+        from war3_talent_icon_display import TalentIconDisplay
+
         try:
             display = TalentIconDisplay(
                 self._engine_instance_24268(),
@@ -7170,13 +7187,17 @@ class War3Trainer:
             state = display.install()
         except Exception as exc:
             self._talent_icon_display_error = str(exc)
+            reason = "code_unavailable" if getattr(display, "observed_code", "") == "c7" * 36 else "install_failed"
             try:
                 if display is not None:
                     display.close()
-            except Exception:
-                pass
+            except Exception as cleanup_exc:
+                self._talent_icon_display = display
+                message = f"天赋图标模块安装失败且清理未确认，映射已保留；原错误：{exc}；清理错误：{cleanup_exc}"
+                self._talent_icon_display_error = message
+                return {"installed": False, "reason": "cleanup_uncertain", "retained": True, "error": message}
             self._talent_icon_display = None
-            return {"installed": False, "error": str(exc)}
+            return {"installed": False, "reason": reason, "error": str(exc)}
         self._talent_icon_display = display
         self._talent_icon_display_error = ""
         return state
@@ -20688,10 +20709,13 @@ def run_gui(
     def extension_refresh_talent_icons() -> str:
         result = trainer().refresh_talent_icon_display_24268()
         if not result.get("installed"):
-            raise RuntimeError(
-                "天赋界面尚未加载，图标刷新未执行。请先打开游戏天赋界面后重试；"
-                + str(result.get("error", "未知原因"))
-            )
+            if result.get("reason") in ("window_minimized", "window_unavailable"):
+                raise RuntimeError(str(result["error"]))
+            if result.get("reason") == "code_unavailable":
+                raise RuntimeError("天赋界面代码尚未解码，图标刷新未执行；请保持游戏天赋页可见后重试")
+            if result.get("reason") == "cleanup_uncertain":
+                raise RuntimeError(str(result["error"]))
+            raise RuntimeError("天赋图标模块安装失败：" + str(result.get("error", "未知原因")))
         return "天赋图标显示模块已安装并读回"
 
     def extension_drop_clicked() -> None:

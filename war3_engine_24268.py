@@ -710,7 +710,7 @@ class Engine24268:
                         attempts=int(dispatch_report.get('route_attempt') or 1)
                         retry=dispatch_report.get('same_route_retry',{})
                         if retry.get('attempted'):
-                            message=f'Current-engine batch execution or cleanup failed after same-route retry ({attempts} route attempts)'
+                            message=f'Current-engine batch execution or cleanup failed after compatibility fallback ({attempts} route attempts)'
                         else:
                             message=f'Current-engine batch execution or cleanup failed ({attempts} route attempt)'
                         raise EngineExecutionError(message,report)

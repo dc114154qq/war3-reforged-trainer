@@ -231,7 +231,7 @@ def diagnose_mapped_loader(handle,entry,path,load,error,ldr_load,free_library):
 
 
 
-def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt=1):
+def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt=1,delivery_mode=None):
     if kind=='talent_icon_control':
         from war3_talent_icon_control_protocol import ABI as expected_abi,validate_work as validate_icon
         validate_icon(work_payload);marker_name=b'talent_icon_control_abi';query_name=b'BridgeTalentIconControl'
@@ -332,7 +332,11 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
     # build. A posted message can remain queued while the render thread is
     # busy, which leaves the remote hook allocation live and quarantines the
     # session before the game native is called.
-    query_mode=kind;delivery_mode='send'
+    query_mode=kind
+    if delivery_mode is None:
+        delivery_mode = 'send'
+    hook_kind = 3 if delivery_mode == 'posted' else 4
+    hook_name = 'WH_GETMESSAGE' if delivery_mode == 'posted' else 'WH_CALLWNDPROC'
     pe=pefile.PE(str(image));exports={s.name:s.address for s in pe.DIRECTORY_ENTRY_EXPORT.symbols}
     marker=exports.get(marker_name)
     if marker is None or pe.get_data(marker,len(expected_abi))!=expected_abi:
@@ -340,9 +344,11 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
     install_rva=exports[b'BridgeInstall'];uninstall_rva=exports[b'BridgeUninstall']
     report={'pid':pid,'hwnd':hex(hwnd),'expected_callback_tid':tid,
             'target_window':{'hwnd':hex(hwnd),'pid':pid,'thread_id':tid},
-            'process_access':'0x43a','hook_kind':'WH_CALLWNDPROC',
+            'process_access':'0x43a','hook_kind':hook_name,
             'message_delivery':delivery_mode,
-            'route_policy':'target_LoadLibraryW+WH_CALLWNDPROC+SendMessageTimeout',
+            'route_policy':('target_LoadLibraryW+WH_GETMESSAGE+PostMessage'
+                            if delivery_mode == 'posted'
+                            else 'target_LoadLibraryW+WH_CALLWNDPROC+SendMessageTimeout'),
             'image':str(image),
             'image_sha256':hashlib.sha256(image.read_bytes()).hexdigest(),
             'calls_game_handlers':True,'query_mode':query_mode,'delivery_mode':delivery_mode,
@@ -457,7 +463,7 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
         if not message:raise c.WinError(c.get_last_error())
         nonce=int.from_bytes(os.urandom(8),'little') & 0x7fffffffffffffff
         payload=struct.pack('<7QIIQ6IQII', hwnd, *addresses, 0, tid, message, nonce,
-            0, 0, 0, 0, 0, 0, sleep_address, 0, 3 if delivery_mode == "posted" else 4)
+            0, 0, 0, 0, 0, 0, sleep_address, 0, hook_kind)
         query=image_base+exports[query_name]
         # The normal loader has already registered the image's .pdata. Keep
         # the old fields in the wire ABI, but set unwind_count to zero so the
@@ -659,17 +665,26 @@ def _retry_summary(report):
 
 
 def dispatch(pid,hwnd,tid,image,tls_index,work_payload,kind="hero"):
-    first=_dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind=kind,attempt=1)
+    first=_dispatch_once(
+        pid,hwnd,tid,image,tls_index,work_payload,kind=kind,attempt=1,
+        delivery_mode='send',
+    )
     if not _retryable_hook_install_failure(first):
         first['same_route_retry']={'attempted':False}
         return first
-    # Reinitialize the same manually mapped classic chain only after the first
-    # attempt proved that no callback ran and every resource was released.
+    # Reinitialize only after the first route proved that no callback ran and
+    # every resource was released. The compatibility route changes both the
+    # hook delivery mechanism and message delivery; normal calls stay on the
+    # synchronous route and pay no fallback cost.
     time.sleep(0.02)
-    second=_dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind=kind,attempt=2)
+    second=_dispatch_once(
+        pid,hwnd,tid,image,tls_index,work_payload,kind=kind,attempt=2,
+        delivery_mode='posted',
+    )
     second['same_route_retry']={
         'attempted':True,
-        'reason':'clean_hook_install_failure',
+        'reason':'clean_getmessage_compatibility_fallback',
+        'fallback_route':second.get('route_policy'),
         'first_attempt':_retry_summary(first),
     }
     return second

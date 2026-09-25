@@ -243,11 +243,13 @@ def test_dispatch_retries_only_after_clean_hook_install_failure():
         result = transport.dispatch(1, 2, 3, None, 4, b"", kind="camera")
 
     assert result["same_route_retry"]["attempted"] is True
-    assert result["same_route_retry"]["reason"] == "clean_hook_install_failure"
+    assert result["same_route_retry"]["reason"] == "clean_getmessage_compatibility_fallback"
     assert result["same_route_retry"]["first_attempt"]["last_error"] == 126
     assert dispatch_once.call_count == 2
     assert dispatch_once.call_args_list[0].kwargs["attempt"] == 1
     assert dispatch_once.call_args_list[1].kwargs["attempt"] == 2
+    assert dispatch_once.call_args_list[0].kwargs["delivery_mode"] == "send"
+    assert dispatch_once.call_args_list[1].kwargs["delivery_mode"] == "posted"
 
 
 def test_dispatch_does_not_retry_when_resources_are_retained():

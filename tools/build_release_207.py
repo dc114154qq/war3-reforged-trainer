@@ -115,12 +115,13 @@ def inspect_exe(exe: Path, expected: dict[str, str] | None = None) -> dict[str, 
 
 
 def verify_manifest() -> None:
-    branch, _ = assert_workspace()
+    branch, head = assert_workspace()
     manifest = json.loads((OUTPUT / "current.json").read_text(encoding="utf-8"))
     exe = (OUTPUT / manifest["artifact"]).resolve()
     if not exe.is_relative_to(OUTPUT.resolve()) or exe.name != EXE_NAME:
         raise RuntimeError("Release manifest points outside the verified output")
-    if manifest["branch"] != branch or manifest["source_sha256"] != source_hashes():
+    if (manifest["branch"] != branch or manifest["head"] != head
+            or manifest["source_sha256"] != source_hashes()):
         raise RuntimeError("Worktree inputs differ from the built release")
     if manifest["exe_sha256"] != sha256(exe):
         raise RuntimeError("Release EXE differs from the recorded build")

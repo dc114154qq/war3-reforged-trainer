@@ -11,6 +11,17 @@ analysis/bridge-build-*/
 analysis/bridge-fixture-*/
 analysis/dist-*/
 
+# Analysis evidence and intermediate native builds stay local unless explicitly added.
+analysis/
+tools/bridge-debug-*/
+tools/bridge-rebuild-*/
+tools/war3_bridge_24268.*.dll
+tools/war3_bridge_24268.*.exp
+tools/war3_bridge_24268.*.lib
+tools/talent-icon.*.dll
+tools/talent-icon.*.exp
+tools/talent-icon.*.lib
+
 *.bak-*
 *.log
 *.tmp

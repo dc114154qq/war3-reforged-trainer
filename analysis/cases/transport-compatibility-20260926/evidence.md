@@ -19,6 +19,7 @@
 - Current process: PID `22708`, Warcraft III 3.0.0.24268; the game window was minimized and was not clicked or unpaused.
 - Current 2.0.7 package read-only probe succeeded on the default route and returned controller `ATug`, total points `4`, used points `3`, remaining points `1`, native choices `UT1b`, `UT2b`, `UT5a`, and no anomalies.
 - A forced `WH_GETMESSAGE + PostMessage` read-only probe also succeeded with the same state and no cleanup error.
+- A live fallback probe against PID `22708` simulated only the first route's clean install failure, then executed the real fallback route. It returned `target_unit=1052556`, `bag_size=30`, and `equipment_count=9`; the business dispatch sequence was `send-failed -> posted`. A final ordinary `send` entry came from trainer shutdown cleanup, not a second business retry.
 - Passing the target executable module as `hMod` was tested in an isolated bridge build and rejected locally with `0x106 / ERROR_MOD_NOT_FOUND`; that variant was discarded and is not in the worktree.
 
 ## Limits

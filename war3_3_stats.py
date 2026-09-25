@@ -20,9 +20,9 @@ class StatDetailSpec:
 
 STAT_DETAIL_SPECS = (
     StatDetailSpec("critical_chance", "致命一击几率%", "AIxr", "Ocr1", scale=1.0, controller="AIxr"),
-    StatDetailSpec("critical_damage", "暴击伤害%", "AIxr", "Ixr2", scale=1.0, baseline=150.0, controller="AIxr"),
+    StatDetailSpec("critical_damage", "最高暴击伤害%", "AIxr", "Ixr2", scale=1.0, baseline=150.0, controller="AIxr"),
     StatDetailSpec("spell_critical_chance", "法术暴击几率%", "AIsc", "Ocr1", scale=1.0, controller="AIsc"),
-    StatDetailSpec("spell_critical_damage", "法术暴击伤害%", "AIsc", "Ixr2", scale=1.0, baseline=150.0, controller="AIsc"),
+    StatDetailSpec("spell_critical_damage", "最高法术暴击伤害%", "AIsc", "Ixr2", scale=1.0, baseline=150.0, controller="AIsc"),
     StatDetailSpec("ability_speed_flat", "技能速度", "AIcr", "Icr1", "Icr2", True, controller="Ardr"),
     StatDetailSpec("ability_speed_percent", "技能速度%", "AIcr", "Icr1", "Icr2", False, 100.0, controller="AIcr"),
     StatDetailSpec("ability_amp_flat", "技能增强", "AIap", "Isa1", "Isa2", True, controller="AADu"),

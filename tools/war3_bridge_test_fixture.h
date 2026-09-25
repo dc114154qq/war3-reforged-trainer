@@ -920,7 +920,8 @@ __declspec(dllexport) uint32_t BridgeStatIsolatedWriteTest(int create_controller
     int scenario=create_controller;
     create_controller=scenario==1 || scenario==3;
     fixture_count=1;fixture_scenario=0;fixture_type_calls=0;fixture_levels[0]=10;
-    stat_fixture_present=!create_controller;stat_fixture_chance=100;stat_fixture_damage=450;stat_fixture_bool_calls=0;
+    stat_fixture_present=!(create_controller || scenario==4);
+    stat_fixture_chance=100;stat_fixture_damage=450;stat_fixture_bool_calls=0;
     stat_fixture_failure=scenario==2?1:scenario==3?2:0;stat_fixture_hidden=0;
     w.selection.local_player=fixture_player;w.selection.create_group=fixture_group;
     w.selection.enum_selected=fixture_enum;w.selection.first_of_group=fixture_first;
@@ -931,7 +932,8 @@ __declspec(dllexport) uint32_t BridgeStatIsolatedWriteTest(int create_controller
     w.get_real_level=stat_fixture_real;w.get_boolean_level=stat_fixture_boolean;
     w.set_real_level=stat_fixture_set_real;w.set_boolean_level=stat_fixture_set_bool;
     w.add_ability=stat_fixture_add;w.remove_ability=stat_fixture_remove;w.hide_ability=stat_fixture_hide;
-    w.action=1;w.stat_index=1;w.controller_rawcode=0x41497872u;target.value=350;w.target_bits=target.bits;
+    w.action=1;w.stat_index=create_controller?0:1;w.controller_rawcode=0x41497872u;
+    target.value=create_controller?35.0f:350.0f;w.target_bits=target.bits;
     cmd.specific_handler=(void *)GetProcAddress(GetModuleHandleW(L"ntdll.dll"),"__C_specific_handler");
     if(!cmd.specific_handler)return 1014;
     cmd.work=&w;g_dispatch=&cmd;BridgeStatDetailsQuery();g_dispatch=0;
@@ -944,11 +946,80 @@ __declspec(dllexport) uint32_t BridgeStatIsolatedWriteTest(int create_controller
         if(w.error!=0xe0420002u || w.completed || w.changed)return 1012;
         return stat_fixture_present?1013:0;
     }
+    if(scenario==4){
+        if(w.error!=275 || w.completed || w.changed || stat_fixture_present)return 1015;
+        return 0;
+    }
     if(w.error)return w.error;
-    if(!w.completed || !w.changed || stat_fixture_damage!=350)return 1001;
+    if(!w.completed || !w.changed || stat_fixture_damage!=(create_controller?0.0f:350.0f))return 1001;
     if(stat_fixture_bool_calls)return 1002;
-    if(stat_fixture_chance!=(create_controller?0.0f:100.0f))return 1003;
+    if(stat_fixture_chance!=(create_controller?35.0f:100.0f))return 1003;
     if(stat_fixture_hidden!=create_controller)return 1004;
+    return 0;
+}
+
+static float critical_test_chance[2],critical_test_damage[2];
+static uint32_t critical_test_ids[2],critical_test_sets,critical_test_fail;
+static uint64_t critical_test_lookup(uint64_t unit,uint32_t index) {
+    (void)unit;return index<2?0x100800u+index:0;
+}
+static uint32_t critical_test_id(uint64_t ability) {
+    return critical_test_ids[(uint32_t)(ability-0x100800u)];
+}
+static uint64_t critical_test_real(uint64_t ability,uint32_t field,int32_t level) {
+    union {float value;uint32_t bits;} result;
+    uint32_t index=(uint32_t)(ability-0x100800u);
+    (void)level;
+    result.value=field==0x4f637231u?critical_test_chance[index]:critical_test_damage[index];
+    return result.bits;
+}
+static uint32_t critical_test_set(uint64_t ability,uint32_t field,int32_t level,float *value) {
+    uint32_t index=(uint32_t)(ability-0x100800u);
+    (void)level;
+    if(field!=0x49787232u)return 0;
+    ++critical_test_sets;
+    if(critical_test_fail==5 && critical_test_sets==3)return 0;
+    critical_test_damage[index]=*value;
+    if((critical_test_fail==3 || critical_test_fail==5) && critical_test_sets==2)return 0;
+    return 1;
+}
+__declspec(dllexport) uint32_t BridgeCriticalProviderTestRun(uint32_t scenario) {
+    StatDetailsWork w={0};BridgeCommand cmd={0};union {float value;uint32_t bits;} target,after;
+    fixture_count=1;fixture_scenario=0;fixture_type_calls=0;fixture_levels[0]=10;
+    critical_test_ids[0]=0x41497872u;critical_test_ids[1]=0x41435378u;
+    if(scenario==6){critical_test_ids[0]=0x41497363u;critical_test_ids[1]=0x41534371u;}
+    critical_test_chance[0]=20.0f;critical_test_chance[1]=scenario==1?0.0f:30.0f;
+    if(scenario==2)critical_test_chance[0]=critical_test_chance[1]=0.0f;
+    if(scenario==7){union {float value;uint32_t bits;} nan;nan.bits=0x7fc00000u;critical_test_chance[0]=nan.value;}
+    critical_test_damage[0]=25.0f;critical_test_damage[1]=scenario==1?400.0f:50.0f;
+    critical_test_sets=0;critical_test_fail=(scenario==3 || scenario==5)?scenario:0;
+    w.selection.local_player=fixture_player;w.selection.create_group=fixture_group;
+    w.selection.enum_selected=fixture_enum;w.selection.first_of_group=fixture_first;
+    w.selection.remove_from_group=fixture_remove;w.selection.destroy_group=fixture_destroy;
+    w.selection.unit_type_id=fixture_type;w.selection.hero_level=fixture_level;
+    w.get_ability=critical_test_lookup;w.get_ability_id=critical_test_id;
+    w.convert_real_level_field=stat_fixture_convert;w.convert_boolean_level_field=stat_fixture_convert;
+    w.get_real_level=critical_test_real;w.get_boolean_level=stat_fixture_boolean;
+    w.set_real_level=critical_test_set;w.set_boolean_level=stat_fixture_set_bool;
+    w.add_ability=stat_fixture_add;w.remove_ability=stat_fixture_remove;w.hide_ability=stat_fixture_hide;
+    w.action=scenario==4?0:1;w.stat_index=scenario==6?3:1;
+    w.controller_rawcode=scenario==6?0x41497363u:0x41497872u;
+    target.value=350.0f;w.target_bits=target.bits;
+    cmd.specific_handler=(void *)GetProcAddress(GetModuleHandleW(L"ntdll.dll"),"__C_specific_handler");
+    if(!cmd.specific_handler)return 1020;
+    cmd.work=&w;g_dispatch=&cmd;BridgeStatDetailsQuery();g_dispatch=0;
+    after.bits=w.after[w.stat_index];
+    if(scenario==4)return w.error || !w.completed || w.changed || after.value!=50.0f ?1021:0;
+    if(scenario==2)return w.error==275 && !w.completed && !w.changed && !critical_test_sets?0:1022;
+    if(scenario==7)return w.error==277 && !w.completed && !w.changed && !critical_test_sets?0:1029;
+    if(scenario==3)return w.error==269 && !w.completed && !w.changed &&
+        critical_test_damage[0]==25.0f && critical_test_damage[1]==50.0f?0:1023;
+    if(scenario==5)return w.error==273 && !w.completed && !w.changed &&
+        critical_test_damage[0]==350.0f?0:1028;
+    if(w.error || !w.completed || !w.changed || after.value!=350.0f)return 1024;
+    if(critical_test_damage[0]!=350.0f)return 1025;
+    if(critical_test_damage[1]!=(scenario==1?400.0f:350.0f))return 1026;
+    if(critical_test_chance[0]!=20.0f || critical_test_chance[1]!=(scenario==1?0.0f:30.0f))return 1027;
     return 0;
 }
 

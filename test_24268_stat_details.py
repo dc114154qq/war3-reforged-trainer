@@ -1,8 +1,12 @@
+import ctypes
 import struct
+import subprocess
+from pathlib import Path
 import pytest
 from types import SimpleNamespace
 from unittest.mock import Mock
 from war3_reforged_trainer import War3Trainer
+from war3_ui_i18n import translate_ui_text
 
 from war3_3_stats import STAT_DETAIL_SPECS
 from war3_native_table import LiveNativeEntry
@@ -21,6 +25,33 @@ def entries():
         name: LiveNativeEntry(name, signature, 0x300000 + index * 0x80, 0x500000 + index * 0x100)
         for index, (name, signature) in enumerate(SELECTION_SIGNATURES + STAT_SIGNATURES)
     }
+
+
+@pytest.fixture(scope="module")
+def critical_bridge_fixture(tmp_path_factory):
+    output = tmp_path_factory.mktemp("critical-providers")
+    script = Path(__file__).parent / "tools" / "build_engine_bridge.ps1"
+    subprocess.run(
+        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+         str(script), "-Fixture", "-OutputDirectory", str(output)],
+        check=True, capture_output=True, text=True, timeout=120,
+    )
+    bridge = ctypes.WinDLL(str(output / "engine-hero-fixture.dll"))
+    for name in ("BridgeStatIsolatedWriteTest", "BridgeCriticalProviderTestRun"):
+        operation = getattr(bridge, name)
+        operation.argtypes = [ctypes.c_uint32]
+        operation.restype = ctypes.c_uint32
+    return bridge
+
+
+@pytest.mark.parametrize("scenario", range(8))
+def test_critical_write_preserves_each_triggering_source(critical_bridge_fixture, scenario):
+    assert critical_bridge_fixture.BridgeCriticalProviderTestRun(scenario) == 0
+
+
+@pytest.mark.parametrize("scenario", range(5))
+def test_existing_single_source_and_chance_creation_roll_back(critical_bridge_fixture, scenario):
+    assert critical_bridge_fixture.BridgeStatIsolatedWriteTest(scenario) == 0
 
 
 def test_stat_details_read_roundtrip_preserves_percent_baselines():
@@ -84,6 +115,26 @@ def test_failed_field_reports_native_operation_and_exception_location():
     assert "ability=0x100feb" in message
     assert "converted_field=0x49637232" in message
     assert "exception_address=0x7ff75341d43d" in message
+
+
+def test_damage_write_without_triggering_source_has_actionable_error():
+    payload = bytearray(build_work(entries(), 0x10000000))
+    unit = 0x110000
+    struct.pack_into("<2Q4I", payload, 64, 0x120000, 0x130000, 1, 0, 1, 0)
+    struct.pack_into("<QIi", payload, 96, unit, int.from_bytes(b"HERO", "big"), 8)
+    struct.pack_into("<Q8I", payload, 576, unit, 1, 1, 0, int.from_bytes(b"AIxr", "big"), 0, 275, 0, 0)
+    with pytest.raises(ValueError, match="没有可触发的暴击来源"):
+        decode_work(bytes(payload), 1)
+
+
+def test_critical_labels_and_status_translate_in_english_mode():
+    for value in (
+        "最高暴击伤害%", "最高法术暴击伤害%",
+        "只统计已识别且有触发几率的暴击来源；多来源显示最高倍率，写入时同步每个来源并验证回滚",
+        "当前单位没有可触发的暴击来源；请先增加对应暴击几率或装备能触发暴击的物品。",
+    ):
+        translated = translate_ui_text(value, "en")
+        assert translated != value and not any("\u4e00" <= letter <= "\u9fff" for letter in translated)
 
 
 def test_stat_write_binds_reordered_native_selection_instead_of_first_unit():

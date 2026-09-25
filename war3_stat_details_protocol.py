@@ -108,7 +108,14 @@ def decode_work(payload: bytes, expected_count: int) -> dict:
         ability, exception_address, field, stage = struct.unpack_from("<2Q2I", payload, 984)
         field_text = field.to_bytes(4, "big").decode("ascii", errors="replace")
         converted = struct.unpack_from("<Q", payload, 1008)[0]
+        critical_message = (
+            "当前单位没有可触发的暴击来源；请先增加对应暴击几率或装备能触发暴击的物品。"
+            if error == 275 else
+            "暴击来源超过事务上限，未写入。" if error == 276 else
+            "暴击来源返回了非有限值，未写入。" if error == 277 else ""
+        )
         raise ValueError(
+            critical_message +
             f"Stat-details incomplete: error={error}, completed={completed}, abilities={count}; "
             f"stage={stage}, ability=0x{ability:x}, field={field_text!r}, "
             f"converted_field=0x{converted:x}, exception_address=0x{exception_address:x}"

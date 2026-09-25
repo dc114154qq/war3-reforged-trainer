@@ -134,6 +134,7 @@ static uint32_t StatDetailsBool(StatDetailsWork *w,uint64_t ability,uint32_t fie
 static int StatDetailsAggregate(StatDetailsWork *w,uint64_t unit,float *out,
                                 uint64_t *controller,uint32_t *controller_kind) {
     uint32_t i,kind,id;
+    uint8_t critical_seen[2]={0,0};
     for(i=0;i<STAT_DETAIL_COUNT;++i)out[i]=0.0f;
     *controller=0;*controller_kind=0;
     w->present_count=0;
@@ -149,11 +150,25 @@ static int StatDetailsAggregate(StatDetailsWork *w,uint64_t unit,float *out,
            Keep enumerating identities, but read only the requested statistic
            and its discriminator. Full snapshots still read all statistics. */
         if(kind==STAT_AI_XR){
-            if(!w->action || w->stat_index==0)out[0]+=StatDetailsReal(w,ability,0x4f637231u);
-            if(!w->action || w->stat_index==1)out[1]+=StatDetailsReal(w,ability,0x49787232u);
+            float chance=0.0f;
+            if(!w->action || w->stat_index==0 || w->stat_index==1)
+                chance=StatDetailsReal(w,ability,0x4f637231u);
+            if(!w->action || w->stat_index==0)out[0]+=chance;
+            if((!w->action || w->stat_index==1) && chance>0.0f){
+                value=StatDetailsReal(w,ability,0x49787232u);
+                if(!critical_seen[0] || value>out[1])out[1]=value;
+                critical_seen[0]=1;
+            }
         }else if(kind==STAT_AI_SC){
-            if(!w->action || w->stat_index==2)out[2]+=StatDetailsReal(w,ability,0x4f637231u);
-            if(!w->action || w->stat_index==3)out[3]+=StatDetailsReal(w,ability,0x49787232u);
+            float chance=0.0f;
+            if(!w->action || w->stat_index==2 || w->stat_index==3)
+                chance=StatDetailsReal(w,ability,0x4f637231u);
+            if(!w->action || w->stat_index==2)out[2]+=chance;
+            if((!w->action || w->stat_index==3) && chance>0.0f){
+                value=StatDetailsReal(w,ability,0x49787232u);
+                if(!critical_seen[1] || value>out[3])out[3]=value;
+                critical_seen[1]=1;
+            }
         }else if(kind==STAT_AI_CR && (!w->action || w->stat_index==4 || w->stat_index==5)){
             value=StatDetailsReal(w,ability,0x49637231u);out[StatDetailsBool(w,ability,0x49637232u)?4:5]+=value;
         }else if(kind==STAT_AI_AP && (!w->action || w->stat_index==6 || w->stat_index==7)){
@@ -190,6 +205,9 @@ __declspec(dllexport) uint64_t BridgeStatDetailsQuery(void) {
     uint32_t count,i,matches=0,kind=0,expected_kind=0,field=0,flat_field=0,flat_value=0;
     uint32_t old_bits=0,old_flat=0;uint64_t controller=0,write_controller=0;
     uint8_t added=0,captured=0,write_attempted=0,flat_write_attempted=0;
+    uint64_t critical_abilities[STAT_PRESENT_MAX]={0};
+    uint32_t critical_old[STAT_PRESENT_MAX]={0},critical_chance[STAT_PRESENT_MAX]={0};
+    uint32_t critical_count=0,critical_attempted=0;
     union { uint32_t bits; float value; } target,old_value,new_value;
     float before[STAT_DETAIL_COUNT],after[STAT_DETAIL_COUNT],other,diff;
     if(!w || w->expected_tls!=g_dispatch->tls_value || w->action>2 || w->stat_index>=STAT_DETAIL_COUNT ||
@@ -235,6 +253,50 @@ __declspec(dllexport) uint64_t BridgeStatDetailsQuery(void) {
         if(w->action==1) {
             if(!w->controller_rawcode || !StatDetailsSpec(w->stat_index,&expected_kind,&field,&flat_field,&flat_value) ||
                StatDetailsKind(w->controller_rawcode)!=expected_kind){w->error=265;return count;}
+            if(w->stat_index==1 || w->stat_index==3){
+                uint64_t converted=w->convert_real_level_field(field);
+                for(i=0;i<4096u;++i){
+                    uint64_t ability=w->get_ability(w->target_unit,i);
+                    union {float value;uint32_t bits;} chance,damage;
+                    if(!ability)break;
+                    if(StatDetailsKind(w->get_ability_id(ability))!=expected_kind)continue;
+                    chance.value=StatDetailsReal(w,ability,0x4f637231u);
+                    if(w->error)goto rollback;
+                    if((chance.bits&0x7f800000u)==0x7f800000u){w->error=277;goto rollback;}
+                    if(chance.value<=0.0f)continue;
+                    if(critical_count==STAT_PRESENT_MAX){w->error=276;goto rollback;}
+                    damage.value=StatDetailsReal(w,ability,field);
+                    if(w->error)goto rollback;
+                    if((damage.bits&0x7f800000u)==0x7f800000u){w->error=277;goto rollback;}
+                    critical_abilities[critical_count]=ability;
+                    critical_old[critical_count]=damage.bits;
+                    critical_chance[critical_count]=chance.bits;
+                    ++critical_count;
+                }
+                if(i==4096u || !critical_count){w->error=275;goto rollback;}
+                for(i=0;i<critical_count;++i){
+                    critical_attempted=i+1;
+                    if(!w->set_real_level(critical_abilities[i],converted,0,&target.value)){
+                        w->error=269;goto rollback;
+                    }
+                }
+                for(i=0;i<critical_count;++i){
+                    union {float value;uint32_t bits;} chance,damage;
+                    chance.value=StatDetailsReal(w,critical_abilities[i],0x4f637231u);
+                    damage.value=StatDetailsReal(w,critical_abilities[i],field);
+                    if(w->error || chance.bits!=critical_chance[i] || damage.bits!=target.bits){
+                        if(!w->error)w->error=271;
+                        goto rollback;
+                    }
+                }
+                if(!StatDetailsAggregate(w,w->target_unit,after,&controller,&kind)){
+                    if(!w->error)w->error=270;goto rollback;
+                }
+                diff=after[w->stat_index]-target.value;if(diff<0.0f)diff=-diff;
+                if(diff>0.0005f){w->error=271;goto rollback;}
+                for(i=0;i<STAT_DETAIL_COUNT;++i){union{float value;uint32_t bits;}v;v.value=after[i];w->after[i]=v.bits;}
+                w->changed=1;w->completed=1;return count;
+            }
             if(!controller) {
                 if(!w->add_ability(w->target_unit,w->controller_rawcode)){w->error=266;return count;}
                 added=1;
@@ -277,6 +339,24 @@ __declspec(dllexport) uint64_t BridgeStatDetailsQuery(void) {
 rollback:
         ; /* Cleanup also runs after an exception, below the SEH boundary. */
     } __except((w->diagnostic_exception_address=(uint64_t)(uintptr_t)GetExceptionInformation()->ExceptionRecord->ExceptionAddress,EXCEPTION_EXECUTE_HANDLER)) {w->error=GetExceptionCode();}
+    if(w->error && critical_attempted){
+        __try {
+            uint32_t restored=1;
+            for(i=0;i<critical_attempted;++i){
+                union {float value;uint32_t bits;} old;
+                old.bits=critical_old[i];
+                if(!w->set_real_level(critical_abilities[i],w->convert_real_level_field(field),0,&old.value))restored=0;
+            }
+            for(i=0;i<critical_attempted;++i){
+                union {float value;uint32_t bits;} chance,damage;
+                chance.value=StatDetailsReal(w,critical_abilities[i],0x4f637231u);
+                damage.value=StatDetailsReal(w,critical_abilities[i],field);
+                if(chance.bits!=critical_chance[i] || damage.bits!=critical_old[i])restored=0;
+            }
+            if(!restored)w->error=273;
+        } __except(EXCEPTION_EXECUTE_HANDLER){w->error=273;}
+        w->changed=0;w->completed=0;
+    }
     if(w->error && (added || (captured && write_attempted))){
         __try {
             if(added){

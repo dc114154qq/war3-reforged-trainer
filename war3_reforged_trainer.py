@@ -15846,11 +15846,16 @@ class War3Trainer:
                     note_optional_query_failure("stat_details", "3.0 属性", exc)
         if stat_details is not None:
             for stat_spec in STAT_DETAIL_SPECS:
+                stat_note = (
+                    "只统计已识别且有触发几率的暴击来源；多来源显示最高倍率，写入时同步每个来源并验证回滚"
+                    if stat_spec.key in ("critical_damage", "spell_critical_damage") else
+                    "3.0 Stat Details 原生能力累计值；写入时保留其他装备、天赋和光环贡献并读回总值"
+                )
                 fields.append(UnitMemoryField(
                     key=f"stat3_{stat_spec.key}", label=stat_spec.label, value_type="f32",
                     value=float(stat_details["values"][stat_spec.key]), address=0,
                     category="3.0 属性", native_write=True,
-                    note="3.0 Stat Details 原生能力累计值；写入时保留其他装备、天赋和光环贡献并读回总值",
+                    note=stat_note,
                 ))
 
         ability_instances: list[AbilityInstance] = []

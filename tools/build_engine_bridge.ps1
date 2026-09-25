@@ -1,4 +1,4 @@
-param([string]$OutputDirectory=$PSScriptRoot,[switch]$Fixture)
+param([string]$OutputDirectory=$PSScriptRoot,[switch]$Fixture,[switch]$Diagnostic)
 $ErrorActionPreference='Stop'
 $source=Join-Path $PSScriptRoot 'war3_bridge_24268.c'
 $directory=[IO.Path]::GetFullPath($OutputDirectory)
@@ -10,6 +10,7 @@ $compile=@('--target=x86_64-pc-windows-msvc','-shared','-O2','-fexceptions','-fa
  '-fno-stack-protector','-fno-builtin','-nostdlib',$source,'-o',$temporary,
  '-Wl,/entry:DllMain,/nodefaultlib,/alternatename:__C_specific_handler=BridgeSpecificHandler','-luser32','-lkernel32')
 if($Fixture){$compile=@('-DBRIDGE_TEST')+$compile}
+if($Diagnostic){$compile=@('-DBRIDGE_DIAGNOSTIC')+$compile}
 & clang @compile
 if($LASTEXITCODE -ne 0){throw "Bridge compiler failed: $LASTEXITCODE; previous artifact preserved"}
 $verify=Join-Path $PSScriptRoot 'verify_engine_bridge.py'

@@ -159,11 +159,18 @@ __declspec(dllexport) uint64_t BridgeItemQuery(void) {
                 __try {
                     float x=0,y=0;
                     w->error=100+i;
-                    created=w->create_ground(w->rawcode,&x,&y);
-                    r->created=created;r->created_type=created ? w->type(created) : 0;
-                    r->reserved=created ? 1 : 0;
-                    if (!created || w->type(created)!=w->rawcode) {w->error=62;}
-                    else {
+                    if (!old) {
+                        w->add_slot(unit,w->rawcode,(int32_t)slot);
+                        created=w->in_slot(unit,(int32_t)slot);
+                        r->created=created;r->created_type=created ? w->type(created) : 0;
+                        if (!created || r->created_type!=w->rawcode) w->error=63;
+                        else w->error=0;
+                    } else {
+                        created=w->create_ground(w->rawcode,&x,&y);
+                        r->created=created;r->created_type=created ? w->type(created) : 0;
+                        r->reserved=created ? 1 : 0;
+                        if (!created || w->type(created)!=w->rawcode) {w->error=62;}
+                        else {
                         if (old) w->detach(unit,old);
                         if (!w->in_slot(unit,(int32_t)slot)) r->reserved|=2;
                         if (w->add_existing(unit,created)) r->reserved|=4;
@@ -171,6 +178,7 @@ __declspec(dllexport) uint64_t BridgeItemQuery(void) {
                             if (w->move_slot(unit,created,(int32_t)slot)) r->reserved|=8;
                         if (w->in_slot(unit,(int32_t)slot)!=created) w->error=63;
                         else w->error=0;
+                        }
                     }
                 } __except(EXCEPTION_EXECUTE_HANDLER) {w->error=64;}
                 if (!w->error) {

@@ -124,7 +124,7 @@ class Engine24268:
                  rawcode=rawcode, target_aps=target_aps, weapon=weapon),
         )
 
-    def ability_batch(self,rawcode,action=0,level=0):
+    def ability_batch(self,rawcode,action=0,level=0,target_unit=0):
         from war3_ability_protocol import SIGNATURES as ABILITIES,build_work as build,decode_work as decode
         if (isinstance(rawcode,bool) or not isinstance(rawcode,int) or not 0<rawcode<=0xffffffff
             or isinstance(action,bool) or not isinstance(action,int) or action not in range(6)
@@ -132,8 +132,8 @@ class Engine24268:
             or (action in (3,4) and not level) or (action in (0,2,5) and level)):
             raise ValueError('Invalid current-engine ability operation')
         names=tuple(n for n,_ in SIGNATURES+ABILITIES)
-        return self._execute('ability',names,lambda entries,tls:build(entries,tls,rawcode,action,level),decode,
-                             dict(rawcode=rawcode,action=action,level=level))
+        return self._execute('ability',names,lambda entries,tls:build(entries,tls,rawcode,action,level,target_unit),decode,
+                             dict(rawcode=rawcode,action=action,level=level,target_unit=target_unit))
 
     def ability_field_batch(self, rawcode, level, action, fields, target_unit=0):
         from war3_ability_field_protocol import (
@@ -277,6 +277,20 @@ class Engine24268:
                  scale_z_bits=scale_z_bits),
         )
 
+    def unit_stats(self, action=0, value=0, target_unit=0):
+        from war3_unit_stats_protocol import (
+            SIGNATURES as UNIT_STATS_SIGNATURES,
+            build_work as build,
+            decode_work as decode,
+        )
+        names = tuple(name for name, _signature in SIGNATURES + UNIT_STATS_SIGNATURES)
+        return self._execute(
+            'unit_stats', names,
+            lambda entries, tls: build(entries, tls, int(action), value, int(target_unit)),
+            decode,
+            dict(action=int(action), value=value, target_unit=int(target_unit)),
+        )
+
     def position_batch(self, x_bits, y_bits):
         from war3_position_protocol import SIGNATURES as POSITION_SIGNATURES, build_work as build, decode_work as decode
         if (isinstance(x_bits, bool) or not isinstance(x_bits, int)
@@ -325,10 +339,10 @@ class Engine24268:
 
     def bulk_batch(self, action, value=0):
         from war3_bulk_protocol import SIGNATURES as BULK_SIGNATURES, build_work as build, decode_work as decode
-        if (isinstance(action, bool) or action not in range(1, 5)
+        if (isinstance(action, bool) or action not in range(1, 6)
                 or isinstance(value, bool) or value not in (0, 1)):
             raise ValueError('Invalid current-engine bulk action')
-        names = tuple(n for n, _ in BULK_SIGNATURES)
+        names = tuple(n for n, _ in SIGNATURES + BULK_SIGNATURES)
         return self._execute(
             'bulk', names,
             lambda entries, tls: build(entries, tls, action, value),
@@ -440,13 +454,28 @@ class Engine24268:
             lambda entries,tls:build(entries,tls,rawcode,action,target_unit,created,replaced),decode,
             dict(rawcode=rawcode,action=action,target_unit=target_unit,created=created,replaced=replaced))
 
-    def extension(self,ability_rawcodes=(),action=0,target_unit=0,slot=0,item_rawcode=0,item_handle=0):
+    def extension(self,ability_rawcodes=(),action=0,target_unit=0,slot=0,item_rawcode=0,item_handle=0,resolver=0):
         from war3_extension_protocol import SIGNATURES as EXT,build_work as build,decode_work as decode
         values=tuple(int(value) for value in ability_rawcodes)
         return self._execute('extension',tuple(n for n,_ in SIGNATURES+EXT),
-            lambda entries,tls:build(entries,tls,values,action,target_unit,slot,item_rawcode,item_handle),decode,
+            lambda entries,tls:build(entries,tls,values,action,target_unit,slot,item_rawcode,item_handle,
+                                     resolver=(resolver or getattr(self,'_extension_resolver',0))),decode,
             dict(action=action,target_unit=target_unit,slot=slot,item_rawcode=item_rawcode,
                  item_handle=item_handle,ability_count=len(values)))
+
+    def talent_order(self,target,controller,order,choice):
+        from war3_talent_order_protocol import SIGNATURES as TALENT,build_work as build,decode_work as decode
+        return self._execute('talent_order',tuple(n for n,_ in SIGNATURES+TALENT),
+            lambda entries,tls:build(entries,tls,target,controller,order,choice),decode,
+            dict(target=target,controller=controller,order=order,choice=choice))
+
+    def stat_details(self,action=0,stat_index=0,target=0.0,controller=0,target_unit=0,target_full_handle=0):
+        from war3_stat_details_protocol import SIGNATURES as STATS,build_work as build,decode_work as decode
+        return self._execute('stat_details',tuple(n for n,_ in SIGNATURES+STATS),
+            lambda entries,tls:build(entries,tls,action,stat_index,target,controller,target_unit,
+                                     target_full_handle,self._stat_resolver_base if target_full_handle else 0),decode,
+            dict(action=action,stat_index=stat_index,target=target,controller=controller,target_unit=target_unit,
+                 target_full_handle=target_full_handle))
 
     def map_bounds(self):
         from war3_map_bounds_protocol import SIGNATURES as BOUNDS_SIGNATURES, build_work as build, decode_work as decode
@@ -520,6 +549,15 @@ class Engine24268:
                     elif kind == 'attack_speed':
                         self._attack_speed_module_base = registry.base
                         payload=builder(entries,mode.tls)
+                    elif kind == 'extension':
+                        self._extension_resolver = registry.base
+                        payload=builder(entries,mode.tls)
+                    elif kind == 'equipment_probe':
+                        self._extension_resolver = registry.base
+                        payload=builder(entries,mode.tls)
+                    elif kind == 'stat_details':
+                        self._stat_resolver_base = registry.base
+                        payload=builder(entries,mode.tls)
                     else:
                         payload=builder(entries,mode.tls)
                     report['mappings']=({} if cache_hit else inspect_entries(memory,registry.base,entries,True))
@@ -539,9 +577,11 @@ class Engine24268:
                     report['dispatch']=evidence;self.quarantined=bool(evidence.get('allocations_retained'))
                     if kind=='ability' and evidence.get('work_result_hex'):
                         raw=bytes.fromhex(evidence['work_result_hex'])
-                        if len(raw)==832:
+                        from war3_ability_protocol import WORK_SIZE as ABILITY_WORK_SIZE
+                        if len(raw)==ABILITY_WORK_SIZE:
                             changed,error,completed=struct.unpack_from('<3I',raw,532)
-                            report['ability_status']=dict(changed=changed,error=error,completed=completed)
+                            target_unit=struct.unpack_from('<Q',raw,832)[0]
+                            report['ability_status']=dict(changed=changed,error=error,completed=completed,target_unit=target_unit)
                     if kind=='ability_field' and evidence.get('work_result_hex'):
                         raw=bytes.fromhex(evidence['work_result_hex'])
                         if len(raw)==7688:

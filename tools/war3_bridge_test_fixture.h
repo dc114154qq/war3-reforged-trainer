@@ -1,4 +1,37 @@
 /* Compiled only with BRIDGE_TEST; never included in the product DLL. */
+#include "war3_talent_icon_predicate.h"
+__declspec(dllexport) uint32_t BridgeTalentIconPredicateTest(uint32_t scenario){
+    uint64_t owner_buffer[32]={0},unit_buffer[32]={0};
+    uint64_t wrappers[2][32]={0},abilities[2][32]={0};
+    uint64_t owner=(uint64_t)(uintptr_t)owner_buffer,unit=(uint64_t)(uintptr_t)unit_buffer;
+    uint32_t choice=0x55543161u; /* UT1a */
+    owner_buffer[0x90/8]=unit;owner_buffer[0x20/8]=0x123400001234ull;
+    unit_buffer[0x18/8]=owner_buffer[0x20/8];
+    owner_buffer[0xd8/8]=(uint64_t)(uintptr_t)wrappers[0]+0x38;
+    for(uint32_t index=0;index<2;++index){
+        uint64_t wrapper=(uint64_t)(uintptr_t)wrappers[index];
+        uint64_t data=(uint64_t)(uintptr_t)abilities[index];
+        wrappers[index][0x38/8]=index?(uint64_t)(uintptr_t)wrappers[0]+0x38:owner+0xd0;
+        wrappers[index][0x40/8]=index?0:(uint64_t)(uintptr_t)wrappers[1]+0x38;
+        wrappers[index][0x50/8]=owner;wrappers[index][0x90/8]=data;
+        wrappers[index][0x20/8]=0x223400002234ull+index;
+        abilities[index][0x18/8]=wrappers[index][0x20/8];
+        abilities[index][0x68/8]=unit;
+        *(uint32_t *)(uintptr_t)(data+0x70)=choice;
+        *(uint32_t *)(uintptr_t)(data+0x78)=choice;
+        *(uint32_t *)(uintptr_t)(data+0x38)=index?0x06000010u:0x18u;
+    }
+    /* A retired node before a live node must not hide the learned choice. */
+    if(scenario==0)return TalentIconShouldEnable(0,owner,unit,choice)?0:1;
+    if(scenario==1)return TalentIconShouldEnable(0,owner,unit,choice+1)?2:0;
+    if(scenario==2){abilities[1][0x38/8]|=8;return TalentIconShouldEnable(0,owner,unit,choice)?3:0;}
+    if(scenario==3){wrappers[1][0x50/8]=owner+8;return TalentIconShouldEnable(0,owner,unit,choice)?4:0;}
+    if(scenario==4){unit_buffer[0x18/8]++;return TalentIconShouldEnable(0,owner,unit,choice)?5:0;}
+    if(scenario==5)return TalentIconShouldEnable(1,0,0,choice)?0:6;
+    if(scenario==6){wrappers[1][0x40/8]=(uint64_t)(uintptr_t)wrappers[0]+0x38;return TalentIconShouldEnable(0,owner,unit,choice)?7:0;}
+    if(scenario==7){wrappers[1][0x20/8]++;return TalentIconShouldEnable(0,owner,unit,choice)?8:0;}
+    return 99;
+}
 static int fixture_count,fixture_index,fixture_scenario,fixture_writes,fixture_type_calls;
 static int32_t fixture_levels[24];
 static uint64_t fixture_player(void) {return 0x100008;}
@@ -811,7 +844,210 @@ __declspec(dllexport) uint64_t BridgeMouseTestRun(MouseWork *w, uint32_t x_bits,
     return BridgeMouseQuery();
 }
 
+static float stat_fixture_chance,stat_fixture_damage;
+static int stat_fixture_present,stat_fixture_bool_calls,stat_fixture_failure,stat_fixture_hidden;
+static uint64_t stat_fixture_lookup(uint64_t unit,uint32_t index) {
+    (void)unit;return index==0?0x100700:(index==1 && stat_fixture_present?0x100701:0);
+}
+static uint32_t stat_fixture_id(uint64_t ability) {return ability==0x100700?0x41496372u:0x41497872u;}
+__declspec(dllexport) uint32_t BridgeStatRuntimeFlagTest(uint32_t scenario) {
+    StatDetailsWork w={0};BridgeCommand cmd={0};
+    uint64_t owner[32]={0},unit[32]={0},wr[2][32]={{0}},data[2][40]={{0}},root[16]={0},table[8]={0};
+    uint8_t *base=VirtualAlloc(0,0x2f81000u,MEM_RESERVE|MEM_COMMIT,PAGE_READWRITE);
+    uint32_t result=0;
+    if(!base)return 0xffffffffu;
+    w.target_full_handle=0x100000001ull;w.resolver_base=(uint64_t)(uintptr_t)base;
+    w.target_unit=0x100100;w.selection.count=1;
+    w.selection.rows[0].unit=w.target_unit;w.selection.rows[0].rawcode=0x48363038u;
+    w.get_ability_id=stat_fixture_id;
+    owner[4]=w.target_full_handle;owner[18]=(uint64_t)(uintptr_t)unit;
+    *(uint32_t *)((uint8_t *)unit+0x70)=0x48363038u;
+    *(uint64_t *)(base+0x2f807f0u)=(uint64_t)(uintptr_t)root;
+    root[3]=(uint64_t)(uintptr_t)table;*(uint32_t *)((uint8_t *)root+0x30)=4;
+    table[2]=0xfffffffeu;table[3]=(uint64_t)(uintptr_t)owner;
+    owner[27]=(uint64_t)(uintptr_t)&wr[0][7];
+    for(uint32_t i=0;i<2;++i){
+        uint64_t full=0x100000002ull+i;
+        wr[i][3]=0x414963722b61676cull;wr[i][4]=full;
+        wr[i][7]=i?(uint64_t)(uintptr_t)&wr[0][7]:(uint64_t)(uintptr_t)&owner[26];
+        wr[i][8]=i?0:(uint64_t)(uintptr_t)&wr[1][7];
+        wr[i][10]=(uint64_t)(uintptr_t)owner;wr[i][18]=(uint64_t)(uintptr_t)data[i];
+        data[i][0]=w.resolver_base+0x23a50c8u;data[i][3]=full;data[i][13]=(uint64_t)(uintptr_t)unit;
+        *(uint32_t *)((uint8_t *)data[i]+0x70)=0x41496372u;
+        *(uint32_t *)((uint8_t *)data[i]+0x78)=0x41496372u;
+        *(uint32_t *)((uint8_t *)data[i]+0x38)=i?0x80000100u:0x80000048u;
+        *((uint8_t *)data[i]+0x128)=i?1:0;
+        table[(i+2)*2]=0xfffffffeu;table[(i+2)*2+1]=(uint64_t)(uintptr_t)wr[i];
+    }
+    if(scenario==1)*((uint8_t *)data[1]+0x128)=0;
+    if(scenario==2)*(uint32_t *)((uint8_t *)data[1]+0x38)=0x80000048u;
+    if(scenario==3)*(uint32_t *)((uint8_t *)data[0]+0x38)=0x80000100u;
+    if(scenario==4)data[1][0]+=8;
+    if(scenario==5)wr[1][10]=0;
+    if(scenario==6)table[7]=0;
+    cmd.specific_handler=(void *)GetProcAddress(GetModuleHandleW(L"ntdll.dll"),"__C_specific_handler");
+    g_dispatch=&cmd;
+    __try {result=StatDetailsBool(&w,0x100700,0x49637232u);if(w.error)result=w.error;}
+    __except(EXCEPTION_EXECUTE_HANDLER){result=GetExceptionCode();}
+    g_dispatch=0;VirtualFree(base,0,MEM_RELEASE);return result;
+}
+static uint64_t stat_fixture_convert(uint32_t field) {return field;}
+static uint64_t stat_fixture_real(uint64_t ability,uint32_t field,int32_t level) {
+    union{float value;uint32_t bits;}v;(void)ability;(void)level;
+    v.value=field==0x4f637231u?stat_fixture_chance:stat_fixture_damage;return v.bits;
+}
+static uint64_t stat_fixture_boolean(uint64_t ability,uint32_t field,int32_t level) {
+    (void)ability;(void)field;(void)level;++stat_fixture_bool_calls;return 0;
+}
+static uint32_t stat_fixture_set_real(uint64_t ability,uint32_t field,int32_t level,float *value) {
+    (void)ability;(void)level;if(field==0x4f637231u)stat_fixture_chance=*value;else stat_fixture_damage=*value;
+    if(stat_fixture_failure==1){stat_fixture_failure=0;RaiseException(0xe0420001u,0,0,0);}
+    return 1;
+}
+static uint32_t stat_fixture_set_bool(uint64_t ability,uint32_t field,int32_t level,uint32_t value) {
+    (void)ability;(void)field;(void)level;(void)value;++stat_fixture_bool_calls;return 0;
+}
+static uint8_t stat_fixture_add(uint64_t unit,uint32_t code) {
+    (void)unit;(void)code;stat_fixture_present=1;stat_fixture_chance=25;stat_fixture_damage=0;return 1;
+}
+static uint8_t stat_fixture_remove(uint64_t unit,uint32_t code) {(void)unit;(void)code;stat_fixture_present=0;return 1;}
+static void stat_fixture_hide(uint64_t unit,uint32_t code,uint8_t hide) {
+    (void)unit;(void)code;stat_fixture_hidden=hide;
+    if(stat_fixture_failure==2){stat_fixture_failure=0;RaiseException(0xe0420002u,0,0,0);}
+}
+__declspec(dllexport) uint32_t BridgeStatIsolatedWriteTest(int create_controller) {
+    StatDetailsWork w={0};BridgeCommand cmd={0};union{float value;uint32_t bits;}target;
+    int scenario=create_controller;
+    create_controller=scenario==1 || scenario==3;
+    fixture_count=1;fixture_scenario=0;fixture_type_calls=0;fixture_levels[0]=10;
+    stat_fixture_present=!create_controller;stat_fixture_chance=100;stat_fixture_damage=450;stat_fixture_bool_calls=0;
+    stat_fixture_failure=scenario==2?1:scenario==3?2:0;stat_fixture_hidden=0;
+    w.selection.local_player=fixture_player;w.selection.create_group=fixture_group;
+    w.selection.enum_selected=fixture_enum;w.selection.first_of_group=fixture_first;
+    w.selection.remove_from_group=fixture_remove;w.selection.destroy_group=fixture_destroy;
+    w.selection.unit_type_id=fixture_type;w.selection.hero_level=fixture_level;
+    w.get_ability=stat_fixture_lookup;w.get_ability_id=stat_fixture_id;
+    w.convert_real_level_field=stat_fixture_convert;w.convert_boolean_level_field=stat_fixture_convert;
+    w.get_real_level=stat_fixture_real;w.get_boolean_level=stat_fixture_boolean;
+    w.set_real_level=stat_fixture_set_real;w.set_boolean_level=stat_fixture_set_bool;
+    w.add_ability=stat_fixture_add;w.remove_ability=stat_fixture_remove;w.hide_ability=stat_fixture_hide;
+    w.action=1;w.stat_index=1;w.controller_rawcode=0x41497872u;target.value=350;w.target_bits=target.bits;
+    cmd.specific_handler=(void *)GetProcAddress(GetModuleHandleW(L"ntdll.dll"),"__C_specific_handler");
+    if(!cmd.specific_handler)return 1014;
+    cmd.work=&w;g_dispatch=&cmd;BridgeStatDetailsQuery();g_dispatch=0;
+    if(scenario==2){
+        if(w.error!=0xe0420001u || w.completed || w.changed)return 1010;
+        if(stat_fixture_damage!=450 || stat_fixture_chance!=100 || stat_fixture_hidden)return 1011;
+        return 0;
+    }
+    if(scenario==3){
+        if(w.error!=0xe0420002u || w.completed || w.changed)return 1012;
+        return stat_fixture_present?1013:0;
+    }
+    if(w.error)return w.error;
+    if(!w.completed || !w.changed || stat_fixture_damage!=350)return 1001;
+    if(stat_fixture_bool_calls)return 1002;
+    if(stat_fixture_chance!=(create_controller?0.0f:100.0f))return 1003;
+    if(stat_fixture_hidden!=create_controller)return 1004;
+    return 0;
+}
+
+static int extension_snapshot_fixture_occupied;
+static int32_t extension_snapshot_fixture_size(uint64_t unit) {(void)unit;return 30;}
+static uint64_t extension_snapshot_fixture_item(uint64_t unit,int32_t slot) {
+    (void)unit;return extension_snapshot_fixture_occupied && slot==0 ? 0x100900 : 0;
+}
+static uint64_t extension_snapshot_fixture_slot(int32_t slot) {return (uint64_t)slot;}
+static uint64_t extension_snapshot_fixture_equipment(uint64_t unit,uint64_t slot) {
+    return extension_snapshot_fixture_item(unit,(int32_t)slot);
+}
+static uint32_t extension_snapshot_fixture_type(uint64_t item) {(void)item;return 0x65626f69;}
+static int32_t extension_snapshot_fixture_charges(uint64_t item) {(void)item;return 7;}
+static uint64_t extension_snapshot_fixture_kind(uint64_t item) {(void)item;return 4;}
+__declspec(dllexport) uint32_t BridgeExtensionSnapshotReuseTest(void) {
+    ExtensionWork w={0};uint32_t i;
+    w.target_unit=0x100000;w.bag_size_fn=extension_snapshot_fixture_size;
+    w.bag_item=extension_snapshot_fixture_item;w.slot_enum=extension_snapshot_fixture_slot;
+    w.equipment_item=extension_snapshot_fixture_equipment;w.item_type=extension_snapshot_fixture_type;
+    w.item_charges=extension_snapshot_fixture_charges;w.item_equipment_type=extension_snapshot_fixture_kind;
+    extension_snapshot_fixture_occupied=1;
+    if(!ExtensionSnapshot(&w) || w.bag[0].charges!=7 || w.equipment[0].equipment_type!=4)return 1;
+    extension_snapshot_fixture_occupied=0;
+    if(!ExtensionSnapshot(&w))return 2;
+    for(i=0;i<30;++i)if(w.bag[i].handle || w.bag[i].rawcode || w.bag[i].charges || w.bag[i].equipment_type)return 3;
+    for(i=0;i<9;++i)if(w.equipment[i].handle || w.equipment[i].rawcode || w.equipment[i].charges || w.equipment[i].equipment_type)return 4;
+    return 0;
+}
+
 static int32_t fixture_screen_x, fixture_screen_y;
+static HHOOK WINAPI fixture_install_fault(int kind,HOOKPROC callback,HINSTANCE module,DWORD tid){
+    (void)kind;(void)callback;(void)module;(void)tid;
+    RaiseException(0xe0420010u,0,0,0);return NULL;
+}
+static HHOOK WINAPI fixture_install_null(int kind,HOOKPROC callback,HINSTANCE module,DWORD tid){
+    (void)kind;(void)callback;(void)module;(void)tid;
+    SetLastError(ERROR_MOD_NOT_FOUND);return NULL;
+}
+__declspec(dllexport) uint32_t BridgeInstallFaultTest(void){
+    BridgeCommand cmd={0};
+    cmd.specific_handler=(void *)GetProcAddress(GetModuleHandleW(L"ntdll.dll"),"__C_specific_handler");
+    cmd.get_error=GetLastError;cmd.set_hook=fixture_install_fault;
+    cmd.hook_kind=WH_CALLWNDPROC;
+    BridgeInstall(&cmd);
+    if(cmd.stage!=2 || cmd.query_result!=0x105 || cmd.exception_code!=0xe0420010u ||
+       bridge_fault.magic!=0x24268012u || bridge_fault.code!=0xe0420010u || !bridge_fault.instruction){
+        g_dispatch=0;return 1201;
+    }
+    cmd.exception_code=0;cmd.set_hook=fixture_install_null;
+    BridgeInstall(&cmd);g_dispatch=0;
+    return cmd.stage==2 && cmd.query_result==0x106 && cmd.last_error==126 &&
+        !cmd.exception_code && !bridge_fault.magic ? 0 : 1202;
+}
+#ifdef BRIDGE_DIAGNOSTIC
+static int cooldown_test_level,cooldown_test_case,cooldown_test_starts;
+static uint8_t cooldown_test_add(uint64_t unit,uint32_t code){
+    (void)unit;(void)code;cooldown_test_level=1;return 1;
+}
+static uint8_t cooldown_test_remove(uint64_t unit,uint32_t code){
+    (void)unit;(void)code;cooldown_test_level=0;return 1;
+}
+static int32_t cooldown_test_get(uint64_t unit,uint32_t code){
+    (void)unit;(void)code;return cooldown_test_level;
+}
+static int32_t cooldown_test_set(uint64_t unit,uint32_t code,int32_t level){
+    (void)unit;(void)code;return cooldown_test_level=level;
+}
+static void cooldown_test_start(uint64_t unit,uint32_t code,float *duration){
+    (void)unit;(void)code;++cooldown_test_starts;
+    if(cooldown_test_case==2)RaiseException(0xe0420003u,0,0,0);
+    if(!duration || *duration!=10.0f)RaiseException(0xe0420004u,0,0,0);
+}
+static uint32_t cooldown_test_base(uint64_t unit,uint32_t code,int32_t level){
+    (void)unit;(void)code;(void)level;return 0x40f00000u; /* 7.5f */
+}
+static uint32_t cooldown_test_remaining(uint64_t unit,uint32_t code){
+    (void)unit;(void)code;return cooldown_test_starts?0x41200000u:0;
+}
+__declspec(dllexport) uint32_t BridgeCooldownContractTest(uint32_t scenario){
+    CooldownProbeWork w={0};BridgeCommand cmd={0};
+    fixture_count=1;fixture_scenario=0;fixture_type_calls=0;fixture_levels[0]=10;
+    cooldown_test_case=scenario;cooldown_test_level=scenario==1;cooldown_test_starts=0;
+    w.selection.local_player=fixture_player;w.selection.create_group=fixture_group;
+    w.selection.enum_selected=fixture_enum;w.selection.first_of_group=fixture_first;
+    w.selection.remove_from_group=fixture_remove;w.selection.destroy_group=fixture_destroy;
+    w.selection.unit_type_id=fixture_type;w.selection.hero_level=fixture_level;
+    w.add=cooldown_test_add;w.remove=cooldown_test_remove;w.get_level=cooldown_test_get;
+    w.set_level=cooldown_test_set;w.start=cooldown_test_start;
+    w.cooldown=cooldown_test_base;w.remaining=cooldown_test_remaining;
+    w.ability=0x41487463;w.order=1;w.target_unit=0x100000;
+    cmd.work=&w;cmd.specific_handler=(void *)GetProcAddress(GetModuleHandleW(L"ntdll.dll"),"__C_specific_handler");
+    g_dispatch=&cmd;BridgeCooldownProbeQuery();g_dispatch=0;
+    if(scenario==1)return w.error==10 && cooldown_test_level==1 && !cooldown_test_starts?0:1101;
+    if(scenario==2)return w.error==0xe0420003u && !cooldown_test_level && w.reserved[1]==5?0:1102;
+    return !w.error && w.completed==1 && w.base==7.5f && w.remaining_after==10.0f &&
+        !cooldown_test_level && cooldown_test_starts==1?0:1103;
+}
+#endif
 static int32_t fixture_get_screen_x(void) { return fixture_screen_x; }
 static int32_t fixture_get_screen_y(void) { return fixture_screen_y; }
 __declspec(dllexport) uint64_t BridgeScreenTestRun(ScreenMouseWork *w, int32_t x, int32_t y, int error) {

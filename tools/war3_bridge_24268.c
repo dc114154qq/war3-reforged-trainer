@@ -62,6 +62,23 @@ static LONG BridgeExceptionFilter(EXCEPTION_POINTERS *info) {
     bridge_fault.rax=r->Rax;bridge_fault.rbx=r->Rbx;bridge_fault.rsp=r->Rsp;bridge_fault.rbp=r->Rbp;
     return EXCEPTION_EXECUTE_HANDLER;
 }
+
+static void BridgeDetach(BridgeCommand *cmd) {
+    DWORD error;
+    if (!cmd->hook || cmd->detached) return;
+    if (cmd->unhook(cmd->hook)) {
+        InterlockedExchange(&cmd->detached, 1);
+        return;
+    }
+    error = cmd->get_error();
+    /* A competing cleanup path may have removed the one-shot hook first. */
+    if (error == ERROR_INVALID_HOOK_HANDLE) {
+        InterlockedExchange(&cmd->detached, 1);
+        return;
+    }
+    cmd->last_error = error;
+}
+
 static LRESULT CALLBACK BridgeCallback(int code, WPARAM w, LPARAM l) {
     BridgeCommand *cmd = g_dispatch;
     DWORD hook_kind;
@@ -96,8 +113,7 @@ static LRESULT CALLBACK BridgeCallback(int code, WPARAM w, LPARAM l) {
                 cmd->query_stage = 3;
             }
             if (!(cmd->hook_kind & BRIDGE_PERSISTENT_HOOK)) {
-                cmd->detached = cmd->unhook(cmd->hook);
-                if (!cmd->detached) cmd->last_error = cmd->get_error();
+                BridgeDetach(cmd);
             }
             InterlockedExchange(&cmd->stage, 3);
         }
@@ -109,6 +125,7 @@ static LRESULT CALLBACK BridgeCallback(int code, WPARAM w, LPARAM l) {
 
 __declspec(dllexport) DWORD WINAPI BridgeInstall(BridgeCommand *cmd) {
     DWORD hook_kind = cmd->hook_kind & ~BRIDGE_PERSISTENT_HOOK;
+    memset(&bridge_fault, 0, sizeof(bridge_fault));
     InterlockedExchange(&cmd->stage, 1);
     cmd->query_result = 1; /* install entered */
     g_dispatch = cmd;
@@ -117,7 +134,7 @@ __declspec(dllexport) DWORD WINAPI BridgeInstall(BridgeCommand *cmd) {
         cmd->query_result = 3; /* registering the manually mapped image */
         __try {
             cmd->unwind_registered = cmd->add_table(cmd->unwind_table, cmd->unwind_count, cmd->image_base);
-        } __except (EXCEPTION_EXECUTE_HANDLER) {
+        } __except (BridgeExceptionFilter(GetExceptionInformation())) {
             cmd->exception_code = GetExceptionCode();
             cmd->last_error = cmd->get_error();
             cmd->query_result = 0x100u | 3u;
@@ -136,8 +153,20 @@ __declspec(dllexport) DWORD WINAPI BridgeInstall(BridgeCommand *cmd) {
     }
     cmd->query_result = 5; /* installing the thread hook */
     __try {
-        cmd->hook = cmd->set_hook(hook_kind == WH_GETMESSAGE ? WH_GETMESSAGE : WH_CALLWNDPROC, BridgeCallback, NULL, cmd->target_tid);
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        /* A loader-owned image must identify its registered module to
+           USER32. A SEC_IMAGE fallback is deliberately not in the target's
+           loader list, so passing its mapped base makes SetWindowsHookExW
+           reject the hook with ERROR_MOD_NOT_FOUND; preserve the validated
+           NULL-handle behavior for that route. */
+        HINSTANCE hook_module = cmd->unwind_count
+            ? NULL
+            : (HINSTANCE)(uintptr_t)cmd->image_base;
+        cmd->hook = cmd->set_hook(
+            hook_kind == WH_GETMESSAGE ? WH_GETMESSAGE : WH_CALLWNDPROC,
+            BridgeCallback,
+            hook_module,
+            cmd->target_tid);
+    } __except (BridgeExceptionFilter(GetExceptionInformation())) {
         cmd->exception_code = GetExceptionCode();
         cmd->last_error = cmd->get_error();
         cmd->query_result = 0x100u | 5u;
@@ -153,10 +182,7 @@ __declspec(dllexport) DWORD WINAPI BridgeInstall(BridgeCommand *cmd) {
     /* Hooks belong to the installing thread; keep it alive through dispatch. */
     if (cmd->hook) {
         while (!cmd->stop_requested) cmd->sleep_ms(1);
-        if (!cmd->detached) {
-            cmd->detached = cmd->unhook(cmd->hook);
-            if (!cmd->detached) cmd->last_error = cmd->get_error();
-        }
+        BridgeDetach(cmd);
     }
     if ((!cmd->hook || cmd->detached) && !cmd->active && cmd->unwind_registered)
         cmd->unwind_removed = cmd->delete_table(cmd->unwind_table);
@@ -164,11 +190,42 @@ __declspec(dllexport) DWORD WINAPI BridgeInstall(BridgeCommand *cmd) {
 }
 
 __declspec(dllexport) DWORD WINAPI BridgeUninstall(BridgeCommand *cmd) {
-    if (cmd->hook && !cmd->detached) {
-        cmd->detached = cmd->unhook(cmd->hook);
-        if (!cmd->detached) cmd->last_error = cmd->get_error();
-    }
+    BridgeDetach(cmd);
     return 0;
+}
+
+/* Keep a DIR64 relocation in release builds so base relocation is explicit. */
+__declspec(dllexport) const void *bridge_relocation_anchor = (const void *)&BridgeInstall;
+
+typedef struct BridgeLoadDiagnostic {
+    const wchar_t *path;
+    HMODULE (WINAPI *load)(LPCWSTR);
+    DWORD (WINAPI *get_error)(void);
+    uint64_t module;
+    DWORD error;
+    DWORD stage;
+    LONG (NTAPI *ldr_load)(wchar_t *, DWORD *, void *, HMODULE *);
+    LONG ntstatus;
+} BridgeLoadDiagnostic;
+_Static_assert(sizeof(BridgeLoadDiagnostic) == 56, "BridgeLoadDiagnostic ABI");
+
+__declspec(dllexport) DWORD WINAPI BridgeDiagnoseLoad(BridgeLoadDiagnostic *probe) {
+    probe->stage = 1;
+    probe->module = (uint64_t)(uintptr_t)probe->load(probe->path);
+    probe->error = probe->get_error();
+    if (!probe->module && probe->ldr_load) {
+        struct { USHORT Length, MaximumLength; wchar_t *Buffer; } name;
+        size_t count = 0;
+        HMODULE module = NULL;
+        while (probe->path[count] && count < 32766) ++count;
+        name.Length = (USHORT)(count * sizeof(wchar_t));
+        name.MaximumLength = name.Length + (USHORT)sizeof(wchar_t);
+        name.Buffer = (wchar_t *)probe->path;
+        probe->ntstatus = probe->ldr_load(NULL, NULL, &name, &module);
+        probe->module = (uint64_t)(uintptr_t)module;
+    }
+    probe->stage = 2;
+    return 1;
 }
 
 /* Current-engine selection query. Included after BridgeCommand/g_dispatch. */
@@ -316,6 +373,7 @@ BOOL WINAPI DllMain(HINSTANCE module,DWORD reason,LPVOID reserved) {
 #include "war3_bridge_item_catalog.h"
 #include "war3_bridge_clone.h"
 #include "war3_bridge_unit_action.h"
+#include "war3_bridge_unit_stats.h"
 #include "war3_bridge_world.h"
 #include "war3_bridge_spawn.h"
 #include "war3_bridge_mouse.h"
@@ -326,6 +384,15 @@ BOOL WINAPI DllMain(HINSTANCE module,DWORD reason,LPVOID reserved) {
 #include "war3_bridge_map_bounds.h"
 #include "war3_bridge_equipment.h"
 #include "war3_bridge_extension.h"
+#include "war3_bridge_stat_details.h"
+#include "war3_bridge_talent_icon_control.h"
+#ifdef BRIDGE_DIAGNOSTIC
+#include "war3_bridge_cooldown_probe.h"
+#endif
+#ifdef BRIDGE_DIAGNOSTIC
+#include "war3_bridge_talent_probe.h"
+#endif
+#include "war3_bridge_talent_order.h"
 #ifdef BRIDGE_TEST
 #include "war3_bridge_test_fixture.h"
 #endif

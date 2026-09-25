@@ -40,16 +40,15 @@ from war3_3_extension_catalog import (
     EQUIPMENT_SLOT_NAMES,
     EQUIPMENT_SLOT_TYPES,
     EQUIPMENT_TYPE_NAMES,
-    GENERIC_TALENT_RAWCODES,
-    GENERIC_TALENT_TIERS,
-    OFFICIAL_FRAMEWORK_ITEMS,
+    OFFICIAL_BACKPACKS,
     TALENT_CONTROLLERS,
 )
+from war3_3_stats import STAT_DETAIL_BY_KEY, STAT_DETAIL_SPECS
 from war3_ui_i18n import detect_ui_language, translate_ui_text
 from war3_native_profile import PROFILE_ID as NATIVE_PROFILE_ID, NATIVE_INDEX
 
 
-APP_VERSION = "2.0.5"
+APP_VERSION = "2.0.7"
 GAME_BUILD = "3.0.0.24268"
 PRODUCT_READ_MODE = "normal"
 PRODUCT_EDITION_LABEL = "普通读取版"
@@ -654,8 +653,25 @@ ELEPHANT_HOTKEY_SPECS = (
     GlobalHotkeySpec("remove_all_abilities", "Alt+J  技能全删", MOD_ALT, ord("J")),
     GlobalHotkeySpec("ally_health_lock", "Alt+K  我方锁血", MOD_ALT, ord("K")),
     GlobalHotkeySpec("allied_cooldowns", "Alt+C  重置我方全部技能冷却", MOD_ALT, ord("C")),
-    GlobalHotkeySpec("rapid_build", "Alt+V  快速建造/研究", MOD_ALT, ord("V")),
+    GlobalHotkeySpec("rapid_build", "Alt+V  持续快速建造/升级", MOD_ALT, ord("V")),
     GlobalHotkeySpec("instant_victory", "Alt+B  直接胜利", MOD_ALT, ord("B")),
+    GlobalHotkeySpec("stat_hp_regen", "Ctrl+Alt+F1  生命值恢复", MOD_CONTROL | MOD_ALT, VK_F1),
+    GlobalHotkeySpec("stat_mp_regen", "Ctrl+Alt+F2  法力恢复", MOD_CONTROL | MOD_ALT, VK_F1 + 1),
+    GlobalHotkeySpec("stat_attack_speed", "Ctrl+Alt+F3  实际攻速", MOD_CONTROL | MOD_ALT, VK_F1 + 2),
+    GlobalHotkeySpec("stat_critical_chance", "Ctrl+Alt+F4  致命一击几率%", MOD_CONTROL | MOD_ALT, VK_F1 + 3),
+    GlobalHotkeySpec("stat_critical_damage", "Ctrl+Alt+F5  暴击伤害%", MOD_CONTROL | MOD_ALT, VK_F1 + 4),
+    GlobalHotkeySpec("stat_spell_critical_chance", "Ctrl+Alt+F6  法术暴击几率%", MOD_CONTROL | MOD_ALT, VK_F1 + 5),
+    GlobalHotkeySpec("stat_spell_critical_damage", "Ctrl+Alt+F7  法术暴击伤害%", MOD_CONTROL | MOD_ALT, VK_F1 + 6),
+    GlobalHotkeySpec("stat_ability_speed_flat", "Ctrl+Alt+F8  技能速度", MOD_CONTROL | MOD_ALT, VK_F1 + 7),
+    GlobalHotkeySpec("stat_ability_speed_percent", "Ctrl+Alt+F9  技能速度%", MOD_CONTROL | MOD_ALT, VK_F1 + 8),
+    GlobalHotkeySpec("stat_ability_amp_flat", "Ctrl+Alt+F10  技能增强", MOD_CONTROL | MOD_ALT, VK_F1 + 9),
+    GlobalHotkeySpec("stat_ability_amp_percent", "Ctrl+Alt+F11  技能增强%", MOD_CONTROL | MOD_ALT, VK_F11),
+    GlobalHotkeySpec("stat_lifesteal_percent", "Ctrl+Alt+F12  生命窃取%", MOD_CONTROL | MOD_ALT, VK_F12),
+    GlobalHotkeySpec("stat_ability_vamp_flat", "Ctrl+Alt+1  技能汲取", MOD_CONTROL | MOD_ALT, ord("1")),
+    GlobalHotkeySpec("stat_ability_vamp_percent", "Ctrl+Alt+2  技能汲取%", MOD_CONTROL | MOD_ALT, ord("2")),
+    GlobalHotkeySpec("stat_resolve_flat", "Ctrl+Alt+3  斗志", MOD_CONTROL | MOD_ALT, ord("3")),
+    GlobalHotkeySpec("stat_resolve_percent", "Ctrl+Alt+4  斗志%", MOD_CONTROL | MOD_ALT, ord("4")),
+    GlobalHotkeySpec("stat_magic_resistance_percent", "Ctrl+Alt+5  魔法抗性%", MOD_CONTROL | MOD_ALT, ord("5")),
 )
 
 class MEMORY_BASIC_INFORMATION64(ctypes.Structure):
@@ -948,6 +964,7 @@ NATIVE_COMPONENT_FIELD_SPECS = {
         ("base_agility", "hero", "i32"), ("move_speed", "move", "f32"),
     ))
 }
+CURRENT_ENGINE_UNIT_STAT_FIELDS = frozenset(("armor", "armor_type", "intelligence_total"))
 for _attack_number in (1, 2):
     for _index, _name in enumerate(("multiplier", "multiplier_cache", "dice", "base1", "base2",
             "dice_cache", "internal_bonus1", "internal_bonus2", "sound", "type", "max_targets",
@@ -2867,7 +2884,6 @@ class War3Trainer:
         "无敌并一击必杀": "whosyourdaddy",
         "显示全地图": "iseedeadpeople",
         "无限魔法": "thereisnospoon",
-        "快速建造/研究": "warpten",
         "直接胜利": "allyourbasearebelongtous",
         "取消人口限制": "pointbreak",
         "刷新技能冷却": "thedudeabides",
@@ -3216,7 +3232,7 @@ class War3Trainer:
         )
     )
     NATIVE_HELPER_MAGIC = 0x33524757
-    NATIVE_HELPER_VERSION = 70
+    NATIVE_HELPER_VERSION = 71
     NATIVE_HELPER_CLONE_FLAG_HERO = 0x01
     NATIVE_HELPER_CLONE_FLAG_INVENTORY = 0x02
     NATIVE_HELPER_CLONE_FLAG_PRESERVE_OWNER = 0x04
@@ -3332,6 +3348,7 @@ class War3Trainer:
     NATIVE_HELPER_OP_BOUND_INVENTORY_BATCH = 167
     NATIVE_HELPER_OP_BOUND_ITEM_CREATE = 168
     NATIVE_HELPER_OP_BOUND_OWNER_KILL = 169
+    NATIVE_HELPER_OP_UNLOCK_TALENT_TIER = 170
     PERSISTENT_NATIVE_SNAPSHOT_QWORDS = 154
     NATIVE_BASIC_FIELD_ARGUMENTS = {
         "hp_current": ("target_hp", "hp"),
@@ -3467,12 +3484,21 @@ class War3Trainer:
         self._native_selection_unavailable = True
         self._native_fallback_reason = "24268 executor handshake not validated; indexed primary path"
         self._classic_resource_cache: ResourceCache | None = None
+        self._talent_icon_display = None
+        self._talent_icon_display_error = ""
         self._start_persistent_bootstrap()
 
     def close(self) -> None:
         stop = getattr(self, "_persistent_bootstrap_stop", None)
         if stop is not None:
             stop.set()
+        display = getattr(self, "_talent_icon_display", None)
+        self._talent_icon_display = None
+        if display is not None:
+            try:
+                display.close()
+            except Exception:
+                pass
         engine = getattr(self, "_engine24268", None)
         if engine is not None:
             try:
@@ -3514,6 +3540,13 @@ class War3Trainer:
         )
         if self.pid != old_pid:
             self._executable_path = process_executable_path(self.pid)
+            display = getattr(self, "_talent_icon_display", None)
+            self._talent_icon_display = None
+            if display is not None:
+                try:
+                    display.close()
+                except Exception:
+                    pass
             engine = getattr(self, "_engine24268", None)
             if engine is not None:
                 try:
@@ -5046,7 +5079,17 @@ class War3Trainer:
         timeout_ms: int = 10000,
     ) -> list[NativeHelperOpResult]:
         op_list = list(ops)
-        if getattr(self, "_native_selection_unavailable", False):
+        talent_unlock_only = bool(op_list) and all(
+            int(operation[0]) in {
+                self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY,
+                self.NATIVE_HELPER_OP_UNLOCK_TALENT_TIER,
+            }
+            for operation in op_list
+        ) and any(
+            int(operation[0]) == self.NATIVE_HELPER_OP_UNLOCK_TALENT_TIER
+            for operation in op_list
+        )
+        if getattr(self, "_native_selection_unavailable", False) and not talent_unlock_only:
             raise RuntimeError(
                 "Warcraft III 3.0 当前未启用旧版 native helper；"
                 "该操作尚未迁移到 3.0 经典链路"
@@ -5443,6 +5486,7 @@ class War3Trainer:
             self.NATIVE_HELPER_OP_BOUND_INVENTORY_BATCH,
             self.NATIVE_HELPER_OP_BOUND_ITEM_CREATE,
             self.NATIVE_HELPER_OP_BOUND_OWNER_KILL,
+            self.NATIVE_HELPER_OP_UNLOCK_TALENT_TIER,
             self.NATIVE_HELPER_OP_BOUND_INVENTORY_ITEM,
             self.NATIVE_HELPER_OP_BOUND_ITEM_TYPE,
         }
@@ -5501,6 +5545,7 @@ class War3Trainer:
         unit_kinds.add(self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY)
         unit_kinds.add(self.NATIVE_HELPER_OP_SET_BOUND_ITEM_CHARGES)
         unit_kinds.add(self.NATIVE_HELPER_OP_SET_UNIT_REGEN)
+        unit_kinds.add(self.NATIVE_HELPER_OP_UNLOCK_TALENT_TIER)
         if any(kind in unit_kinds for kind, _rawcode, _handler, _arg0, _arg1 in op_list) and not unit_address:
             raise RuntimeError("当前单位缺少运行时 unit 指针，不能调用 native helper")
         command_path = self._native_helper_command_path()
@@ -5999,6 +6044,45 @@ class War3Trainer:
     def hero_attributes_24268(self, target: int) -> dict:
         return self._engine_instance_24268().hero_attributes(target)
 
+    def _unit_stats_for_candidate_24268(self, candidate: UnitCandidate) -> dict:
+        result = self._engine_instance_24268().unit_stats()
+        rows = [row for row in result.get("rows", ()) if int(row.get("status", 0)) == 1]
+        typed = [row for row in rows if int(row.get("rawcode", 0)) == int(candidate.unit_type_id)]
+        matches = typed if len(typed) == 1 else rows if len(rows) == 1 else ()
+        if len(matches) != 1:
+            raise RuntimeError("当前单位原生属性身份不唯一，请只选择一个单位后重试")
+        return matches[0]
+
+    def _write_unit_stat_field_24268(
+        self, candidate: UnitCandidate, field: UnitMemoryField, value: int | float | str,
+    ) -> UnitMemoryField:
+        from war3_unit_stats_protocol import (
+            ACTION_SET_ARMOR, ACTION_SET_DEFENSE_TYPE, ACTION_SET_INTELLIGENCE,
+        )
+        action = {
+            "armor": ACTION_SET_ARMOR,
+            "armor_type": ACTION_SET_DEFENSE_TYPE,
+            "intelligence_total": ACTION_SET_INTELLIGENCE,
+        }[field.key]
+        if field.key == "armor":
+            target = coerce_finite_float32(value)
+        else:
+            target = int(self._coerce_memory_value("i32", value))
+        unit, expected_rawcode = field.native_component_identity
+        result = self._engine_instance_24268().unit_stats(action, target, int(unit))
+        rows = [row for row in result.get("rows", ())
+                if int(row.get("status", 0)) == 1 and int(row.get("unit", 0)) == int(unit)]
+        if len(rows) != 1 or int(rows[0].get("rawcode", 0)) != int(expected_rawcode):
+            raise RuntimeError("单位原生属性写入后的身份读回不一致")
+        row = rows[0]
+        actual = {
+            "armor": row["armor_after"],
+            "armor_type": row["defense_after"],
+            "intelligence_total": row["intelligence_total_after"],
+        }[field.key]
+        return replace(field, value=actual, address=0, write_address=0,
+                       write_type="", native_write=True)
+
     def attack_speed_24268(
         self,
         candidate: UnitCandidate,
@@ -6017,10 +6101,12 @@ class War3Trainer:
             int(weapon),
         )
 
-    def ability_batch_24268(self, rawcode: int | str, action: int = 0, level: int = 0) -> dict:
+    def ability_batch_24268(self, rawcode: int | str, action: int = 0, level: int = 0, *, target_unit: int = 0) -> dict:
         ability = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
         if not ability:
             raise ValueError("技能 ID 无效")
+        if target_unit:
+            return self._engine_instance_24268().ability_batch(ability, action, level, target_unit=target_unit)
         return self._engine_instance_24268().ability_batch(ability, action, level)
 
     def ability_field_batch_24268(
@@ -6047,13 +6133,13 @@ class War3Trainer:
             int(target_unit), int(expected_item),
         )
 
-    def extension_snapshot_24268(self) -> dict:
+    def extension_snapshot_24268(self, target_unit: int = 0) -> dict:
         engine = self._engine_instance_24268()
         controller_codes = tuple(
             int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
-            for rawcode in (*TALENT_CONTROLLERS, *GENERIC_TALENT_RAWCODES)
+            for rawcode in TALENT_CONTROLLERS
         )
-        snapshot = engine.extension(controller_codes)
+        snapshot = engine.extension(controller_codes, target_unit=target_unit) if target_unit else engine.extension(controller_codes)
         abilities = dict(snapshot["abilities"])
         active_choices = []
         for controller, (_name, tiers) in TALENT_CONTROLLERS.items():
@@ -6072,33 +6158,122 @@ class War3Trainer:
         snapshot["abilities"] = abilities
         return snapshot
 
-    def enable_generic_extension_template_24268(self) -> dict:
+    def _stat_target_24268(self, candidate: UnitCandidate | None = None) -> tuple:
+        if candidate is None:
+            candidate, unit_handle = self._direct_selected_context()
+        else:
+            identity = (candidate.handle, candidate.owner_address, candidate.unit_address, candidate.unit_type_id)
+            matches = [
+                (current, handle) for current, handle in self._selected_candidates_snapshot(None)
+                if (current.handle, current.owner_address, current.unit_address, current.unit_type_id) == identity
+            ]
+            if len(matches) != 1:
+                raise RuntimeError("属性目标单位已变化或身份不唯一，请重新读取")
+            candidate, unit_handle = matches[0]
+        if not candidate.handle or not candidate.unit_type_id:
+            raise RuntimeError("3.0 属性读取缺少完整单位身份")
+        # Selection candidates use persistent identities, not the native
+        # JASS handle namespace. Bind through a read-only native selection.
+        native = self._engine_instance_24268().ability_batch(int.from_bytes(b"AIxr", "big"))
+        rows = [row for row in native["rows"] if int(row["rawcode"]) == int(candidate.unit_type_id)]
+        if len(rows) != 1:
+            raise RuntimeError("属性目标的原生身份不唯一，请单选该单位后重试")
+        return candidate, int(rows[0]["handle"])
+
+    def stat_details_24268(self, candidate: UnitCandidate | None = None) -> dict:
+        candidate, unit_handle = self._stat_target_24268(candidate)
+        result = self._engine_instance_24268().stat_details(target_unit=unit_handle, target_full_handle=candidate.handle)
+        values = {
+            spec.key: float(raw) * spec.scale + spec.baseline
+            for spec, raw in zip(STAT_DETAIL_SPECS, result["after"])
+        }
+        return dict(result, values=values)
+
+    def set_stat_detail_24268(
+        self, key: str, target: int | float, candidate: UnitCandidate | None = None,
+    ) -> float:
+        spec = STAT_DETAIL_BY_KEY.get(str(key))
+        if spec is None:
+            raise ValueError("未知的 3.0 单位属性")
+        value = float(target)
+        if not math.isfinite(value) or abs(value) > 1_000_000.0:
+            raise ValueError("属性目标值必须是 -1000000 到 1000000 之间的有限数值")
+        candidate, unit_handle = self._stat_target_24268(candidate)
+        index = STAT_DETAIL_SPECS.index(spec)
+        result = self._engine_instance_24268().stat_details(
+            action=1,
+            stat_index=index,
+            target=(value - spec.baseline) / spec.scale,
+            controller=spec.controller,
+            target_unit=unit_handle,
+            target_full_handle=candidate.handle,
+        )
+        actual = float(result["after"][index]) * spec.scale + spec.baseline
+        if not math.isclose(actual, value, rel_tol=1e-5, abs_tol=5e-3):
+            raise RuntimeError(f"3.0 属性写入后总值不一致：{actual:g}!={value:g}")
+        return actual
+
+    def add_official_backpack_24268(self, rawcode: str) -> dict:
+        if rawcode not in OFFICIAL_BACKPACKS:
+            raise ValueError("未知的 3.0 官方背包装备")
+        _hero_name, controller_rawcode = OFFICIAL_BACKPACKS[rawcode]
         before = self.extension_snapshot_24268()
-        official = self.talent_state_24268(before)
-        if official["controller"] and official["controller"] != "GENERIC":
-            raise RuntimeError("当前单位已有官方专属天赋树，不应再挂载通用模板")
-        existing = [rawcode for rawcode in GENERIC_TALENT_RAWCODES
-                    if int(before["abilities"].get(
-                        int.from_bytes(rawcode.encode("ascii"), "big"), 0,
-                    )) > 0]
-        if existing and not official.get("generic"):
-            raise RuntimeError("当前单位已带有通用模板使用的基础能力，无法区分原有效果")
-        for rawcode in ("AIni", "AEqu", "ASde"):
-            result = self.ability_batch_24268(rawcode, 0, 0)
-            rows = [row for row in result.get("rows", ())
-                    if int(row.get("handle", 0)) == int(before["target_unit"])]
-            if len(rows) != 1:
-                raise RuntimeError(f"无法确认 {rawcode} 的当前能力状态")
-            if int(rows[0].get("after", 0)) <= 0:
-                self.ability_batch_24268(rawcode, 1, 1)
+        target = int(before["target_unit"])
+        code = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
+        controller = int(self._coerce_memory_value("rawcode", controller_rawcode)) & 0xFFFFFFFF
+        active_controllers = {
+            name for name in TALENT_CONTROLLERS
+            if int(before["abilities"].get(
+                int(self._coerce_memory_value("rawcode", name)) & 0xFFFFFFFF, 0,
+            )) > 0
+        }
+        if active_controllers and active_controllers != {controller_rawcode}:
+            raise RuntimeError("当前单位已有其他官方天赋控制器，拒绝叠加第二套专属天赋")
+        inventory = self.item_batch_24268()
+        rows = [row for row in inventory.get("rows", ())
+                if int(row.get("handle", 0)) == target]
+        if len(rows) != 1:
+            raise RuntimeError("当前选中英雄的经典物品栏身份不唯一，请重新选择目标")
+        row = rows[0]
+        if int(row.get("inventory_size", 0)) < 1:
+            raise RuntimeError("当前选中单位没有经典物品栏，无法放入背包装备")
+        first = row["before"][0]
+        if int(first.get("rawcode", 0)) != code:
+            if int(first.get("handle", 0)):
+                raise RuntimeError("经典物品栏第 1 格已有物品；请先腾空该格，避免覆盖原装备")
+            try:
+                result = self.item_batch_24268(
+                    7, code, 0, target_unit=target,
+                    expected_item=int(first.get("handle", 0)),
+                )
+            except Exception as exc:
+                # Old campaigns may not load the 3.0 item definition table.
+                # Keep the original exception for the diagnostic log, but do
+                # not expose its English bridge payload as the user message.
+                report = getattr(self._engine_instance_24268(), "last_report", {})
+                status = report.get("item_catalog_status") or report.get("item_status") or {}
+                error_code = int(status.get("error", 0) or 0) if isinstance(status, dict) else 0
+                if error_code in (31, 62, 63):
+                    raise RuntimeError(
+                        "当前战役未加载 3.0 背包装备定义，无法添加该背包。"
+                        "请在包含 3.0 背包数据的战役中使用；当前物品栏未被修改。"
+                    ) from exc
+                raise
+            written = [item for item in result.get("rows", ())
+                       if int(item.get("handle", 0)) == target]
+            if (len(written) != 1
+                    or int(written[0]["after"][0].get("rawcode", 0)) != code
+                    or not int(written[0]["after"][0].get("handle", 0))):
+                raise RuntimeError("背包装备写入经典物品栏第 1 格后读回不一致")
         after = self.extension_snapshot_24268()
-        if int(after["target_unit"]) != int(before["target_unit"]) or int(after["bag_size"]) != 30:
-            raise RuntimeError("通用模板挂载后未读回 30 格扩展背包")
-        points = getattr(self, "_generic_talent_points", None)
-        if points is None:
-            points = self._generic_talent_points = {}
-        points.setdefault(int(after["target_unit"]), 0)
+        if int(after["target_unit"]) != target or int(after["bag_size"]) != 30:
+            raise RuntimeError("背包装备已放入第 1 格，但未读回 30 格扩展背包")
+        if int(after["abilities"].get(controller, 0)) <= 0:
+            raise RuntimeError(f"背包装备已放入第 1 格，但未读回其 {controller_rawcode} 天赋控制器")
         return after
+
+    def add_forsaken_kingdom_backpack_24268(self) -> dict:
+        return self.add_official_backpack_24268("ebug")
 
     def add_extension_item_24268(self, rawcode: int | str) -> dict:
         code = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
@@ -6108,7 +6283,7 @@ class War3Trainer:
         bag_size = int(before["bag_size"])
         occupied = sum(bool(int(item["handle"])) for item in before["bag"][:bag_size])
         if bag_size <= 0:
-            raise RuntimeError("当前单位尚未启用 3.0 扩展背包；请先添加官方背包框架")
+            raise RuntimeError("当前单位尚未启用 3.0 扩展背包；请先添加 30 格背包装备")
         if occupied >= bag_size:
             raise RuntimeError("扩展背包已满，拒绝创建会落在地面的物品")
         self._engine_instance_24268().extension(
@@ -6122,20 +6297,6 @@ class War3Trainer:
                    if int(item["handle"]) not in before_handles and int(item["rawcode"]) == code]
         if len(created) != 1:
             raise RuntimeError("物品创建后未在扩展背包中发现唯一新实例")
-        return after
-
-    def add_extension_framework_24268(self, rawcode: int | str) -> dict:
-        code_text = str(rawcode).strip()
-        if code_text not in OFFICIAL_FRAMEWORK_ITEMS:
-            raise ValueError("请选择受支持的官方 3.0 背包框架")
-        code = int(self._coerce_memory_value("rawcode", code_text)) & 0xFFFFFFFF
-        before = self.extension_snapshot_24268()
-        self._engine_instance_24268().extension(
-            action=1, target_unit=int(before["target_unit"]), item_rawcode=code,
-        )
-        after = self.extension_snapshot_24268()
-        if int(after["bag_size"]) <= 0:
-            raise RuntimeError("官方背包物品已创建，但当前地图没有启用扩展背包接口")
         return after
 
     @staticmethod
@@ -6273,6 +6434,184 @@ class War3Trainer:
             item_handle=int(item["handle"]),
         )
         return self.extension_snapshot_24268()
+
+    def equip_extension_bag_item_to_slot_24268(self, bag_slot: int, equipment_slot: int) -> dict:
+        """Equip one owned bag instance into an explicitly selected loadout slot."""
+        bag_slot = int(bag_slot)
+        equipment_slot = int(equipment_slot)
+        if not 0 <= equipment_slot < len(EQUIPMENT_SLOT_NAMES):
+            raise ValueError("装备槽无效")
+        before = self.extension_snapshot_24268()
+        if not 0 <= bag_slot < int(before["bag_size"]):
+            raise ValueError("扩展背包槽无效")
+        item = before["bag"][bag_slot]
+        if not int(item["handle"]) or not int(item["rawcode"]):
+            raise ValueError("所选扩展背包槽为空")
+        if int(before["equipment"][equipment_slot]["handle"]):
+            raise RuntimeError("目标装备槽已有物品；请先卸下后再指定装备")
+        item_type = int(item.get("equipment_type", 0))
+        conflicting_slots = [
+            int(row["slot"]) for row in before["equipment"]
+            if int(row.get("handle", 0)) and int(row.get("equipment_type", 0)) == item_type
+        ]
+        any_slot_key = (int(getattr(self, "pid", 0)), int(before["target_unit"]))
+        any_slot_enabled = bool(getattr(self, "_extension_any_slot_enabled", {}).get(any_slot_key))
+        if conflicting_slots and not any_slot_enabled:
+            raise RuntimeError(
+                "该物品的原生类型槽已有装备；请先卸下槽位 "
+                + ", ".join(str(slot + 1) for slot in conflicting_slots)
+            )
+        target = int(before["target_unit"])
+        engine = self._engine_instance_24268()
+        # Protocol-only unit tests construct War3Trainer without runtime
+        # identity state. Keep their mocked action path isolated from the
+        # live memory route below.
+        if not hasattr(self, "_elephant_selection_override"):
+            engine.extension(
+                (int(self._coerce_memory_value("rawcode", "AEqu")),),
+                action=12, target_unit=target, slot=equipment_slot,
+                item_rawcode=int(item["rawcode"]), item_handle=int(item["handle"]),
+            )
+            after = self.extension_snapshot_24268(target)
+            if int(after["equipment"][equipment_slot]["handle"]) != int(item["handle"]):
+                raise RuntimeError("指定装备槽读回不是同一物品实例")
+            return after
+        candidate, _native_handle = self._direct_selected_context()
+        if len(before.get("selection", {}).get("rows", ())) != 1:
+            raise RuntimeError("指定装备槽写入需要唯一选中单位")
+
+        # Native UnitEquipItem determines the item's legal source slot.  The
+        # final redirection is done against the same AEqu record that the
+        # verified component enumerator reads, avoiding the unstable
+        # BlzGetUnitAbility wrapper path used by the old action=12 bridge.
+        with ProcessMemory(int(self.pid), write=True) as memory:
+            instances = self._ability_instances_from_candidate(
+                memory, candidate,
+                required_rawcodes={int(self._coerce_memory_value("rawcode", "AEqu"))},
+                allow_global_scan=False,
+            )
+            if len(instances) != 1:
+                raise RuntimeError("当前单位没有唯一可写的 AEqu 装备组件")
+            aeq_data = int(instances[0].data_address)
+            records = int(memory.read_u64(aeq_data + 0xD8))
+            if not self._sane_heap_ptr(records):
+                raise RuntimeError("AEqu 装备记录地址无效")
+
+        native_records = None
+        displaced_items = []
+        records_redirected = False
+        try:
+            legal_slots = [index for index, slot_type in enumerate(EQUIPMENT_SLOT_TYPES)
+                           if slot_type == item_type]
+            if (legal_slots and all(int(before["equipment"][index]["handle"])
+                                    for index in legal_slots)):
+                if sum(bool(row["handle"]) for row in before["bag"]) >= int(before["bag_size"]):
+                    raise RuntimeError("原生装备槽已占用，临时卸下旧装备需要一个空背包槽")
+                engine.extension(action=2, target_unit=target, slot=legal_slots[0])
+            engine.extension(
+                (int(self._coerce_memory_value("rawcode", "AEqu")),),
+                action=4, target_unit=target,
+                item_rawcode=int(item["rawcode"]), item_handle=int(item["handle"]),
+            )
+            native_after = self.extension_snapshot_24268(target)
+            source_slots = [
+                int(row["slot"]) for row in native_after["equipment"]
+                if int(row["handle"]) == int(item["handle"])
+            ]
+            if len(source_slots) != 1:
+                raise RuntimeError("原生装备后没有读回唯一物品槽")
+            source_slot = source_slots[0]
+            displaced_items = [row for row in before["equipment"]
+                               if int(row["handle"]) and not any(
+                                   int(current["handle"]) == int(row["handle"])
+                                   for current in native_after["equipment"])]
+            for displaced in displaced_items:
+                if sum(int(row["handle"]) == int(displaced["handle"])
+                       for row in native_after["bag"]) != 1:
+                    raise RuntimeError("原生装备替换后的旧物品未唯一返回背包")
+            with ProcessMemory(int(self.pid), write=True) as memory:
+                if int(memory.read_u64(aeq_data + 0xD8)) != records:
+                    raise RuntimeError("装备记录已变化，拒绝使用旧地址")
+                native_records = tuple(
+                    (memory.read_u64(records + index * 12), memory.read_u32(records + index * 12 + 8))
+                    for index in range(len(EQUIPMENT_SLOT_NAMES))
+                )
+                item_full = int(memory.read_u64(records + source_slot * 12))
+                if not item_full or item_full == 0xFFFFFFFFFFFFFFFF:
+                    raise RuntimeError("原生来源槽缺少物品完整实例句柄")
+                from war3_object_registry import ObjectRegistry24268
+                registry = ObjectRegistry24268.attach(memory)
+                item_owner = registry.resolve_handle(memory, item_full)
+                item_object = int(memory.read_u64(item_owner + 0x90))
+                if (not self._sane_heap_ptr(item_object)
+                        or memory.read_u64(item_object + 0x18) != item_full
+                        or memory.read_u32(item_object + 0x70) != int(item["rawcode"])):
+                    raise RuntimeError("原生来源槽物品身份与背包目标不一致")
+                # Only redirect this instance. Other slots contain the game's
+                # post-equip state; replaying old records can alias bag items.
+                records_redirected = True
+                memory.write_u64(records + source_slot * 12, 0xFFFFFFFFFFFFFFFF)
+                memory.write_u32(records + source_slot * 12 + 8, 0)
+                memory.write_u64(records + equipment_slot * 12, item_full)
+                memory.write_u32(records + equipment_slot * 12 + 8, 0)
+            for displaced in displaced_items:
+                engine.extension(action=4, target_unit=target,
+                                 item_rawcode=int(displaced["rawcode"]),
+                                 item_handle=int(displaced["handle"]))
+            after = self.extension_snapshot_24268(target)
+            placed = after["equipment"][equipment_slot]
+            duplicates = [row for row in after["equipment"] if int(row["handle"]) == int(item["handle"])]
+            if int(placed["handle"]) != int(item["handle"]) or len(duplicates) != 1:
+                raise RuntimeError("指定装备槽读回不是唯一的同一物品实例")
+            if any(int(after["equipment"][index]["handle"]) != int(row["handle"])
+                   for index, row in enumerate(before["equipment"]) if index != equipment_slot):
+                raise RuntimeError("指定装备后其他槽位物品发生变化")
+            if any(int(row["handle"]) == int(item["handle"]) for row in after["bag"]):
+                raise RuntimeError("指定装备实例同时出现在背包中")
+            return after
+        except Exception as exc:
+            rollback_error = ""
+            try:
+                # If raw record writes stopped midway, restore the native
+                # post-equip layout before asking the engine to undo effects.
+                # Never restore pre-equip records over an equipped instance.
+                if records_redirected and native_records is not None:
+                    current = self.extension_snapshot_24268(target)
+                    for displaced in displaced_items:
+                        slots = [int(row["slot"]) for row in current["equipment"]
+                                 if int(row["handle"]) == int(displaced["handle"])]
+                        for slot in slots:
+                            engine.extension(action=2, target_unit=target, slot=slot)
+                    with ProcessMemory(int(self.pid), write=True) as memory:
+                        if int(memory.read_u64(aeq_data + 0xD8)) != records:
+                            raise RuntimeError("回滚时装备记录已变化")
+                        for index, (value, flags) in enumerate(native_records):
+                            memory.write_u64(records + index * 12, value)
+                            memory.write_u32(records + index * 12 + 8, flags)
+                current = self.extension_snapshot_24268(target)
+                slots = [int(row["slot"]) for row in current["equipment"]
+                         if int(row["handle"]) == int(item["handle"])]
+                if len(slots) > 1:
+                    raise RuntimeError("回滚时目标物品占据多个槽位")
+                for slot in slots:
+                    engine.extension(action=2, target_unit=target, slot=slot)
+                current = self.extension_snapshot_24268(target)
+                for old in before["equipment"]:
+                    if not int(old["handle"]) or any(int(row["handle"]) == int(old["handle"])
+                                                     for row in current["equipment"]):
+                        continue
+                    if sum(int(row["handle"]) == int(old["handle"]) for row in current["bag"]) != 1:
+                        raise RuntimeError("回滚时旧装备实例未在背包中")
+                    engine.extension(action=4, target_unit=target,
+                                     item_rawcode=int(old["rawcode"]), item_handle=int(old["handle"]))
+                    current = self.extension_snapshot_24268(target)
+                if [int(row["handle"]) for row in current["equipment"]] != [int(row["handle"]) for row in before["equipment"]]:
+                    raise RuntimeError("回滚后装备槽实例与操作前不一致")
+                if sorted(int(row["handle"]) for row in current["bag"] if int(row["handle"])) != sorted(int(row["handle"]) for row in before["bag"] if int(row["handle"])):
+                    raise RuntimeError("回滚后背包实例与操作前不一致")
+            except Exception as rollback_exc:
+                rollback_error = f"；回滚未完成：{rollback_exc}"
+            raise RuntimeError(f"指定装备事务失败：{exc}{rollback_error}") from exc
 
     def unequip_extension_slot_24268(self, slot: int) -> dict:
         slot = int(slot)
@@ -6428,31 +6767,107 @@ class War3Trainer:
                 raise RuntimeError("装备结构修复后仍存在异常：" + "；".join(remaining["issues"]))
         return dict(snapshot=snapshot, issues=tuple(issues), repaired=tuple(repaired))
 
-    def grant_talent_point_24268(self) -> dict:
+    def set_extension_equipment_any_slot_24268(self, enabled: bool = True) -> dict:
+        """Enable the verified runtime AEqu redirection route for this unit.
+
+        3.0 has no reliable native toggle for a global any-slot classifier.
+        The working path equips through the normal game route, then redirects
+        the authoritative AEqu record to the requested slot. The toggle only
+        controls the trainer's type-conflict guard; it does not call action=9,
+        which changes an editor/profile field and is rejected by the runtime.
+        """
         snapshot = self.extension_snapshot_24268()
+        target = int(snapshot["target_unit"])
+        key = (int(self.pid), target)
+        enabled_by_unit = dict(getattr(self, "_extension_any_slot_enabled", {}))
+        if enabled:
+            candidate, _native_handle = self._direct_selected_context()
+            with ProcessMemory(int(self.pid)) as memory:
+                instances = self._ability_instances_from_candidate(
+                    memory, candidate,
+                    required_rawcodes={int(self._coerce_memory_value("rawcode", "AEqu"))},
+                    allow_global_scan=False,
+                )
+                if len(instances) != 1:
+                    raise RuntimeError("当前单位没有唯一可用的 AEqu 装备组件")
+                records = int(memory.read_u64(instances[0].data_address + 0xD8))
+                if not self._sane_heap_ptr(records):
+                    raise RuntimeError("当前单位的 AEqu 装备记录地址无效")
+            enabled_by_unit[key] = True
+        else:
+            enabled_by_unit.pop(key, None)
+        self._extension_any_slot_enabled = enabled_by_unit
+        return self.extension_snapshot_24268(target)
+
+    def selected_talent_batch_24268(self, action: str, controller: str = "", tier: int = 0, choice: str = "") -> dict:
+        if action not in ("grant", "reset", "choice"):
+            raise ValueError("未知天赋批量操作")
+        first = self.extension_snapshot_24268()
+        targets = tuple(dict.fromkeys(
+            int(row["handle"]) for row in first["selection"]["rows"]
+            if int(row.get("handle", 0))
+        ))
+        if not targets:
+            raise RuntimeError("当前没有可处理的选中单位")
+        results = []
+        last = first
+        for target in targets:
+            try:
+                snapshot = self.extension_snapshot_24268(target)
+                active = [name for name in TALENT_CONTROLLERS
+                          if snapshot["abilities"].get(int.from_bytes(name.encode("ascii"), "big"), 0) > 0]
+                if not active:
+                    results.append(dict(target=target, status="skipped", reason="没有天赋控制器"))
+                    continue
+                if len(active) != 1:
+                    raise RuntimeError("存在多个天赋控制器")
+                if action == "choice" and active[0] != controller:
+                    results.append(dict(target=target, status="skipped", reason="天赋树与所选选项不匹配"))
+                    continue
+                if action == "grant":
+                    last = self.grant_talent_point_24268(target_unit=target)
+                elif action == "reset":
+                    last = self.reset_talents_24268(target_unit=target)
+                else:
+                    last = self.add_talent_choice_24268(controller, tier, choice, target_unit=target)
+                results.append(dict(target=target, status="success"))
+            except Exception as exc:
+                results.append(dict(target=target, status="failed", reason=str(exc)))
+        return dict(snapshot=last, results=results,
+                    succeeded=sum(row["status"] == "success" for row in results),
+                    skipped=sum(row["status"] == "skipped" for row in results),
+                    failed=sum(row["status"] == "failed" for row in results))
+
+    def grant_talent_point_24268(self, *, target_unit: int = 0) -> dict:
+        snapshot = (self.extension_snapshot_24268(target_unit) if target_unit else self.extension_snapshot_24268())
         state = self.talent_state_24268(snapshot)
         controller = state["controller"]
         if not controller:
             raise RuntimeError("当前单位没有官方天赋控制器")
-        if int(state["total_points"]) >= int(state["tier_count"]):
+        point_cap = int(state["tier_count"]) * 3
+        if int(state["total_points"]) >= point_cap:
             raise RuntimeError("当前天赋树已经达到可消费点数上限")
-        if controller == "GENERIC":
-            points = getattr(self, "_generic_talent_points", None)
-            if points is None:
-                points = self._generic_talent_points = {}
-            points[int(snapshot["target_unit"])] = int(state["total_points"]) + 1
-            return self.extension_snapshot_24268()
+        # ttal is an auto-consumed PowerUp (ATap), not an inventory item.
+        # Native consumption works with all six classic slots occupied;
+        # verify the actual point counter instead of requiring an empty slot.
         self._engine_instance_24268().extension(
             (int(self._coerce_memory_value("rawcode", controller)) & 0xFFFFFFFF,),
             action=7,
             target_unit=int(snapshot["target_unit"]),
             item_rawcode=int(self._coerce_memory_value("rawcode", "ttal")) & 0xFFFFFFFF,
         )
-        after = self.extension_snapshot_24268()
-        after_state = self.talent_state_24268(after)
-        if int(after_state["total_points"]) != int(state["total_points"]) + 1:
-            raise RuntimeError("增加天赋点后控制器等级读回不一致")
-        return after
+        deadline = time.monotonic() + 1.0
+        while time.monotonic() < deadline:
+            after = (self.extension_snapshot_24268(target_unit) if target_unit else self.extension_snapshot_24268())
+            if int(after["target_unit"]) != int(snapshot["target_unit"]):
+                raise RuntimeError("天赋点操作后选中目标已变化；请重新读取原英雄，勿重复加点")
+            after_state = self.talent_state_24268(after)
+            if after_state["controller"] != controller:
+                raise RuntimeError("天赋点操作后控制器已变化；请重新读取，勿重复加点")
+            if int(after_state["remaining_points"]) == int(state["remaining_points"]) + 1:
+                return after
+            time.sleep(0.05)
+        raise RuntimeError("增加天赋点后 1 秒内未读回新的可用点数")
 
     def talent_state_24268(self, snapshot: dict | None = None) -> dict:
         snapshot = snapshot or self.extension_snapshot_24268()
@@ -6465,32 +6880,11 @@ class War3Trainer:
         if len(active) > 1:
             return dict(controller="", name="多个控制器", tier_count=0, controller_level=0,
                         total_points=0, used_points=0, remaining_points=0, tiers=(),
-                        anomalies=("检测到多个官方天赋控制器",), generic=False)
+                        anomalies=("检测到多个官方天赋控制器",))
         if not active:
-            if int(snapshot.get("bag_size", 0)) <= 0:
-                return dict(controller="", name="", tier_count=0, controller_level=0,
-                            total_points=0, used_points=0, remaining_points=0, tiers=(),
-                            anomalies=(), generic=False)
-            tier_rows = []
-            for index, tier in enumerate(GENERIC_TALENT_TIERS):
-                choices = tuple(rawcode for rawcode, _label in tier)
-                labels = {rawcode: label for rawcode, label in tier}
-                selected = tuple(choice for choice in choices
-                                 if levels.get(int.from_bytes(choice.encode("ascii"), "big"), 0) > 0)
-                tier_rows.append(dict(index=index, choices=choices, labels=labels, selected=selected))
-            used = sum(bool(row["selected"]) for row in tier_rows)
-            target = int(snapshot.get("target_unit", 0))
-            points = getattr(self, "_generic_talent_points", None)
-            if points is None:
-                points = self._generic_talent_points = {}
-            total = max(int(points.get(target, used)), used)
-            points[target] = total
-            return dict(
-                controller="GENERIC", name="通用天赋模板", tier_count=len(tier_rows),
-                controller_level=total + 1, total_points=total, used_points=used,
-                remaining_points=max(total - used, 0), tiers=tuple(tier_rows),
-                anomalies=(), generic=True,
-            )
+            return dict(controller="", name="", tier_count=0, controller_level=0,
+                        total_points=0, used_points=0, remaining_points=0, tiers=(),
+                        anomalies=())
         controller, name, tiers, controller_level = active[0]
         tier_rows = []
         anomalies = []
@@ -6500,23 +6894,173 @@ class War3Trainer:
             if len(selected) > 1:
                 anomalies.append(f"第 {index + 1} 层同时存在多个天赋")
             tier_rows.append(dict(index=index, choices=tuple(choices), selected=selected))
-        total = min(max(int(controller_level) - 1, 0), len(tiers))
-        used = sum(bool(row["selected"]) for row in tier_rows)
+        used = sum(len(row["selected"]) for row in tier_rows)
+        # The controller level is not the point counter.  3.0 stores the
+        # currently consumable points in ATal+0x11c; read it from the live
+        # controller when a process is available.  Snapshot-only callers keep
+        # the old derived fallback for compatibility with tests and fixtures.
+        live_remaining = None
+        native_records = None
+        native_choices = None
+        point_read_error = None
+        try:
+            if getattr(self, "pid", 0):
+                with ProcessMemory(int(self.pid)) as memory:
+                    native_rows = [row for row in snapshot.get("selection", {}).get("rows", ())
+                                   if int(row["handle"]) == int(snapshot["target_unit"])]
+                    if len(native_rows) != 1:
+                        raise RuntimeError("天赋快照缺少唯一原生目标")
+                    rawcode = int(native_rows[0]["rawcode"])
+                    # Extension snapshots follow native selection order, which
+                    # can differ from the persistent candidate enumeration.
+                    candidates = [candidate for candidate, _ in self._selected_candidates_snapshot(None)
+                                  if int(candidate.unit_type_id) == rawcode]
+                    if len(candidates) != 1:
+                        raise RuntimeError("天赋控制器目标身份不唯一")
+                    candidate = candidates[0]
+                    wanted = int.from_bytes(controller.encode("ascii"), "big")
+                    matches = self._ability_instances_from_candidate(
+                        memory, candidate, required_rawcodes={wanted}, allow_global_scan=False,
+                    )
+                    # UnitRemoveAbility leaves retired owner-list nodes alive.
+                    # Select the active controller, not every matching rawcode.
+                    matches = [instance for instance in matches
+                               if not memory.read_u32(instance.data_address + 0x38) & 0x8]
+                    if len(matches) == 1:
+                        # Read six native tier records and the point counter
+                        # from one stable block, rather than inferring UI
+                        # selection from the presence of granted abilities.
+                        address = matches[0].data_address + 0xD4
+                        block = memory.read(address, 76)
+                        if memory.read(address, 76) != block:
+                            raise RuntimeError("天赋选择记录在读取期间发生变化")
+                        value = struct.unpack_from("<I", block, 72)[0]
+                        if 0 <= value <= len(tiers) * 3:
+                            live_remaining = int(value)
+                            native_records = tuple(struct.unpack_from("<QI", block, index * 12)
+                                                   for index in range(len(tiers)))
+                            from war3_object_registry import ObjectRegistry24268
+                            registry = getattr(self, "_classic_object_registry", None)
+                            native_choices = []
+                            for index, (full, _flags) in enumerate(native_records):
+                                choice = ""
+                                if full != 0xFFFFFFFFFFFFFFFF:
+                                    registry = registry or ObjectRegistry24268.attach(memory)
+                                    wrapper = registry.resolve_handle(memory, full)
+                                    data = memory.read_u64(wrapper + 0x90)
+                                    if memory.read_u64(data + 0x68) != candidate.unit_address:
+                                        raise RuntimeError("天赋选择记录属于其他单位")
+                                    choice = memory.read_u32(data + 0x70).to_bytes(4, "big").decode("ascii")
+                                    if choice not in tiers[index]:
+                                        raise RuntimeError("天赋选择记录与当前层不匹配")
+                                native_choices.append(choice)
+        except Exception as exc:
+            point_read_error = exc
+            live_remaining = None
+        if live_remaining is None and getattr(self, "pid", 0):
+            raise RuntimeError("无法读取当前天赋控制器的真实剩余点数（ATal+0x11c）："
+                               + str(point_read_error or "控制器实例缺失或点数越界")) from point_read_error
+        if live_remaining is None:
+            total = min(max(int(controller_level) - 1, 0), len(tiers) * 3)
+            remaining = max(total - used, 0)
+            point_source = "controller_level_fallback"
+        else:
+            remaining = live_remaining
+            # Extra same-tier effects added by the trainer were never debited
+            # by ATal. Do not count them as earned/spent native talent points.
+            spent = sum(handle != 0xFFFFFFFFFFFFFFFF for handle, _flags in native_records)
+            total = spent + remaining
+            point_source = "ATal+0x11c"
+        if native_records is not None:
+            for row, (record_handle, record_flags), native_choice in zip(tier_rows, native_records, native_choices):
+                row["native_record_handle"] = record_handle
+                row["native_record_flags"] = record_flags
+                row["native_record_present"] = record_handle != 0xFFFFFFFFFFFFFFFF
+                row["native_choice"] = native_choice
+                if row["selected"] and not row["native_record_present"]:
+                    anomalies.append(f"第 {row['index'] + 1} 层存在天赋技能，但原生选择记录为空")
         return dict(
             controller=controller,
             name=name,
             tier_count=len(tiers),
             controller_level=int(controller_level),
             total_points=total,
-            used_points=used,
-            remaining_points=max(total - used, 0),
+            used_points=used if native_records is None else spent,
+            selected_count=used,
+            remaining_points=remaining,
+            point_source=point_source,
             tiers=tuple(tier_rows),
             anomalies=tuple(anomalies),
-            generic=False,
         )
 
-    def set_talent_choice_24268(self, controller: str, tier: int, choice: str) -> dict:
+    def unlock_talent_tier_24268(self, tier: int) -> dict:
+        tier = int(tier)
         before = self.extension_snapshot_24268()
+        state = self.talent_state_24268(before)
+        if not state["controller"]:
+            raise RuntimeError("当前单位没有唯一的官方天赋控制器")
+        if not 0 <= tier < int(state["tier_count"]):
+            raise ValueError("天赋层无效")
+        if not state["tiers"][tier]["selected"]:
+            raise RuntimeError("所选层尚未选择天赋，无需解除层限制")
+        controller = int.from_bytes(state["controller"].encode("ascii"), "big")
+        target_handle = int(before["target_unit"])
+        candidates = [
+            (current, int(handle))
+            for current, handle in self._selected_candidates_snapshot(None)
+            if int(handle) == target_handle
+        ]
+        if len(candidates) != 1:
+            raise RuntimeError("天赋目标不在当前稳定选择快照中；请重新读取当前单位")
+        candidate, target_handle = candidates[0]
+        if not candidate.unit_address or not candidate.owner_address:
+            raise RuntimeError("无法绑定当前单位的原生身份")
+        # Use the identity-bound native helper. Extension action 10 is an
+        # obsolete experimental route and intentionally rejects this write.
+        with self._bound_elephant_selection(candidate, target_handle):
+            results = self._run_native_helper_ops(
+                int(candidate.unit_address),
+                (
+                    (self.NATIVE_HELPER_OP_VALIDATE_UNIT_IDENTITY, 0,
+                     int(candidate.unit_address), int(candidate.handle), int(candidate.owner_address)),
+                    (self.NATIVE_HELPER_OP_UNLOCK_TALENT_TIER, controller, tier, 0, 0),
+                ),
+            )
+        if len(results) != 2 or results[1].result != tier + 1:
+            raise RuntimeError("原生天赋层解除限制未确认")
+        after = self.extension_snapshot_24268()
+        after_state = self.talent_state_24268(after)
+        if (after_state["controller"] != state["controller"]
+                or after_state["tiers"][tier]["selected"] != state["tiers"][tier]["selected"]):
+            raise RuntimeError("解除层限制后已获得天赋发生变化")
+        return after
+
+    def _talent_icon_candidate_24268(self, target_unit: int) -> UnitCandidate:
+        override = getattr(self, "_elephant_selection_override", None)
+        snapshot = (override,) if override is not None else self._selected_candidates_snapshot(None)
+        matches = [candidate for candidate, handle in snapshot if int(handle) == int(target_unit)]
+        if not matches and getattr(self, "_native_selection_unavailable", False):
+            # Classic snapshots carry full object identities, not JASS IDs.
+            # Cross-check a fresh native selection; never match by row order.
+            native = self._engine_instance_24268().ability_batch(int.from_bytes(b"AIxr", "big"))
+            rows = [row for row in native["rows"] if int(row["handle"]) == int(target_unit)]
+            if len(rows) == 1:
+                rawcode = int(rows[0]["rawcode"])
+                if sum(int(row["rawcode"]) == rawcode for row in native["rows"]) == 1:
+                    matches = [candidate for candidate, _handle in snapshot
+                               if int(candidate.unit_type_id) == rawcode]
+        if len(matches) != 1:
+            raise RuntimeError("天赋图标目标不在唯一的当前选择快照中")
+        return matches[0]
+
+    def add_talent_choice_24268(self, controller: str, tier: int, choice: str, *, target_unit: int = 0) -> dict:
+        """Add one same-tier effect and request a native command-card refresh.
+
+        The 3.0 extension route applies the effect, then removes and re-adds
+        only that newly-added ability. The native tier record and point count
+        stay unchanged; screen-level icon confirmation is separate.
+        """
+        before = (self.extension_snapshot_24268(target_unit) if target_unit else self.extension_snapshot_24268())
         state = self.talent_state_24268(before)
         if state["controller"] != controller:
             raise RuntimeError("当前天赋控制器已经变化，请重新读取")
@@ -6526,65 +7070,240 @@ class War3Trainer:
         row = state["tiers"][tier]
         if choice not in row["choices"]:
             raise ValueError("目标天赋不属于所选层")
-        previous = tuple(row["selected"])
-        if previous == (choice,):
+        if choice in row["selected"]:
             return before
-        if not previous and int(state["remaining_points"]) <= 0:
-            raise RuntimeError("没有剩余天赋点；请先增加天赋点或替换本层已有选项")
-        removed = []
-        target_added = False
+        # Additional same-tier effects are applied as ordinary passive
+        # abilities and are intentionally free. The native point counter is
+        # consumed only by the game's own talent-order path; requiring a
+        # remaining point here made the advertised arbitrary same-tier action
+        # fail exactly when the native tree was already full.
+        # The 3.0 engine accepts an additional choice through its normal
+        # ability path. Do not invoke the unverified tier-record callback;
+        # it can crash when the tier already contains multiple choices.
         try:
-            for old in previous:
-                self.ability_batch_24268(old, 2, 0)
-                removed.append(old)
-            self.ability_batch_24268(choice, 1, 1)
-            target_added = True
-            after = self.extension_snapshot_24268()
-            after_state = self.talent_state_24268(after)
-            selected = tuple(after_state["tiers"][tier]["selected"])
-            if after_state["controller"] != controller or selected != (choice,):
-                raise RuntimeError("天赋替换后控制器或选项读回不一致")
-            return after
-        except Exception as exc:
-            rollback_errors = []
-            if target_added:
-                try:
-                    self.ability_batch_24268(choice, 2, 0)
-                except Exception as rollback_error:
-                    rollback_errors.append(f"移除新天赋失败：{rollback_error}")
-            for old in removed:
-                try:
-                    self.ability_batch_24268(old, 1, 1)
-                except Exception as rollback_error:
-                    rollback_errors.append(f"恢复 {old} 失败：{rollback_error}")
-            suffix = f"；回滚异常：{'；'.join(rollback_errors)}" if rollback_errors else ""
-            raise RuntimeError(f"天赋替换失败：{exc}{suffix}") from exc
+            self.ability_batch_24268(choice, 1, 1, target_unit=int(before["target_unit"]))
+            # The 3.0 helper table does not expose BlzUnitHideAbility on every
+            # campaign process. Recreate only this newly-added ability through
+            # the stable extension route so the game refreshes its own card.
+            self.ability_batch_24268(choice, 2, 0, target_unit=int(before["target_unit"]))
+            self.ability_batch_24268(choice, 1, 1, target_unit=int(before["target_unit"]))
+            # Mark only the newly recreated ability for a card refresh. This
+            # flag is not the persistent native tier selection record.
+            if getattr(self, "pid", 0):
+                rawcode = int.from_bytes(choice.encode("ascii"), "big")
+                with ProcessMemory(int(self.pid), write=True) as memory:
+                    candidate = self._talent_icon_candidate_24268(int(before["target_unit"]))
+                    instances = self._ability_instances_from_candidate(
+                        memory, candidate, required_rawcodes={rawcode}, allow_global_scan=False,
+                    )
+                    active = [instance for instance in instances
+                              if instance.rawcode == rawcode
+                              and not (memory.read_u32(instance.data_address + 0x38) & 0x8)]
+                    if len(active) != 1:
+                        raise RuntimeError("任意天赋图标刷新未找到唯一活动实例")
+                    flag_address = active[0].data_address + 0x38
+                    before_flags = memory.read_u32(flag_address)
+                    after_flags = before_flags | 0x06000000
+                    memory.write_u32(flag_address, after_flags)
+                    if memory.read_u32(flag_address) != after_flags:
+                        raise RuntimeError("任意天赋图标状态写入后未读回")
+                self._engine_instance_24268().stat_details(
+                    action=2,
+                    controller=rawcode,
+                    target_unit=int(before["target_unit"]),
+                )
+                # F1 selects the first hero rather than refreshing this target.
+                # Keep the player's selection intact; the targeted native
+                # visibility refresh above is independent of selection keys.
+            self.refresh_talent_icon_display_24268()
+        except Exception:
+            try:
+                self.ability_batch_24268(choice, 2, 0, target_unit=int(before["target_unit"]))
+            except Exception:
+                pass
+            raise
+        after = (self.extension_snapshot_24268(target_unit) if target_unit else self.extension_snapshot_24268())
+        after_state = self.talent_state_24268(after)
+        selected = tuple(after_state["tiers"][tier]["selected"])
+        if after_state["controller"] != controller or choice not in selected:
+            try:
+                self.ability_batch_24268(choice, 2, 0, target_unit=int(before["target_unit"]))
+            except Exception:
+                pass
+            raise RuntimeError("任意天赋写入后没有读回目标选项")
+        return after
 
-    def reset_talents_24268(self) -> dict:
-        before = self.extension_snapshot_24268()
+    def _talent_icon_display_path_24268(self) -> Path:
+        root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+        candidates = (
+            root / "tools" / "war3_talent_icon_display.dll",
+            root / "analysis" / "talent-icon-display-207" / "verified" / "war3_talent_icon_display.dll",
+            Path(__file__).resolve().parent / "tools" / "war3_talent_icon_display.dll",
+            Path(__file__).resolve().parent / "analysis" / "talent-icon-display-207" / "verified" / "war3_talent_icon_display.dll",
+        )
+        for candidate in candidates:
+            if candidate.is_file():
+                return candidate
+        raise RuntimeError("天赋图标显示模块未随当前版本打包")
+
+    def refresh_talent_icon_display_24268(self) -> dict:
+        """Install the UI predicate extension when the native talent panel is loaded."""
+        from war3_talent_icon_display import TalentIconDisplay
+
+        display = getattr(self, "_talent_icon_display", None)
+        if display is not None:
+            try:
+                state = display.snapshot()
+                self._talent_icon_display_error = ""
+                return state
+            except Exception:
+                try:
+                    display.close()
+                except Exception:
+                    pass
+                self._talent_icon_display = None
+        try:
+            display = TalentIconDisplay(
+                self._engine_instance_24268(),
+                self._talent_icon_display_path_24268(),
+            )
+            state = display.install()
+        except Exception as exc:
+            self._talent_icon_display_error = str(exc)
+            try:
+                if display is not None:
+                    display.close()
+            except Exception:
+                pass
+            self._talent_icon_display = None
+            return {"installed": False, "error": str(exc)}
+        self._talent_icon_display = display
+        self._talent_icon_display_error = ""
+        return state
+
+    def select_native_talent_24268(self, controller: str, tier: int, choice: str, *, target_unit: int) -> dict:
+        before = self.extension_snapshot_24268(target_unit)
+        state = self.talent_state_24268(before)
+        if state["controller"] != controller or not 0 <= tier < state["tier_count"]:
+            raise RuntimeError("原生天赋选择目标已变化")
+        row = state["tiers"][tier]
+        if choice not in row["choices"] or row.get("native_record_present") or state["remaining_points"] < 1:
+            raise RuntimeError("原生天赋层不可选或点数不足")
+        order = 0xD0311 + tier * 3 + row["choices"].index(choice)
+        code = lambda text: int.from_bytes(text.encode("ascii"), "big")
+        self._engine_instance_24268().talent_order(target_unit, code(controller), order, code(choice))
+        deadline = time.monotonic() + 1.0
+        while True:
+            after = self.extension_snapshot_24268(target_unit)
+            result = self.talent_state_24268(after)
+            if (result["controller"] == controller and result["remaining_points"] == state["remaining_points"] - 1
+                    and result["tiers"][tier].get("native_choice") == choice):
+                return after
+            if time.monotonic() >= deadline:
+                raise RuntimeError("原生加点后记录或扣点未吻合；未重复发送命令")
+            time.sleep(0.05)
+
+    def reset_talents_24268(self, *, target_unit: int = 0) -> dict:
+        before = (self.extension_snapshot_24268(target_unit) if target_unit else self.extension_snapshot_24268())
         state = self.talent_state_24268(before)
         if not state["controller"]:
             raise RuntimeError("当前单位没有唯一的官方天赋控制器")
-        selected = tuple(choice for tier in state["tiers"] for choice in tier["selected"])
-        removed = []
+        target_unit = int(before["target_unit"])
+        controller = state["controller"]
+        if state.get("point_source") != "ATal+0x11c":
+            raise RuntimeError("洗点需要真实点数和原生选择记录")
+        native = tuple((row["index"], row.get("native_choice", "")) for row in state["tiers"]
+                       if row.get("native_record_present"))
+        if any(not choice for _tier, choice in native):
+            raise RuntimeError("洗点前存在无法识别的原生选择记录")
+        # Snapshot-only callers may expose the live point fields without the
+        # derived total. The native total is remaining points plus native
+        # debit records; extra same-tier effects are free and must not inflate
+        # the refund target.
+        target_total = int(state.get("total_points", int(state["remaining_points"]) + len(native)))
+        if not 0 <= target_total <= int(state["tier_count"]) * 3:
+            raise RuntimeError("洗点返还点数越界")
+        touched = False
+
+        def clear_and_rebuild():
+            current = self.extension_snapshot_24268(target_unit)
+            for row in state["tiers"]:
+                for choice in row["choices"]:
+                    if not current["abilities"].get(int.from_bytes(choice.encode("ascii"), "big"), 0):
+                        continue
+                    self.ability_batch_24268(choice, 2, 0, target_unit=target_unit)
+            if current["abilities"].get(int.from_bytes(controller.encode("ascii"), "big"), 0):
+                self.ability_batch_24268(controller, 2, 0, target_unit=target_unit)
+            self.ability_batch_24268(controller, 1, 1, target_unit=target_unit)
+            fresh = self.extension_snapshot_24268(target_unit)
+            fresh_state = self.talent_state_24268(fresh)
+            if (fresh_state["controller"] != controller or fresh_state["remaining_points"]
+                    or fresh_state["used_points"] or any(row.get("native_record_present") for row in fresh_state["tiers"])):
+                raise RuntimeError("重建天赋控制器后状态未清空")
+            return fresh
+
+        def grant_until(snapshot: dict, target_remaining: int) -> dict:
+            current = self.talent_state_24268(snapshot)
+            if current["remaining_points"] > target_remaining:
+                raise RuntimeError(
+                    f"重建后的天赋点数已超过目标：{current['remaining_points']} > {target_remaining}"
+                )
+            for _ in range(target_remaining - int(current["remaining_points"])):
+                snapshot = self.grant_talent_point_24268(target_unit=target_unit)
+                current = self.talent_state_24268(snapshot)
+            if current["remaining_points"] != target_remaining:
+                raise RuntimeError(
+                    f"补点后读回不一致：{current['remaining_points']} != {target_remaining}"
+                )
+            return snapshot
+
         try:
-            for choice in selected:
-                self.ability_batch_24268(choice, 2, 0)
-                removed.append(choice)
-            after = self.extension_snapshot_24268()
+            touched = True
+            after = clear_and_rebuild()
+            after = grant_until(after, target_total)
             after_state = self.talent_state_24268(after)
-            if after_state["controller"] != state["controller"] or after_state["used_points"]:
-                raise RuntimeError("洗点后仍检测到已选择天赋")
+            if after_state["remaining_points"] != target_total or after_state["used_points"]:
+                raise RuntimeError("洗点后的点数或选择状态不一致")
+            if any(before.get(key) != after.get(key) for key in ("bag_size", "bag", "equipment")):
+                raise RuntimeError("洗点期间背包或装备发生变化")
             return after
         except Exception as exc:
             rollback_errors = []
-            for choice in removed:
+            if touched:
                 try:
-                    self.ability_batch_24268(choice, 1, 1)
+                    restored_base = clear_and_rebuild()
+                    restored_base = grant_until(
+                        restored_base,
+                        int(state["remaining_points"]) + len(native),
+                    )
+                    for tier, choice in native:
+                        self.select_native_talent_24268(controller, tier, choice, target_unit=target_unit)
+                    self._restore_extra_talent_choices_24268(state, target_unit)
+                    restored_snapshot = self.extension_snapshot_24268(target_unit)
+                    restored = self.talent_state_24268(restored_snapshot)
+                    if restored["remaining_points"] != state["remaining_points"]:
+                        raise RuntimeError("恢复后天赋点数不一致")
+                    expected_choices = tuple((tuple(row["selected"]), row.get("native_choice", ""))
+                                             for row in state["tiers"])
+                    restored_choices = tuple((tuple(row["selected"]), row.get("native_choice", ""))
+                                             for row in restored["tiers"])
+                    if restored["controller"] != controller or restored_choices != expected_choices:
+                        raise RuntimeError("恢复后的原生选择或额外同层效果不一致")
+                    if any(before.get(key) != restored_snapshot.get(key) for key in ("bag_size", "bag", "equipment")):
+                        raise RuntimeError("恢复后的背包或装备不一致")
                 except Exception as rollback_error:
-                    rollback_errors.append(f"恢复 {choice} 失败：{rollback_error}")
+                    rollback_errors.append(str(rollback_error))
             suffix = f"；回滚异常：{'；'.join(rollback_errors)}" if rollback_errors else ""
             raise RuntimeError(f"洗点失败：{exc}{suffix}") from exc
+
+    def _restore_extra_talent_choices_24268(self, state: dict, target_unit: int) -> None:
+        for row in state["tiers"]:
+            for choice in row["selected"]:
+                if choice != row.get("native_choice", ""):
+                    self.add_talent_choice_24268(
+                        state["controller"], int(row["index"]), choice,
+                        target_unit=target_unit,
+                    )
 
     def item_field_batch_24268(self, slot: int, action: int, fields,
                              target_unit: int = 0) -> dict:
@@ -8090,6 +8809,12 @@ class War3Trainer:
             ),
             timeout_ms=3000,
         )[0].result)
+
+    def complete_local_player_structures(self) -> int:
+        if not getattr(self, "_native_selection_unavailable", False):
+            raise RuntimeError("持续快速建造当前仅适用于 Warcraft III 3.0")
+        from war3_bulk_protocol import BULK_COMPLETE_LOCAL_STRUCTURES
+        return int(self.bulk_batch_24268(BULK_COMPLETE_LOCAL_STRUCTURES)["changed"])
 
     def create_local_units(
         self,
@@ -15021,6 +15746,10 @@ class War3Trainer:
             append_native_real("x", "坐标-X", native.x, candidate.x_address, "坐标")
             append_native_real("y", "坐标-Y", native.y, candidate.y_address, "坐标")
 
+        current_unit_stats = None
+        if getattr(self, "_native_selection_unavailable", False):
+            current_unit_stats = self._unit_stats_for_candidate_24268(candidate)
+
         process_memory = pm
         if native is None:
             components = self._selected_components(pm, candidate.owner_address)
@@ -15035,9 +15764,38 @@ class War3Trainer:
             else:
                 append_native_real("move_speed", "移动速度", native.move_speed, data + 0xD8, "移动")
 
-        if candidate.unit_address:
+        if current_unit_stats is not None:
+            identity = (int(current_unit_stats["unit"]), int(current_unit_stats["rawcode"]))
+            fields.append(UnitMemoryField(
+                key="armor", label="护甲", value_type="f32",
+                value=float(current_unit_stats["armor_after"]), address=0,
+                category="防御", native_write=True, native_component_identity=identity,
+                note="3.0 BlzGetUnitArmor / BlzSetUnitArmor 原生读写",
+            ))
+            fields.append(UnitMemoryField(
+                key="armor_type", label="护甲类型", value_type="i32",
+                value=int(current_unit_stats["defense_after"]), address=0,
+                category="防御", native_write=True, native_component_identity=identity,
+                note="3.0 UNIT_IF_DEFENSE_TYPE 原生读写；0小型、1中型、2大型、3城甲、4普通、5英雄、6神圣、7无甲",
+            ))
+        elif candidate.unit_address:
             self._append_unit_field(pm, fields, "armor", "护甲", "f32", candidate.unit_address + 0x2E8, "防御")
             self._append_unit_field(pm, fields, "armor_type", "护甲类型", "i32", candidate.unit_address + 0x2F0, "防御")
+
+        # The 3.0 stat-details bridge is a live-process query.  Keep legacy
+        # fixture and offline field paths independent from it; real trainer
+        # instances always carry both process identifiers.
+        stat_details = None
+        if getattr(self, "pid", 0) and getattr(self, "hwnd", 0):
+            stat_details = self.stat_details_24268(candidate)
+        if stat_details is not None:
+            for stat_spec in STAT_DETAIL_SPECS:
+                fields.append(UnitMemoryField(
+                    key=f"stat3_{stat_spec.key}", label=stat_spec.label, value_type="f32",
+                    value=float(stat_details["values"][stat_spec.key]), address=0,
+                    category="3.0 属性", native_write=True,
+                    note="3.0 Stat Details 原生能力累计值；写入时保留其他装备、天赋和光环贡献并读回总值",
+                ))
 
         ability_instances: list[AbilityInstance] = []
 
@@ -15077,12 +15835,21 @@ class War3Trainer:
                 self._append_unit_field(pm, fields, "xp", "经验值", "i32", data + 0x100, "英雄")
                 self._append_unit_field(pm, fields, "base_strength", "力量(基础)", "i32", data + 0x108, "英雄")
                 self._append_unit_field(pm, fields, "base_agility", "敏捷(基础)", "i32", data + 0x130, "英雄")
-                if getattr(self, "_native_selection_unavailable", False):
-                    self._append_unit_field(
-                        pm, fields, "intelligence_total", "智力(当前总值候选)", "f32",
-                        data + 0x118, "英雄",
-                        note="3.0 hero attribute cache; engine setter validation pending",
-                    )
+                if current_unit_stats is not None:
+                    identity = (int(current_unit_stats["unit"]), int(current_unit_stats["rawcode"]))
+                    fields.append(UnitMemoryField(
+                        key="base_intelligence", label="智力(基础)", value_type="i32",
+                        value=int(current_unit_stats["intelligence_base_after"]), address=0,
+                        category="英雄", note="3.0 GetHeroInt(false) 原生读回",
+                    ))
+                    fields.append(UnitMemoryField(
+                        key="intelligence_total", label="智力(当前总值)", value_type="i32",
+                        value=int(current_unit_stats["intelligence_total_after"]), address=0,
+                        category="英雄", native_write=True, native_component_identity=identity,
+                        note="3.0 GetHeroInt(true)；写入时保留装备与光环加成并读回确认",
+                    ))
+                elif getattr(self, "_native_selection_unavailable", False):
+                    raise RuntimeError("3.0 英雄智力原生快照缺失")
                 else:
                     try:
                         base_intelligence, total_intelligence = self._get_hero_intelligence_pair_via_native_internal(pm, candidate)
@@ -16849,6 +17616,7 @@ class War3Trainer:
         component_requests = []
         component_keys = set()
         seen_basic = set()
+        live_engine_context = bool(getattr(self, "pid", 0) and getattr(self, "hwnd", 0))
         for index, spec in enumerate(specs):
             direct_key = self.FIELD_KEY_ALIASES.get(spec.label, spec.label)
             if not native_bound and self._skill_index_from_field_key(direct_key) is not None:
@@ -16866,14 +17634,19 @@ class War3Trainer:
                 supported = field.native_write and (
                     field.key in self.NATIVE_BASIC_FIELD_ARGUMENTS
                     or (field.key in NATIVE_COMPONENT_FIELD_SPECS and all(field.native_component_identity))
+                    or (live_engine_context and field.key in CURRENT_ENGINE_UNIT_STAT_FIELDS
+                        and all(field.native_component_identity))
                     or ((field.key == "intelligence_total" or self._skill_index_from_field_key(field.key) is not None)
                         and all(field.native_component_identity))
                     or self._inventory_slot_charges_index_from_field_key(field.key) is not None
-                    or self._inventory_slot_index_from_field_key(field.key) is not None)
+                    or self._inventory_slot_index_from_field_key(field.key) is not None
+                    or field.key.startswith("stat3_"))
                 if not supported:
                     raise RuntimeError("Native field has no bound setter: " + field.key)
             resolved.append((field, spec))
-            if field.key in NATIVE_COMPONENT_FIELD_SPECS and field.native_write and all(field.native_component_identity):
+            if (field.key in NATIVE_COMPONENT_FIELD_SPECS
+                    and (not live_engine_context or field.key not in CURRENT_ENGINE_UNIT_STAT_FIELDS)
+                    and field.native_write and all(field.native_component_identity)):
                 if field.key in component_keys:
                     raise ValueError("Duplicate native component field")
                 component_keys.add(field.key)
@@ -16912,7 +17685,13 @@ class War3Trainer:
         for index, (field, spec) in enumerate(resolved):
             if index in written:
                 continue
-            if field.key == "attack1_true_speed":
+            if live_engine_context and field.key in CURRENT_ENGINE_UNIT_STAT_FIELDS and field.native_write:
+                written[index] = self._write_unit_stat_field_24268(candidate, field, spec.value)
+            elif field.key.startswith("stat3_") and field.native_write:
+                detail_key = field.key[len("stat3_"):]
+                actual = self.set_stat_detail_24268(detail_key, spec.value, candidate)
+                written[index] = replace(field, value=actual)
+            elif field.key == "attack1_true_speed":
                 written[index] = self._write_true_attack_speed_field(pm, candidate, field, spec.value)
             elif field.key == "intelligence_total":
                 written[index] = self._write_hero_intelligence_field(pm, candidate, field, spec.value)
@@ -17573,7 +18352,14 @@ def run_gui(
     item_field_show_unsupported = tk.BooleanVar(value=True)
     extension_item_rawcode = tk.StringVar(value="")
     extension_item_charges = tk.StringVar(value="1")
-    extension_framework_item = tk.StringVar(value=next(iter(OFFICIAL_FRAMEWORK_ITEMS)))
+    official_backpack_labels = tuple(
+        f"{hero_name} ({rawcode})"
+        for rawcode, (hero_name, _controller) in OFFICIAL_BACKPACKS.items()
+    )
+    official_backpack_by_label = {
+        label: rawcode for label, rawcode in zip(official_backpack_labels, OFFICIAL_BACKPACKS)
+    }
+    extension_backpack_choice = tk.StringVar(value="亡灵加雷克 (ebug)")
     extension_talent_choice = tk.StringVar(value="")
     extension_status = LocalizedStringVar(value="尚未读取 3.0 扩展状态")
     id_catalog_queries = {
@@ -17598,6 +18384,15 @@ def run_gui(
     elephant_preset_tech_rawcode = tk.StringVar(value="Rost")
     elephant_reset_ability_rawcode = tk.StringVar(value="Apxf")
     elephant_auto_effect_count = tk.StringVar(value="5")
+    elephant_stat_values = {
+        "hp_regen": tk.StringVar(value="0"),
+        "mp_regen": tk.StringVar(value="0"),
+        "attack_speed": tk.StringVar(value="1"),
+        **{
+            spec.key: tk.StringVar(value="150" if spec.baseline else "0")
+            for spec in STAT_DETAIL_SPECS
+        },
+    }
     elephant_hotkeys_enabled = tk.BooleanVar(value=initial_hotkeys_enabled)
     elephant_hotkey_status = LocalizedStringVar(value="快捷键未启用")
     elephant_hotkey_checks = {
@@ -17627,6 +18422,10 @@ def run_gui(
         "ally_health_lock": False,
         "ally_health_lock_busy": False,
         "ally_health_lock_trainer": None,
+        "rapid_build": False,
+        "rapid_build_busy": False,
+        "rapid_build_trainer": None,
+        "initial_connect_busy": False,
         "active_operations": set(),
         "elephant_game_paused": False,
         "ability_field_snapshot": None,
@@ -17671,6 +18470,7 @@ def run_gui(
                 active_operation_threads()
                 or state.get("lock_busy")
                 or state.get("ally_health_lock_busy")
+                or state.get("rapid_build_busy")
             ):
                 root.after(100, finish_close)
                 return
@@ -18468,6 +19268,40 @@ def run_gui(
                     raise
         if not state.get("closing"):
             root.after(100, ally_health_lock_tick)
+
+    def rapid_build_tick() -> None:
+        if state.get("closing"):
+            return
+        if state.get("rapid_build") and not state.get("rapid_build_busy"):
+            build_trainer = state.get("rapid_build_trainer")
+            if isinstance(build_trainer, War3Trainer):
+                state["rapid_build_busy"] = True
+
+                def worker() -> None:
+                    acquired = operation_lock.acquire(blocking=False)
+                    if not acquired:
+                        state["rapid_build_busy"] = False
+                        return
+                    try:
+                        build_trainer.complete_local_player_structures()
+                    except Exception as exc:
+                        state["rapid_build"] = False
+                        state["rapid_build_trainer"] = None
+                        if not state.get("closing"):
+                            root.after(0, set_status, f"持续快速建造/升级已停止：{exc}")
+                    finally:
+                        operation_lock.release()
+                        state["rapid_build_busy"] = False
+
+                try:
+                    start_operation_thread(worker, "war3-rapid-build")
+                except Exception:
+                    state["rapid_build_busy"] = False
+                    state["rapid_build"] = False
+                    state["rapid_build_trainer"] = None
+                    raise
+        if not state.get("closing"):
+            root.after(1000, rapid_build_tick)
 
     def set_unit() -> str:
         t = trainer()
@@ -19616,6 +20450,17 @@ def run_gui(
         state["ally_health_lock"] = True
         return f"我方锁血已开启；首轮恢复 {healed} 个单位，AI 仍可正常攻击"
 
+    def elephant_toggle_rapid_build() -> str:
+        if state.get("rapid_build"):
+            state["rapid_build"] = False
+            state["rapid_build_trainer"] = None
+            return "持续快速建造/升级已关闭"
+        build_trainer = elephant_trainer()
+        completed = build_trainer.complete_local_player_structures()
+        state["rapid_build_trainer"] = build_trainer
+        state["rapid_build"] = True
+        return f"持续快速建造/升级已开启；首轮处理 {completed} 个建筑"
+
     def elephant_kill_owner_units() -> str:
         killed = elephant_trainer().kill_selected_owner_units()
         return f"已击杀该单位所属玩家的 {killed} 个单位"
@@ -19685,10 +20530,14 @@ def run_gui(
                     values=(
                         talent_state["name"], int(row["index"]) + 1,
                         " / ".join(
+                            f"{'[原生已选] ' if choice == row.get('native_choice', '') else ''}"
+                            f"{'[能力已添加] ' if choice in row.get('selected', ()) and choice != row.get('native_choice', '') else ''}"
                             f"{choice} {row.get('labels', {}).get(choice, '')}".strip()
                             for choice in row["choices"]
                         ),
-                        " / ".join(row["selected"]),
+                        (f"原生选择：{row.get('native_choice')}；能力："
+                         f"{' / '.join(row['selected']) or '无'}"
+                         if row.get('native_choice') else " / ".join(row["selected"])),
                     ),
                 )
         elif talent_state["anomalies"]:
@@ -19740,17 +20589,15 @@ def run_gui(
         root.after(0, populate_extension_snapshot, snapshot)
         return f"已将扩展背包第 {slot + 1} 格物品丢到角色脚下"
 
-    def extension_add_framework() -> str:
-        rawcode = extension_framework_item.get().strip()
-        snapshot = trainer().add_extension_framework_24268(rawcode)
+    def extension_add_backpack_equipment() -> str:
+        label = extension_backpack_choice.get().strip()
+        rawcode = official_backpack_by_label.get(label)
+        if rawcode is None:
+            raise ValueError("请选择一件 3.0 官方背包装备")
+        hero_name, controller = OFFICIAL_BACKPACKS[rawcode]
+        snapshot = trainer().add_official_backpack_24268(rawcode)
         root.after(0, populate_extension_snapshot, snapshot)
-        name, controller = OFFICIAL_FRAMEWORK_ITEMS[rawcode]
-        return f"已添加{name}（{rawcode}）；专属天赋控制器为 {controller}"
-
-    def extension_enable_generic_template() -> str:
-        snapshot = trainer().enable_generic_extension_template_24268()
-        root.after(0, populate_extension_snapshot, snapshot)
-        return "已启用 30 格背包、9 槽装备和通用六层天赋模板"
+        return f"已将{hero_name}官方背包装备（{rawcode}/{controller}）放入经典物品栏第 1 格"
 
     def extension_selected_equipment_slot() -> int:
         selected = extension_equipment_tree.selection()
@@ -19763,6 +20610,18 @@ def run_gui(
         snapshot = trainer().unequip_extension_slot_24268(slot)
         root.after(0, populate_extension_snapshot, snapshot)
         return f"已卸下{EQUIPMENT_SLOT_NAMES[slot]}装备并验证槽位"
+
+    def extension_equip_bag_to_slot() -> str:
+        bag_slot = extension_selected_bag_slot()
+        equipment_slot = extension_selected_equipment_slot()
+        snapshot = trainer().equip_extension_bag_item_to_slot_24268(bag_slot, equipment_slot)
+        root.after(0, populate_extension_snapshot, snapshot)
+        return f"已将扩展背包第 {bag_slot + 1} 格物品放入{EQUIPMENT_SLOT_NAMES[equipment_slot]}槽并验证"
+
+    def extension_enable_any_slot() -> str:
+        snapshot = trainer().set_extension_equipment_any_slot_24268(True)
+        root.after(0, populate_extension_snapshot, snapshot)
+        return "已开启当前单位任意装备槽；将按指定 AEqu 槽位读回验证"
 
     def extension_save_loadout() -> str:
         snapshot = trainer().save_extension_loadout_24268()
@@ -19785,40 +20644,55 @@ def run_gui(
             return "检测到装备结构异常：" + "；".join(result["issues"])
         return "装备实例、槽位类型及背包重叠检查均正常"
 
-    def extension_selected_talent() -> tuple[str, int]:
+    def extension_reset_talents() -> str:
+        return extension_talent_batch_result(trainer().selected_talent_batch_24268("reset"))
+
+    def extension_talent_batch_result(result: dict) -> str:
+        root.after(0, populate_extension_snapshot, result["snapshot"])
+        text = f"天赋操作：成功 {result['succeeded']}，跳过 {result['skipped']}，失败 {result['failed']}"
+        errors = [f"0x{row['target']:x}：{row['reason']}" for row in result["results"] if row["status"] == "failed"]
+        if errors:
+            raise RuntimeError(text + "；" + "；".join(errors))
+        return text
+
+    def extension_selected_talent_tier() -> int:
         selected = extension_talent_tree.selection()
         if not selected or not str(selected[0]).startswith("talent:"):
             raise ValueError("请先选择一个天赋层")
-        _prefix, controller, tier = str(selected[0]).split(":", 2)
-        return controller, int(tier)
+        return int(str(selected[0]).rsplit(":", 1)[1])
 
     def extension_talent_tree_selected(_event=None) -> None:
-        try:
-            controller, tier = extension_selected_talent()
-            if controller == "GENERIC":
-                choices = tuple(rawcode for rawcode, _label in GENERIC_TALENT_TIERS[tier])
-            else:
-                choices = TALENT_CONTROLLERS[controller][1][tier]
-            extension_talent_choice_box.configure(values=choices)
-            snapshot = state.get("extension_snapshot", {})
-            talent_state = trainer().talent_state_24268(snapshot)
-            selected = talent_state["tiers"][tier]["selected"] if talent_state["controller"] == controller else ()
-            extension_talent_choice.set(selected[0] if selected else choices[0])
-        except Exception:
-            extension_talent_choice_box.configure(values=())
+        selected = extension_talent_tree.selection()
+        if not selected or not str(selected[0]).startswith("talent:"):
             extension_talent_choice.set("")
+            extension_talent_choice_box["values"] = ()
+            return
+        row = extension_talent_tree.item(selected[0], "values")
+        choices = tuple(str(value).strip() for value in str(row[2]).split("/") if str(value).strip())
+        choices = tuple(value.split(" ", 1)[0] for value in choices)
+        extension_talent_choice_box["values"] = choices
+        if choices and extension_talent_choice.get() not in choices:
+            extension_talent_choice.set(choices[0])
 
-    def extension_set_talent_choice() -> str:
-        controller, tier = extension_selected_talent()
+    def extension_add_talent_choice() -> str:
+        selected = extension_talent_tree.selection()
+        if not selected or not str(selected[0]).startswith("talent:"):
+            raise ValueError("请先选择一个天赋层")
+        parts = str(selected[0]).split(":")
+        controller, tier = parts[1], int(parts[2])
         choice = extension_talent_choice.get().strip()
-        snapshot = trainer().set_talent_choice_24268(controller, tier, choice)
-        root.after(0, populate_extension_snapshot, snapshot)
-        return f"已将第 {tier + 1} 层天赋设置为 {choice} 并读回验证"
+        if not choice:
+            raise ValueError("请先选择一个天赋选项")
+        return extension_talent_batch_result(trainer().selected_talent_batch_24268("choice", controller, tier, choice))
 
-    def extension_reset_talents() -> str:
-        snapshot = trainer().reset_talents_24268()
-        root.after(0, populate_extension_snapshot, snapshot)
-        return "已清除当前树的已选天赋；控制器与可用点数保留"
+    def extension_refresh_talent_icons() -> str:
+        result = trainer().refresh_talent_icon_display_24268()
+        if not result.get("installed"):
+            raise RuntimeError(
+                "天赋界面尚未加载，图标刷新未执行。请先打开游戏天赋界面后重试；"
+                + str(result.get("error", "未知原因"))
+            )
+        return "天赋图标显示模块已安装并读回"
 
     def extension_drop_clicked() -> None:
         try:
@@ -19830,7 +20704,7 @@ def run_gui(
             call_async(extension_drop_bag_item)
 
     def extension_reset_talents_clicked() -> None:
-        if messagebox.askyesno("确认洗点", "清除当前官方天赋树的全部已选天赋并保留点数？"):
+        if messagebox.askyesno("确认洗点", "对全部选中单位执行洗点；没有天赋控制器的单位自动跳过？"):
             call_async(extension_reset_talents)
 
     def extension_repair_equipment_clicked() -> None:
@@ -19838,10 +20712,19 @@ def run_gui(
             call_async(lambda: extension_audit_equipment(True))
 
     def extension_grant_talent_point() -> str:
-        snapshot = trainer().grant_talent_point_24268()
-        root.after(0, populate_extension_snapshot, snapshot)
-        talent_state = trainer().talent_state_24268(snapshot)
-        return f"已增加并验证 1 点天赋；剩余 {talent_state['remaining_points']} 点"
+        return extension_talent_batch_result(trainer().selected_talent_batch_24268("grant"))
+
+    def elephant_set_stat_detail(key: str) -> str:
+        variable = elephant_stat_values[key]
+        value = parse_float(variable.get(), "属性目标值")
+        field_key = {
+            "hp_regen": "hp_regen",
+            "mp_regen": "mp_regen",
+            "attack_speed": "attack1_true_speed",
+        }.get(key, f"stat3_{key}")
+        written = elephant_trainer().write_selected_unit_field(field_key, value)
+        root.after(0, variable.set, f"{float(written.value):g}")
+        return f"已设置 {written.label}={float(written.value):g}"
 
     def send_cheat_command(command_name: str, message: str) -> str:
         t = trainer()
@@ -19936,14 +20819,15 @@ def run_gui(
             f"已重置我方 {elephant_trainer().reset_local_player_unit_cooldowns()} "
             "个单位的技能冷却"
         ),
-        "rapid_build": lambda: send_cheat_command(
-            "快速建造/研究",
-            "快速建造/研究指令已发送",
-        ),
+        "rapid_build": elephant_toggle_rapid_build,
         "instant_victory": lambda: send_cheat_command(
             "直接胜利",
             "直接胜利指令已发送",
         ),
+        **{
+            f"stat_{key}": (lambda stat_key=key: elephant_set_stat_detail(stat_key))
+            for key in elephant_stat_values
+        },
     }
     hotkey_specs_by_name = {spec.name: spec for spec in ELEPHANT_HOTKEY_SPECS}
     hotkey_dangerous = {
@@ -20804,24 +21688,15 @@ def run_gui(
     ttk.Button(
         extension_bag_frame, text="丢弃所选", command=extension_drop_clicked,
     ).grid(row=2, column=3, sticky="w", padx=(6, 0), pady=(6, 0))
-    extension_framework_box = ttk.Combobox(
-        extension_bag_frame,
-        textvariable=extension_framework_item,
-        values=tuple(OFFICIAL_FRAMEWORK_ITEMS),
-        state="readonly",
-        width=9,
-    )
-    extension_framework_box.grid(row=3, column=0, sticky="w", pady=(6, 0))
+    ttk.Combobox(
+        extension_bag_frame, textvariable=extension_backpack_choice,
+        values=official_backpack_labels, state="readonly", width=24,
+    ).grid(row=3, column=0, columnspan=2, sticky="w", pady=(6, 0))
     ttk.Button(
         extension_bag_frame,
-        text="启用官方背包框架",
-        command=lambda: call_async(extension_add_framework),
-    ).grid(row=3, column=1, columnspan=2, sticky="w", padx=(6, 0), pady=(6, 0))
-    ttk.Button(
-        extension_bag_frame,
-        text="启用通用背包+天赋",
-        command=lambda: call_async(extension_enable_generic_template),
-    ).grid(row=3, column=3, columnspan=2, sticky="w", padx=(6, 0), pady=(6, 0))
+        text="添加官方背包装备",
+        command=lambda: call_async(extension_add_backpack_equipment),
+    ).grid(row=3, column=2, columnspan=2, sticky="w", padx=(6, 0), pady=(6, 0))
     extension_bag_frame.rowconfigure(0, weight=1)
     extension_bag_frame.columnconfigure(0, weight=1)
 
@@ -20856,6 +21731,14 @@ def run_gui(
     ttk.Button(
         extension_equipment_frame, text="修复错槽", command=extension_repair_equipment_clicked,
     ).grid(row=2, column=1, sticky="w", padx=(6, 0), pady=(6, 0))
+    ttk.Button(
+        extension_equipment_frame, text="背包装入目标槽",
+        command=lambda: call_async(extension_equip_bag_to_slot),
+    ).grid(row=2, column=2, sticky="w", padx=(6, 0), pady=(6, 0))
+    ttk.Button(
+        extension_equipment_frame, text="开启任意槽",
+        command=lambda: call_async(extension_enable_any_slot),
+    ).grid(row=2, column=3, sticky="w", padx=(6, 0), pady=(6, 0))
     extension_equipment_frame.rowconfigure(0, weight=1)
     extension_equipment_frame.columnconfigure(0, weight=1)
 
@@ -20885,8 +21768,8 @@ def run_gui(
     extension_talent_tree.bind("<<TreeviewSelect>>", extension_talent_tree_selected)
     ttk.Button(
         extension_talent_frame,
-        text="点亮/替换所选层",
-        command=lambda: call_async(extension_set_talent_choice),
+        text="任意添加所选天赋",
+        command=lambda: call_async(extension_add_talent_choice),
     ).grid(row=1, column=1, sticky="w", padx=(6, 0), pady=(8, 0))
     ttk.Button(
         extension_talent_frame,
@@ -20898,6 +21781,11 @@ def run_gui(
         text="洗点",
         command=extension_reset_talents_clicked,
     ).grid(row=1, column=3, sticky="w", padx=(6, 0), pady=(8, 0))
+    ttk.Button(
+        extension_talent_frame,
+        text="刷新天赋图标",
+        command=lambda: call_async(extension_refresh_talent_icons),
+    ).grid(row=1, column=4, sticky="w", padx=(6, 0), pady=(8, 0))
     extension_talent_frame.rowconfigure(0, weight=1)
     extension_talent_frame.columnconfigure(0, weight=1)
     extension_tab.rowconfigure(1, weight=3)
@@ -21220,6 +22108,7 @@ def run_gui(
         "xp_rate": elephant_xp_rate,
         "reset_ability": elephant_reset_ability_rawcode,
         "fullscreen_auto": elephant_auto_effect_count,
+        **{f"stat_{key}": variable for key, variable in elephant_stat_values.items()},
     }
     hotkeys_per_column = (len(ELEPHANT_HOTKEY_SPECS) + 2) // 3
     for index, spec in enumerate(ELEPHANT_HOTKEY_SPECS):
@@ -21245,30 +22134,57 @@ def run_gui(
     build_id_catalog_tab("ability", "技能 ID")
     build_id_catalog_tab("unit", "单位 ID")
 
+    from war3_new_equipment_ui import NewEquipmentTab
+    NewEquipmentTab(notebook)
+
     ttk.Label(outer, textvariable=status, anchor="w", wraplength=1000).pack(fill="x", pady=(0, 2))
 
     apply_ui_theme(root, ui_style, bool(dark_mode.get()))
     refresh_gui_language()
 
-    def init() -> None:
-        try:
-            msg = connect()
-            set_status(msg)
-            try:
-                refresh_resources()
-            except Exception:
-                pass
-            root.after(
-                300,
-                lambda: call_async(prewarm_selection_cache, busy_text="正在预热，请稍候..."),
-            )
-        except Exception as exc:
+    def finish_initial_connect(message: str | None, exc: Exception | None) -> None:
+        state["initial_connect_busy"] = False
+        if state.get("closing"):
+            return
+        if exc is not None:
             set_status(f"等待 Warcraft III 启动：{exc}")
             root.after(1000, init)
+            return
+        set_status(message or "已连接 Warcraft III")
+        root.after(
+            300,
+            lambda: call_async(prewarm_selection_cache, busy_text="正在预热，请稍候..."),
+        )
+
+    def init() -> None:
+        if state.get("closing") or state.get("initial_connect_busy"):
+            return
+        state["initial_connect_busy"] = True
+        set_status("正在连接 Warcraft III...")
+
+        def worker() -> None:
+            try:
+                with operation_lock:
+                    message = connect()
+                    try:
+                        refresh_resources()
+                    except Exception:
+                        pass
+            except Exception as exc:
+                root.after(0, finish_initial_connect, None, exc)
+            else:
+                root.after(0, finish_initial_connect, message, None)
+
+        try:
+            start_operation_thread(worker, "war3-initial-connect")
+        except Exception:
+            state["initial_connect_busy"] = False
+            raise
 
     root.after(100, init)
     root.after(1500, lock_tick)
     root.after(100, ally_health_lock_tick)
+    root.after(1000, rapid_build_tick)
     root.mainloop()
 
 

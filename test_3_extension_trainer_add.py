@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest.mock import Mock
 
 from war3_reforged_trainer import War3Trainer
@@ -25,3 +26,17 @@ def test_add_extension_item_uses_dedicated_bag_action():
         target_unit=0x101400,
         item_rawcode=int.from_bytes(b"eeh3", "big"),
     )
+
+
+def test_extension_tab_exposes_six_official_backpacks_without_generic_template():
+    import war3_reforged_trainer as product
+
+    source = Path(product.__file__).read_text(encoding="utf-8")
+    assert 'text="添加官方背包装备"' in source
+    assert "command=lambda: call_async(extension_add_backpack_equipment)" in source
+    catalog = Path(product.__file__).with_name("war3_3_extension_catalog.py").read_text(
+        encoding="utf-8"
+    )
+    for rawcode in ("ebhg", "ebhl", "ebhi", "ebug", "ebua", "ebul"):
+        assert rawcode in catalog
+    assert "通用天赋模板" not in source

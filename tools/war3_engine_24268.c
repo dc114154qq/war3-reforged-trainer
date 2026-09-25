@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define WAR3_NATIVE_MAGIC 0x33524757u
-#define WAR3_NATIVE_VERSION 70u
+#define WAR3_NATIVE_VERSION 71u
 #define WAR3_SELECTED_MAX_UNITS 24u
 #define WAR3_NATIVE_STATUS_PENDING 1u
 #define WAR3_NATIVE_STATUS_OK 2u
@@ -118,6 +118,7 @@
 #define WAR3_NATIVE_OP_BOUND_INVENTORY_BATCH 167u
 #define WAR3_NATIVE_OP_BOUND_ITEM_CREATE 168u
 #define WAR3_NATIVE_OP_BOUND_OWNER_KILL 169u
+#define WAR3_NATIVE_OP_UNLOCK_TALENT_TIER 170u
 #define WAR3_BOUND_INVENTORY_QWORDS 49u
 #define WAR3_BOUND_UNIT_FIELD_QWORDS (15u + 36u + 121u + 121u + WAR3_BOUND_INVENTORY_QWORDS + 4u)
 #define WAR3_CLONE_FLAG_HERO 0x01u
@@ -963,6 +964,78 @@ static DWORD war3_bound_ability_metadata(const NativeCommand *cmd, const NativeO
 }
 
 #include "war3_native_ability_actions.h"
+
+static int war3_official_talent_tiers(uint32_t rawcode) {
+    switch (rawcode) {
+        case 0x41546867u: /* AThg */
+        case 0x4154686cu: /* AThl */
+        case 0x41546869u: /* AThi */
+            return 4;
+        case 0x41547567u: /* ATug */
+        case 0x41547561u: /* ATua */
+        case 0x4154756cu: /* ATul */
+            return 6;
+        default:
+            return 0;
+    }
+}
+
+static DWORD war3_unlock_talent_tier(const NativeCommand *cmd, NativeOp *op) {
+    NativeOp query = {0};
+    uint64_t values[10] = {0};
+    uint64_t data, vtable, callback, unit, record, previous_pair;
+    uint32_t previous_tail, tier = (uint32_t)op->handler;
+    int tier_count = war3_official_talent_tiers(op->rawcode);
+    DWORD error;
+    typedef void (__fastcall *TalentResetFn)(uint64_t, uint64_t);
+    if (cmd->ops[0].kind != WAR3_NATIVE_OP_VALIDATE_UNIT_IDENTITY || cmd->op_count != 2 ||
+        !tier_count || tier >= (uint32_t)tier_count || op->arg0 || op->arg1 || !g_bootstrap_module)
+        return ERROR_INVALID_PARAMETER;
+    query.rawcode = op->rawcode;
+    query.handler = war3_persistent_native_handler("BlzGetUnitAbility");
+    query.arg0 = war3_persistent_native_handler("BlzGetAbilityId");
+    if (!war3_executable_pointer(query.handler) || !war3_executable_pointer(query.arg0))
+        return ERROR_PROC_NOT_FOUND;
+    error = war3_action_ability_state(cmd, op->rawcode, values);
+    if (error) return error;
+    data = values[1];
+    if (!war3_readable_span(data, 0x140u) || *(uint64_t *)(uintptr_t)data !=
+        (uint64_t)(uintptr_t)(g_bootstrap_module + 0x26b4de0u)) return ERROR_INVALID_HANDLE;
+    record = data + 0xd4u + (uint64_t)tier * 12u;
+    previous_pair = *(uint64_t *)(uintptr_t)record;
+    previous_tail = *(uint32_t *)(uintptr_t)(record + 8u);
+    if (previous_pair == UINT64_MAX && previous_tail == 0u) return ERROR_NOT_FOUND;
+    vtable = *(uint64_t *)(uintptr_t)data;
+    callback = *(uint64_t *)(uintptr_t)(vtable + 0x120u);
+    unit = *(uint64_t *)(uintptr_t)(data + 0x68u);
+    if (!war3_executable_pointer(callback) || !war3_readable_span(unit, 0x20u))
+        return ERROR_INVALID_ADDRESS;
+    __try {
+        *(uint64_t *)(uintptr_t)record = UINT64_MAX;
+        *(uint32_t *)(uintptr_t)(record + 8u) = 0u;
+        ((TalentResetFn)(uintptr_t)callback)(data, unit);
+        error = war3_validate_unit_identity(cmd, &cmd->ops[0]);
+        if (!error && (*(uint64_t *)(uintptr_t)record != UINT64_MAX ||
+                       *(uint32_t *)(uintptr_t)(record + 8u) != 0u)) error = ERROR_INVALID_DATA;
+        if (!error) {
+            uint64_t after[10] = {0};
+            error = war3_action_ability_state(cmd, op->rawcode, after);
+            if (!error && (after[1] != data || after[3] != values[3])) error = ERROR_INVALID_HANDLE;
+        }
+    } __except(EXCEPTION_EXECUTE_HANDLER) { error = GetExceptionCode(); }
+    if (error) {
+        __try {
+            *(uint64_t *)(uintptr_t)record = previous_pair;
+            *(uint32_t *)(uintptr_t)(record + 8u) = previous_tail;
+            ((TalentResetFn)(uintptr_t)callback)(data, unit);
+        } __except(EXCEPTION_EXECUTE_HANDLER) {}
+        return error;
+    }
+    op->result = tier + 1u;
+    op->arg1 = previous_pair;
+    op->reserved = previous_tail;
+    return ERROR_SUCCESS;
+}
 
 /* No engine callbacks between this check and a direct call or cleanup. */
 static DWORD war3_direct_identity_memory(const NativeCommand *cmd,uint32_t id,const uint64_t *v) {
@@ -3645,6 +3718,7 @@ static void run_command(void) {
                 op->kind != WAR3_NATIVE_OP_BOUND_INVENTORY_BATCH &&
                 op->kind != WAR3_NATIVE_OP_BOUND_ITEM_CREATE &&
                 op->kind != WAR3_NATIVE_OP_BOUND_OWNER_KILL &&
+                op->kind != WAR3_NATIVE_OP_UNLOCK_TALENT_TIER &&
                 op->kind != WAR3_NATIVE_OP_BOUND_ABILITY_IDENTITY &&
                 op->kind != WAR3_NATIVE_OP_BOUND_INVENTORY_ITEM &&
                 !war3_is_internal_ability_op(op->kind) &&
@@ -3709,6 +3783,7 @@ static void run_command(void) {
             op->kind != WAR3_NATIVE_OP_BOUND_INVENTORY_BATCH &&
             op->kind != WAR3_NATIVE_OP_BOUND_ITEM_CREATE &&
             op->kind != WAR3_NATIVE_OP_REPLACE_INVENTORY_ITEM &&
+            op->kind != WAR3_NATIVE_OP_UNLOCK_TALENT_TIER &&
             op->kind != WAR3_NATIVE_OP_PERSISTENT_SELECTED_SNAPSHOT
         ) {
             op->last_error = ERROR_INVALID_DATA;
@@ -3716,6 +3791,11 @@ static void run_command(void) {
             goto finish;
         }
         switch (op->kind) {
+            case WAR3_NATIVE_OP_UNLOCK_TALENT_TIER: {
+                last_error = i == 1 ? war3_unlock_talent_tier(&cmd, op) : ERROR_INVALID_PARAMETER;
+                if (last_error) { op->last_error = last_error; goto finish; }
+                break;
+            }
             case WAR3_NATIVE_OP_MANAGE_BOUND_ABILITY: {
                 last_error=i?war3_manage_bound_ability(&cmd,op):ERROR_INVALID_PARAMETER;
                 if(last_error) {op->last_error=last_error;goto finish;}

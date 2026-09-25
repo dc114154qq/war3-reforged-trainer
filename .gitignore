@@ -3,6 +3,13 @@ __pycache__/
 
 build/
 .codex/
+build-*/
+dist-*/
+release-207-*/
+analysis/build-*/
+analysis/bridge-build-*/
+analysis/bridge-fixture-*/
+analysis/dist-*/
 
 *.bak-*
 *.log

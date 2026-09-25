@@ -60,7 +60,7 @@ class GlobalHotkeyManagerTests(unittest.TestCase):
             (trainer.MOD_ALT, ord("C")),
         )
 
-    def test_cheat_hotkeys_are_available(self):
+    def test_world_hotkeys_are_available(self):
         specs = {
             spec.name: spec
             for spec in trainer.ELEPHANT_HOTKEY_SPECS
@@ -73,7 +73,7 @@ class GlobalHotkeyManagerTests(unittest.TestCase):
             (specs["instant_victory"].modifiers, specs["instant_victory"].virtual_key),
             (trainer.MOD_ALT, ord("B")),
         )
-        self.assertEqual(trainer.War3Trainer.CHEATS["快速建造/研究"], "warpten")
+        self.assertNotIn("快速建造/研究", trainer.War3Trainer.CHEATS)
         self.assertEqual(
             trainer.War3Trainer.CHEATS["直接胜利"],
             "allyourbasearebelongtous",

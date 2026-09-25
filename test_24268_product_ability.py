@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import Mock
 import pytest
 from war3_selection_protocol import SIGNATURES as SELECTION
-from war3_ability_protocol import SIGNATURES,build_work,decode_work,validate_work
+from war3_ability_protocol import SIGNATURES,WORK_SIZE,build_work,decode_work,validate_work
 from war3_native_table import LiveNativeEntry
 import war3_engine_transport as transport
 import war3_reforged_trainer as product
@@ -14,14 +14,30 @@ def entries():
 def work(action=0,level=0):return build_work(entries(),0x10000000,0x41487664,action,level)
 @pytest.fixture(scope='module')
 def fixture():
-    dll=c.WinDLL(str(Path(__file__).parent/'analysis/bridge-build-check-r32/engine-hero-fixture.dll'))
+    dll=c.WinDLL(str(Path(__file__).parent/'analysis/build-targeted-talents/engine-hero-fixture.dll'))
     dll.BridgeAbilityTestRun.argtypes=[c.c_void_p,c.c_int,c.c_int,c.c_int];dll.BridgeAbilityTestRun.restype=c.c_uint64
     dll.BridgeAbilityTestStat.argtypes=[c.c_int];dll.BridgeAbilityTestStat.restype=c.c_int
     return dll
 
 def run(dll,count,action,level=0,initial=0,scenario=0):
     buf=c.create_string_buffer(work(action,level));count=dll.BridgeAbilityTestRun(buf,count,scenario,initial)
-    return buf.raw[:832],count,tuple(dll.BridgeAbilityTestStat(i) for i in range(3))
+    return buf.raw[:WORK_SIZE],count,tuple(dll.BridgeAbilityTestStat(i) for i in range(3))
+
+@pytest.mark.parametrize('action,initial', [(1,0),(2,1)])
+def test_targeted_action_preserves_other_selected_units(fixture,action,initial):
+    payload=build_work(entries(),0x10000000,0x41487664,action,0,target_unit=0x100002)
+    buf=c.create_string_buffer(payload)
+    count=fixture.BridgeAbilityTestRun(buf,8,0,initial)
+    result=decode_work(buf.raw[:WORK_SIZE],count)
+    assert result['changed']==1
+    for row in result['rows']:
+        assert row['after']==((1 if action==1 else 0) if row['handle']==0x100002 else initial)
+
+def test_missing_target_never_mutates_any_unit(fixture):
+    payload=build_work(entries(),0x10000000,0x41487664,1,0,target_unit=0x100099)
+    buf=c.create_string_buffer(payload);count=fixture.BridgeAbilityTestRun(buf,8,0,0)
+    with pytest.raises(ValueError):decode_work(buf.raw[:WORK_SIZE],count)
+    assert fixture.BridgeAbilityTestStat(0)==0
 @pytest.mark.parametrize('count',[1,15,24])
 @pytest.mark.parametrize('action,level,initial',[(0,0,0),(0,0,2),(1,0,0),(1,0,2),(1,3,0),(1,3,1),(2,0,1),(2,0,0),(3,3,1),(3,1,1),(4,2,0),(4,2,1),(5,0,0),(5,0,1)])
 def test_compiled_batch_semantics(fixture,count,action,level,initial):

@@ -20,11 +20,11 @@ def test_extension_snapshot_decodes_bag_equipment_and_talents():
     unit = 0x200000
     struct.pack_into("<2Q4I", payload, 64, 0x110000, 0x120000, 1, 0, 1, 0)
     struct.pack_into("<QIi", payload, 96, unit, int.from_bytes(b"HERO", "big"), 8)
-    struct.pack_into("<Q", payload, 624, unit)
-    struct.pack_into("<10I", payload, 640, 0, 0, 0, 2, 0, 1, 0, 30, 0, 0)
-    struct.pack_into("<2i", payload, 776, 6, 1)
-    struct.pack_into("<QIiII", payload, 872, 0x210000, int.from_bytes(b"ckng", "big"), 3, 0, 0)
-    struct.pack_into("<QIiII", payload, 1592, 0x220000, int.from_bytes(b"eeh3", "big"), 0, 1, 0)
+    struct.pack_into("<Q", payload, 664, unit)
+    struct.pack_into("<10I", payload, 680, 0, 0, 0, 2, 0, 1, 0, 30, 0, 0)
+    struct.pack_into("<2i", payload, 816, 6, 1)
+    struct.pack_into("<QIiII", payload, 912, 0x210000, int.from_bytes(b"ckng", "big"), 3, 0, 0)
+    struct.pack_into("<QIiII", payload, 1632, 0x220000, int.from_bytes(b"eeh3", "big"), 0, 1, 0)
 
     result = decode_work(bytes(payload), 1)
 
@@ -53,6 +53,25 @@ def test_extension_protocol_accepts_identity_bound_internal_cleanup():
     payload = build_work(
         entries(), 0x10000000, action=8, target_unit=0x200000,
         item_rawcode=int.from_bytes(b"pman", "big"), item_handle=0x210000,
+    )
+
+    validate_work(payload)
+
+
+def test_extension_protocol_accepts_any_slot_instance_type_write():
+    payload = build_work(
+        entries(), 0x10000000, action=9, target_unit=0x200000, slot=9,
+        item_rawcode=int.from_bytes(b"eeh3", "big"), item_handle=0x210000,
+    )
+
+    validate_work(payload)
+
+
+def test_extension_protocol_accepts_directed_loadout_slot_request():
+    payload = build_work(
+        entries(), 0x10000000, (int.from_bytes(b"AEqu", "big"),),
+        action=12, target_unit=0x200000, slot=8,
+        item_rawcode=int.from_bytes(b"eeh3", "big"), item_handle=0x210000,
     )
 
     validate_work(payload)

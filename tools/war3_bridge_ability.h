@@ -7,9 +7,10 @@ typedef struct AbilityWork {
     uint32_t rawcode,action,target,changed,error,completed;
     struct {int32_t before,after;} rows[24];
     int32_t intermediate[24];
+    uint64_t target_unit;
 } AbilityWork;
-_Static_assert(sizeof(AbilityWork)==832,"AbilityWork ABI");
-__declspec(dllexport) const uint32_t ability_batch_abi[3]={0x24268011u,216u,832u};
+_Static_assert(sizeof(AbilityWork)==840,"AbilityWork ABI");
+__declspec(dllexport) const uint32_t ability_batch_abi[3]={0x24268012u,216u,840u};
 /* 24268 evidence: SetUnitAbilityLevel+0x4bc faults reading a null address
    AFTER its level mutation. R15 is not stable at handler entry, so it is not
    part of the gate. Do not patch the game or resume at a guessed RIP. Unwind
@@ -56,15 +57,25 @@ __declspec(dllexport) uint64_t BridgeAbilityQuery(void) {
     }
     count=BridgeSelect();
     if (w->selection.error || !w->selection.destroyed || count!=w->selection.count || !count) {w->error=21;return count;}
+    if(w->target_unit){
+        uint32_t matches=0;
+        for(i=0;i<count;++i)if(w->selection.rows[i].unit==w->target_unit)++matches;
+        if(matches!=1){w->error=32;return count;}
+    }
     for (i=0;i<count;++i) {
         unit=w->selection.rows[i].unit;
         if (w->selection.unit_type_id(unit)!=w->selection.rows[i].rawcode) {w->error=22;return count;}
         w->rows[i].before=w->get_level(unit,w->rawcode);
-        if (w->rows[i].before<0 || (w->action==3 && !w->rows[i].before)) {w->error=23;return count;}
+        if (w->rows[i].before<0 || (w->action==3 && !w->rows[i].before && (!w->target_unit || unit==w->target_unit))) {w->error=23;return count;}
     }
     for (i=0;i<count;++i) {
         int32_t before=w->rows[i].before;
         unit=w->selection.rows[i].unit;
+        if(w->target_unit && unit!=w->target_unit){
+            w->rows[i].after=w->get_level(unit,w->rawcode);w->intermediate[i]=w->rows[i].after;
+            if(w->rows[i].after!=before){w->error=33;return count;}
+            ++w->completed;continue;
+        }
         if (w->selection.unit_type_id(unit)!=w->selection.rows[i].rawcode || w->get_level(unit,w->rawcode)!=before) {w->error=24;return count;}
         __try {
             if ((w->action==1 || w->action==4) && !before) {

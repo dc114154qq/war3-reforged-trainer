@@ -786,7 +786,7 @@ class UnitMemoryField:
     key: str
     label: str
     value_type: str
-    value: int | float
+    value: int | float | str
     address: int
     category: str
     write_address: int = 0
@@ -15714,6 +15714,25 @@ class War3Trainer:
                 return self._unit_fields_from_candidate(field_memory, candidate)
         fields: list[UnitMemoryField] = []
         native = self._native_snapshot_for_candidate(candidate)
+        self._unit_field_warnings = []
+
+        def note_optional_query_failure(key: str, label: str, exc: Exception) -> None:
+            report = getattr(exc, "report", None)
+            dispatch = report.get("dispatch", {}) if isinstance(report, dict) else {}
+            if dispatch.get("allocations_retained") or getattr(getattr(self, "_engine24268", None), "quarantined", False):
+                raise exc
+            try:
+                log_path = record_operation_failure(
+                    self.pid, key, exc, requested_pid=self.pid, target_hwnd=self.hwnd,
+                )
+                note = f"原生查询失败；诊断日志：{log_path}"
+            except Exception as log_exc:
+                note = f"原生查询失败：{type(exc).__name__}；日志写入失败：{log_exc}"
+            self._unit_field_warnings.append(f"{label}不可用")
+            fields.append(UnitMemoryField(
+                key=f"{key}_unavailable", label=label, value_type="text",
+                value="不可用", address=0, category="诊断", note=note,
+            ))
 
         def append_native_real(
             key: str, label: str, value: float, address: int, category: str,
@@ -15768,8 +15787,13 @@ class War3Trainer:
             append_native_real("y", "坐标-Y", native.y, candidate.y_address, "坐标")
 
         current_unit_stats = None
+        bridge_install_failed = False
         if getattr(self, "_native_selection_unavailable", False):
-            current_unit_stats = self._unit_stats_for_candidate_24268(candidate)
+            try:
+                current_unit_stats = self._unit_stats_for_candidate_24268(candidate)
+            except Exception as exc:
+                note_optional_query_failure("unit_stats", "护甲/智力", exc)
+                bridge_install_failed = isinstance(getattr(exc, "report", None), dict)
 
         process_memory = pm
         if native is None:
@@ -15799,7 +15823,7 @@ class War3Trainer:
                 category="防御", native_write=True, native_component_identity=identity,
                 note="3.0 UNIT_IF_DEFENSE_TYPE 原生读写；0小型、1中型、2大型、3城甲、4普通、5英雄、6神圣、7无甲",
             ))
-        elif candidate.unit_address:
+        elif candidate.unit_address and not getattr(self, "_native_selection_unavailable", False):
             self._append_unit_field(pm, fields, "armor", "护甲", "f32", candidate.unit_address + 0x2E8, "防御")
             self._append_unit_field(pm, fields, "armor_type", "护甲类型", "i32", candidate.unit_address + 0x2F0, "防御")
 
@@ -15808,7 +15832,18 @@ class War3Trainer:
         # instances always carry both process identifiers.
         stat_details = None
         if getattr(self, "pid", 0) and getattr(self, "hwnd", 0):
-            stat_details = self.stat_details_24268(candidate)
+            if bridge_install_failed:
+                self._unit_field_warnings.append("3.0 属性不可用")
+                fields.append(UnitMemoryField(
+                    key="stat_details_unavailable", label="3.0 属性",
+                    value_type="text", value="不可用", address=0,
+                    category="诊断", note="原生桥接失败；详见护甲/智力查询的诊断日志",
+                ))
+            else:
+                try:
+                    stat_details = self.stat_details_24268(candidate)
+                except Exception as exc:
+                    note_optional_query_failure("stat_details", "3.0 属性", exc)
         if stat_details is not None:
             for stat_spec in STAT_DETAIL_SPECS:
                 fields.append(UnitMemoryField(
@@ -15870,7 +15905,8 @@ class War3Trainer:
                         note="3.0 GetHeroInt(true)；写入时保留装备与光环加成并读回确认",
                     ))
                 elif getattr(self, "_native_selection_unavailable", False):
-                    raise RuntimeError("3.0 英雄智力原生快照缺失")
+                    # The indexed cache is not the 3.0 native intelligence value.
+                    pass
                 else:
                     try:
                         base_intelligence, total_intelligence = self._get_hero_intelligence_pair_via_native_internal(pm, candidate)
@@ -19037,10 +19073,12 @@ def run_gui(
             root.after(0, populate_selection_candidates, [])
             raise
         root.after(0, populate_auto_selected_unit_readout, panel, cand, fields, True)
+        warnings = getattr(t, "_unit_field_warnings", ())
+        warning = "；" + "、".join(warnings) if warnings else ""
         return (
             f"选中单位字段：HP {panel.hp_text}，MP {panel.mp_text}；"
             f"source={cand.selection_source or 'unknown'} owner=0x{cand.owner_address:x} "
-            f"handle=0x{cand.handle:x} unit=0x{cand.unit_address:x}"
+            f"handle=0x{cand.handle:x} unit=0x{cand.unit_address:x}{warning}"
         )
 
     def selected_unit_field() -> UnitMemoryField:

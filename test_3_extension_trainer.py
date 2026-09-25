@@ -38,6 +38,8 @@ def test_equipping_uses_existing_expanded_bag_item_identity():
 
 def test_equipping_selected_bag_item_to_explicit_empty_slot_verifies_identity():
     trainer = object.__new__(War3Trainer)
+    trainer.pid = 24268
+    trainer._extension_any_slot_enabled = {(24268, 0x101400): True}
     engine = Mock()
     before = snapshot()
     before["equipment"][0] = dict(slot=0, handle=0, rawcode=0, charges=0, equipment_type=0)
@@ -55,6 +57,55 @@ def test_equipping_selected_bag_item_to_explicit_empty_slot_verifies_identity():
         (int.from_bytes(b"AEqu", "big"),), action=12, target_unit=0x101400,
         slot=8, item_rawcode=int.from_bytes(b"eeh3", "big"), item_handle=0x101500,
     )
+
+
+def test_mismatched_slot_requires_any_slot_even_without_same_type_equipment():
+    trainer = object.__new__(War3Trainer)
+    trainer.pid = 24268
+    current = snapshot()
+    current["equipment"][0] = dict(slot=0, handle=0, rawcode=0,
+                                   charges=0, equipment_type=0)
+    engine = Mock()
+    trainer._engine_instance_24268 = Mock(return_value=engine)
+    trainer.extension_snapshot_24268 = Mock(return_value=current)
+
+    with pytest.raises(RuntimeError, match="物品类型与目标装备槽不匹配"):
+        trainer.equip_extension_bag_item_to_slot_24268(4, 8)
+    engine.extension.assert_not_called()
+
+
+def test_same_type_ring_conflict_still_requires_any_slot():
+    trainer = object.__new__(War3Trainer)
+    current = snapshot()
+    current["bag"][4]["equipment_type"] = 5
+    current["equipment"][4] = dict(slot=4, handle=0x101601,
+                                   rawcode=int.from_bytes(b"ring", "big"),
+                                   charges=0, equipment_type=5)
+    engine = Mock()
+    trainer._engine_instance_24268 = Mock(return_value=engine)
+    trainer.extension_snapshot_24268 = Mock(return_value=current)
+
+    with pytest.raises(RuntimeError, match="原生类型槽已有装备"):
+        trainer.equip_extension_bag_item_to_slot_24268(4, 5)
+    engine.extension.assert_not_called()
+
+
+def test_universal_equipment_type_does_not_require_any_slot_toggle():
+    trainer = object.__new__(War3Trainer)
+    before = snapshot()
+    before["bag"][4]["equipment_type"] = 9
+    after = snapshot()
+    after["bag"][4]["handle"] = 0
+    after["equipment"][8] = dict(slot=8, handle=0x101500,
+                                 rawcode=int.from_bytes(b"eeh3", "big"),
+                                 charges=0, equipment_type=9)
+    engine = Mock()
+    trainer._engine_instance_24268 = Mock(return_value=engine)
+    trainer.extension_snapshot_24268 = Mock(side_effect=[before, after])
+
+    result = trainer.equip_extension_bag_item_to_slot_24268(4, 8)
+    assert result is after
+    engine.extension.assert_called_once()
 
 
 def test_explicit_slot_equip_rejects_occupied_target_without_engine_write():
@@ -76,7 +127,7 @@ def test_explicit_slot_equip_rejects_implicit_native_type_replacement():
     trainer._engine_instance_24268 = Mock(return_value=engine)
     trainer.extension_snapshot_24268 = Mock(return_value=current)
 
-    with pytest.raises(RuntimeError, match="原生类型槽已有装备"):
+    with pytest.raises(RuntimeError, match="物品类型与目标装备槽不匹配"):
         trainer.equip_extension_bag_item_to_slot_24268(4, 8)
     engine.extension.assert_not_called()
 

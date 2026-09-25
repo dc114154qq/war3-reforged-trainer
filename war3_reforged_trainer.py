@@ -6462,6 +6462,8 @@ class War3Trainer:
         ]
         any_slot_key = (int(getattr(self, "pid", 0)), int(before["target_unit"]))
         any_slot_enabled = bool(getattr(self, "_extension_any_slot_enabled", {}).get(any_slot_key))
+        if item_type not in (int(EQUIPMENT_SLOT_TYPES[equipment_slot]), 9) and not any_slot_enabled:
+            raise RuntimeError("物品类型与目标装备槽不匹配；请先开启当前单位的任意槽")
         if conflicting_slots and not any_slot_enabled:
             raise RuntimeError(
                 "该物品的原生类型槽已有装备；请先卸下槽位 "

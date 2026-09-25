@@ -844,6 +844,7 @@ _EN_TRANSLATIONS.update(
     "3.0 GetHeroInt(false) 原生读回": "3.0 native GetHeroInt(false) readback",
     "3.0 GetHeroInt(true)；写入时保留装备与光环加成并读回确认": "3.0 native GetHeroInt(true); preserve equipment and aura bonuses during writes and verify readback",
     "3.0 Stat Details 原生能力累计值；写入时保留其他装备、天赋和光环贡献并读回总值": "3.0 native Stat Details ability total; preserve equipment, talent, and aura contributions during writes and verify the total",
+    "物品类型与目标装备槽不匹配；请先开启当前单位的任意槽": "Item type does not match the target equipment slot; enable any-slot mode for this unit first",
     "只统计已识别且有触发几率的暴击来源；多来源显示最高倍率，写入时同步每个来源并验证回滚": "Counts recognized critical sources with a nonzero trigger chance; shows the highest multiplier and updates every such source with rollback verification",
     "最高暴击伤害%": "Highest Critical Damage %",
     "最高法术暴击伤害%": "Highest Spell Critical Damage %",

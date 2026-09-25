@@ -1,11 +1,15 @@
-# 2.0.7 build audit
+# Historical 2.0.7 candidate audit
+
+This records the pre-checkpoint candidate built on 2026-09-26. It is not the
+current release pointer. For the current verified artifact and its exact source
+commit, read `dist-2.0.7-verified/current.json` and run
+`python tools/build_release_207.py --verify-only`.
 
 ## Build identity
 
 - Source workspace: `E:\xiugai\work\reforged-persistent-native`
 - Branch: `codex/war3-2.0.7-integration-20260926`
-- Release pointer: `dist-2.0.7-verified\current.json`
-- Executable: `dist-2.0.7-verified\8CB39F647D5F\War3ReforgedTrainer-v2.0.7.exe`
+- Candidate executable: `dist-2.0.7-verified\8CB39F647D5F\War3ReforgedTrainer-v2.0.7.exe`
 - File version: `2.0.7.0`
 - EXE SHA-256: `8CB39F647D5F386CAF1B0D69692893710799C064336897B314F683BC6108E12A`
 - Bundled bridge SHA-256: `A2A6238FEA7320E75E21A19F3E3C515487899B4AA0F1257AA8A60C74404B649B`

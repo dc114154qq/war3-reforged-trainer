@@ -254,7 +254,7 @@ __declspec(dllexport) uint64_t BridgeEffectQuery(void) {
                 stage = 13;
                 if (!error && !callback) error = 157;
             }
-            if (!error && w->action != EFFECT_POINT && requested_area) {
+            if (!error && requested_area) {
                 stage = 15;
                 union { uint32_t bits; float value; } area;
                 original_area = (uint32_t)w->get_area(ability_handle, EFFECT_AREA_FIELD, 0);

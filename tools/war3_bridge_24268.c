@@ -369,6 +369,7 @@ BOOL WINAPI DllMain(HINSTANCE module,DWORD reason,LPVOID reserved) {
 #include "war3_bridge_bulk.h"
 #include "war3_bridge_effect.h"
 #include "war3_bridge_world_effect.h"
+#include "war3_bridge_world_cast.h"
 #include "war3_bridge_item.h"
 #include "war3_bridge_item_catalog.h"
 #include "war3_bridge_clone.h"

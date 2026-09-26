@@ -84,8 +84,45 @@ def test_add_talent_choice_retains_existing_choices_in_one_tier():
         call("UT1b", 2, 0, target_unit=0x101400),
         call("UT1b", 1, 1, target_unit=0x101400),
     ]
-    # The remove/add pair refreshes the native command-card icon without
-    # changing the tier record or consuming another point.
+    # The effect route keeps the native tier record and point count unchanged.
+
+
+def test_live_same_tier_choice_installs_persistent_icon_predicate_first():
+    trainer = object.__new__(War3Trainer)
+    trainer.pid = 24268
+    before = talent_snapshot("ATug", controller_level=4)
+    after = talent_snapshot("ATug", "UT1a", controller_level=4)
+    state_reader = object.__new__(War3Trainer)
+    states = (state_reader.talent_state_24268(before), state_reader.talent_state_24268(after))
+    trainer.extension_snapshot_24268 = Mock(side_effect=[before, after])
+    trainer.talent_state_24268 = Mock(side_effect=states)
+    trainer.refresh_talent_icon_display_24268 = Mock(return_value={"installed": True})
+    trainer.ability_batch_24268 = Mock()
+
+    trainer.add_talent_choice_24268("ATug", 0, "UT1a")
+
+    trainer.refresh_talent_icon_display_24268.assert_called_once_with()
+    assert trainer.ability_batch_24268.call_count == 3
+
+
+def test_live_same_tier_choice_stops_before_effect_when_icon_predicate_fails():
+    trainer = object.__new__(War3Trainer)
+    trainer.pid = 24268
+    trainer.extension_snapshot_24268 = Mock(
+        return_value=talent_snapshot("ATug", controller_level=4)
+    )
+    state_reader = object.__new__(War3Trainer)
+    trainer.talent_state_24268 = Mock(return_value=state_reader.talent_state_24268(
+        talent_snapshot("ATug", controller_level=4)
+    ))
+    trainer.refresh_talent_icon_display_24268 = Mock(
+        return_value={"installed": False, "error": "predicate mismatch"}
+    )
+    trainer.ability_batch_24268 = Mock()
+
+    with pytest.raises(RuntimeError, match="图标判定模块未安装"):
+        trainer.add_talent_choice_24268("ATug", 0, "UT1a")
+    trainer.ability_batch_24268.assert_not_called()
 
 
 def test_reset_rollback_restores_only_extra_same_tier_choices():
@@ -267,21 +304,19 @@ def test_selected_choice_skips_incompatible_talent_tree():
     trainer.add_talent_choice_24268.assert_not_called()
 
 
-def test_selected_choice_waits_for_icon_module_before_adding_effect():
+def test_selected_choice_does_not_install_display_hook():
     trainer = object.__new__(War3Trainer)
     trainer.pid = 24268
     first = talent_snapshot()
     first["selection"] = {"rows": [{"handle": 100}]}
     trainer.extension_snapshot_24268 = Mock(return_value=first)
-    trainer.refresh_talent_icon_display_24268 = Mock(return_value={
-        "installed": False, "reason": "code_unavailable", "error": "panel code differs",
-    })
+    trainer.refresh_talent_icon_display_24268 = Mock()
     trainer.add_talent_choice_24268 = Mock()
 
     result = trainer.selected_talent_batch_24268("choice", "ATug", 0, "UT1a")
-    assert result["failed"] == 1
-    assert "图标显示尚未就绪" in result["results"][0]["reason"]
-    trainer.add_talent_choice_24268.assert_not_called()
+    assert result["succeeded"] == 1
+    trainer.add_talent_choice_24268.assert_called_once()
+    trainer.refresh_talent_icon_display_24268.assert_not_called()
 
 
 @pytest.mark.parametrize("action", ("grant", "reset"))

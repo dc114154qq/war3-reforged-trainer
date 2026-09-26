@@ -288,6 +288,9 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
     elif kind=='world_effect':
         from war3_world_effect_protocol import ABI as expected_abi,validate_work as validate_world_effect
         validate_world_effect(work_payload);marker_name=b'world_effect_batch_abi';query_name=b'BridgeWorldEffectQuery'
+    elif kind=='world_cast':
+        from war3_world_cast_protocol import ABI as expected_abi,validate_work as validate_world_cast
+        validate_world_cast(work_payload);marker_name=b'world_cast_abi';query_name=b'BridgeWorldCastQuery'
     elif kind=='spawn':
         from war3_spawn_protocol import ABI as expected_abi,validate_work as validate_spawn
         validate_spawn(work_payload);marker_name=b'spawn_batch_abi';query_name=b'BridgeSpawnQuery'

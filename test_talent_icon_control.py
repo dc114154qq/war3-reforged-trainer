@@ -64,16 +64,20 @@ def test_exited_original_process_does_not_dispatch_into_reused_pid():
     obj._control.assert_not_called()
 
 
-def test_minimized_game_does_not_install_display_hook():
+def test_minimized_game_still_installs_through_bound_game_thread():
     trainer = War3Trainer.__new__(War3Trainer)
     trainer.hwnd = 123
     trainer._talent_icon_display = None
-    trainer._engine_instance_24268 = Mock(side_effect=AssertionError("Must not dispatch into minimized game"))
-    with patch.object(user32, "IsIconic", return_value=True):
+    trainer._engine_instance_24268 = Mock(return_value=object())
+    trainer._talent_icon_display_path_24268 = Mock(return_value="icon.dll")
+    display = Mock()
+    display.install.return_value = {"installed": True}
+    with patch.object(user32, "IsIconic", return_value=True), \
+            patch("war3_talent_icon_display.TalentIconDisplay", return_value=display):
         result = trainer.refresh_talent_icon_display_24268()
-    assert result["reason"] == "window_minimized"
-    assert result["installed"] is False
-    trainer._engine_instance_24268.assert_not_called()
+    assert result["installed"] is True
+    trainer._engine_instance_24268.assert_called_once()
+    assert trainer._talent_icon_display is display
 
 
 def test_unbound_window_does_not_break_talent_transaction():

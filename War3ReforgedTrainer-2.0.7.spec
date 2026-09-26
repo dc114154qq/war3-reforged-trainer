@@ -38,6 +38,7 @@ a = Analysis(
         'war3_bulk_protocol',
         'war3_effect_protocol',
         'war3_world_effect_protocol',
+        'war3_world_cast_protocol',
         'war3_spawn_protocol',
         'war3_mouse_protocol',
         'war3_screen_protocol',

@@ -46,6 +46,7 @@ def main() -> None:
         b"BridgeBulkQuery",
         b"BridgeEffectQuery",
         b"BridgeWorldEffectQuery",
+        b"BridgeWorldCastQuery",
         b"BridgeSpawnQuery",
         b"BridgeMouseQuery",
         b"BridgeScreenMouseQuery",
@@ -82,6 +83,7 @@ def main() -> None:
     marker(b"bulk_batch_abi", (0x2426803A, 216, 656))
     marker(b"effect_batch_abi", (0x24268027, 216, 1168))
     marker(b"world_effect_batch_abi", (0x24268028, 216, 656))
+    marker(b"world_cast_abi", (0x24268048, 216, 760))
     marker(b"spawn_batch_abi", (0x24268018, 216, 128))
     marker(b"mouse_batch_abi", (0x24268019, 216, 128))
     marker(b"screen_mouse_batch_abi", (0x2426801A, 216, 128))

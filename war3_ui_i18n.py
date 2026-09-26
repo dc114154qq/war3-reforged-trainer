@@ -1466,7 +1466,7 @@ _EN_TRANSLATIONS.update({
     "天赋快照缺少唯一原生目标": "The talent snapshot has no unique native target",
     "天赋控制器目标身份不唯一": "The talent controller target identity is not unique",
     "天赋操作：成功 ": "Talent operation: succeeded ",
-    "天赋图标显示尚未就绪，本次未加天赋：": "Talent icon display is not ready; no talent was added: ",
+    "天赋图标判定模块未安装，本次未添加天赋：": "The talent icon predicate module is not installed; no talent was added: ",
     "天赋树与所选选项不匹配": "The talent tree does not match the selected options",
     "天赋点操作后控制器已变化；请重新读取，勿重复加点": "The controller changed after the talent-point operation; read again and do not repeat the point operation",
     "天赋点操作后选中目标已变化；请重新读取原英雄，勿重复加点": "The selected target changed after the talent-point operation; re-read the original hero and do not repeat the point operation",
@@ -1524,6 +1524,31 @@ _EN_TRANSLATIONS.update({
     "重建天赋控制器后状态未清空": "The state was not cleared after rebuilding the talent controller",
     "；回滚未完成：": "; rollback incomplete: ",
     "；清理错误：": "; cleanup error: ",
+})
+
+_EN_TRANSLATIONS.update({
+    " 槽位记录地址无效": " slot record address is invalid",
+    " 组件身份或槽位数量已经变化": " component identity or slot count changed",
+    "AEqu 普通物品实例身份不一致": "The ordinary-item identity in AEqu does not match",
+    "AEqu 槽位里没有待卸下物品实例": "The AEqu slot has no item instance to unequip",
+    "AEqu 目标槽已被占用": "The target AEqu slot is occupied",
+    "回滚后背包或装备槽实例不一致": "Bag or equipment instances do not match after rollback",
+    "回滚时 AIni/AEqu 记录地址已变化": "The AIni/AEqu record address changed during rollback",
+    "当前单位没有唯一的 AIni 扩展背包和 AEqu 装备组件": "The current unit does not have unique AIni and AEqu components",
+    "扩展背包已满，无法卸下普通物品": "The expanded bag is full; the ordinary item cannot be unequipped",
+    "扩展背包记录里没有所选物品实例": "The selected item instance is absent from the expanded-bag records",
+    "施法命令已接收，但法力和冷却未变化；请确认游戏未暂停或停在结算界面": "The cast order was accepted, but mana and cooldown did not change; make sure the game is running and not on a results screen",
+    "普通物品任意槽事务失败：": "The ordinary-item any-slot transaction failed: ",
+    "普通物品卸下事务失败：": "The ordinary-item unequip transaction failed: ",
+    "普通物品卸下后原生背包读回不一致": "Native bag readback does not match after unequipping the ordinary item",
+    "普通物品卸下需要唯一选中英雄": "Unequipping an ordinary item requires exactly one selected hero",
+    "普通物品完整实例与所选背包槽不一致": "The full ordinary-item instance does not match the selected bag slot",
+    "普通物品指定装备槽需要唯一选中英雄": "Equipping an ordinary item to a specified slot requires exactly one selected hero",
+    "普通物品迁移到 AEqu 后原生槽位读回不一致": "Native slot readback does not match after moving the ordinary item to AEqu",
+    "游戏窗口已最小化；请恢复窗口并解除暂停后再施放全屏技能": "The game window is minimized; restore it and resume the game before casting a full-screen skill",
+    "目标扩展背包槽已被占用": "The target expanded-bag slot is occupied",
+    "选中英雄身份在卸下事务前发生变化": "The selected hero identity changed before the unequip transaction",
+    "选中英雄身份在装备事务前发生变化": "The selected hero identity changed before the equip transaction",
 })
 
 

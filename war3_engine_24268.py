@@ -54,6 +54,7 @@ class EngineExecutionError(RuntimeError):
             clone_status=report.get('clone_status'),world_status=report.get('world_status'),
             spawn_status=report.get('spawn_status'),
             attack_speed_status=report.get('attack_speed_status'),
+            world_cast_status=report.get('world_cast_status'),
             ),ensure_ascii=False))
 
 class Engine24268:
@@ -394,6 +395,28 @@ class Engine24268:
             dict(rawcode=rawcode, action=action, success_limit=success_limit),
         )
 
+    def world_cast(self, rawcode, action, *, order_id=0, cast_kind=1, area=0.0,
+                   source=0, ability_handle=0, target=0, prior_area=0, added=0):
+        from war3_world_cast_protocol import (
+            SIGNATURES as CAST_SIGNATURES, build_work, decode_work,
+        )
+        from war3_selection_protocol import SIGNATURES as SELECTION_SIGNATURES
+        names = tuple(name for name, _ in SELECTION_SIGNATURES + CAST_SIGNATURES)
+        return self._execute(
+            'world_cast', names,
+            lambda entries, tls: build_work(
+                entries, tls, action=action, rawcode=rawcode,
+                order_id=order_id, cast_kind=cast_kind, area=area, source=source,
+                ability_handle=ability_handle, target=target,
+                prior_area=prior_area, added=added,
+            ),
+            decode_work,
+            dict(action=action, rawcode=rawcode, order_id=order_id,
+                 cast_kind=cast_kind, area=area, source=source,
+                 ability_handle=ability_handle, target=target,
+                 prior_area=prior_area, added=added),
+        )
+
     def spawn_batch(self, rawcode, x_bits=0, y_bits=0, facing_bits=0):
         from war3_spawn_protocol import SIGNATURES as SPAWN_SIGNATURES, build_work as build, decode_work as decode
         values = (rawcode, x_bits, y_bits, facing_bits)
@@ -672,6 +695,17 @@ class Engine24268:
                             report['world_effect_status']=dict(
                                 attempts=attempts, error=error,
                                 successes=successes, completed=completed,
+                            )
+                    if kind=='world_cast' and evidence.get('work_result_hex'):
+                        raw=bytes.fromhex(evidence['work_result_hex'])
+                        if len(raw)==760:
+                            issued,error,completed=struct.unpack_from('<3I',raw,724)
+                            source,ability_handle,target=struct.unpack_from('<3Q',raw,672)
+                            report['world_cast_status']=dict(
+                                action=struct.unpack_from('<I',raw,696)[0],
+                                source=source,ability_handle=ability_handle,target=target,
+                                added=struct.unpack_from('<I',raw,720)[0],
+                                issued=issued,error=error,completed=completed,
                             )
                     if kind=='spawn' and evidence.get('work_result_hex'):
                         raw=bytes.fromhex(evidence['work_result_hex'])

@@ -108,7 +108,7 @@ def test_universal_equipment_type_does_not_require_any_slot_toggle():
     engine.extension.assert_called_once()
 
 
-def test_any_slot_rejects_non_equipment_before_native_equip():
+def test_any_slot_routes_non_equipment_through_transactional_record_move():
     trainer = object.__new__(War3Trainer)
     trainer.pid = 24268
     current = snapshot()
@@ -119,10 +119,27 @@ def test_any_slot_rejects_non_equipment_before_native_equip():
     engine = Mock()
     trainer._engine_instance_24268 = Mock(return_value=engine)
     trainer.extension_snapshot_24268 = Mock(return_value=current)
+    trainer._equip_non_equipment_item_to_slot_24268 = Mock(return_value=current)
 
-    with pytest.raises(RuntimeError, match="I62R.*不是游戏认可的装备"):
-        trainer.equip_extension_bag_item_to_slot_24268(4, 8)
+    result = trainer.equip_extension_bag_item_to_slot_24268(4, 8)
+    assert result is current
+    trainer._equip_non_equipment_item_to_slot_24268.assert_called_once_with(current, 4, 8)
     engine.extension.assert_not_called()
+
+
+def test_type_zero_equipment_uses_symmetric_record_unequip():
+    trainer = object.__new__(War3Trainer)
+    current = snapshot()
+    current["equipment"][8] = dict(
+        slot=8, handle=0x101700, rawcode=int.from_bytes(b"I62R", "big"),
+        charges=0, equipment_type=0,
+    )
+    after = snapshot()
+    trainer.extension_snapshot_24268 = Mock(return_value=current)
+    trainer._unequip_non_equipment_slot_24268 = Mock(return_value=after)
+
+    assert trainer.unequip_extension_slot_24268(8) is after
+    trainer._unequip_non_equipment_slot_24268.assert_called_once_with(current, 8)
 
 
 def test_explicit_slot_equip_rejects_occupied_target_without_engine_write():

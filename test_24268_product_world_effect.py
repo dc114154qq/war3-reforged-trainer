@@ -42,12 +42,12 @@ def test_world_effect_protocol_accepts_all_current_callback_modes(action):
 @pytest.mark.parametrize(
     "method,args,expected",
     [
-        ("cast_fullscreen_swarm", {}, [("ACca", "point"), ("ACcv", "point"), ("AOsh", "point")]),
-        ("cast_fullscreen_clap", {}, [("AHtc", "noarg"), ("AOws", "noarg")]),
-        ("cast_fullscreen_monsoon", {}, [("ANmo", "point")]),
-        ("cast_fullscreen_starfall", {}, [("AEsb", "immediate")]),
-        ("cast_fullscreen_forked_lightning", {}, [("ACfl", "immediate")]),
-        ("cast_fullscreen_auto_effect", {"success_limit": 9}, [("AEfk", "noarg")]),
+        ("cast_fullscreen_swarm", {}, [("ACca", 852218, 2), ("ACcv", 852218, 2), ("AOsh", 852125, 2)]),
+        ("cast_fullscreen_clap", {}, [("AHtc", 852096, 1), ("AOws", 852127, 1)]),
+        ("cast_fullscreen_monsoon", {}, [("ANmo", 852591, 2)]),
+        ("cast_fullscreen_starfall", {}, [("AEsb", 852183, 1)]),
+        ("cast_fullscreen_forked_lightning", {}, [("ACfl", 852587, 3)]),
+        ("cast_fullscreen_auto_effect", {"success_limit": 9}, [("AEfk", 852526, 1)]),
     ],
 )
 def test_current_fullscreen_area_features_stay_on_local_caster(method, args, expected):
@@ -56,24 +56,24 @@ def test_current_fullscreen_area_features_stay_on_local_caster(method, args, exp
     trainer._run_direct_ability_over_enemy_units = Mock(
         side_effect=AssertionError("enemy units must not become the caster")
     )
-    trainer._run_selected_ability_effect = Mock(return_value=(1, 1))
+    trainer.cast_native_area_24268 = Mock(return_value={})
 
     result = getattr(trainer, method)(**args)
 
     assert result == (len(expected), len(expected))
-    assert [call.args[:2] for call in trainer._run_selected_ability_effect.call_args_list] == expected
-    assert all(call.kwargs["area"] == 100000.0 for call in trainer._run_selected_ability_effect.call_args_list)
+    assert [(call.args[0], call.args[1], call.kwargs["cast_kind"])
+            for call in trainer.cast_native_area_24268.call_args_list] == expected
 
 
 @pytest.mark.parametrize("method", ["cast_fullscreen_swarm", "cast_fullscreen_monsoon"])
-def test_current_fullscreen_point_features_use_a_stable_global_origin(method):
+def test_current_fullscreen_point_features_use_native_point_orders(method):
     trainer = object.__new__(product.War3Trainer)
-    trainer._run_selected_ability_effect = Mock(return_value=(1, 1))
+    trainer.cast_native_area_24268 = Mock(return_value={})
 
     getattr(trainer, method)()
 
-    assert all(call.kwargs["point"] == (0.0, 0.0)
-               for call in trainer._run_selected_ability_effect.call_args_list)
+    assert all(call.kwargs["cast_kind"] == 2
+               for call in trainer.cast_native_area_24268.call_args_list)
 
 
 def test_current_point_effect_forwards_area_to_effect_bridge():

@@ -6441,6 +6441,103 @@ class War3Trainer:
         )
         return self.extension_snapshot_24268()
 
+    def _extension_inventory_equipment_records_24268(
+        self, memory: ProcessMemory, candidate: UnitCandidate,
+    ) -> dict[str, int]:
+        codes = {
+            name: int(self._coerce_memory_value("rawcode", name))
+            for name in ("AIni", "AEqu")
+        }
+        instances = self._ability_instances_from_candidate(
+            memory, candidate, required_rawcodes=set(codes.values()),
+            allow_global_scan=False,
+        )
+        by_rawcode: dict[int, list[int]] = {}
+        for instance in instances:
+            data = int(instance.data_address)
+            by_rawcode.setdefault(int(memory.read_u32(data + 0x70)), []).append(data)
+        if any(len(by_rawcode.get(rawcode, ())) != 1 for rawcode in codes.values()):
+            raise RuntimeError("当前单位没有唯一的 AIni 扩展背包和 AEqu 装备组件")
+        result: dict[str, int] = {}
+        for name, expected_count in (("AIni", 30), ("AEqu", 9)):
+            data = by_rawcode[codes[name]][0]
+            if (int(memory.read_u64(data + 0x68)) != int(candidate.unit_address)
+                    or int(memory.read_u64(data + 0xD0)) != expected_count
+                    or int(memory.read_u64(data + 0xE0)) < expected_count):
+                raise RuntimeError(f"{name} 组件身份或槽位数量已经变化")
+            records = int(memory.read_u64(data + 0xD8))
+            if not self._sane_heap_ptr(records):
+                raise RuntimeError(f"{name} 槽位记录地址无效")
+            result[name] = records
+        return result
+
+    def _equip_non_equipment_item_to_slot_24268(
+        self, before: dict, bag_slot: int, equipment_slot: int,
+    ) -> dict:
+        if len(before.get("selection", {}).get("rows", ())) != 1:
+            raise RuntimeError("普通物品指定装备槽需要唯一选中英雄")
+        item = before["bag"][bag_slot]
+        target = int(before["target_unit"])
+        candidate, _native_handle = self._direct_selected_context()
+        expected_type = int(before["selection"]["rows"][0]["rawcode"])
+        if int(candidate.unit_type_id) != expected_type:
+            raise RuntimeError("选中英雄身份在装备事务前发生变化")
+        bag_before = equipment_before = None
+        bag_records = equipment_records = 0
+        try:
+            with ProcessMemory(int(self.pid), write=True) as memory:
+                records = self._extension_inventory_equipment_records_24268(memory, candidate)
+                bag_records, equipment_records = records["AIni"], records["AEqu"]
+                bag_before = tuple(memory.read(bag_records + index * 12, 12) for index in range(30))
+                equipment_before = tuple(
+                    memory.read(equipment_records + index * 12, 12) for index in range(9)
+                )
+                item_full = int(memory.read_u64(bag_records + bag_slot * 12))
+                if item_full in (0, 0xFFFFFFFFFFFFFFFF):
+                    raise RuntimeError("扩展背包记录里没有所选物品实例")
+                if int(memory.read_u64(equipment_records + equipment_slot * 12)) != 0xFFFFFFFFFFFFFFFF:
+                    raise RuntimeError("AEqu 目标槽已被占用")
+                from war3_object_registry import ObjectRegistry24268
+                registry = ObjectRegistry24268.attach(memory)
+                owner = registry.resolve_handle(memory, item_full)
+                item_object = int(memory.read_u64(owner + 0x90))
+                if (not self._sane_heap_ptr(item_object)
+                        or int(memory.read_u64(item_object + 0x18)) != item_full
+                        or int(memory.read_u32(item_object + 0x70)) != int(item["rawcode"])):
+                    raise RuntimeError("普通物品完整实例与所选背包槽不一致")
+                memory.write_u64(equipment_records + equipment_slot * 12, item_full)
+                memory.write_u32(equipment_records + equipment_slot * 12 + 8, 0)
+                memory.write_u64(bag_records + bag_slot * 12, 0xFFFFFFFFFFFFFFFF)
+                memory.write_u32(bag_records + bag_slot * 12 + 8, 0)
+            after = self.extension_snapshot_24268(target)
+            if (int(after["bag"][bag_slot]["handle"]) or
+                    int(after["equipment"][equipment_slot]["handle"]) != int(item["handle"]) or
+                    sum(int(row["handle"]) == int(item["handle"])
+                        for row in after["equipment"]) != 1):
+                raise RuntimeError("普通物品迁移到 AEqu 后原生槽位读回不一致")
+            return after
+        except Exception as exc:
+            rollback_error = ""
+            if bag_before is not None and equipment_before is not None:
+                try:
+                    with ProcessMemory(int(self.pid), write=True) as memory:
+                        records = self._extension_inventory_equipment_records_24268(memory, candidate)
+                        if records != {"AIni": bag_records, "AEqu": equipment_records}:
+                            raise RuntimeError("回滚时 AIni/AEqu 记录地址已变化")
+                        for index, raw in enumerate(bag_before):
+                            memory.write(bag_records + index * 12, raw)
+                        for index, raw in enumerate(equipment_before):
+                            memory.write(equipment_records + index * 12, raw)
+                    restored = self.extension_snapshot_24268(target)
+                    if ([int(row["handle"]) for row in restored["bag"]] !=
+                            [int(row["handle"]) for row in before["bag"]] or
+                            [int(row["handle"]) for row in restored["equipment"]] !=
+                            [int(row["handle"]) for row in before["equipment"]]):
+                        raise RuntimeError("回滚后背包或装备槽实例不一致")
+                except Exception as rollback_exc:
+                    rollback_error = f"；回滚未完成：{rollback_exc}"
+            raise RuntimeError(f"普通物品任意槽事务失败：{exc}{rollback_error}") from exc
+
     def equip_extension_bag_item_to_slot_24268(self, bag_slot: int, equipment_slot: int) -> dict:
         """Equip one owned bag instance into an explicitly selected loadout slot."""
         bag_slot = int(bag_slot)
@@ -6456,6 +6553,10 @@ class War3Trainer:
         if int(before["equipment"][equipment_slot]["handle"]):
             raise RuntimeError("目标装备槽已有物品；请先卸下后再指定装备")
         item_type = int(item.get("equipment_type", 0))
+        any_slot_key = (int(getattr(self, "pid", 0)), int(before["target_unit"]))
+        any_slot_enabled = bool(getattr(self, "_extension_any_slot_enabled", {}).get(any_slot_key))
+        if not 1 <= item_type <= 9 and any_slot_enabled:
+            return self._equip_non_equipment_item_to_slot_24268(before, bag_slot, equipment_slot)
         if not 1 <= item_type <= 9:
             raise RuntimeError(
                 f"扩展背包第 {bag_slot + 1} 格物品 {format_rawcode(int(item['rawcode']))} "
@@ -6466,8 +6567,6 @@ class War3Trainer:
             int(row["slot"]) for row in before["equipment"]
             if int(row.get("handle", 0)) and int(row.get("equipment_type", 0)) == item_type
         ]
-        any_slot_key = (int(getattr(self, "pid", 0)), int(before["target_unit"]))
-        any_slot_enabled = bool(getattr(self, "_extension_any_slot_enabled", {}).get(any_slot_key))
         if item_type not in (int(EQUIPMENT_SLOT_TYPES[equipment_slot]), 9) and not any_slot_enabled:
             raise RuntimeError("物品类型与目标装备槽不匹配；请先开启当前单位的任意槽")
         if conflicting_slots and not any_slot_enabled:
@@ -6631,11 +6730,83 @@ class War3Trainer:
                 f"到{EQUIPMENT_SLOT_NAMES[equipment_slot]}槽；{exc}{rollback_error}"
             ) from exc
 
+    def _unequip_non_equipment_slot_24268(self, before: dict, slot: int) -> dict:
+        if len(before.get("selection", {}).get("rows", ())) != 1:
+            raise RuntimeError("普通物品卸下需要唯一选中英雄")
+        empty_slots = [int(row["slot"]) for row in before["bag"]
+                       if not int(row["handle"])]
+        if not empty_slots:
+            raise RuntimeError("扩展背包已满，无法卸下普通物品")
+        destination = empty_slots[0]
+        item = before["equipment"][slot]
+        target = int(before["target_unit"])
+        candidate, _native_handle = self._direct_selected_context()
+        if int(candidate.unit_type_id) != int(before["selection"]["rows"][0]["rawcode"]):
+            raise RuntimeError("选中英雄身份在卸下事务前发生变化")
+        bag_before = equipment_before = None
+        bag_records = equipment_records = 0
+        try:
+            with ProcessMemory(int(self.pid), write=True) as memory:
+                records = self._extension_inventory_equipment_records_24268(memory, candidate)
+                bag_records, equipment_records = records["AIni"], records["AEqu"]
+                bag_before = tuple(memory.read(bag_records + index * 12, 12) for index in range(30))
+                equipment_before = tuple(
+                    memory.read(equipment_records + index * 12, 12) for index in range(9)
+                )
+                item_full = int(memory.read_u64(equipment_records + slot * 12))
+                if item_full in (0, 0xFFFFFFFFFFFFFFFF):
+                    raise RuntimeError("AEqu 槽位里没有待卸下物品实例")
+                if int(memory.read_u64(bag_records + destination * 12)) != 0xFFFFFFFFFFFFFFFF:
+                    raise RuntimeError("目标扩展背包槽已被占用")
+                from war3_object_registry import ObjectRegistry24268
+                registry = ObjectRegistry24268.attach(memory)
+                owner = registry.resolve_handle(memory, item_full)
+                item_object = int(memory.read_u64(owner + 0x90))
+                if (not self._sane_heap_ptr(item_object)
+                        or int(memory.read_u64(item_object + 0x18)) != item_full
+                        or int(memory.read_u32(item_object + 0x70)) != int(item["rawcode"])):
+                    raise RuntimeError("AEqu 普通物品实例身份不一致")
+                memory.write_u64(bag_records + destination * 12, item_full)
+                memory.write_u32(bag_records + destination * 12 + 8, 0)
+                memory.write_u64(equipment_records + slot * 12, 0xFFFFFFFFFFFFFFFF)
+                memory.write_u32(equipment_records + slot * 12 + 8, 0)
+            after = self.extension_snapshot_24268(target)
+            if (int(after["equipment"][slot]["handle"]) or
+                    int(after["bag"][destination]["handle"]) != int(item["handle"]) or
+                    sum(int(row["handle"]) == int(item["handle"])
+                        for row in after["bag"]) != 1):
+                raise RuntimeError("普通物品卸下后原生背包读回不一致")
+            return after
+        except Exception as exc:
+            rollback_error = ""
+            if bag_before is not None and equipment_before is not None:
+                try:
+                    with ProcessMemory(int(self.pid), write=True) as memory:
+                        records = self._extension_inventory_equipment_records_24268(memory, candidate)
+                        if records != {"AIni": bag_records, "AEqu": equipment_records}:
+                            raise RuntimeError("回滚时 AIni/AEqu 记录地址已变化")
+                        for index, raw in enumerate(bag_before):
+                            memory.write(bag_records + index * 12, raw)
+                        for index, raw in enumerate(equipment_before):
+                            memory.write(equipment_records + index * 12, raw)
+                    restored = self.extension_snapshot_24268(target)
+                    if ([int(row["handle"]) for row in restored["bag"]] !=
+                            [int(row["handle"]) for row in before["bag"]] or
+                            [int(row["handle"]) for row in restored["equipment"]] !=
+                            [int(row["handle"]) for row in before["equipment"]]):
+                        raise RuntimeError("回滚后背包或装备槽实例不一致")
+                except Exception as rollback_exc:
+                    rollback_error = f"；回滚未完成：{rollback_exc}"
+            raise RuntimeError(f"普通物品卸下事务失败：{exc}{rollback_error}") from exc
+
     def unequip_extension_slot_24268(self, slot: int) -> dict:
         slot = int(slot)
         if not 0 <= slot < len(EQUIPMENT_SLOT_NAMES):
             raise ValueError("装备槽无效")
         snapshot = self.extension_snapshot_24268()
+        if (int(snapshot["equipment"][slot]["handle"]) and
+                int(snapshot["equipment"][slot].get("equipment_type", 0)) == 0):
+            return self._unequip_non_equipment_slot_24268(snapshot, slot)
         if sum(bool(item["handle"]) for item in snapshot["bag"]) >= int(snapshot["bag_size"]):
             raise RuntimeError("扩展背包已满，卸下装备会导致物品丢失；请先腾出一个背包槽")
         self._engine_instance_24268().extension(
@@ -6788,11 +6959,10 @@ class War3Trainer:
     def set_extension_equipment_any_slot_24268(self, enabled: bool = True) -> dict:
         """Enable the verified runtime AEqu redirection route for this unit.
 
-        3.0 has no reliable native toggle for a global any-slot classifier.
-        The working path equips through the normal game route, then redirects
-        the authoritative AEqu record to the requested slot. The toggle only
-        controls the trainer's type-conflict guard; it does not call action=9,
-        which changes an editor/profile field and is rejected by the runtime.
+        Native 3.0 equipment keeps its existing UnitEquipItem route. Ordinary
+        campaign items use a separate, transactional AIni-to-AEqu instance
+        move with full readback and rollback. The obsolete action=9 profile
+        field setter remains unused.
         """
         snapshot = self.extension_snapshot_24268()
         target = int(snapshot["target_unit"])
@@ -6801,16 +6971,7 @@ class War3Trainer:
         if enabled:
             candidate, _native_handle = self._direct_selected_context()
             with ProcessMemory(int(self.pid)) as memory:
-                instances = self._ability_instances_from_candidate(
-                    memory, candidate,
-                    required_rawcodes={int(self._coerce_memory_value("rawcode", "AEqu"))},
-                    allow_global_scan=False,
-                )
-                if len(instances) != 1:
-                    raise RuntimeError("当前单位没有唯一可用的 AEqu 装备组件")
-                records = int(memory.read_u64(instances[0].data_address + 0xD8))
-                if not self._sane_heap_ptr(records):
-                    raise RuntimeError("当前单位的 AEqu 装备记录地址无效")
+                self._extension_inventory_equipment_records_24268(memory, candidate)
             enabled_by_unit[key] = True
         else:
             enabled_by_unit.pop(key, None)
@@ -6842,13 +7003,6 @@ class War3Trainer:
                 if action == "choice" and active[0] != controller:
                     results.append(dict(target=target, status="skipped", reason="天赋树与所选选项不匹配"))
                     continue
-                if action == "choice" and getattr(self, "pid", 0):
-                    icon = self.refresh_talent_icon_display_24268()
-                    if not icon.get("installed"):
-                        raise RuntimeError(
-                            "天赋图标显示尚未就绪，本次未加天赋："
-                            + str(icon.get("error", icon.get("reason", "未知错误")))
-                        )
                 if action == "grant":
                     last = self.grant_talent_point_24268(target_unit=target)
                 elif action == "reset":
@@ -7079,12 +7233,7 @@ class War3Trainer:
         return matches[0]
 
     def add_talent_choice_24268(self, controller: str, tier: int, choice: str, *, target_unit: int = 0) -> dict:
-        """Add one same-tier effect and request a native command-card refresh.
-
-        The 3.0 extension route applies the effect, then removes and re-adds
-        only that newly-added ability. The native tier record and point count
-        stay unchanged; screen-level icon confirmation is separate.
-        """
+        """Add one same-tier effect with the persistent command-card predicate."""
         before = (self.extension_snapshot_24268(target_unit) if target_unit else self.extension_snapshot_24268())
         state = self.talent_state_24268(before)
         if state["controller"] != controller:
@@ -7105,6 +7254,13 @@ class War3Trainer:
         # The 3.0 engine accepts an additional choice through its normal
         # ability path. Do not invoke the unverified tier-record callback;
         # it can crash when the tier already contains multiple choices.
+        if getattr(self, "pid", 0):
+            display = self.refresh_talent_icon_display_24268()
+            if not display.get("installed"):
+                raise RuntimeError(
+                    "天赋图标判定模块未安装，本次未添加天赋："
+                    + str(display.get("error", display.get("reason", "未知错误")))
+                )
         try:
             self.ability_batch_24268(choice, 1, 1, target_unit=int(before["target_unit"]))
             # The 3.0 helper table does not expose BlzUnitHideAbility on every
@@ -7112,35 +7268,6 @@ class War3Trainer:
             # the stable extension route so the game refreshes its own card.
             self.ability_batch_24268(choice, 2, 0, target_unit=int(before["target_unit"]))
             self.ability_batch_24268(choice, 1, 1, target_unit=int(before["target_unit"]))
-            # Mark only the newly recreated ability for a card refresh. This
-            # flag is not the persistent native tier selection record.
-            if getattr(self, "pid", 0):
-                rawcode = int.from_bytes(choice.encode("ascii"), "big")
-                with ProcessMemory(int(self.pid), write=True) as memory:
-                    candidate = self._talent_icon_candidate_24268(int(before["target_unit"]))
-                    instances = self._ability_instances_from_candidate(
-                        memory, candidate, required_rawcodes={rawcode}, allow_global_scan=False,
-                    )
-                    active = [instance for instance in instances
-                              if instance.rawcode == rawcode
-                              and not (memory.read_u32(instance.data_address + 0x38) & 0x8)]
-                    if len(active) != 1:
-                        raise RuntimeError("任意天赋图标刷新未找到唯一活动实例")
-                    flag_address = active[0].data_address + 0x38
-                    before_flags = memory.read_u32(flag_address)
-                    after_flags = before_flags | 0x06000000
-                    memory.write_u32(flag_address, after_flags)
-                    if memory.read_u32(flag_address) != after_flags:
-                        raise RuntimeError("任意天赋图标状态写入后未读回")
-                self._engine_instance_24268().stat_details(
-                    action=2,
-                    controller=rawcode,
-                    target_unit=int(before["target_unit"]),
-                )
-                # F1 selects the first hero rather than refreshing this target.
-                # Keep the player's selection intact; the targeted native
-                # visibility refresh above is independent of selection keys.
-            self.refresh_talent_icon_display_24268()
         except Exception:
             try:
                 self.ability_batch_24268(choice, 2, 0, target_unit=int(before["target_unit"]))
@@ -7192,10 +7319,6 @@ class War3Trainer:
             reason = "游戏窗口尚未绑定，图标刷新未执行"
             self._talent_icon_display_error = reason
             return {"installed": False, "reason": "window_unavailable", "error": reason}
-        if user32.IsIconic(ctypes.c_void_p(hwnd)):
-            reason = "游戏窗口已最小化，天赋界面代码当前不可用；请保持天赋页可见后重试"
-            self._talent_icon_display_error = reason
-            return {"installed": False, "reason": "window_minimized", "error": reason}
         from war3_talent_icon_display import TalentIconDisplay
 
         try:
@@ -7388,6 +7511,51 @@ class War3Trainer:
         if not 0 <= limit <= 65535:
             raise ValueError("全屏效果上限必须在 0 到 65535 之间")
         return self._engine_instance_24268().world_effect_batch(code, int(action), limit)
+
+    def cast_native_area_24268(self, rawcode: int | str, order_id: int,
+                               *, cast_kind: int = 1, area: float = 100000.0,
+                               source: int = 0, hold_seconds: float = 2.0) -> dict:
+        code = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
+        if not code or not 1 <= float(area) <= 100000 or not math.isfinite(float(area)):
+            raise ValueError("Invalid native area cast")
+        hwnd = int(getattr(self, "hwnd", 0) or 0)
+        if hwnd and ctypes.windll.user32.IsIconic(hwnd):
+            raise RuntimeError("游戏窗口已最小化；请恢复窗口并解除暂停后再施放全屏技能")
+        engine = self._engine_instance_24268()
+        started = None
+        primary_error = None
+        try:
+            started = engine.world_cast(code, 1, order_id=int(order_id),
+                                        cast_kind=int(cast_kind), area=float(area),
+                                        source=int(source))
+            time.sleep(float(hold_seconds))
+            identity = dict(source=started["source"],
+                            ability_handle=started["ability_handle"],
+                            target=started["target"], cast_kind=started["cast_kind"],
+                            prior_area=started["prior_area"], added=started["added"])
+            state = engine.world_cast(code, 3, **identity)
+            if (state["source"] != started["source"] or
+                    (state["cooldown_after"] <= 0.01 and
+                     state["mana_after"] >= started["mana_before"] - 0.01)):
+                raise RuntimeError("施法命令已接收，但法力和冷却未变化；请确认游戏未暂停或停在结算界面")
+            return dict(start=started, state=state)
+        except Exception as exc:
+            primary_error = exc
+            raise
+        finally:
+            if started is not None:
+                try:
+                    engine.world_cast(code, 2, source=started["source"],
+                                      ability_handle=started["ability_handle"],
+                                      target=started["target"],
+                                      cast_kind=started["cast_kind"],
+                                      prior_area=started["prior_area"],
+                                      added=started["added"])
+                except Exception as cleanup_error:
+                    raise RuntimeError(
+                        f"Native area cast cleanup failed; original={primary_error}; "
+                        f"cleanup={cleanup_error}"
+                    ) from cleanup_error
 
     def spawn_unit_24268(
         self, rawcode: int | str, x: float, y: float, facing: float = 0.0,
@@ -8336,64 +8504,38 @@ class War3Trainer:
         return attempted, succeeded
 
     def cast_fullscreen_swarm(self, *, success_limit: int = 0) -> tuple[int, int]:
-        entries = ("ACca", "ACcv", "AOsh")
+        entries = (("ACca", 852218), ("ACcv", 852218), ("AOsh", 852125))
         attempted = succeeded = 0
-        for ability in entries:
-            current_attempted, current_succeeded = self._run_selected_ability_effect(
-                ability,
-                "point",
-                area=100000.0,
-                point=(0.0, 0.0),
-            )
-            attempted += current_attempted
-            succeeded += current_succeeded
+        for ability, order_id in entries:
+            attempted += 1
+            self.cast_native_area_24268(ability, order_id, cast_kind=2)
+            succeeded += 1
         return attempted, succeeded
 
     def cast_fullscreen_clap(self, *, success_limit: int = 0) -> tuple[int, int]:
-        entries = ("AHtc", "AOws")
+        entries = (("AHtc", 852096), ("AOws", 852127))
         attempted = succeeded = 0
-        for ability in entries:
-            current_attempted, current_succeeded = self._run_selected_ability_effect(
-                ability,
-                "noarg",
-                area=100000.0,
-            )
-            attempted += current_attempted
-            succeeded += current_succeeded
+        for ability, order_id in entries:
+            attempted += 1
+            self.cast_native_area_24268(ability, order_id, cast_kind=1)
+            succeeded += 1
         return attempted, succeeded
 
     def cast_fullscreen_monsoon(self, *, success_limit: int = 0) -> tuple[int, int]:
-        return self._run_selected_ability_effect(
-            "ANmo",
-            "point",
-            area=100000.0,
-            point=(0.0, 0.0),
-            hold_seconds=12.0,
-        )
+        self.cast_native_area_24268("ANmo", 852591, cast_kind=2, hold_seconds=12.0)
+        return 1, 1
 
     def cast_fullscreen_starfall(self, *, success_limit: int = 0) -> tuple[int, int]:
-        return self._run_selected_ability_effect(
-            "AEsb",
-            "immediate",
-            area=100000.0,
-            hold_seconds=12.0,
-        )
+        self.cast_native_area_24268("AEsb", 852183, cast_kind=1, hold_seconds=12.0)
+        return 1, 1
 
     def cast_fullscreen_forked_lightning(self, *, success_limit: int = 0) -> tuple[int, int]:
-        return self._run_selected_ability_effect(
-            "ACfl",
-            "immediate",
-            area=100000.0,
-        )
+        self.cast_native_area_24268("ACfl", 852587, cast_kind=3)
+        return 1, 1
 
     def cast_fullscreen_auto_effect(self, *, success_limit: int = 0) -> tuple[int, int]:
-        passes = int(success_limit) if success_limit else 5
-        return self._run_selected_ability_effect(
-            "AEfk",
-            "noarg",
-            passes=passes,
-            area=100000.0,
-        )
+        self.cast_native_area_24268("AEfk", 852526, cast_kind=1)
+        return 1, 1
 
     def create_all_loaded_items(
         self,

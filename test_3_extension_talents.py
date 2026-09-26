@@ -267,6 +267,23 @@ def test_selected_choice_skips_incompatible_talent_tree():
     trainer.add_talent_choice_24268.assert_not_called()
 
 
+def test_selected_choice_waits_for_icon_module_before_adding_effect():
+    trainer = object.__new__(War3Trainer)
+    trainer.pid = 24268
+    first = talent_snapshot()
+    first["selection"] = {"rows": [{"handle": 100}]}
+    trainer.extension_snapshot_24268 = Mock(return_value=first)
+    trainer.refresh_talent_icon_display_24268 = Mock(return_value={
+        "installed": False, "reason": "code_unavailable", "error": "panel code differs",
+    })
+    trainer.add_talent_choice_24268 = Mock()
+
+    result = trainer.selected_talent_batch_24268("choice", "ATug", 0, "UT1a")
+    assert result["failed"] == 1
+    assert "图标显示尚未就绪" in result["results"][0]["reason"]
+    trainer.add_talent_choice_24268.assert_not_called()
+
+
 @pytest.mark.parametrize("action", ("grant", "reset"))
 def test_selected_talent_batch_processes_both_heroes_after_leading_creep(action):
     trainer = object.__new__(War3Trainer)

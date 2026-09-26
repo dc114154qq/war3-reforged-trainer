@@ -6456,6 +6456,12 @@ class War3Trainer:
         if int(before["equipment"][equipment_slot]["handle"]):
             raise RuntimeError("目标装备槽已有物品；请先卸下后再指定装备")
         item_type = int(item.get("equipment_type", 0))
+        if not 1 <= item_type <= 9:
+            raise RuntimeError(
+                f"扩展背包第 {bag_slot + 1} 格物品 {format_rawcode(int(item['rawcode']))} "
+                f"不是游戏认可的装备（装备类型 {item_type}）；任意槽只改变装备的目标槽，"
+                "不能把背包或普通道具变成装备"
+            )
         conflicting_slots = [
             int(row["slot"]) for row in before["equipment"]
             if int(row.get("handle", 0)) and int(row.get("equipment_type", 0)) == item_type
@@ -6619,7 +6625,11 @@ class War3Trainer:
                     raise RuntimeError("回滚后背包实例与操作前不一致")
             except Exception as rollback_exc:
                 rollback_error = f"；回滚未完成：{rollback_exc}"
-            raise RuntimeError(f"指定装备事务失败：{exc}{rollback_error}") from exc
+            raise RuntimeError(
+                f"指定装备事务失败：背包第 {bag_slot + 1} 格 "
+                f"{format_rawcode(int(item['rawcode']))}（装备类型 {item_type}）"
+                f"到{EQUIPMENT_SLOT_NAMES[equipment_slot]}槽；{exc}{rollback_error}"
+            ) from exc
 
     def unequip_extension_slot_24268(self, slot: int) -> dict:
         slot = int(slot)
@@ -6832,6 +6842,13 @@ class War3Trainer:
                 if action == "choice" and active[0] != controller:
                     results.append(dict(target=target, status="skipped", reason="天赋树与所选选项不匹配"))
                     continue
+                if action == "choice" and getattr(self, "pid", 0):
+                    icon = self.refresh_talent_icon_display_24268()
+                    if not icon.get("installed"):
+                        raise RuntimeError(
+                            "天赋图标显示尚未就绪，本次未加天赋："
+                            + str(icon.get("error", icon.get("reason", "未知错误")))
+                        )
                 if action == "grant":
                     last = self.grant_talent_point_24268(target_unit=target)
                 elif action == "reset":
@@ -7175,10 +7192,6 @@ class War3Trainer:
             reason = "游戏窗口尚未绑定，图标刷新未执行"
             self._talent_icon_display_error = reason
             return {"installed": False, "reason": "window_unavailable", "error": reason}
-        if user32.IsIconic(ctypes.c_void_p(hwnd)):
-            reason = "游戏窗口已最小化，天赋界面代码当前不可用；请保持天赋页可见后重试"
-            self._talent_icon_display_error = reason
-            return {"installed": False, "reason": "window_minimized", "error": reason}
         from war3_talent_icon_display import TalentIconDisplay
 
         try:
@@ -20687,7 +20700,7 @@ def run_gui(
     def extension_enable_any_slot() -> str:
         snapshot = trainer().set_extension_equipment_any_slot_24268(True)
         root.after(0, populate_extension_snapshot, snapshot)
-        return "已开启当前单位任意装备槽；将按指定 AEqu 槽位读回验证"
+        return "已开启当前单位任意装备槽（仅限游戏认可的装备物品）；将按指定槽位读回验证"
 
     def extension_save_loadout() -> str:
         snapshot = trainer().save_extension_loadout_24268()

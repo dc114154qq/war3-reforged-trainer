@@ -108,6 +108,23 @@ def test_universal_equipment_type_does_not_require_any_slot_toggle():
     engine.extension.assert_called_once()
 
 
+def test_any_slot_rejects_non_equipment_before_native_equip():
+    trainer = object.__new__(War3Trainer)
+    trainer.pid = 24268
+    current = snapshot()
+    current["bag"][4]["rawcode"] = int.from_bytes(b"I62R", "big")
+    current["bag"][4]["equipment_type"] = 0
+    current["equipment"][0]["handle"] = 0
+    trainer._extension_any_slot_enabled = {(24268, 0x101400): True}
+    engine = Mock()
+    trainer._engine_instance_24268 = Mock(return_value=engine)
+    trainer.extension_snapshot_24268 = Mock(return_value=current)
+
+    with pytest.raises(RuntimeError, match="I62R.*不是游戏认可的装备"):
+        trainer.equip_extension_bag_item_to_slot_24268(4, 8)
+    engine.extension.assert_not_called()
+
+
 def test_explicit_slot_equip_rejects_occupied_target_without_engine_write():
     trainer = object.__new__(War3Trainer)
     engine = Mock()

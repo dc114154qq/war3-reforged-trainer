@@ -14,7 +14,7 @@ def entries():
 def work(action=0,level=0):return build_work(entries(),0x10000000,0x41487664,action,level)
 @pytest.fixture(scope='module')
 def fixture():
-    dll=c.WinDLL(str(Path(__file__).parent/'analysis/build-targeted-talents/engine-hero-fixture.dll'))
+    dll=c.WinDLL(str(Path(__file__).parent/'build/architecture-fixture/engine-hero-fixture.dll'))
     dll.BridgeAbilityTestRun.argtypes=[c.c_void_p,c.c_int,c.c_int,c.c_int];dll.BridgeAbilityTestRun.restype=c.c_uint64
     dll.BridgeAbilityTestStat.argtypes=[c.c_int];dll.BridgeAbilityTestStat.restype=c.c_int
     return dll

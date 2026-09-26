@@ -35,6 +35,11 @@ def detect_ui_language(locale_name: str | None = None) -> str:
 
 
 _EN_TRANSLATIONS = {
+    "手动导入经过校验的离线游戏适配包，然后退出": "Import a validated offline game adapter and exit",
+    "校验并显示离线适配包信息，然后退出": "Validate and display an offline game adapter, then exit",
+    "适配包已导入，下次连接游戏时重新识别：": "Adapter imported; reconnect to identify the game again: ",
+    "物品解析会话尚未完成校验": "Item resolver session has not been verified",
+
     "3.0新装备": "3.0 New Equipment",
     "搜索名称、代码或效果": "Search name, code or effect",
     "物品名称": "Item Name",

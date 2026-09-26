@@ -33,7 +33,7 @@ def work(target_aps=0.0):
 
 @pytest.fixture(scope="module")
 def fixture_dll():
-    path = Path(__file__).parent / "analysis/bridge-build-attack-speed-20260919/engine-hero-fixture.dll"
+    path = Path(__file__).parent / 'build/architecture-fixture/engine-hero-fixture.dll'
     assert path.is_file()
     dll = c.WinDLL(str(path))
     dll.BridgeAttackSpeedTestRun.argtypes = [c.c_void_p]

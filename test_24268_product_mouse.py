@@ -21,7 +21,7 @@ def work():
 
 @pytest.fixture(scope="module")
 def fixture():
-    dll = c.WinDLL(str(Path(__file__).parent / "analysis" / "engine-hero-fixture.dll"))
+    dll = c.WinDLL(str(Path(__file__).parent / 'build/architecture-fixture/engine-hero-fixture.dll'))
     dll.BridgeMouseTestRun.argtypes = [c.c_void_p, c.c_uint32, c.c_uint32, c.c_int]
     dll.BridgeMouseTestRun.restype = c.c_uint64
     return dll

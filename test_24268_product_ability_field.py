@@ -29,7 +29,7 @@ def make_work(action=0, fields=None, target_unit=0):
 
 @pytest.fixture(scope="module")
 def fixture():
-    path = Path(__file__).parent / "analysis" / "bridge-build-check-ability-field" / "engine-hero-fixture.dll"
+    path = Path(__file__).parent / 'build/architecture-fixture/engine-hero-fixture.dll'
     dll = c.WinDLL(str(path))
     dll.BridgeAbilityFieldTestRun.argtypes = [c.c_void_p, c.c_int, c.c_int]
     dll.BridgeAbilityFieldTestRun.restype = c.c_uint64

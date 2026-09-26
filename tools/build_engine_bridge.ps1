@@ -1,5 +1,7 @@
 param([string]$OutputDirectory=$PSScriptRoot,[switch]$Fixture,[switch]$Diagnostic)
 $ErrorActionPreference='Stop'
+& python (Join-Path $PSScriptRoot 'generate_bridge_profile.py') --check
+if($LASTEXITCODE -ne 0){throw 'Generated bridge configuration is stale'}
 $source=Join-Path $PSScriptRoot 'war3_bridge_24268.c'
 $directory=[IO.Path]::GetFullPath($OutputDirectory)
 [IO.Directory]::CreateDirectory($directory) | Out-Null

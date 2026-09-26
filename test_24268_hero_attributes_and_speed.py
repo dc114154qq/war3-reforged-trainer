@@ -35,7 +35,7 @@ def work(target=77):
 
 @pytest.fixture(scope="module")
 def fixture_dll():
-    path = Path(__file__).parent / "analysis/bridge-build-hero-attributes-20260919/engine-hero-fixture.dll"
+    path = Path(__file__).parent / 'build/architecture-fixture/engine-hero-fixture.dll'
     assert path.is_file()
     dll = c.WinDLL(str(path))
     dll.BridgeHeroAttributesTestRun.argtypes = [c.c_void_p, c.c_int, c.c_int]

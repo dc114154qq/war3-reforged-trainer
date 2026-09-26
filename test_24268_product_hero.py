@@ -47,7 +47,7 @@ def test_bad_user_level_never_dispatches(level):
 
 @pytest.fixture(scope='module')
 def fixture_dll():
-    path=Path(__file__).parent/'analysis/bridge-build-check-r32/engine-hero-fixture.dll'
+    path=Path(__file__).parent/'build/architecture-fixture/engine-hero-fixture.dll'
     assert path.is_file(),'Compile tools/war3_bridge_24268.c with BRIDGE_TEST before this gate'
     dll=c.WinDLL(str(path));dll.BridgeTestRun.argtypes=[c.c_void_p,c.c_int,c.c_int];dll.BridgeTestRun.restype=c.c_uint64
     dll.BridgeTestWrites.argtypes=[];dll.BridgeTestWrites.restype=c.c_int
@@ -122,7 +122,10 @@ def test_product_engine_has_no_persistent_hook_session():
     transport=(Path(__file__).parent/'war3_engine_transport.py').read_text(encoding='utf-8')
     assert 'PersistentBridgeSession' not in source
     assert 'session=self._persistent_transport' not in source
-    assert 'session=None' not in source
+    # GameSession owns process/cache identity; it is not a persistent hook.
+    import inspect
+    assert 'session' not in inspect.signature(__import__('war3_engine_transport').dispatch).parameters
+    assert 'self._persistent_transport' not in source
     assert 'persistent_transport' not in transport
     assert 'session.dispatch' not in transport
 

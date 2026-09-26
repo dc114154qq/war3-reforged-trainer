@@ -45,6 +45,10 @@ def sha256(path: Path) -> str:
 
 def source_paths() -> tuple[Path, ...]:
     files = set(ROOT.glob("war3_*.py"))
+    files.update(ROOT.glob("war3_services/*.py"))
+    files.update(ROOT.glob("diagnostics/*.py"))
+    files.update(ROOT.glob("profiles/*.json"))
+    files.add(ROOT / "tools/generate_bridge_profile.py")
     files.update(ROOT.glob("tools/war3_bridge_*.h"))
     files.update(ROOT.glob("tools/war3_talent_icon_*.h"))
     files.update(ROOT.glob("tools/war3_talent_icon_*.c"))

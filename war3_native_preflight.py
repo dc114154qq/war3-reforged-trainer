@@ -1,7 +1,7 @@
 """Bounded native-entry mapping checks; protected-image calls are diagnostic opt-in."""
 import ctypes as c
 import pefile
-from war3_object_registry import TIMESTAMP, IMAGE_SIZE
+from war3_game_profile import current_profile
 
 class Mapping(c.Structure):
     _fields_ = [('base', c.c_void_p), ('allocation', c.c_void_p),
@@ -24,15 +24,16 @@ def classify_entry(address, image_base, executable_ranges, region, allow_noacces
     raise ValueError('Native entry has no verified readable executable mapping')
 
 def inspect_entries(memory, image_base, entries, allow_noaccess=False, span=16):
+    fingerprint = current_profile().fingerprint
     # PE headers, not a process-wide region scan or an old handler-RVA list.
     header = memory.read(image_base, 4096)
     pe = pefile.PE(data=header, fast_load=True)
-    if (pe.FILE_HEADER.Machine != 0x8664 or pe.FILE_HEADER.TimeDateStamp != TIMESTAMP
-            or pe.OPTIONAL_HEADER.SizeOfImage != IMAGE_SIZE):
+    if (pe.FILE_HEADER.Machine != 0x8664 or pe.FILE_HEADER.TimeDateStamp != fingerprint[1]
+            or pe.OPTIONAL_HEADER.SizeOfImage != fingerprint[2]):
         raise ValueError('Native preflight image profile differs')
     ranges = [(image_base+s.VirtualAddress, image_base+s.VirtualAddress+s.Misc_VirtualSize)
               for s in pe.sections if s.Characteristics & 0x20000000
-              and s.VirtualAddress+s.Misc_VirtualSize <= IMAGE_SIZE]
+              and s.VirtualAddress+s.Misc_VirtualSize <= fingerprint[2]]
     query = c.WinDLL('kernel32', use_last_error=True).VirtualQueryEx
     query.argtypes = (c.c_void_p, c.c_void_p, c.POINTER(Mapping), c.c_size_t)
     query.restype = c.c_size_t

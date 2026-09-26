@@ -22,7 +22,7 @@ def entries():
 
 @pytest.fixture(scope="module")
 def fixture():
-    dll = c.WinDLL(str(Path(__file__).parent / "analysis/bridge-build-item-catalog-r5e/engine-hero-fixture.dll"))
+    dll = c.WinDLL(str(Path(__file__).parent / 'build/architecture-fixture/engine-hero-fixture.dll'))
     dll.BridgeItemCatalogTestRun.argtypes = [c.c_void_p, c.c_int, c.c_int]
     dll.BridgeItemCatalogTestRun.restype = c.c_uint64
     dll.BridgeItemCatalogTestStat.argtypes = [c.c_int]

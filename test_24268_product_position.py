@@ -47,7 +47,7 @@ def test_product_position_paths_do_not_write_discovered_coordinate_fields_direct
 
 @pytest.fixture(scope="module")
 def fixture():
-    dll = c.WinDLL(str(Path(__file__).parent / "analysis/bridge-build-direct-r7/engine-hero-fixture.dll"))
+    dll = c.WinDLL(str(Path(__file__).parent / 'build/architecture-fixture/engine-hero-fixture.dll'))
     dll.BridgePositionTestRun.argtypes = [c.c_void_p, c.c_int]
     dll.BridgePositionTestRun.restype = c.c_uint64
     dll.BridgePositionTestStat.argtypes = [c.c_int]

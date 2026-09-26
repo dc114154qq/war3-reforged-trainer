@@ -32,7 +32,7 @@ def work(rawcode=0x68666F6F):
 
 @pytest.fixture(scope="module")
 def fixture():
-    dll = c.WinDLL(str(Path(__file__).parent / "analysis" / "engine-hero-fixture.dll"))
+    dll = c.WinDLL(str(Path(__file__).parent / 'build/architecture-fixture/engine-hero-fixture.dll'))
     dll.BridgeSpawnTestRun.argtypes = [c.c_void_p, c.c_uint32, c.c_int]
     dll.BridgeSpawnTestRun.restype = c.c_uint64
     dll.BridgeSpawnTestStat.argtypes = [c.c_int]

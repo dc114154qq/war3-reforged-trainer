@@ -37,26 +37,7 @@ static int AttackSpeedFinitePositive(float value) {
 }
 
 static uint64_t AttackSpeedResolveOwner(uint64_t module_base, uint64_t full_handle) {
-    const uint64_t root_rva = 0x2f807f0ull;
-    uint64_t root, table, owner, slot;
-    uint32_t low, index, offset, count, marker;
-    if (!module_base || !full_handle) return 0;
-    root = *(uint64_t *)(uintptr_t)(module_base + root_rva);
-    if (!root) return 0;
-    low = (uint32_t)full_handle;
-    index = low & 0x7fffffffu;
-    offset = (low & 0x80000000u) ? 0x50u : 0x18u;
-    table = *(uint64_t *)(uintptr_t)(root + offset);
-    count = *(uint32_t *)(uintptr_t)(root + offset + 0x18);
-    if (!table || count > 0x10000000u || index >= count) return 0;
-    slot = table + (uint64_t)index * 16u;
-    marker = *(uint32_t *)(uintptr_t)slot;
-    owner = *(uint64_t *)(uintptr_t)(slot + 8);
-    if (marker != 0xfffffffeu || !owner ||
-        *(uint64_t *)(uintptr_t)(owner + 0x20) != full_handle) return 0;
-    if (*(uint64_t *)(uintptr_t)(root + offset) != table ||
-        *(uint32_t *)(uintptr_t)(root + offset + 0x18) != count) return 0;
-    return owner;
+    return BridgeProfileResolveOwner(module_base,full_handle,1);
 }
 
 __declspec(dllexport) uint64_t BridgeAttackSpeedQuery(void) {
@@ -74,10 +55,10 @@ __declspec(dllexport) uint64_t BridgeAttackSpeedQuery(void) {
     }
     __try {
         owner = AttackSpeedResolveOwner(w->module_base, w->full_handle);
-        if (!owner || *(uint64_t *)(uintptr_t)(owner + 0x90) != w->unit_object ||
-            *(uint64_t *)(uintptr_t)(w->unit_object + 0x18) != w->full_handle ||
-            *(uint32_t *)(uintptr_t)(w->unit_object + 0x70) != w->rawcode ||
-            *(uint64_t *)(uintptr_t)(w->unit_object + 0x760) != w->attack) {
+        if (!owner || *(uint64_t *)(uintptr_t)(owner + bridge_profile.owner_data) != w->unit_object ||
+            *(uint64_t *)(uintptr_t)(w->unit_object + bridge_profile.object_handle) != w->full_handle ||
+            *(uint32_t *)(uintptr_t)(w->unit_object + bridge_profile.object_rawcode) != w->rawcode ||
+            *(uint64_t *)(uintptr_t)(w->unit_object + bridge_profile.unit_attack) != w->attack) {
             w->error = 101;
             return 0;
         }

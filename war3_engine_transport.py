@@ -1,3 +1,4 @@
+from war3_game_profile import current_profile
 """Standalone Windows loader-backed 24268 bridge transport. No analysis-script dependency."""
 import ctypes as c
 import hashlib,json,os,struct,time,traceback,uuid
@@ -232,102 +233,8 @@ def diagnose_mapped_loader(handle,entry,path,load,error,ldr_load,free_library):
 
 
 def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt=1,delivery_mode=None):
-    if kind=='talent_icon_control':
-        from war3_talent_icon_control_protocol import ABI as expected_abi,validate_work as validate_icon
-        validate_icon(work_payload);marker_name=b'talent_icon_control_abi';query_name=b'BridgeTalentIconControl'
-    elif kind=='hero':
-        validate_work(work_payload);expected_abi=ABI;marker_name=b'bridge_abi';query_name=b'BridgeHeroQuery'
-    elif kind=='hero_attributes':
-        from war3_hero_attributes_protocol import ABI as expected_abi,validate_work as validate_hero_attributes
-        validate_hero_attributes(work_payload);marker_name=b'hero_attributes_batch_abi';query_name=b'BridgeHeroAttributesQuery'
-    elif kind=='attack_speed':
-        from war3_attack_speed_protocol import ABI as expected_abi,validate_work as validate_attack_speed
-        validate_attack_speed(work_payload);marker_name=b'attack_speed_batch_abi';query_name=b'BridgeAttackSpeedQuery'
-    elif kind=='unit_stats':
-        from war3_unit_stats_protocol import ABI as expected_abi,validate_work as validate_unit_stats
-        validate_unit_stats(work_payload);marker_name=b'unit_stats_batch_abi';query_name=b'BridgeUnitStatsQuery'
-    elif kind=='talent_order':
-        from war3_talent_order_protocol import validate_work as validate_talent, ABI as expected_abi
-        validate_talent(work_payload);marker_name=b'talent_order_abi';query_name=b'BridgeTalentOrderQuery'
-    elif kind=='talent_probe':
-        from war3_talent_probe_protocol import validate_work as validate_probe, ABI as expected_abi
-        validate_probe(work_payload);marker_name=b'talent_probe_abi';query_name=b'BridgeTalentProbeQuery'
-    elif kind=='stat_details':
-        from war3_stat_details_protocol import ABI as expected_abi,validate_work as validate_stat_details
-        validate_stat_details(work_payload);marker_name=b'stat_details_batch_abi';query_name=b'BridgeStatDetailsQuery'
-    elif kind=='ability':
-        from war3_ability_protocol import ABI as expected_abi,validate_work as validate_ability
-        validate_ability(work_payload);marker_name=b'ability_batch_abi';query_name=b'BridgeAbilityQuery'
-    elif kind=='ability_field':
-        from war3_ability_field_protocol import ABI as expected_abi,validate_work as validate_ability_field
-        validate_ability_field(work_payload);marker_name=b'ability_field_batch_abi';query_name=b'BridgeAbilityFieldQuery'
-    elif kind=='item':
-        from war3_item_protocol import ABI as expected_abi,validate_work as validate_item
-        validate_item(work_payload);marker_name=b'item_batch_abi';query_name=b'BridgeItemQuery'
-    elif kind=='item_catalog':
-        from war3_item_catalog_protocol import ABI as expected_abi,validate_work as validate_item_catalog
-        validate_item_catalog(work_payload);marker_name=b'item_catalog_batch_abi';query_name=b'BridgeItemCatalogQuery'
-    elif kind=='item_field':
-        from war3_item_field_protocol import ABI as expected_abi,validate_work as validate_item_field
-        validate_item_field(work_payload);marker_name=b'item_field_batch_abi';query_name=b'BridgeItemFieldQuery'
-    elif kind=='clone':
-        from war3_clone_protocol import ABI as expected_abi,validate_work as validate_clone
-        validate_clone(work_payload);marker_name=b'clone_batch_abi';query_name=b'BridgeCloneQuery'
-    elif kind=='unit_action':
-        from war3_unit_action_protocol import ABI as expected_abi,validate_work as validate_unit_action
-        validate_unit_action(work_payload);marker_name=b'unit_action_batch_abi';query_name=b'BridgeUnitActionQuery'
-    elif kind=='world':
-        from war3_world_protocol import ABI as expected_abi,validate_work as validate_world
-        validate_world(work_payload);marker_name=b'world_batch_abi';query_name=b'BridgeWorldQuery'
-    elif kind=='bulk':
-        from war3_bulk_protocol import ABI as expected_abi,validate_work as validate_bulk
-        validate_bulk(work_payload);marker_name=b'bulk_batch_abi';query_name=b'BridgeBulkQuery'
-    elif kind=='effect':
-        from war3_effect_protocol import ABI as expected_abi,validate_work as validate_effect
-        validate_effect(work_payload);marker_name=b'effect_batch_abi';query_name=b'BridgeEffectQuery'
-    elif kind=='world_effect':
-        from war3_world_effect_protocol import ABI as expected_abi,validate_work as validate_world_effect
-        validate_world_effect(work_payload);marker_name=b'world_effect_batch_abi';query_name=b'BridgeWorldEffectQuery'
-    elif kind=='world_cast':
-        from war3_world_cast_protocol import ABI as expected_abi,validate_work as validate_world_cast
-        validate_world_cast(work_payload);marker_name=b'world_cast_abi';query_name=b'BridgeWorldCastQuery'
-    elif kind=='spawn':
-        from war3_spawn_protocol import ABI as expected_abi,validate_work as validate_spawn
-        validate_spawn(work_payload);marker_name=b'spawn_batch_abi';query_name=b'BridgeSpawnQuery'
-    elif kind=='mouse':
-        from war3_mouse_protocol import ABI as expected_abi,validate_work as validate_mouse
-        validate_mouse(work_payload);marker_name=b'mouse_batch_abi';query_name=b'BridgeMouseQuery'
-    elif kind=='screen_mouse':
-        from war3_screen_protocol import ABI as expected_abi,validate_work as validate_screen
-        validate_screen(work_payload);marker_name=b'screen_mouse_batch_abi';query_name=b'BridgeScreenMouseQuery'
-    elif kind=='camera':
-        from war3_camera_protocol import ABI as expected_abi,validate_work as validate_camera
-        validate_camera(work_payload);marker_name=b'camera_batch_abi';query_name=b'BridgeCameraQuery'
-    elif kind=='position':
-        from war3_position_protocol import ABI as expected_abi,validate_work as validate_position
-        validate_position(work_payload);marker_name=b'position_batch_abi';query_name=b'BridgePositionQuery'
-    elif kind=='position_target':
-        from war3_position_target_protocol import ABI as expected_abi,validate_work as validate_position_target
-        validate_position_target(work_payload);marker_name=b'position_batch_abi';query_name=b'BridgePositionQuery'
-    elif kind=='terrain':
-        from war3_terrain_protocol import ABI as expected_abi,validate_work as validate_terrain
-        validate_terrain(work_payload);marker_name=b'terrain_batch_abi';query_name=b'BridgeTerrainQuery'
-    elif kind=='equipment':
-        from war3_equipment_protocol import ABI as expected_abi,validate_work as validate_equipment
-        validate_equipment(work_payload);marker_name=b'equipment_batch_abi';query_name=b'BridgeEquipmentQuery'
-    elif kind=='equipment_probe':
-        expected_abi=struct.pack('<3I',0x24268043,216,3816)
-        marker_name=b'equipment_probe_abi';query_name=b'BridgeEquipmentProbeQuery'
-    elif kind=='cooldown_probe':
-        expected_abi=struct.pack('<3I',0x24268044,216,648)
-        marker_name=b'cooldown_probe_abi';query_name=b'BridgeCooldownProbeQuery'
-    elif kind=='extension':
-        from war3_extension_protocol import ABI as expected_abi,validate_work as validate_extension
-        validate_extension(work_payload);marker_name=b'extension_batch_abi';query_name=b'BridgeExtensionQuery'
-    elif kind=='map_bounds':
-        from war3_map_bounds_protocol import ABI as expected_abi,validate_work as validate_bounds
-        validate_bounds(work_payload);marker_name=b'map_bounds_batch_abi';query_name=b'BridgeMapBoundsQuery'
-    else:raise ValueError('Unknown current-engine batch kind')
+    from war3_operations import prepare_operation
+    expected_abi,marker_name,query_name=prepare_operation(kind,work_payload)
     owner=U()
     if window_thread(hwnd,c.byref(owner))!=tid or owner.value!=pid:
         raise RuntimeError('Bridge target window/thread identity changed')
@@ -344,6 +251,13 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
     marker=exports.get(marker_name)
     if marker is None or pe.get_data(marker,len(expected_abi))!=expected_abi:
         raise ValueError('24268 bridge ABI differs; rebuild the current-engine module')
+    profile = current_profile()
+    profile_payload = profile.bridge_bytes()
+    profile_rva = exports.get(b'bridge_profile')
+    profile_marker = exports.get(b'bridge_profile_abi')
+    if (profile_rva is None or profile_marker is None
+            or pe.get_data(profile_marker, 8) != profile_payload[:8]):
+        raise ValueError('Bridge profile ABI differs; use a bridge built for this architecture')
     install_rva=exports[b'BridgeInstall'];uninstall_rva=exports[b'BridgeUninstall']
     report={'pid':pid,'hwnd':hex(hwnd),'expected_callback_tid':tid,
             'target_window':{'hwnd':hex(hwnd),'pid':pid,'thread_id':tid},
@@ -366,6 +280,8 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
         handle=p['open_process'](0x43a,False,pid)
         if not handle:raise c.WinError(c.get_last_error())
         memory=type('Memory',(),{'handle':handle,'pid':pid})()
+        from war3_game_session import verify_opened_process
+        verify_opened_process(memory)
         addresses=[resolve(memory,lib,name) for lib,name in [('user32','SetWindowsHookExW'),
             ('user32','UnhookWindowsHookEx'),('user32','CallNextHookEx'),
             ('kernel32','GetCurrentThreadId'),('kernel32','GetLastError')]]
@@ -455,6 +371,14 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
         else:
             report['image_path_freed']=True
             load_path=None
+        # Configure before installing a callback; never edit configuration in flight.
+        profile_address = image_base + profile_rva
+        written = c.c_size_t()
+        if not p['write'](handle, profile_address, profile_payload, len(profile_payload), c.byref(written)) or written.value != len(profile_payload):
+            raise RuntimeError('Bridge profile initialization write failed')
+        if p['bytes_at'](handle, profile_address, len(profile_payload)) != profile_payload:
+            raise RuntimeError('Bridge profile initialization readback differs')
+        report['profile'] = {'id': profile.id, 'digest': profile.digest, 'bridge_version': 1}
         report['loaded_exports' if not manual_mapped else 'mapped_exports']={
             'BridgeInstall':p['bytes_at'](handle,image_base+install_rva,16).hex(),
             'BridgeUninstall':p['bytes_at'](handle,image_base+uninstall_rva,16).hex(),

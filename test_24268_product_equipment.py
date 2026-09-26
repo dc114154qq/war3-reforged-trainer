@@ -9,7 +9,7 @@ def entries():return {n:LiveNativeEntry(n,s,0x300000+i*80,0x500000+i*256) for i,
 
 @pytest.fixture(scope='module')
 def fixture():
-    d=c.WinDLL(str(Path(__file__).parent/'analysis/bridge-build-direct-r5/engine-hero-fixture.dll'))
+    d=c.WinDLL(str(Path(__file__).parent/'build/architecture-fixture/engine-hero-fixture.dll'))
     d.BridgeEquipmentTestRun.argtypes=[c.c_void_p,c.c_int];d.BridgeEquipmentTestRun.restype=c.c_uint64
     return d
 

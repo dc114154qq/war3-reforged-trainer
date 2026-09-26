@@ -1,6 +1,7 @@
 """Current-build exact attack-speed query/set ABI."""
 import math
 import struct
+from war3_game_profile import current_profile, default_profile
 
 from war3_selection_protocol import (
     SIGNATURES as SELECTION_SIGNATURES,
@@ -11,9 +12,9 @@ from war3_selection_protocol import (
 
 WORK_SIZE = 640
 ABI = struct.pack("<3I", 0x24268032, 216, WORK_SIZE)
-SPEED_FACTOR_RVA = 0x509670
-EFFECTIVE_INTERVAL_RVA = 0x5099A0
-UNIT_RESOLVER_RVA = 0x8EDD10
+SPEED_FACTOR_RVA = default_profile().section("addresses")["speed_factor"]
+EFFECTIVE_INTERVAL_RVA = default_profile().section("addresses")["effective_interval"]
+UNIT_RESOLVER_RVA = default_profile().section("addresses")["unit_resolver"]
 SIGNATURES = (
     ("BlzGetUnitAttackCooldown", "(Hunit;I)R"),
     ("BlzSetUnitAttackCooldown", "(Hunit;RI)V"),
@@ -40,9 +41,9 @@ def build_work(entries, tls, unit_object, attack, full_handle,
     payload = selection_work(entries) + struct.pack(
         "<10Q15I20s",
         *handlers,
-        module_base + SPEED_FACTOR_RVA,
-        module_base + EFFECTIVE_INTERVAL_RVA,
-        module_base + UNIT_RESOLVER_RVA,
+        module_base + current_profile().section("addresses")["speed_factor"],
+        module_base + current_profile().section("addresses")["effective_interval"],
+        module_base + current_profile().section("addresses")["unit_resolver"],
         tls,
         module_base,
         unit_object,

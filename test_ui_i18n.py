@@ -81,6 +81,9 @@ class UiLocalizationTests(unittest.TestCase):
     def test_all_trainer_literals_and_hotkey_labels_have_english_display(self):
         source_path = Path(trainer.__file__)
         source = source_path.read_text(encoding="utf-8")
+        # Business-facing strings also live in the extracted domain facades.
+        source += "\n" + "\n".join(path.read_text(encoding="utf-8") for path in
+                                   sorted(source_path.parent.glob("war3_services/facade_*.py")))
         tree = ast.parse(source)
         display_sources: set[str] = set()
         for node in ast.walk(tree):

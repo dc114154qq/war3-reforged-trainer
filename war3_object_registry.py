@@ -7,31 +7,27 @@ import ctypes
 import struct
 import time
 
-TIMESTAMP = 0x6AA4DE70
-IMAGE_SIZE = 0xE155000
-RESOLVER_RVA = 0x1951B0
-ROOT_RVA = 0x2F807F0
-RESOLVER_CODE = bytes.fromhex(
-    "8bc1448bcac1e81f84c0752a488b052db6de023b48307357488b40188bc94803c9"
-    "833cc8fe7548488b4cc80833c0395124480f44c1c3488b1503b6de028bc10fbaf01f"
-    "3b426873274c8b42504803c041833cc0fe75198bc10fbaf01f4803c0498b4cc00833c0"
-    "44394924480f44c1c333c0c3")
-UNIT_TAG = 0x2B7733752B61676C
-PLAYER_TAG = 0x2B706C792B61676C
-GAME_STATE_SLOT_RVA = 0x2E9AD00
-GAME_STATE_CHECKS = (
-    (0xCA741C, bytes.fromhex("488b1ddd381f02")),
-    (0xCA7475, bytes.fromhex("48d1cb48b8295b9bfc376fe05b48c1c31e4803d848b82b1367efb7c7113a4833d848b83d5d7f3e90272c2d4803d8")),
-    (0x8BBF50, bytes.fromhex("4883ec2883fa1b761683faff740ab957000000e8f8e489ff33c04883c428c33b919826000073f14863c2488b84c1a02600004883c428c3")),
-)
+from war3_game_profile import current_profile, default_profile
+
+# Compatibility constants; runtime code below resolves the active adapter.
+_BASE = default_profile()
+TIMESTAMP, IMAGE_SIZE = _BASE.fingerprint[1:]
+RESOLVER_RVA = _BASE.section('addresses')['object_resolver']
+ROOT_RVA = _BASE.section('addresses')['registry_root']
+RESOLVER_CODE = _BASE.checks('resolver')[0][1]
+UNIT_TAG = _BASE.section('registry')['unit_tag']
+PLAYER_TAG = _BASE.section('registry')['player_tag']
+GAME_STATE_SLOT_RVA = _BASE.section('addresses')['game_state']
+GAME_STATE_CHECKS = _BASE.checks('game_state')
 
 
-def decode_game_state(encoded):
+def decode_game_state(encoded, profile=None):
+    d = (profile or current_profile()).section("decoder")
     mask = 0xFFFFFFFFFFFFFFFF
-    value = ((encoded >> 1) | (encoded << 63)) & mask
-    value = ((value << 30) | (value >> 34)) & mask
-    value = ((value + 0x5BE06F37FC9B5B29) & mask) ^ 0x3A11C7B7EF67132B
-    return (value + 0x2D2C27903E7F5D3D) & mask
+    value = ((encoded >> d["ror"]) | (encoded << (64-d["ror"]))) & mask
+    value = ((value << d["rol"]) | (value >> (64-d["rol"]))) & mask
+    value = ((value + d["add1"]) & mask) ^ d["xor"]
+    return (value + d["add2"]) & mask
 
 
 class ObjectIdentityError(RuntimeError):
@@ -121,6 +117,7 @@ def _enumerate_process_modules(memory):
 
 
 def _verified_image_header(memory, base):
+    fingerprint = current_profile().fingerprint
     try:
         header = _read(memory, base, 0x40)
         if header[:2] != b"MZ":
@@ -132,8 +129,8 @@ def _verified_image_header(memory, base):
         return (
             nt[:4] == b"PE\0\0"
             and struct.unpack_from("<H", nt, 4)[0] == 0x8664
-            and struct.unpack_from("<I", nt, 8)[0] == TIMESTAMP
-            and struct.unpack_from("<I", nt, 0x50)[0] == IMAGE_SIZE
+            and struct.unpack_from("<I", nt, 8)[0] == fingerprint[1]
+            and struct.unpack_from("<I", nt, 0x50)[0] == fingerprint[2]
         )
     except (OSError, ObjectIdentityError, struct.error):
         return False
@@ -171,6 +168,10 @@ def game_module_base(memory):
 class ObjectRegistry24268:
     def __init__(self, memory, module_base):
         self.base = module_base
+        self.profile = current_profile()
+        self.layout = self.profile.section("registry")
+        self.players_layout = self.profile.section("players")
+        self.addresses = self.profile.section("addresses")
         header = _read(memory, module_base, 0x40)
         if header[:2] != b"MZ":
             raise ObjectIdentityError("Game image has no DOS header")
@@ -180,10 +181,10 @@ class ObjectRegistry24268:
         nt = _read(memory, module_base + nt_offset, 0x58)
         if (nt[:4], struct.unpack_from("<H", nt, 4)[0],
             struct.unpack_from("<I", nt, 8)[0], struct.unpack_from("<I", nt, 0x50)[0]) != (
-                b"PE\0\0", 0x8664, TIMESTAMP, IMAGE_SIZE):
+                b"PE\0\0", *self.profile.fingerprint):
             raise ObjectIdentityError("Game build has no verified object registry profile")
         try:
-            resolver_code = _read(memory, module_base + RESOLVER_RVA, len(RESOLVER_CODE))
+            resolver_code = _read(memory, module_base + self.addresses["object_resolver"], len(self.profile.checks("resolver")[0][1]))
         except OSError as exc:
             # 3.0 may map this resolver as execute-only. The exact PE
             # fingerprint above and the readable player accessor below still
@@ -193,7 +194,7 @@ class ObjectRegistry24268:
                 raise
             resolver_code = None
             self.resolver_code_unreadable = True
-        if resolver_code is not None and resolver_code != RESOLVER_CODE:
+        if resolver_code is not None and resolver_code != self.profile.checks("resolver")[0][1]:
             raise ObjectIdentityError("Game object resolver code differs from verified profile")
         if resolver_code is not None:
             self.resolver_code_unreadable = False
@@ -201,7 +202,7 @@ class ObjectRegistry24268:
         # Its arithmetic was recovered from the captured shared image section.
         # Verify the readable player accessor in addition to PE + agent code;
         # players() independently validates every resulting object identity.
-        rva, code = GAME_STATE_CHECKS[-1]
+        rva, code = self.profile.checks("game_state")[-1]
         if _read(memory, module_base + rva, len(code)) != code:
             raise ObjectIdentityError("Game player-array code differs from verified profile")
 
@@ -228,86 +229,87 @@ class ObjectRegistry24268:
             raise ObjectIdentityError("Full object handle is outside uint64")
         low = full_handle & 0xFFFFFFFF
         index = low & 0x7FFFFFFF
-        offset = 0x50 if low & 0x80000000 else 0x18
-        root = self._qword(memory, self.base + ROOT_RVA)
+        offset = self.layout["alternate"] if low & 0x80000000 else self.layout["primary"]
+        root = self._qword(memory, self.base + self.addresses["registry_root"])
         if not _ptr(root):
             raise ObjectIdentityError("Object registry is not initialized")
 
         def table_state():
-            data = _read(memory, root + offset, 0x1C)
+            data = _read(memory, root + offset, self.layout["count"] + 4)
             table = struct.unpack_from("<Q", data)[0]
-            count = struct.unpack_from("<I", data, 0x18)[0]
+            count = struct.unpack_from("<I", data, self.layout["count"])[0]
             if not _ptr(table) or not index < count <= 0x10000000:
                 raise ObjectIdentityError("Object index is outside registry bounds")
-            if not _ptr(table + index * 16):
+            if not _ptr(table + index * self.layout["stride"]):
                 raise ObjectIdentityError("Invalid object slot address")
             return table
 
         table = table_state()
-        slot = _read(memory, table + index * 16, 16)
-        marker, _, owner = struct.unpack("<IIQ", slot)
+        slot = _read(memory, table + index * self.layout["stride"], self.layout["stride"])
+        marker = struct.unpack_from("<I", slot)[0]
+        owner = struct.unpack_from("<Q", slot, self.layout["slot_owner"])[0]
         if marker != 0xFFFFFFFE or not _ptr(owner):
             raise ObjectIdentityError("Object slot is not live")
-        if self._qword(memory, owner + 0x20) != full_handle:
+        if self._qword(memory, owner + self.layout["owner_handle"]) != full_handle:
             raise ObjectIdentityError("Object handle generation changed")
-        if (table_state() != table or _read(memory, table + index * 16, 16) != slot
-                or self._qword(memory, owner + 0x20) != full_handle
-                or self._qword(memory, self.base + ROOT_RVA) != root):
+        if (table_state() != table or _read(memory, table + index * self.layout["stride"], self.layout["stride"]) != slot
+                or self._qword(memory, owner + self.layout["owner_handle"]) != full_handle
+                or self._qword(memory, self.base + self.addresses["registry_root"]) != root):
             raise ObjectIdentityError("Object registry changed while reading")
         return owner
 
     def resolve_unit(self, memory, unit):
         if not _ptr(unit):
             raise ObjectIdentityError("Invalid unit pointer")
-        handle = self._qword(memory, unit + 0x18)
+        handle = self._qword(memory, unit + self.layout["object_handle"])
         owner = self.resolve_handle(memory, handle)
-        if (self._qword(memory, owner + 0x18) != UNIT_TAG
-                or self._qword(memory, owner + 0x90) != unit
-                or self._qword(memory, owner + 0x20) != handle
-                or self._qword(memory, unit + 0x18) != handle):
+        if (self._qword(memory, owner + self.layout["owner_tag"]) != self.layout["unit_tag"]
+                or self._qword(memory, owner + self.layout["owner_data"]) != unit
+                or self._qword(memory, owner + self.layout["owner_handle"]) != handle
+                or self._qword(memory, unit + self.layout["object_handle"]) != handle):
             raise ObjectIdentityError("Unit identity changed or mismatches registry")
         return handle, owner
 
     def players(self, memory):
         """Read the actual game-state player array; this does not pick a local player."""
-        slot = self.base + GAME_STATE_SLOT_RVA
+        slot = self.base + self.addresses["game_state"]
         encoded = self._qword(memory, slot)
-        state = decode_game_state(encoded)
+        state = decode_game_state(encoded, self.profile)
         if not _ptr(state):
             raise ObjectIdentityError("Game state pointer is invalid")
-        count_raw = _read(memory, state + 0x2698, 4)
+        count_raw = _read(memory, state + self.players_layout["count"], 4)
         count = struct.unpack("<I", count_raw)[0]
-        if not 0 < count <= 28:
+        if not 0 < count <= self.players_layout["max_count"]:
             raise ObjectIdentityError("Game state player count is invalid")
-        raw = _read(memory, state + 0x26A0, count * 8)
+        raw = _read(memory, state + self.players_layout["array"], count * 8)
         players = struct.unpack(f"<{count}Q", raw)
         if len(set(players)) != count or any(not _ptr(player) for player in players):
             raise ObjectIdentityError("Player array contains duplicate or invalid pointers")
         for player in players:
-            full = self._qword(memory, player + 0x18)
+            full = self._qword(memory, player + self.layout["object_handle"])
             owner = self.resolve_handle(memory, full)
-            if (self._qword(memory, owner + 0x18) != PLAYER_TAG
-                    or self._qword(memory, owner + 0x90) != player
-                    or self._qword(memory, player + 0x18) != full):
+            if (self._qword(memory, owner + self.layout["owner_tag"]) != self.layout["player_tag"]
+                    or self._qword(memory, owner + self.layout["owner_data"]) != player
+                    or self._qword(memory, player + self.layout["object_handle"]) != full):
                 raise ObjectIdentityError("Player identity mismatches registry")
-        if (_read(memory, state + 0x26A0, len(raw)) != raw
-                or _read(memory, state + 0x2698, 4) != count_raw
+        if (_read(memory, state + self.players_layout["array"], len(raw)) != raw
+                or _read(memory, state + self.players_layout["count"], 4) != count_raw
                 or self._qword(memory, slot) != encoded):
             raise ObjectIdentityError("Player array changed while reading")
         return list(players)
 
     def local_player_for_mode(self, memory, mode):
         """Mirror GetLocalPlayer's exact predicate, including alternate mode."""
-        encoded = self._qword(memory, self.base + GAME_STATE_SLOT_RVA)
-        state = decode_game_state(encoded)
+        encoded = self._qword(memory, self.base + self.addresses["game_state"])
+        state = decode_game_state(encoded, self.profile)
         players = self.players(memory)
-        index_address = state + (0x262E if mode == 1 else 0x262C)
+        index_address = state + (self.players_layout["alternate_index"] if mode == 1 else self.players_layout["normal_index"])
         raw = _read(memory, index_address, 2)
         index = struct.unpack("<H", raw)[0]
         if index >= len(players):
             raise ObjectIdentityError("Current game mode has no valid local player")
-        if (self._qword(memory, self.base + GAME_STATE_SLOT_RVA) != encoded
+        if (self._qword(memory, self.base + self.addresses["game_state"]) != encoded
                 or _read(memory, index_address, 2) != raw
-                or self._qword(memory, state + 0x26A0 + index * 8) != players[index]):
+                or self._qword(memory, state + self.players_layout["array"] + index * 8) != players[index]):
             raise ObjectIdentityError("Local player changed while reading")
         return players[index]

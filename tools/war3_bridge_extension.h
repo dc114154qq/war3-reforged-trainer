@@ -46,23 +46,7 @@ _Static_assert(sizeof(ExtensionWork)==1848,"ExtensionWork ABI");
 __declspec(dllexport) const uint32_t extension_batch_abi[3]={0x2426803Au,216u,1848u};
 
 static uint64_t ExtensionResolveHandle(ExtensionWork *w, uint32_t low) {
-    uint64_t root, table, owner, slot;
-    uint32_t index, offset, count;
-    if (!w->resolver_base || !low) return 0;
-    index = low & 0x7fffffffu;
-    offset = (low & 0x80000000u) ? 0x50u : 0x18u;
-    __try {
-        root = *(uint64_t *)(uintptr_t)(w->resolver_base + 0x2f807f0u);
-        if (!root) return 0;
-        table = *(uint64_t *)(uintptr_t)(root + offset);
-        count = *(uint32_t *)(uintptr_t)(root + offset + 0x18u);
-        if (!table || index >= count || count > 0x10000000u) return 0;
-        slot = table + (uint64_t)index * 16u;
-        if (*(uint32_t *)(uintptr_t)slot != 0xfffffffeu) return 0;
-        owner = *(uint64_t *)(uintptr_t)(slot + 8u);
-        if (!owner) return 0;
-        return owner;
-    } __except(EXCEPTION_EXECUTE_HANDLER) { return 0; }
+    return low ? BridgeProfileResolveOwner(w->resolver_base,low,0) : 0;
 }
 
 static int ExtensionSnapshot(ExtensionWork *w) {

@@ -48,6 +48,8 @@ class _FakePE:
     DIRECTORY_ENTRY_EXPORT = SimpleNamespace(
         symbols=[
             _Export(b"bridge_abi", 0),
+            _Export(b"bridge_profile_abi", 0x60),
+            _Export(b"bridge_profile", 0x80),
             _Export(b"BridgeInstall", 0x30),
             _Export(b"BridgeUninstall", 0x40),
             _Export(b"BridgeHeroQuery", 0x50),
@@ -62,6 +64,7 @@ class _FakePE:
     def get_data(address, size):
         if address == 0 and size == len(transport.ABI):
             return transport.ABI
+        if address == 0x60 and size == 8:return transport.current_profile().bridge_bytes()[:8]
         return b"X" * size
 
 
@@ -159,7 +162,7 @@ def test_dispatch_uses_target_loader_and_unloads_after_verified_callback(tmp_pat
         create_thread=fake_create_thread,
         wait=Mock(return_value=0),
         write=fake_write,
-        bytes_at=Mock(return_value=b"X" * 16),
+        bytes_at=Mock(side_effect=lambda handle,address,size: transport.current_profile().bridge_bytes() if address==0x700080 else b"X"*size),
     )
     def fake_get_exit_code(_thread, code):
         c.cast(code, c.POINTER(transport.U))[0] = 0x700000

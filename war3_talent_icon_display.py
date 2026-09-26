@@ -19,6 +19,9 @@ class TalentIconDisplay:
         self.image=Path(image).resolve()
         self.handle=None;self.base=0;self.registered=False;self.uncertain=False
         self.last_result={}
+        self.session_epoch=None
+        session=getattr(engine,'session',None)
+        if session is not None:session.resources['talent_icons']=self
 
     def _write(self,address,data):
         blob=c.create_string_buffer(data);written=transport.Z()
@@ -47,6 +50,10 @@ class TalentIconDisplay:
         return result
 
     def install(self):
+        session=getattr(self.engine,'session',None)
+        if session is not None:
+            with self.engine.memory_factory(self.engine.pid) as memory:session.prepare(memory)
+            session.profile.require_module('talent_icons')
         if self.base:raise RuntimeError('Display module already mapped; remove it before installing again')
         pe=pefile.PE(str(self.image));self.exports={e.name:e.address for e in pe.DIRECTORY_ENTRY_EXPORT.symbols if e.name}
         if pe.FILE_HEADER.Machine!=0x8664 or getattr(pe,'DIRECTORY_ENTRY_IMPORT',()):
@@ -101,6 +108,7 @@ class TalentIconDisplay:
                     except Exception as exc:
                         self.observed_code_error = str(exc)
                 raise RuntimeError('Talent icon installation failed: '+str(result))
+            self.session_epoch=getattr(getattr(self.engine,"session",None),"epoch",None)
             return self.snapshot()
         except Exception:
             if self.base and not self.uncertain:
@@ -113,7 +121,10 @@ class TalentIconDisplay:
             if section:transport.p['close'](section)
             if file:transport.p['close'](file)
 
-    def snapshot(self):
+    def snapshot(self,allow_stale=False):
+        session=getattr(self.engine,'session',None)
+        if not allow_stale and session is not None and self.session_epoch is not None and session.epoch!=self.session_epoch:
+            raise RuntimeError('Talent display context changed; refresh the display module')
         if not self.base or not self._alive():raise RuntimeError('Display module is not attached to a live game')
         data=transport.bytes_at(self.handle,self.base+self.exports[b'icon_config'],120)
         tid,installed,error,calls,extra,faults,active,protect=struct.unpack_from('<8I',data,48)
@@ -128,7 +139,7 @@ class TalentIconDisplay:
             return dict(closed=True,process_exited=True)
         if self.uncertain:raise RuntimeError('Display control completion unknown; mapped image retained')
         if self.base:
-            state=self.snapshot()
+            state=self.snapshot(allow_stale=True)
             if state['installed'] or self.registered:
                 result=self._control(1)
                 if result['error'] or result['installed'] or result['registered'] or result['active']:

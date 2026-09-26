@@ -1,4 +1,8 @@
-# Active Warcraft III Reforged Trainer Worktree
+# Warcraft III Modular Adapter Development Worktree
+
+- This user-authorized architecture worktree is `E:\xiugai\work\reforged-modular-adapters`, branch `codex/war3-modular-adapters-20260926`, based on released `70446ba`.
+- The instructions below describe the frozen release worktree, not this development branch. Do not run the 2.0.7 release builder here or publish this refactor.
+- Native fixture DLLs and test artifacts may be built under `build/`; preserve the tracked release DLLs and all unrelated diagnostics.
 
 - This directory is the active 2.0.7 trainer worktree. Before inspecting or editing trainer code, verify `git rev-parse --show-toplevel`, `git branch --show-current`, `git status --short`, and the relevant file at `HEAD` here.
 - The required branch is `codex/war3-2.0.7-integration-20260926`. `C:\Users\14186\Desktop\xiugai` is only an entry directory, and `E:\xiugai` is a separate parent repository. Neither describes this trainer's current source or release.

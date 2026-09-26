@@ -1,5 +1,7 @@
 #include <windows.h>
 #include <stdint.h>
+#include "war3_bridge_profile.h"
+#include "war3_bridge_objects.h"
 
 int _fltused = 0;
 void *memset(void *destination, int value, size_t count) {
@@ -396,4 +398,11 @@ BOOL WINAPI DllMain(HINSTANCE module,DWORD reason,LPVOID reserved) {
 #include "war3_bridge_talent_order.h"
 #ifdef BRIDGE_TEST
 #include "war3_bridge_test_fixture.h"
+#endif
+
+#ifdef BRIDGE_TEST
+__declspec(dllexport) uint64_t BridgeTestResolveProfileOwner(uint64_t base, uint64_t handle) {
+    __try { return AttackSpeedResolveOwner(base, handle); }
+    __except(EXCEPTION_EXECUTE_HANDLER) { return 0; }
+}
 #endif

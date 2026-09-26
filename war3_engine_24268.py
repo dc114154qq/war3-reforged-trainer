@@ -8,6 +8,9 @@ from war3_native_preflight import inspect_entries
 from war3_selection_protocol import SIGNATURES
 from war3_hero_protocol import SIGNATURES as HERO_SIGNATURES, build_work,decode_work
 from war3_engine_transport import dispatch
+from war3_game_session import GameSession, session_scope
+from war3_game_profile import profile_scope
+from war3_capabilities import CapabilitySet
 
 
 _CURRENT_BRIDGE_FILENAMES = (
@@ -17,6 +20,9 @@ _CURRENT_BRIDGE_FILENAMES = (
 
 def _default_bridge_image():
     root = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
+    if not hasattr(sys,'_MEIPASS'):
+        development = root / 'build' / 'architecture-runtime' / 'war3_bridge_24268.dll'
+        if development.is_file():return development
     for filename in _CURRENT_BRIDGE_FILENAMES:
         candidate = root / 'tools' / filename
         if candidate.is_file():
@@ -57,457 +63,62 @@ class EngineExecutionError(RuntimeError):
             world_cast_status=report.get('world_cast_status'),
             ),ensure_ascii=False))
 
-class Engine24268:
-    def __init__(self,pid,hwnd,memory_factory,image=None,report_sink=None):
+from war3_services.units import UnitsService
+from war3_services.abilities import AbilitiesService
+from war3_services.items import ItemsService
+from war3_services.extensions import ExtensionsService
+from war3_services.world import WorldService
+
+class Engine24268(UnitsService, AbilitiesService, ItemsService, ExtensionsService, WorldService):
+    def __init__(self,pid,hwnd,memory_factory,image=None,report_sink=None,session=None,diagnostic=False):
         self.pid,self.hwnd,self.memory_factory=pid,hwnd,memory_factory
         self.report_sink=report_sink
+        self.diagnostic=diagnostic
         self.image=Path(image) if image is not None else _default_bridge_image()
         self.lock=threading.RLock();self.last_report={};self.quarantined=False
         self._native_context_cache = None
+        self._owns_session = session is None
+        self.session = session or GameSession(pid,hwnd)
+        self.lock = self.session.lock
+        self.session.on_invalidate(self._invalidate_context)
+
+    def _invalidate_context(self,reason):
+        self._native_context_cache = None
+        self.quarantined = bool(self.session.uncertain or self.session.retained)
 
     def close(self):
-        return {'closed':True,'retained':False}
+        if self._owns_session:return self.session.close()
+        return {'closed':True,'retained':bool(self.session.retained),'uncertain':self.session.uncertain}
 
     def __del__(self):
         pass
 
-    def hero_progress(self,target=0):
-        if isinstance(target,bool) or not isinstance(target,int) or not 0<=target<=100000:
-            raise ValueError('Hero level must be integer 1..100000; 0 means read-only query')
-        names=tuple(n for n,_ in SIGNATURES)+tuple(n for n,_ in HERO_SIGNATURES)
-        return self._execute('hero',names,lambda entries,tls:build_work(entries,tls,target),decode_work,dict(target=target))
-
-    def hero_attributes(self, target=None):
-        from war3_hero_attributes_protocol import (
-            SIGNATURES as ATTRIBUTE_SIGNATURES,
-            build_work as build,
-            decode_work as decode,
-        )
-        if target is not None:
-            values = (target,) * 3 if isinstance(target, int) and not isinstance(target, bool) else tuple(target)
-            if len(values) != 3 or any(
-                isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 1_000_000_000
-                for value in values
-            ):
-                raise ValueError('Hero attributes must contain three integers in 0..1000000000')
-        names = tuple(name for name, _signature in SIGNATURES + ATTRIBUTE_SIGNATURES)
-        return self._execute(
-            'hero_attributes', names,
-            lambda entries, tls: build(entries, tls, target),
-            decode,
-            dict(target=target),
-        )
-
-    def attack_speed(self, unit_object, attack, full_handle,
-                     rawcode, target_aps=0.0, weapon=0):
-        from war3_attack_speed_protocol import (
-            SIGNATURES as ATTACK_SPEED_SIGNATURES,
-            build_work as build,
-            decode_work as decode,
-        )
-        values = (unit_object, attack, full_handle, rawcode, weapon)
-        if any(isinstance(value, bool) or not isinstance(value, int) for value in values):
-            raise ValueError('Attack-speed identities must be integers')
-        if not all(values[:4]) or weapon not in (0, 1):
-            raise ValueError('Invalid attack-speed identity')
-        target_aps = float(target_aps)
-        if not 0.0 <= target_aps <= 1000.0:
-            raise ValueError('True attack speed must be in 0..1000 attacks per second')
-        names = tuple(name for name, _signature in SIGNATURES + ATTACK_SPEED_SIGNATURES)
-        return self._execute(
-            'attack_speed', names,
-            lambda entries, tls: build(
-                entries, tls, unit_object, attack, full_handle,
-                rawcode, self._attack_speed_module_base, target_aps, weapon,
-            ),
-            decode,
-            dict(unit_object=unit_object, attack=attack, full_handle=full_handle,
-                 rawcode=rawcode, target_aps=target_aps, weapon=weapon),
-        )
-
-    def ability_batch(self,rawcode,action=0,level=0,target_unit=0):
-        from war3_ability_protocol import SIGNATURES as ABILITIES,build_work as build,decode_work as decode
-        if (isinstance(rawcode,bool) or not isinstance(rawcode,int) or not 0<rawcode<=0xffffffff
-            or isinstance(action,bool) or not isinstance(action,int) or action not in range(6)
-            or isinstance(level,bool) or not isinstance(level,int) or not 0<=level<=100000
-            or (action in (3,4) and not level) or (action in (0,2,5) and level)):
-            raise ValueError('Invalid current-engine ability operation')
-        names=tuple(n for n,_ in SIGNATURES+ABILITIES)
-        return self._execute('ability',names,lambda entries,tls:build(entries,tls,rawcode,action,level,target_unit),decode,
-                             dict(rawcode=rawcode,action=action,level=level,target_unit=target_unit))
-
-    def ability_field_batch(self, rawcode, level, action, fields, target_unit=0):
-        from war3_ability_field_protocol import (
-            SIGNATURES as FIELD_SIGNATURES,
-            build_work as build,
-            decode_work as decode,
-        )
-        if (isinstance(rawcode, bool) or not isinstance(rawcode, int) or not 0 < rawcode <= 0xFFFFFFFF
-                or isinstance(level, bool) or not isinstance(level, int) or not 1 <= level <= 1000
-                or isinstance(action, bool) or action not in (0, 1)
-                or isinstance(target_unit, bool) or not isinstance(target_unit, int)
-                or not 0 <= target_unit <= 0xFFFFFFFFFFFFFFFF):
-            raise ValueError('Invalid current-engine ability field operation')
-        names = tuple(n for n, _ in SIGNATURES + FIELD_SIGNATURES)
-        return self._execute(
-            'ability_field',
-            names,
-            lambda entries, tls: build(
-                entries, tls, rawcode, level, action, fields, target_unit,
-            ),
-            decode,
-            dict(rawcode=rawcode, level=level, action=action,
-                 field_count=len(fields), target_unit=target_unit),
-        )
-
-    def item_batch(self,action=0,rawcode=0,charges=-1,target_unit_rawcode=0,target_unit=0,expected_item=0):
-        from war3_item_protocol import SIGNATURES as ITEMS,build_work as build,decode_work as decode
-        if any(isinstance(v,bool) or not isinstance(v,int) for v in (action,rawcode,charges,target_unit_rawcode,target_unit,expected_item)):
-            raise ValueError('Item arguments must be integers')
-        if (action not in (0,1,2,3,4,5,6,7) or not 0<=rawcode<=0xffffffff or (action in (1,3,7) and not rawcode)
-            or (action in (0,2,4,5,6) and rawcode) or not -1<=charges<=1000000000
-            or (action in (2,3) and charges<1) or (action in (0,1,4,5,6) and charges!=-1)
-            or (action==7 and not 0<=charges<6) or not 0<=target_unit_rawcode<=0xffffffff
-            or (target_unit_rawcode and action!=7) or not 0<=target_unit<=0xffffffffffffffff
-            or not 0<=expected_item<=0xffffffffffffffff or ((target_unit or expected_item) and action!=7)):
-            raise ValueError('Invalid item operation')
-        from war3_item_protocol import required_signatures
-        names=tuple(n for n,_ in SIGNATURES)+tuple(n for n,_ in required_signatures(action))
-        return self._execute('item',names,lambda entries,tls:build(entries,tls,action,rawcode,charges,target_unit_rawcode,target_unit,expected_item),decode,
-                             dict(action=action,rawcode=rawcode,charges=charges,target_unit_rawcode=target_unit_rawcode,target_unit=target_unit,expected_item=expected_item))
-
-    def item_catalog(self, action=1, limit=0, x_bits=0, y_bits=0,
-                     handles=(), rawcodes=(), dry_run=False):
-        from war3_item_catalog_protocol import (
-            ACTION_CREATE, ACTION_REMOVE, ACTION_CREATE_LIST,
-            SIGNATURES as CATALOG_SIGNATURES,
-            build_work as build, decode_work as decode, required_signatures,
-        )
-        if isinstance(action, bool) or action not in (ACTION_CREATE, ACTION_REMOVE, ACTION_CREATE_LIST):
-            raise ValueError('Invalid item catalog action')
-        if isinstance(limit, bool) or not isinstance(limit, int) or not 0 <= limit <= 100000:
-            raise ValueError('Invalid item catalog limit')
-        handles = tuple(int(handle) for handle in handles)
-        rawcodes = tuple(int(rawcode) for rawcode in rawcodes)
-        names = tuple(name for name, _signature in required_signatures(action))
-        result = self._execute(
-            'item_catalog',
-            names,
-            lambda entries, tls: build(
-                {name: entries[name] for name, _signature in CATALOG_SIGNATURES
-                 if name in entries},
-                tls,
-                action=action,
-                limit=limit,
-                x_bits=x_bits,
-                y_bits=y_bits,
-                handles=handles,
-                rawcodes=rawcodes,
-                dry_run=dry_run,
-            ),
-            decode,
-            dict(action=action,limit=limit,handle_count=len(handles),rawcode_count=len(rawcodes),dry_run=dry_run),
-        )
-        return result
-
-    def item_field_batch(self, slot, action, fields, target_unit=0):
-        from war3_item_field_protocol import (
-            SIGNATURES as FIELD_SIGNATURES,
-            build_work as build,
-            decode_work as decode,
-        )
-        if (isinstance(slot, bool) or not isinstance(slot, int) or not 0 <= slot < 6
-                or isinstance(action, bool) or action not in (0, 1)
-                or isinstance(target_unit, bool) or not isinstance(target_unit, int)
-                or not 0 <= target_unit <= 0xFFFFFFFFFFFFFFFF):
-            raise ValueError('Invalid current-engine item field operation')
-        names = tuple(n for n, _ in SIGNATURES + FIELD_SIGNATURES)
-        return self._execute(
-            'item_field',
-            names,
-            lambda entries, tls: build(entries, tls, slot, action, fields, target_unit),
-            decode,
-            dict(slot=slot, action=action, field_count=len(fields), target_unit=target_unit),
-        )
-
-    def clone_batch(self, *, keep=False, preserve_owner=False,
-                    copy_abilities=True, copy_items=True,
-                    spawn=False, spawn_x_bits=0, spawn_y_bits=0):
-        from war3_clone_protocol import (
-            SIGNATURES as CLONE_SIGNATURES,
-            CLONE_COPY_ABILITIES, CLONE_COPY_ITEMS, CLONE_KEEP,
-            CLONE_PRESERVE_OWNER, CLONE_USE_SPAWN,
-            build_work as build, decode_work as decode,
-        )
-        flags = 0
-        if keep: flags |= CLONE_KEEP
-        if preserve_owner: flags |= CLONE_PRESERVE_OWNER
-        if copy_abilities: flags |= CLONE_COPY_ABILITIES
-        if copy_items: flags |= CLONE_COPY_ITEMS
-        if spawn: flags |= CLONE_USE_SPAWN
-        names = tuple(n for n, _ in SIGNATURES + CLONE_SIGNATURES)
-        return self._execute(
-            'clone', names,
-            lambda entries, tls: build(entries, tls, flags=flags,
-                                       spawn_x_bits=spawn_x_bits,
-                                       spawn_y_bits=spawn_y_bits),
-            decode,
-            dict(keep=keep, preserve_owner=preserve_owner,
-                 copy_abilities=copy_abilities, copy_items=copy_items,
-                 spawn=spawn, spawn_x_bits=spawn_x_bits, spawn_y_bits=spawn_y_bits),
-        )
-
-    def unit_action_batch(self, action, *, value=0, x_bits=0, y_bits=0,
-                          scale_x_bits=0, scale_y_bits=0, scale_z_bits=0):
-        from war3_unit_action_protocol import (
-            ACTION_SIGNATURES, build_work as build, decode_work as decode,
-        )
-        if not isinstance(action, int) or isinstance(action, bool):
-            raise ValueError('Invalid current-engine unit action')
-        names = tuple(n for n, _ in SIGNATURES + ACTION_SIGNATURES)
-        return self._execute(
-            'unit_action', names,
-            lambda entries, tls: build(
-                entries, tls, action, value=value, x_bits=x_bits, y_bits=y_bits,
-                scale_x_bits=scale_x_bits, scale_y_bits=scale_y_bits,
-                scale_z_bits=scale_z_bits,
-            ),
-            decode,
-            dict(action=action, value=value, x_bits=x_bits, y_bits=y_bits,
-                 scale_x_bits=scale_x_bits, scale_y_bits=scale_y_bits,
-                 scale_z_bits=scale_z_bits),
-        )
-
-    def unit_stats(self, action=0, value=0, target_unit=0):
-        from war3_unit_stats_protocol import (
-            SIGNATURES as UNIT_STATS_SIGNATURES,
-            build_work as build,
-            decode_work as decode,
-        )
-        names = tuple(name for name, _signature in SIGNATURES + UNIT_STATS_SIGNATURES)
-        return self._execute(
-            'unit_stats', names,
-            lambda entries, tls: build(entries, tls, int(action), value, int(target_unit)),
-            decode,
-            dict(action=int(action), value=value, target_unit=int(target_unit)),
-        )
-
-    def position_batch(self, x_bits, y_bits):
-        from war3_position_protocol import SIGNATURES as POSITION_SIGNATURES, build_work as build, decode_work as decode
-        if (isinstance(x_bits, bool) or not isinstance(x_bits, int)
-                or isinstance(y_bits, bool) or not isinstance(y_bits, int)):
-            raise ValueError('Position bits must be integers')
-        names = tuple(n for n, _ in SIGNATURES + POSITION_SIGNATURES)
-        return self._execute(
-            'position', names,
-            lambda entries, tls: build(entries, tls, x_bits, y_bits),
-            decode,
-            dict(x_bits=x_bits, y_bits=y_bits),
-        )
-
-    def position_target_batch(self, target_unit, x_bits, y_bits):
-        from war3_position_target_protocol import (
-            SIGNATURES as POSITION_SIGNATURES,
-            build_work as build,
-            decode_work as decode,
-        )
-        if (isinstance(target_unit, bool) or not isinstance(target_unit, int)
-                or not 0 < target_unit <= 0xFFFFFFFFFFFFFFFF
-                or isinstance(x_bits, bool) or not isinstance(x_bits, int)
-                or isinstance(y_bits, bool) or not isinstance(y_bits, int)):
-            raise ValueError('Invalid targeted position operation')
-        names = tuple(n for n, _ in SIGNATURES + POSITION_SIGNATURES)
-        return self._execute(
-            'position_target', names,
-            lambda entries, tls: build(entries, tls, target_unit, x_bits, y_bits),
-            decode,
-            dict(target_unit=target_unit, x_bits=x_bits, y_bits=y_bits),
-        )
-
-    def world_batch(self, action, rawcode=0, value=0):
-        from war3_world_protocol import SIGNATURES as WORLD_SIGNATURES, build_work as build, decode_work as decode
-        if (isinstance(action, bool) or not isinstance(action, int) or action not in range(1, 7)
-                or isinstance(rawcode, bool) or not isinstance(rawcode, int) or not 0 <= rawcode <= 0xffffffff
-                or isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 0xffffffff):
-            raise ValueError('Invalid current-engine world operation')
-        names = tuple(n for n, _ in WORLD_SIGNATURES)
-        return self._execute(
-            'world', names,
-            lambda entries, tls: build(entries, tls, action, rawcode, value),
-            decode,
-            dict(action=action, rawcode=rawcode, value=value),
-        )
-
-    def bulk_batch(self, action, value=0):
-        from war3_bulk_protocol import SIGNATURES as BULK_SIGNATURES, build_work as build, decode_work as decode
-        if (isinstance(action, bool) or action not in range(1, 6)
-                or isinstance(value, bool) or value not in (0, 1)):
-            raise ValueError('Invalid current-engine bulk action')
-        names = tuple(n for n, _ in SIGNATURES + BULK_SIGNATURES)
-        return self._execute(
-            'bulk', names,
-            lambda entries, tls: build(entries, tls, action, value),
-            decode,
-            dict(action=action, value=value),
-        )
-
-    def effect_batch(self, rawcode, action, x_bits=0, y_bits=0, *, area_bits=0, passes=1):
-        from war3_effect_protocol import SIGNATURES as EFFECT_SIGNATURES, build_work as build, decode_work as decode
-        if (isinstance(rawcode, bool) or not isinstance(rawcode, int) or not 0 < rawcode <= 0xFFFFFFFF
-                or isinstance(action, bool) or action not in range(1, 5)
-                or any(isinstance(value, bool) or not isinstance(value, int)
-                       for value in (x_bits, y_bits, area_bits, passes))
-                or not 0 <= area_bits <= 0xFFFFFFFF or not 1 <= passes <= 255):
-            raise ValueError('Invalid current-engine effect operation')
-        wire_x = x_bits if action == 3 else area_bits
-        wire_y = y_bits if action == 3 else passes
-        names = tuple(n for n, _ in SIGNATURES + EFFECT_SIGNATURES)
-        return self._execute(
-            'effect', names,
-            lambda entries, tls: build(
-                entries, tls, rawcode, action, wire_x, wire_y, area_bits,
-                resolver=self._effect_resolver,
-                unit_map=self._effect_unit_map,
-            ),
-            decode,
-            dict(rawcode=rawcode, action=action, x_bits=x_bits, y_bits=y_bits,
-                 area_bits=area_bits, passes=passes),
-        )
-
-    def world_effect_batch(self, rawcode, action, success_limit=0):
-        from war3_world_effect_protocol import (
-            SIGNATURES as WORLD_EFFECT_SIGNATURES,
-            build_work as build,
-            decode_work as decode,
-        )
-        if (isinstance(rawcode, bool) or not isinstance(rawcode, int) or not 0 < rawcode <= 0xFFFFFFFF
-                or isinstance(action, bool) or action not in (1, 2, 3)
-                or isinstance(success_limit, bool) or not 0 <= success_limit <= 65535):
-            raise ValueError('Invalid current-engine world effect operation')
-        names = tuple(n for n, _ in WORLD_EFFECT_SIGNATURES)
-        return self._execute(
-            'world_effect', names,
-            lambda entries, tls: build(
-                entries, tls, rawcode, action, success_limit,
-                resolver=self._effect_resolver,
-            ),
-            decode,
-            dict(rawcode=rawcode, action=action, success_limit=success_limit),
-        )
-
-    def world_cast(self, rawcode, action, *, order_id=0, cast_kind=1, area=0.0,
-                   source=0, ability_handle=0, target=0, prior_area=0, added=0):
-        from war3_world_cast_protocol import (
-            SIGNATURES as CAST_SIGNATURES, build_work, decode_work,
-        )
-        from war3_selection_protocol import SIGNATURES as SELECTION_SIGNATURES
-        names = tuple(name for name, _ in SELECTION_SIGNATURES + CAST_SIGNATURES)
-        return self._execute(
-            'world_cast', names,
-            lambda entries, tls: build_work(
-                entries, tls, action=action, rawcode=rawcode,
-                order_id=order_id, cast_kind=cast_kind, area=area, source=source,
-                ability_handle=ability_handle, target=target,
-                prior_area=prior_area, added=added,
-            ),
-            decode_work,
-            dict(action=action, rawcode=rawcode, order_id=order_id,
-                 cast_kind=cast_kind, area=area, source=source,
-                 ability_handle=ability_handle, target=target,
-                 prior_area=prior_area, added=added),
-        )
-
-    def spawn_batch(self, rawcode, x_bits=0, y_bits=0, facing_bits=0):
-        from war3_spawn_protocol import SIGNATURES as SPAWN_SIGNATURES, build_work as build, decode_work as decode
-        values = (rawcode, x_bits, y_bits, facing_bits)
-        if any(isinstance(value, bool) or not isinstance(value, int) for value in values):
-            raise ValueError('Spawn arguments must be integers')
-        if not 0 < rawcode <= 0xFFFFFFFF or any(not 0 <= value <= 0xFFFFFFFF for value in values[1:]):
-            raise ValueError('Invalid current-engine spawn operation')
-        names = tuple(n for n, _ in SPAWN_SIGNATURES)
-        return self._execute(
-            'spawn', names,
-            lambda entries, tls: build(entries, tls, rawcode, x_bits, y_bits, facing_bits),
-            decode,
-            dict(rawcode=rawcode, x_bits=x_bits, y_bits=y_bits, facing_bits=facing_bits),
-        )
-
-    def mouse_world_point(self):
-        from war3_mouse_protocol import SIGNATURES as MOUSE_SIGNATURES, build_work as build, decode_work as decode
-        return self._execute(
-            'mouse', tuple(n for n, _ in MOUSE_SIGNATURES),
-            lambda entries, tls: build(entries, tls),
-            decode,
-            {},
-        )
-
-    def mouse_screen_point(self):
-        from war3_screen_protocol import SIGNATURES as SCREEN_SIGNATURES, build_work as build, decode_work as decode
-        return self._execute(
-            'screen_mouse', tuple(n for n, _ in SCREEN_SIGNATURES),
-            lambda entries, tls: build(entries, tls),
-            decode,
-            {},
-        )
-
-    def camera_snapshot(self):
-        from war3_camera_protocol import SIGNATURES as CAMERA_SIGNATURES, build_work as build, decode_work as decode
-        return self._execute(
-            'camera', tuple(n for n, _ in CAMERA_SIGNATURES),
-            lambda entries, tls: build(entries, tls),
-            decode,
-            {},
-        )
-
-    def terrain_height(self, x_bits, y_bits):
-        from war3_terrain_protocol import SIGNATURES as TERRAIN_SIGNATURES, build_work as build, decode_work as decode
-        values = (x_bits, y_bits)
-        if any(isinstance(value, bool) or not isinstance(value, int) for value in values):
-            raise ValueError('Terrain coordinates must be float bit integers')
-        return self._execute(
-            'terrain', tuple(n for n, _ in TERRAIN_SIGNATURES),
-            lambda entries, tls: build(entries, tls, x_bits, y_bits),
-            decode,
-            dict(x_bits=x_bits, y_bits=y_bits),
-        )
-
-    def equipment(self,rawcode=0,action=0,target_unit=0,created=0,replaced=0):
-        from war3_equipment_protocol import SIGNATURES as EQ,build_work as build,decode_work as decode
-        return self._execute('equipment',tuple(n for n,_ in SIGNATURES+EQ),
-            lambda entries,tls:build(entries,tls,rawcode,action,target_unit,created,replaced),decode,
-            dict(rawcode=rawcode,action=action,target_unit=target_unit,created=created,replaced=replaced))
-
-    def extension(self,ability_rawcodes=(),action=0,target_unit=0,slot=0,item_rawcode=0,item_handle=0,resolver=0):
-        from war3_extension_protocol import SIGNATURES as EXT,build_work as build,decode_work as decode
-        values=tuple(int(value) for value in ability_rawcodes)
-        return self._execute('extension',tuple(n for n,_ in SIGNATURES+EXT),
-            lambda entries,tls:build(entries,tls,values,action,target_unit,slot,item_rawcode,item_handle,
-                                     resolver=(resolver or getattr(self,'_extension_resolver',0))),decode,
-            dict(action=action,target_unit=target_unit,slot=slot,item_rawcode=item_rawcode,
-                 item_handle=item_handle,ability_count=len(values)))
-
-    def talent_order(self,target,controller,order,choice):
-        from war3_talent_order_protocol import SIGNATURES as TALENT,build_work as build,decode_work as decode
-        return self._execute('talent_order',tuple(n for n,_ in SIGNATURES+TALENT),
-            lambda entries,tls:build(entries,tls,target,controller,order,choice),decode,
-            dict(target=target,controller=controller,order=order,choice=choice))
-
-    def stat_details(self,action=0,stat_index=0,target=0.0,controller=0,target_unit=0,target_full_handle=0):
-        from war3_stat_details_protocol import SIGNATURES as STATS,build_work as build,decode_work as decode
-        return self._execute('stat_details',tuple(n for n,_ in SIGNATURES+STATS),
-            lambda entries,tls:build(entries,tls,action,stat_index,target,controller,target_unit,
-                                     target_full_handle,self._stat_resolver_base if target_full_handle else 0),decode,
-            dict(action=action,stat_index=stat_index,target=target,controller=controller,target_unit=target_unit,
-                 target_full_handle=target_full_handle))
-
-    def map_bounds(self):
-        from war3_map_bounds_protocol import SIGNATURES as BOUNDS_SIGNATURES, build_work as build, decode_work as decode
-        return self._execute(
-            'map_bounds', tuple(n for n, _ in BOUNDS_SIGNATURES),
-            lambda entries, tls: build(entries, tls), decode, {},
-        )
 
     def _execute(self,kind,names,builder,decoder,request):
+        from war3_operations import OPERATIONS
+        operation=OPERATIONS.get(kind)
+        if operation is None or operation.diagnostic and not self.diagnostic:
+            raise ValueError('Unknown or diagnostic-only operation: '+kind)
+        with self.lock:
+            try:
+                if self.quarantined or self.session.closed or self.session.uncertain or self.session.retained:
+                    raise RuntimeError('Previous dispatch retained resources or execution unresolved; no automatic replay')
+                if not self.image.is_file():raise RuntimeError('Missing current 24268 bridge module: '+str(self.image))
+                with self.memory_factory(self.pid) as memory:
+                    self.session.prepare(memory)
+                self.session.require_write()
+                if getattr(self.session,'native_registry_error',None):
+                    raise RuntimeError('Native execution unavailable: '+self.session.native_registry_error)
+                with session_scope(self.session):
+                    CapabilitySet(self.session.profile).require(kind,request=request)
+                    return self._execute_prepared(kind,names,builder,decoder,request)
+            except EngineExecutionError:raise
+            except Exception as exc:
+                report={'pid':self.pid,'operation':kind,'ok':False,'error':str(exc),'dispatch':{},'session':self.session.snapshot()}
+                self.last_report=report
+                raise EngineExecutionError(str(exc),report) from exc
+
+    def _execute_prepared(self,kind,names,builder,decoder,request):
         with self.lock:
             if self.quarantined:raise EngineExecutionError('Previous dispatch retained resources; inspect before reconnecting',self.last_report)
             start=time.perf_counter();report={
@@ -520,14 +131,14 @@ class Engine24268:
                 report['integrity'] = require_matching_integrity(self.pid)
                 if not self.image.is_file():raise RuntimeError('Missing current 24268 bridge module: '+str(self.image))
                 with self.memory_factory(self.pid) as memory:
-                    cache=self._native_context_cache
+                    cache=self.session.cache.get('natives')
                     cache_hit=False
                     if cache is not None:
                         try:
                             context=cache['context']
                             registry=cache['registry']
                             mode=context.read_mode(memory)
-                            context5=memory.read_u64(mode.tls+0x38)
+                            context5=memory.read_u64(mode.tls+self.session.profile.section('context')['native_slot'])
                             if (mode.value != cache['mode'].value or mode.tls != cache['mode'].tls
                                     or context5 != cache['context5']):
                                 cache=None
@@ -536,10 +147,8 @@ class Engine24268:
                         except Exception:
                             cache=None
                     if cache is None:
-                        registry=ObjectRegistry24268.attach(memory)
-                        context=GameThreadContext24268(memory,registry.base,self.hwnd,self.pid)
-                        mode=context.read_mode(memory)
-                        context5=memory.read_u64(mode.tls+0x38)
+                        registry,context,mode=self.session.prepare(memory)
+                        context5=memory.read_u64(mode.tls+self.session.profile.section('context')['native_slot'])
                         native_table=NativeTable24268(memory,context5)
                         cache={
                             'context': context,
@@ -549,12 +158,16 @@ class Engine24268:
                             'entries': native_table.entries,
                         }
                         self._native_context_cache=cache
+                        self.session.cache['natives']=cache
                     registry.local_player_for_mode(memory,mode.value)
                     all_entries=cache['entries']
                     missing=[name for name in names if name not in all_entries]
                     if missing:
                         raise RuntimeError('Missing native registrations: '+', '.join(missing))
                     entries={name: all_entries[name] for name in names}
+                    if cache_hit:
+                        from war3_native_table import validate_cached_entries
+                        validate_cached_entries(memory,entries)
                     report['preflight_cached']=cache_hit
                     if kind in ('effect', 'world_effect'):
                         # The effect bridge uses this slot as the verified game
@@ -565,7 +178,7 @@ class Engine24268:
                             player = registry.local_player_for_mode(memory, mode.value)
                             classic_selection = read_player_selection(memory, player)
                             self._effect_unit_map = tuple(
-                                (memory.read_u64(unit + 0x18), memory.read_u32(unit + 0x70))
+                                (memory.read_u64(unit + registry.layout['object_handle']), memory.read_u32(unit + registry.layout['object_rawcode']))
                                 for unit in classic_selection.units
                             )
                         payload=builder(entries,mode.tls)
@@ -585,7 +198,7 @@ class Engine24268:
                         payload=builder(entries,mode.tls)
                     report['mappings']=({} if cache_hit else inspect_entries(memory,registry.base,entries,True))
                     fresh=context.read_mode(memory)
-                    if (fresh.tls!=mode.tls or fresh.value!=mode.value or memory.read_u64(fresh.tls+0x38)!=context5
+                    if (fresh.tls!=mode.tls or fresh.value!=mode.value or memory.read_u64(fresh.tls+self.session.profile.section('context')['native_slot'])!=context5
                         or (not cache_hit and NativeTable24268(memory,context5).require(*names)!=entries)):
                         raise RuntimeError('Current native context changed; no hero batch dispatched')
                     report['preflight_ms']=(time.perf_counter()-start)*1000
@@ -598,139 +211,10 @@ class Engine24268:
                         mode.tls_index,payload,kind=kind,
                     )
                     report['dispatch']=evidence;self.quarantined=bool(evidence.get('allocations_retained'))
-                    if kind=='ability' and evidence.get('work_result_hex'):
-                        raw=bytes.fromhex(evidence['work_result_hex'])
-                        from war3_ability_protocol import WORK_SIZE as ABILITY_WORK_SIZE
-                        if len(raw)==ABILITY_WORK_SIZE:
-                            changed,error,completed=struct.unpack_from('<3I',raw,532)
-                            target_unit=struct.unpack_from('<Q',raw,832)[0]
-                            report['ability_status']=dict(changed=changed,error=error,completed=completed,target_unit=target_unit)
-                    if kind=='ability_field' and evidence.get('work_result_hex'):
-                        raw=bytes.fromhex(evidence['work_result_hex'])
-                        if len(raw)==7688:
-                            changed,error,completed=struct.unpack_from('<3I',raw,624)
-                            report['ability_field_status']=dict(changed=changed,error=error,completed=completed)
-                    if kind=='item' and evidence.get('work_result_hex'):
-                        raw=bytes.fromhex(evidence['work_result_hex'])
-                        if len(raw)==6008:
-                            changed,error,completed,skipped=struct.unpack_from('<4I',raw,572)
-                            report['item_status']=dict(changed=changed,error=error,completed=completed,skipped=skipped)
-                            report['item_rows']=[dict(index=i,created=struct.unpack_from('<Q',raw,592+224*i+192)[0],
-                                status=struct.unpack_from('<I',raw,592+224*i+212)[0],
-                                trace=struct.unpack_from('<I',raw,592+224*i+220)[0])
-                                for i in range(min(24,struct.unpack_from('<I',raw,80)[0]))]
-                    if kind=='item_catalog' and evidence.get('work_result_hex'):
-                        raw=bytes.fromhex(evidence['work_result_hex'])
-                        if len(raw)>=72:
-                            values=struct.unpack_from('<4Q10I',raw,0)
-                            report['item_catalog_status']=dict(
-                                action=values[4],total=values[10],created=values[11],
-                                error=values[12],completed=values[13],
-                            )
-                    if kind=='equipment' and evidence.get('work_result_hex'):
-                        raw=bytes.fromhex(evidence['work_result_hex'])
-                        if len(raw)==872:
-                            rawcode,action,error,completed,equipment_type,changed,rollback_error,_=struct.unpack_from('<8I',raw,584)
-                            report['equipment_status']=dict(rawcode=rawcode,action=action,error=error,
-                                completed=completed,equipment_type=equipment_type,changed=changed,
-                                rollback_error=rollback_error)
-                    if kind=='item_field' and evidence.get('work_result_hex'):
-                        raw=bytes.fromhex(evidence['work_result_hex'])
-                        if len(raw)==5136:
-                            changed,error,completed=struct.unpack_from('<3I',raw,552+12)
-                            report['item_field_status']=dict(changed=changed,error=error,completed=completed)
-                    if kind=='clone' and evidence.get('work_result_hex'):
-                        raw=bytes.fromhex(evidence['work_result_hex'])
-                        if len(raw)==1872:
-                            changed,error,completed=struct.unpack_from('<3I',raw,700)
-                            report['clone_status']=dict(changed=changed,error=error,completed=completed)
-                    if kind=='unit_action' and evidence.get('work_result_hex'):
-                        raw=bytes.fromhex(evidence['work_result_hex'])
-                        if len(raw)==1432:
-                            changed,error,completed=struct.unpack_from('<3I',raw,624)
-                            report['unit_action_status']=dict(changed=changed,error=error,completed=completed)
-                    if kind in ('position', 'position_target') and evidence.get('work_result_hex'):
-                        raw=bytes.fromhex(evidence['work_result_hex'])
-                        if len(raw)==1312:
-                            changed,error,completed=struct.unpack_from('<3I',raw,528)
-                            report['position_status']=dict(changed=changed,error=error,completed=completed)
-                    if kind=='world' and evidence.get('work_result_hex'):
-                        raw=bytes.fromhex(evidence['work_result_hex'])
-                        if len(raw)==128:
-                            (action,diagnostic_phase,value,changed,error,completed,
-                             after0,after1,fault_low,fault_high)=struct.unpack_from('<10I',raw,88)
-                            report['world_status']=dict(
-                                action=action, value=value, changed=changed,
-                                error=error, completed=completed,
-                                after0=after0, after1=after1,
-                                diagnostic_phase=diagnostic_phase,
-                                fault_address=hex((fault_high<<32)|fault_low) if (fault_low or fault_high) else None,
-                            )
-                            if diagnostic_phase and (fault_low or fault_high):
-                                registers=struct.unpack_from('<8Q',raw,0)
-                                labels=(
-                                    ('first_rip','second_rip','first_access','first_address',
-                                     'second_access','second_address','is_fog_handler','is_mask_handler')
-                                    if diagnostic_phase<=2 else
-                                    ('first_rip','second_rip','rsp','rbx','rax','rcx','rdx','r8')
-                                )
-                                report['world_status']['fault_context']=dict(zip(
-                                    labels,
-                                    (hex(value) for value in registers),
-                                ))
-                    if kind=='bulk' and evidence.get('work_result_hex'):
-                        raw=bytes.fromhex(evidence['work_result_hex'])
-                        if len(raw)==624:
-                            changed,error,completed=struct.unpack_from('<3I',raw,608)
-                            report['bulk_status']=dict(changed=changed,error=error,completed=completed)
-                    if kind=='effect' and evidence.get('work_result_hex'):
-                        raw=bytes.fromhex(evidence['work_result_hex'])
-                        if len(raw)==1168:
-                            changed,error,completed=struct.unpack_from('<3I',raw,576)
-                            report['effect_status']=dict(changed=changed,error=error,completed=completed)
-                    if kind=='world_effect' and evidence.get('work_result_hex'):
-                        raw=bytes.fromhex(evidence['work_result_hex'])
-                        if len(raw)==656:
-                            attempts,error,successes,completed=struct.unpack_from('<4I',raw,636)
-                            report['world_effect_status']=dict(
-                                attempts=attempts, error=error,
-                                successes=successes, completed=completed,
-                            )
-                    if kind=='world_cast' and evidence.get('work_result_hex'):
-                        raw=bytes.fromhex(evidence['work_result_hex'])
-                        if len(raw)==760:
-                            issued,error,completed=struct.unpack_from('<3I',raw,724)
-                            source,ability_handle,target=struct.unpack_from('<3Q',raw,672)
-                            report['world_cast_status']=dict(
-                                action=struct.unpack_from('<I',raw,696)[0],
-                                source=source,ability_handle=ability_handle,target=target,
-                                added=struct.unpack_from('<I',raw,720)[0],
-                                issued=issued,error=error,completed=completed,
-                            )
-                    if kind=='spawn' and evidence.get('work_result_hex'):
-                        raw=bytes.fromhex(evidence['work_result_hex'])
-                        if len(raw)==128:
-                            changed,error,completed=struct.unpack_from('<3I',raw,56)
-                            report['spawn_status']=dict(changed=changed,error=error,completed=completed)
-                    if kind=='attack_speed' and evidence.get('work_result_hex'):
-                        raw=bytes.fromhex(evidence['work_result_hex'])
-                        if len(raw)==640:
-                            changed,error,completed=struct.unpack_from('<3I',raw,604)
-                            report['attack_speed_status']=dict(
-                                changed=changed,error=error,completed=completed,
-                                base_bits=hex(struct.unpack_from('<I',raw,576)[0]),
-                                factor_bits=hex(struct.unpack_from('<I',raw,580)[0]),
-                                effective_bits=hex(struct.unpack_from('<I',raw,584)[0]),
-                                true_aps_bits=hex(struct.unpack_from('<I',raw,588)[0]),
-                                after_base_bits=hex(struct.unpack_from('<I',raw,592)[0]),
-                                after_effective_bits=hex(struct.unpack_from('<I',raw,596)[0]),
-                                after_true_aps_bits=hex(struct.unpack_from('<I',raw,600)[0]),
-                            )
-                    if kind=='mouse' and evidence.get('work_result_hex'):
-                        raw=bytes.fromhex(evidence['work_result_hex'])
-                        if len(raw)==128:
-                            changed,error,completed=struct.unpack_from('<3I',raw,48)
-                            report['mouse_status']=dict(changed=changed,error=error,completed=completed)
+                    report['verification']=vars(self.session.finish(evidence))
+                    report['adapter']={'id':self.session.profile.id,'digest':self.session.profile.digest,'epoch':self.session.epoch}
+                    from war3_operation_reports import record_status
+                    record_status(kind,evidence,report)
                     released_ok = (
                         evidence.get('callback_verified')
                         and evidence.get('query_completed')
@@ -748,8 +232,21 @@ class Engine24268:
                         else:
                             message=f'Current-engine batch execution or cleanup failed ({attempts} route attempt)'
                         raise EngineExecutionError(message,report)
-                    result=decoder(bytes.fromhex(evidence['work_result_hex']),int(evidence['after_send']['query_result'],16))
+                    try:
+                        result=decoder(bytes.fromhex(evidence['work_result_hex']),int(evidence['after_send']['query_result'],16))
+                    except Exception:
+                        # Completed callback is not proof that a partially applied transaction is replayable.
+                        statuses=[value for key,value in report.items() if key.endswith('_status') and isinstance(value,dict)]
+                        proven_no_change=bool(statuses) and all(value.get('changed')==0 for value in statuses)
+                        if not proven_no_change:
+                            self.session.uncertain=True
+                            self.session.last_evidence.uncertain=True
+                            report['verification']=vars(self.session.last_evidence)
+                        raise
                     report['result']=result;report['ok']=True
+                    # Protocol decoding validates the declared postconditions; gameplay is a separate test.
+                    from war3_operations import OPERATIONS
+                    report['verification']=vars(self.session.finish(evidence,readback=OPERATIONS[kind].readback))
                     if evidence.get('recovered_tail_faults') and self.report_sink is not None:
                         try:report['recovery_log']=self.report_sink(report)
                         except Exception as exc:
@@ -757,8 +254,10 @@ class Engine24268:
                     return result
             except EngineExecutionError:
                 self._native_context_cache=None
+                self.session.cache.pop('natives',None)
                 raise
             except Exception as exc:
                 self._native_context_cache=None
+                self.session.cache.pop('natives',None)
                 report['error']=str(exc);raise EngineExecutionError(str(exc),report) from exc
             finally:report['elapsed_ms']=(time.perf_counter()-start)*1000

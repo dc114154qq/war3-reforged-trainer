@@ -8,12 +8,9 @@ from capstone import Cs, CS_ARCH_X86, CS_MODE_64
 from capstone.x86 import X86_OP_MEM, X86_OP_REG, X86_REG_GS, X86_REG_RCX
 from war3_object_registry import ObjectIdentityError, _ptr, _read
 
-TLS_INDEX_RVA = 0x2F5B528
-CONTEXT_CODE_CHECKS = (
-    (0x1838FD, bytes.fromhex("8b0d257cdd02e8d86dcf01")),
-    (0x18395E, bytes.fromhex("4885c9740b488b44d9104883c4205bc333c04883c4205bc3")),
-    (0x152A690, bytes.fromhex("4883ec28b90d000000e81292c5fe488b4020488b88b800000083b9e8300000010f94c04883c428c3")),
-)
+from war3_game_profile import current_profile, default_profile
+TLS_INDEX_RVA = default_profile().section('addresses')['tls_index']
+CONTEXT_CODE_CHECKS = default_profile().checks('context')
 
 
 def infer_tls_layout(code):
@@ -65,7 +62,7 @@ def verify_context_code(memory, game_base):
     """
     for attempt in range(3):
         try:
-            for rva, code in CONTEXT_CODE_CHECKS:
+            for rva, code in current_profile().checks("context"):
                 if _read(memory, game_base + rva, len(code)) != code:
                     raise ObjectIdentityError("Game context accessor differs from verified profile")
             return
@@ -80,6 +77,7 @@ def verify_context_code(memory, game_base):
 class GameThreadContext24268:
     def __init__(self, memory, game_base, hwnd, pid):
         self.base, self.hwnd, self.pid = game_base, hwnd, pid
+        self.profile = current_profile()
         verify_context_code(memory, game_base)
         self.kernel = ctypes.WinDLL("kernel32", use_last_error=True)
         self.user = ctypes.WinDLL("user32", use_last_error=True)
@@ -130,7 +128,10 @@ class GameThreadContext24268:
 
     def sample_mode(self, memory):
         """Return None for an inactive/changed frame; never choose a player by guess."""
-        index = struct.unpack("<I", _read(memory, self.base + TLS_INDEX_RVA, 4))[0]
+        profile = getattr(self, "profile", current_profile())
+        layout = profile.section("context")
+        index_rva = profile.section("addresses")["tls_index"]
+        index = struct.unpack("<I", _read(memory, self.base + index_rva, 4))[0]
         if index >= 1088:
             raise ObjectIdentityError("Game TLS index is outside Windows TLS bounds")
         expansion = 0
@@ -148,22 +149,22 @@ class GameThreadContext24268:
             return None
         if not _ptr(tls):
             raise ObjectIdentityError("Invalid game TLS context")
-        context = self._qword(memory, tls + 0x78)
+        context = self._qword(memory, tls + layout["mode_context"])
         if not _ptr(context):
             return None
-        bridge = self._qword(memory, context + 0x20)
+        bridge = self._qword(memory, context + layout["mode_bridge"])
         if not _ptr(bridge):
             return None
-        mode_object = self._qword(memory, bridge + 0xB8)
+        mode_object = self._qword(memory, bridge + layout["mode_object"])
         if not _ptr(mode_object):
             return None
-        value = struct.unpack("<I", _read(memory, mode_object + 0x30E8, 4))[0]
-        if (self._qword(memory, bridge + 0xB8) != mode_object
-                or struct.unpack("<I", _read(memory, mode_object + 0x30E8, 4))[0] != value
-                or self._qword(memory, context + 0x20) != bridge
-                or self._qword(memory, tls + 0x78) != context
+        value = struct.unpack("<I", _read(memory, mode_object + layout["mode_value"], 4))[0]
+        if (self._qword(memory, bridge + layout["mode_object"]) != mode_object
+                or struct.unpack("<I", _read(memory, mode_object + layout["mode_value"], 4))[0] != value
+                or self._qword(memory, context + layout["mode_bridge"]) != bridge
+                or self._qword(memory, tls + layout["mode_context"]) != context
                 or self._qword(memory, slot) != tls
-                or struct.unpack("<I", _read(memory, self.base + TLS_INDEX_RVA, 4))[0] != index
+                or struct.unpack("<I", _read(memory, self.base + index_rva, 4))[0] != index
                 or (index >= 64 and self._qword(memory, self.teb + self.expansion_offset) != expansion)):
             return None
         return value, index, tls, context, mode_object

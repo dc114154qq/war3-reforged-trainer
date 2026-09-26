@@ -35,7 +35,7 @@ def work(flags=CLONE_COPY_ABILITIES | CLONE_COPY_ITEMS):
 
 @pytest.fixture(scope="module")
 def fixture():
-    dll = c.WinDLL(str(Path(__file__).parent / "analysis/engine-clone-fixture.dll"))
+    dll = c.WinDLL(str(Path(__file__).parent / 'build/architecture-fixture/engine-hero-fixture.dll'))
     dll.BridgeCloneTestRun.argtypes = [c.c_void_p, c.c_int, c.c_int]
     dll.BridgeCloneTestRun.restype = c.c_uint64
     dll.BridgeCloneTestStat.argtypes = [c.c_int]

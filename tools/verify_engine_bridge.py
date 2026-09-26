@@ -1,4 +1,6 @@
 """Verify the exported ABI markers of the current engine bridge."""
+from pathlib import Path
+import json
 import struct
 import sys
 
@@ -29,6 +31,11 @@ def main() -> None:
         ):
             raise AssertionError("production bridge has no DIR64 relocation")
 
+    profile=json.loads((Path(__file__).resolve().parents[1]/'profiles/3.0.0.24268.json').read_text(encoding='utf8'))
+    values=profile['bridge_layout']
+    expected=struct.pack('<'+'I'*(2+len(values)),1,8+4*len(values),*values.values())
+    if pe.get_data(exports[b'bridge_profile_abi'],8)!=expected[:8]:raise AssertionError('Bridge profile ABI mismatch')
+    if pe.get_data(exports[b'bridge_profile'],len(expected))!=expected:raise AssertionError('Bridge profile defaults differ')
     required = (
         b"BridgeInstall",
         b"BridgeUninstall",

@@ -13,7 +13,7 @@ a = Analysis(
         (bridge_image, 'tools'),
         (icon_image, 'tools'),
     ],
-    datas=[('assets/app_icon.png', 'assets')],
+    datas=[('assets/app_icon.png', 'assets'), ('profiles/3.0.0.24268.json', 'profiles')],
     hiddenimports=[
         'capstone',
         'war3_runtime_check',

@@ -6,7 +6,7 @@ import pytest
 
 @pytest.fixture(scope="module")
 def read_flag():
-    library = ctypes.WinDLL(str(Path(__file__).parent / "analysis/build-stat-runtime-flags-fixture/engine-hero-fixture.dll"))
+    library = ctypes.WinDLL(str(Path(__file__).parent / 'build/architecture-fixture/engine-hero-fixture.dll'))
     function = library.BridgeStatRuntimeFlagTest
     function.argtypes = [ctypes.c_uint32]
     function.restype = ctypes.c_uint32

@@ -5,6 +5,8 @@ from dataclasses import dataclass
 
 from war3_object_registry import ObjectIdentityError, _ptr, _read
 
+from war3_game_profile import current_profile
+
 MAX_NODES = 8192
 MAX_STRING = 256
 
@@ -52,12 +54,13 @@ class NativeTable24268:
     def __init__(self, memory, context5: int):
         if not _ptr(context5):
             raise ObjectIdentityError("Native context slot 5 is invalid")
+        self.layout = current_profile().section("native_table")
         self.context5 = context5
-        self.table = context5 + 0x28
-        self.head = self._qword(memory, self.table + 0x18)
-        self.terminal = (self.table + 0x10) | 1
+        self.table = context5 + self.layout["table"]
+        self.head = self._qword(memory, self.table + self.layout["head"])
+        self.terminal = (self.table + self.layout["terminal"]) | 1
         self.entries = self._read_entries(memory)
-        if self._qword(memory, self.table + 0x18) != self.head:
+        if self._qword(memory, self.table + self.layout["head"]) != self.head:
             raise ObjectIdentityError("Native registration head changed")
 
     @staticmethod
@@ -76,8 +79,12 @@ class NativeTable24268:
                 raise ObjectIdentityError("Native registration list is invalid or cyclic")
             visited.add(node)
             import struct
-            nxt, name_ptr, handler = struct.unpack('<3Q', _read(memory, node+0x20,24))
-            signature_ptr = self._qword(memory,node+0x40)
+            offsets = tuple(self.layout[k] for k in ("next", "name", "handler"))
+            if offsets == (offsets[0], offsets[0]+8, offsets[0]+16):
+                nxt, name_ptr, handler = struct.unpack('<3Q', _read(memory, node+offsets[0], 24))
+            else:
+                nxt, name_ptr, handler = (self._qword(memory, node+offset) for offset in offsets)
+            signature_ptr = self._qword(memory,node+self.layout["signature"])
             name = _string(memory, name_ptr)
             signature = _string(memory, signature_ptr)
             if not _ptr(handler) or not signature.startswith("(") or ")" not in signature:
@@ -93,3 +100,14 @@ class NativeTable24268:
         if missing:
             raise ObjectIdentityError("Missing native registrations: " + ", ".join(missing))
         return {name: self.entries[name] for name in names}
+
+
+def validate_cached_entries(memory, entries):
+    """Recheck selected handler/signature pairs even if the table head is unchanged."""
+    import struct
+    layout=current_profile().section('native_table')
+    for name,entry in entries.items():
+        handler=struct.unpack('<Q',_read(memory,entry.node+layout['handler'],8))[0]
+        signature=struct.unpack('<Q',_read(memory,entry.node+layout['signature'],8))[0]
+        if handler!=entry.handler or _string(memory,signature)!=entry.signature:
+            raise ObjectIdentityError('Cached native registration changed: '+name)

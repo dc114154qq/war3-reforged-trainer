@@ -7192,6 +7192,10 @@ class War3Trainer:
             reason = "游戏窗口尚未绑定，图标刷新未执行"
             self._talent_icon_display_error = reason
             return {"installed": False, "reason": "window_unavailable", "error": reason}
+        if user32.IsIconic(ctypes.c_void_p(hwnd)):
+            reason = "游戏窗口已最小化，天赋界面代码当前不可用；请保持天赋页可见后重试"
+            self._talent_icon_display_error = reason
+            return {"installed": False, "reason": "window_minimized", "error": reason}
         from war3_talent_icon_display import TalentIconDisplay
 
         try:

@@ -33,6 +33,7 @@ def main() -> None:
         b"BridgeInstall",
         b"BridgeUninstall",
         b"BridgeDiagnoseLoad",
+        b"BridgeDiagnoseLoadSafe",
         b"BridgeHeroQuery",
         b"BridgeHeroAttributesQuery",
         b"BridgeAttackSpeedQuery",

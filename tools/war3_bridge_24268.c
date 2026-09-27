@@ -212,7 +212,7 @@ _Static_assert(sizeof(BridgeLoadDiagnostic) == 56, "BridgeLoadDiagnostic ABI");
 __declspec(dllexport) DWORD WINAPI BridgeDiagnoseLoad(BridgeLoadDiagnostic *probe) {
     probe->stage = 1;
     probe->module = (uint64_t)(uintptr_t)probe->load(probe->path);
-    probe->error = probe->get_error();
+    probe->error = probe->module ? 0 : probe->get_error();
     if (!probe->module && probe->ldr_load) {
         struct { USHORT Length, MaximumLength; wchar_t *Buffer; } name;
         size_t count = 0;
@@ -226,6 +226,41 @@ __declspec(dllexport) DWORD WINAPI BridgeDiagnoseLoad(BridgeLoadDiagnostic *prob
     }
     probe->stage = 2;
     return 1;
+}
+
+/* SEC_IMAGE does not register .pdata with the loader.  Establish SEH before
+   re-entering the loader, and report manual registration independently. */
+typedef struct BridgeSafeLoadDiagnostic {
+    BridgeLoadDiagnostic load;
+    BOOLEAN (WINAPI *add_table)(PRUNTIME_FUNCTION,DWORD,DWORD64);
+    BOOLEAN (WINAPI *delete_table)(PRUNTIME_FUNCTION);
+    void *specific_handler;
+    PRUNTIME_FUNCTION table;
+    DWORD64 base;
+    DWORD count, registered, removed, exception_code;
+} BridgeSafeLoadDiagnostic;
+_Static_assert(sizeof(BridgeSafeLoadDiagnostic) == 112, "Safe loader diagnostic ABI");
+__declspec(dllexport) DWORD WINAPI BridgeDiagnoseLoadSafe(BridgeSafeLoadDiagnostic *p) {
+    BridgeCommand context;
+    DWORD result = 0;
+    memset(&context, 0, sizeof(context));
+    memset(&bridge_fault, 0, sizeof(bridge_fault));
+    if (!p || !p->add_table || !p->delete_table || !p->specific_handler ||
+        !p->table || !p->base || !p->count || !p->load.load || !p->load.get_error)
+        return 0;
+    context.specific_handler = p->specific_handler;
+    g_dispatch = &context;
+    p->registered = p->add_table(p->table, p->count, p->base);
+    if (!p->registered) { g_dispatch = NULL; return 0; }
+    __try {
+        result = BridgeDiagnoseLoad(&p->load);
+    } __except (BridgeExceptionFilter(GetExceptionInformation())) {
+        p->exception_code = GetExceptionCode();
+        p->load.stage = 3;
+    }
+    p->removed = p->delete_table(p->table);
+    g_dispatch = NULL;
+    return result;
 }
 
 /* Current-engine selection query. Included after BridgeCommand/g_dispatch. */

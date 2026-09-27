@@ -1,5 +1,12 @@
 /* Compiled only with BRIDGE_TEST; never included in the product DLL. */
 #include "war3_talent_icon_predicate.h"
+__declspec(dllexport) HMODULE WINAPI BridgeTestLoaderFault(LPCWSTR ignored) {
+    (void)ignored;
+    return (HMODULE)(uintptr_t)*(volatile uint64_t *)(uintptr_t)0x108;
+}
+__declspec(dllexport) DWORD WINAPI BridgeTestMappedImport(void *address) {
+    return BridgeEffectReadable((uint64_t)(uintptr_t)address, 8);
+}
 __declspec(dllexport) uint32_t BridgeTalentIconPredicateTest(uint32_t scenario){
     uint64_t owner_buffer[32]={0},unit_buffer[32]={0};
     uint64_t wrappers[2][32]={0},abilities[2][32]={0};

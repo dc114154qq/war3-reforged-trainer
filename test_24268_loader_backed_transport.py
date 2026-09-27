@@ -273,3 +273,25 @@ def test_dispatch_does_not_retry_when_resources_are_retained():
 
     assert result["same_route_retry"] == {"attempted": False}
     dispatch_once.assert_called_once()
+
+
+def test_both_install_routes_failing_never_counts_as_recovery():
+    # Reported external failure can survive a change of hook/message type.
+    # This is an injected failure, not a reproduction of the external SHIM.
+    def failed(*args, **kwargs):
+        return {
+            'route_attempt': kwargs['attempt'], 'safe_to_release': True,
+            'image_route': 'sec_image_fallback', 'callback_verified': False,
+            'query_completed': False,
+            'fault': {'code': '0xc0000005', 'address': '0x108'},
+            'after_cleanup': {'stage': 2, 'hook': 0, 'callback_tid': 0,
+                'callback_count': 0, 'query_stage': 0,
+                'bridge_install_trace': '0x105', 'last_error': 570,
+                'exception_code': '0xc0000005'},
+        }
+    with patch.object(transport, '_dispatch_once', side_effect=failed) as invoke:
+        result = transport.dispatch(1, 2, 3, None, 4, b'', kind='camera')
+    assert invoke.call_count == 2
+    assert not result['callback_verified'] and not result['query_completed']
+    assert result['fault']['address'] == '0x108'
+    assert result['same_route_retry']['first_attempt']['exception_code'] == '0xc0000005'

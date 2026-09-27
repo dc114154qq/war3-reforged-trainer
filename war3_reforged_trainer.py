@@ -52,7 +52,7 @@ APP_VERSION = "2.0.8"
 GAME_BUILD = "3.0.0.24268"
 PRODUCT_READ_MODE = "normal"
 PRODUCT_EDITION_LABEL = "普通读取版"
-WIN10_COMPAT_REVISION = "2.0.8-loader-recovery-imports-seh"
+WIN10_COMPAT_REVISION = "2.0.8-apphelp-native-hook-recovery"
 
 
 if sys.platform == "win32":

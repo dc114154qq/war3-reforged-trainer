@@ -110,7 +110,7 @@ def normalized_path(value):
 
 
 def can_release(completed, delivered, state):
-    return bool(completed and (not state['hook'] or
+    return bool(completed and state.get('active',0)==0 and (not state['hook'] or
         delivered and state['stage'] == 3 and state['detached'] and state['active'] == 0)
         and (not state.get('unwind_registered') or state.get('unwind_removed')))
 
@@ -300,7 +300,7 @@ def diagnose_mapped_loader(handle,entry,path,load,error,ldr_load,free_library, *
 
 
 
-def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt=1,delivery_mode=None):
+def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt=1,delivery_mode=None,hook_api='user32'):
     if kind=='talent_icon_control':
         from war3_talent_icon_control_protocol import ABI as expected_abi,validate_work as validate_icon
         validate_icon(work_payload);marker_name=b'talent_icon_control_abi';query_name=b'BridgeTalentIconControl'
@@ -409,7 +409,14 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
         delivery_mode = 'send'
     hook_kind = 3 if delivery_mode == 'posted' else 4
     hook_name = 'WH_GETMESSAGE' if delivery_mode == 'posted' else 'WH_CALLWNDPROC'
+    if hook_api not in ('user32','win32u'):
+        raise ValueError('Unsupported hook installer')
     pe=pefile.PE(str(image));exports={s.name:s.address for s in pe.DIRECTORY_ENTRY_EXPORT.symbols}
+    if hook_api=='win32u':
+        native_marker=exports.get(b'bridge_native_hook_abi')
+        if native_marker is None or pe.get_data(native_marker,12)!=struct.pack('<3I',0x24268049,216,6):
+            raise ValueError('Bridge lacks verified native hook installer ABI')
+        hook_kind |= 0x40000000
     marker=exports.get(marker_name)
     if marker is None or pe.get_data(marker,len(expected_abi))!=expected_abi:
         raise ValueError('24268 bridge ABI differs; rebuild the current-engine module')
@@ -425,6 +432,9 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
             'image_sha256':hashlib.sha256(image.read_bytes()).hexdigest(),
             'calls_game_handlers':True,'query_mode':query_mode,'delivery_mode':delivery_mode,
             'image_route':'target_loadlibrary','route_attempt':attempt}
+    report['hook_install_api']='NtUserSetWindowsHookEx' if hook_api=='win32u' else 'SetWindowsHookExW'
+    if hook_api=='win32u':
+        report['route_policy']='target_loader_or_SEC_IMAGE+NtUserSetWindowsHookEx+SendMessageTimeout'
     handle=file=section=block=thread=work=None
     load_path=None;memory=None
     image_base=0;remote_module=0;free_library_address=0
@@ -435,7 +445,8 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
         handle=p['open_process'](0x43a,False,pid)
         if not handle:raise c.WinError(c.get_last_error())
         memory=type('Memory',(),{'handle':handle,'pid':pid})()
-        addresses=[resolve(memory,lib,name) for lib,name in [('user32','SetWindowsHookExW'),
+        hook_export=('win32u','NtUserSetWindowsHookEx') if hook_api=='win32u' else ('user32','SetWindowsHookExW')
+        addresses=[resolve(memory,lib,name) for lib,name in [hook_export,
             ('user32','UnhookWindowsHookEx'),('user32','CallNextHookEx'),
             ('kernel32','GetCurrentThreadId'),('kernel32','GetLastError')]]
         sleep_address=resolve(memory,'kernel32','Sleep')
@@ -764,6 +775,8 @@ def _retryable_hook_install_failure(report):
         and state.get('stage') == 2 and not state.get('hook')
         and state.get('callback_count') == 0 and state.get('callback_tid') == 0
         and state.get('query_stage') == 0
+        and state.get('active',0) == 0
+        and (not state.get('unwind_registered') or state.get('unwind_removed'))
         and (trace in ('0x105','0x106') or state.get('last_error') in (126,))
     )
 
@@ -772,6 +785,9 @@ def _retry_summary(report):
     state=report.get('after_cleanup') or report.get('after_send') or {}
     return dict(
         route_attempt=report.get('route_attempt'),
+        image_route=report.get('image_route'),
+        hook_install_api=report.get('hook_install_api'),
+        image_unwind=report.get('image_unwind'),
         image_loader=report.get('image_loader'),
         bridge_install_trace=state.get('bridge_install_trace'),
         last_error=state.get('last_error'),
@@ -779,6 +795,23 @@ def _retry_summary(report):
         fault=report.get('fault'),
         safe_to_release=report.get('safe_to_release'),
     )
+
+
+def _apphelp_install_read_fault(report):
+    """Only recover the observed pre-callback SHIM null-read, after cleanup."""
+    if not _retryable_hook_install_failure(report):
+        return False
+    fault=report.get('fault') or {}
+    mapping=fault.get('instruction_mapping') or {}
+    name=str(mapping.get('mapped_file','')).replace('\\','/').lower().rsplit('/',1)[-1]
+    try:
+        address=int(str(fault.get('address','')),16)
+    except ValueError:
+        return False
+    return bool(report.get('image_route')=='sec_image_fallback' and name=='apphelp.dll'
+        and report.get('hook_install_api')!='NtUserSetWindowsHookEx'
+        and fault.get('code')=='0xc0000005' and fault.get('access')==0
+        and 0 <= address < 0x1000)
 
 
 def dispatch(pid,hwnd,tid,image,tls_index,work_payload,kind="hero"):
@@ -789,6 +822,13 @@ def dispatch(pid,hwnd,tid,image,tls_index,work_payload,kind="hero"):
     if not _retryable_hook_install_failure(first):
         first['same_route_retry']={'attempted':False}
         return first
+    if _apphelp_install_read_fault(first):
+        second=_dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind=kind,
+            attempt=2,delivery_mode='send',hook_api='win32u')
+        second['same_route_retry']={'attempted':True,
+            'reason':'clean_apphelp_install_read_fault',
+            'fallback_route':second.get('route_policy'),'first_attempt':_retry_summary(first)}
+        return second
     # Reinitialize only after the first route proved that no callback ran and
     # every resource was released. The compatibility route changes both the
     # hook delivery mechanism and message delivery; normal calls stay on the

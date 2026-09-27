@@ -44,6 +44,7 @@ class EngineExecutionError(RuntimeError):
             route=dispatch.get('image_route'), route_attempt=attempts,
             route_policy=dispatch.get('route_policy'),
             hook_kind=dispatch.get('hook_kind'),
+            hook_install_api=dispatch.get('hook_install_api'),
             message_delivery=dispatch.get('message_delivery'),
             hwnd=dispatch.get('hwnd'),
             expected_callback_tid=dispatch.get('expected_callback_tid'),

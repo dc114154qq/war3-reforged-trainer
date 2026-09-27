@@ -38,6 +38,9 @@ typedef struct BridgeCommand {
 } BridgeCommand;
 _Static_assert(sizeof(BridgeCommand) == 216, "BridgeCommand ABI");
 #define BRIDGE_PERSISTENT_HOOK 0x80000000u
+#define BRIDGE_NATIVE_HOOK 0x40000000u
+#define BRIDGE_HOOK_FLAGS (BRIDGE_PERSISTENT_HOOK | BRIDGE_NATIVE_HOOK)
+__declspec(dllexport) const uint32_t bridge_native_hook_abi[3]={0x24268049u,216u,6u};
 static BridgeCommand *g_dispatch;
 typedef EXCEPTION_DISPOSITION (*BridgeHandler)(PEXCEPTION_RECORD,void *,PCONTEXT,PDISPATCHER_CONTEXT);
 EXCEPTION_DISPOSITION BridgeSpecificHandler(PEXCEPTION_RECORD e,void *f,PCONTEXT c,PDISPATCHER_CONTEXT d) {
@@ -84,7 +87,7 @@ static LRESULT CALLBACK BridgeCallback(int code, WPARAM w, LPARAM l) {
     DWORD hook_kind;
     LRESULT result;
     if (!cmd) return 0;
-    hook_kind = cmd->hook_kind & ~BRIDGE_PERSISTENT_HOOK;
+    hook_kind = cmd->hook_kind & ~BRIDGE_HOOK_FLAGS;
     InterlockedIncrement(&cmd->active);
     if (code >= 0 && l) {
         HWND hwnd;
@@ -124,7 +127,7 @@ static LRESULT CALLBACK BridgeCallback(int code, WPARAM w, LPARAM l) {
 }
 
 __declspec(dllexport) DWORD WINAPI BridgeInstall(BridgeCommand *cmd) {
-    DWORD hook_kind = cmd->hook_kind & ~BRIDGE_PERSISTENT_HOOK;
+    DWORD hook_kind = cmd->hook_kind & ~BRIDGE_HOOK_FLAGS;
     memset(&bridge_fault, 0, sizeof(bridge_fault));
     InterlockedExchange(&cmd->stage, 1);
     cmd->query_result = 1; /* install entered */
@@ -161,11 +164,27 @@ __declspec(dllexport) DWORD WINAPI BridgeInstall(BridgeCommand *cmd) {
         HINSTANCE hook_module = cmd->unwind_count
             ? NULL
             : (HINSTANCE)(uintptr_t)cmd->image_base;
-        cmd->hook = cmd->set_hook(
-            hook_kind == WH_GETMESSAGE ? WH_GETMESSAGE : WH_CALLWNDPROC,
-            BridgeCallback,
-            hook_module,
-            cmd->target_tid);
+        if (cmd->hook_kind & BRIDGE_NATIVE_HOOK) {
+            /* Called inside the target process, for its already verified
+               window thread only. Mirror USER32's six-argument Unicode call
+               using the OS export; no hardcoded syscall number or OS patch. */
+            struct { USHORT length, maximum; wchar_t *buffer; } empty_name={0,0,NULL};
+            typedef HHOOK (WINAPI *NativeSetHook)(HINSTANCE,void *,DWORD,int,HOOKPROC,BOOL);
+            if (!cmd->target_tid || !cmd->set_hook ||
+                (hook_kind!=WH_GETMESSAGE && hook_kind!=WH_CALLWNDPROC)) {
+                cmd->last_error=ERROR_INVALID_PARAMETER;
+                cmd->hook=NULL;
+            } else {
+                cmd->hook=((NativeSetHook)(uintptr_t)cmd->set_hook)(
+                    NULL,&empty_name,cmd->target_tid,(int)hook_kind,BridgeCallback,FALSE);
+            }
+        } else {
+            cmd->hook = cmd->set_hook(
+                hook_kind == WH_GETMESSAGE ? WH_GETMESSAGE : WH_CALLWNDPROC,
+                BridgeCallback,
+                hook_module,
+                cmd->target_tid);
+        }
     } __except (BridgeExceptionFilter(GetExceptionInformation())) {
         cmd->exception_code = GetExceptionCode();
         cmd->last_error = cmd->get_error();

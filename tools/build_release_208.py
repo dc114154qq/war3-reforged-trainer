@@ -113,7 +113,7 @@ def inspect_exe(exe: Path, expected: dict[str, str] | None = None) -> dict[str, 
             raise RuntimeError(f"Packaged binary differs from compiled image: {name}")
     bridge = pefile.PE(data=archive.extract(PACKAGE_BINARIES[0]))
     exported = {s.name for s in bridge.DIRECTORY_ENTRY_EXPORT.symbols}
-    if b"BridgeDiagnoseLoadSafe" not in exported:
+    if not {b"BridgeDiagnoseLoadSafe", b"bridge_native_hook_abi"}.issubset(exported):
         raise RuntimeError("2.0.8 bundle contains a bridge without protected loader recovery")
     return bundled
 

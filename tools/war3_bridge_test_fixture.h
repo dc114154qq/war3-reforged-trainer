@@ -7,6 +7,10 @@ __declspec(dllexport) HMODULE WINAPI BridgeTestLoaderFault(LPCWSTR ignored) {
 __declspec(dllexport) DWORD WINAPI BridgeTestMappedImport(void *address) {
     return BridgeEffectReadable((uint64_t)(uintptr_t)address, 8);
 }
+__declspec(dllexport) HHOOK WINAPI BridgeTestShimInstallFault(int kind,HOOKPROC fn,HINSTANCE mod,DWORD tid) {
+    (void)kind;(void)fn;(void)mod;(void)tid;
+    return (HHOOK)(uintptr_t)*(volatile uint64_t *)(uintptr_t)0x108;
+}
 __declspec(dllexport) uint32_t BridgeTalentIconPredicateTest(uint32_t scenario){
     uint64_t owner_buffer[32]={0},unit_buffer[32]={0};
     uint64_t wrappers[2][32]={0},abilities[2][32]={0};

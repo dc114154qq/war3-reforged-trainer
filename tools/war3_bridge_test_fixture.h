@@ -11,6 +11,61 @@ __declspec(dllexport) HHOOK WINAPI BridgeTestShimInstallFault(int kind,HOOKPROC 
     (void)kind;(void)fn;(void)mod;(void)tid;
     return (HHOOK)(uintptr_t)*(volatile uint64_t *)(uintptr_t)0x108;
 }
+static uint32_t callback_test_scenario,callback_test_queries,callback_test_next;
+static DWORD WINAPI callback_test_tid(void){return 42;}
+static DWORD WINAPI callback_test_error(void){return 5;}
+static LPVOID WINAPI callback_test_tls(DWORD n){(void)n;return (LPVOID)0x10000;}
+static BOOL WINAPI callback_test_unhook(HHOOK h){(void)h;return callback_test_scenario!=8;}
+static uint64_t callback_test_query(void){
+    ++callback_test_queries;
+    if(callback_test_scenario==7)return *(volatile uint64_t *)(uintptr_t)0x108;
+    return 99;
+}
+static LRESULT WINAPI callback_test_forward(HHOOK h,int code,WPARAM w,LPARAM l){
+    (void)h;(void)code;(void)w;(void)l;++callback_test_next;
+    if(callback_test_scenario==0 || callback_test_scenario==4)
+        return *(volatile uint64_t *)(uintptr_t)0x108;
+    return 77;
+}
+__declspec(dllexport) uint32_t BridgeTestCallbackLifecycle(uint32_t scenario,uint32_t *out){
+    BridgeCommand cmd;CWPSTRUCT msg;MSG posted;LRESULT result;
+    memset(&cmd,0,sizeof(cmd));memset(&msg,0,sizeof(msg));memset(&posted,0,sizeof(posted));
+    memset(&bridge_callback_lifecycle,0,sizeof(bridge_callback_lifecycle));
+    memset(&bridge_fault,0,sizeof(bridge_fault));
+    callback_test_scenario=scenario;callback_test_queries=callback_test_next=0;
+    cmd.window=(HWND)0x10000;cmd.message=0xc123;cmd.nonce=123;cmd.stage=2;
+    cmd.target_tid=42;cmd.current_tid=callback_test_tid;cmd.get_error=callback_test_error;
+    cmd.get_tls=callback_test_tls;cmd.query=callback_test_query;cmd.next_hook=callback_test_forward;
+    cmd.hook=(HHOOK)1;cmd.unhook=callback_test_unhook;cmd.hook_kind=WH_CALLWNDPROC;
+    cmd.specific_handler=(void *)GetProcAddress(GetModuleHandleW(L"ntdll.dll"),"__C_specific_handler");
+    g_dispatch=&cmd;msg.hwnd=cmd.window;msg.message=cmd.message;msg.wParam=cmd.nonce;
+    if(scenario==1 || scenario==4)msg.message++;
+    if(scenario==3)msg.wParam++;
+    if(scenario==6){
+        cmd.hook_kind=WH_GETMESSAGE;posted.hwnd=cmd.window;posted.message=cmd.message;posted.wParam=cmd.nonce;
+        BridgeCallback(0,PM_NOREMOVE,(LPARAM)&posted);
+        result=BridgeCallback(0,PM_REMOVE,(LPARAM)&posted);
+    }else result=BridgeCallback(scenario==2?-1:0,0,scenario==2?1:(LPARAM)&msg);
+    if(scenario==5)BridgeCallback(0,0,(LPARAM)&msg);
+    out[0]=callback_test_queries;out[1]=callback_test_next;out[2]=cmd.active;out[3]=cmd.stage;
+    out[4]=cmd.query_stage;out[5]=cmd.detached;out[6]=cmd.exception_code;out[7]=cmd.callback_count;
+    out[8]=bridge_callback_lifecycle.callback_exits;out[9]=(uint32_t)result;
+    g_dispatch=NULL;return 0;
+}
+static DWORD WINAPI callback_test_release(void *argument){
+    Sleep(50);InterlockedExchange((volatile LONG *)argument,0);return 0;
+}
+__declspec(dllexport) DWORD BridgeTestCallbackDrain(DWORD stuck,DWORD *out){
+    BridgeCommand cmd;HANDLE thread=NULL;memset(&cmd,0,sizeof(cmd));
+    memset(&bridge_callback_lifecycle,0,sizeof(bridge_callback_lifecycle));
+    cmd.active=1;cmd.sleep_ms=Sleep;
+    if(!stuck)thread=CreateThread(NULL,0,callback_test_release,(void *)&cmd.active,0,NULL);
+    if(!stuck && !thread)return 1;
+    BridgeDrainCallbacks(&cmd);
+    out[0]=cmd.active;out[1]=bridge_callback_lifecycle.cleanup_wait_ms;
+    out[2]=bridge_callback_lifecycle.cleanup_timed_out;
+    if(thread){WaitForSingleObject(thread,1000);CloseHandle(thread);}return 0;
+}
 __declspec(dllexport) uint32_t BridgeTalentIconPredicateTest(uint32_t scenario){
     uint64_t owner_buffer[32]={0},unit_buffer[32]={0};
     uint64_t wrappers[2][32]={0},abilities[2][32]={0};

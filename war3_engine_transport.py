@@ -648,12 +648,20 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
         remote_thread_active=not completed
         report['install_thread']['completed']=completed
         state=fields(handle,block);report['after_cleanup']=state
+        if b'bridge_callback_lifecycle' in exports:
+            values=struct.unpack('<8I',bytes_at(handle,image_base+exports[b'bridge_callback_lifecycle'],32))
+            report['callback_lifecycle']=dict(zip(
+                ('phase','owned_messages','forwarded_messages','forward_exception',
+                 'cleanup_wait_ms','cleanup_timed_out','callback_exits','reserved'),values))
         if manual_mapped:
             report['image_unwind'].update(
                 registered_manually=bool(state.get('unwind_registered')),
                 removed=bool(state.get('unwind_removed')))
         safe=can_release(completed, delivered, state) and not remote_thread_active
-        report['callback_verified']=bool(safe and state['callback_tid']==tid and state['callback_count']==1)
+        report['callback_received']=bool(state['callback_tid']==tid and state['callback_count']==1)
+        report['callback_exited']=bool(report['callback_received'] and state['stage']==3 and state['active']==0)
+        report['cleanup_verified']=bool(safe)
+        report['callback_verified']=bool(safe and report['callback_received'])
         report['query_completed']=query_completed(state)
         if b'bridge_fault' in exports:
             report['fault']=decode_fault(bytes_at(handle,image_base+exports[b'bridge_fault'],96))
@@ -766,6 +774,7 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
         report['safe_to_release']=bool(
             safe and not remote_thread_active and module_unloaded and
             not load_path and not report.get('allocations_retained'))
+        report['cleanup_verified']=report['safe_to_release']
     return report
 def _retryable_hook_install_failure(report):
     state=report.get('after_cleanup') or report.get('after_send') or {}

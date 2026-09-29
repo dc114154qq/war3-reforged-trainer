@@ -28,7 +28,7 @@ Python 在会话作用域内取配置。C 默认结构由 `tools/generate_bridge
 
 `facade_binding.py` 只绑定随产品编译的现成函数到宿主的类型/API 命名空间，不读取、编译或执行适配包代码。这一过渡层保留已有测试替换点，后续可逐域改成显式依赖注入。
 
-搬迁时逐一比较 390 个方法的语法树，389 个函数体保留，另一个仅修复基线物品槽超时错误地重试生命值写入的问题。
+当前以已发布 2.0.9 核对 390 个搬迁方法：385 个方法语法树一致，5 个差异仅涉及共享会话、类型化物品身份、外部后端接入及物品槽超时不再错误重试生命值写入。全部 471 个原有方法的接口签名保留，28 个原生服务参数构造和快捷键定义一致。
 
 原有 API 保留历史分支用于已有诊断/测试调用；有 `GameSession` 的产品对象禁止进入旧 native helper；旧状态开关只是固定的兼容属性，不能改变当前会话后端。未被产品调用的持久钩子传输已移入 `diagnostics/`，历史 Native 索引仅按需导入。后续继续拆分门面时，应先用调用图和域测试证明分支无产品调用，不能直接删除诊断实现。
 
@@ -73,3 +73,49 @@ python tools/audit_game_architecture.py
 - 已发布工作树仍是 `70446ba` 且没有跟踪文件变更。本轮未构建 EXE、未发布、未写入游戏进程。
 
 仍需实际环境验收：完整界面链路的实机性能、新游戏构建语义、问题外机的当前版本运行日志，以及天赋/装备/技能的实际游戏效果。兼容门面的宿主命名空间绑定是保留现有接口的过渡层；后续新增功能应优先使用独立服务和类型化对象引用。
+
+## 2026-09-29：迁入 2.0.8 / 2.0.9 外机修复
+
+实验分支仍以 2.0.7 的 `70446ba` 为架构基线。本次按 `70446ba..873af71` 的完整修复差异迁移，覆盖 2.0.8 与 2.0.9，来源为已发布分支 `codex/war3-207-loader-fix-20260927`。没有迁入该分支的工作树规则、发布构建脚本、版本资源或发布产物。
+
+| 来源 | 已迁移内容 | 所属边界 |
+|---|---|---|
+| `4cdf133` / 2.0.8 | SEC_IMAGE 导入预检、IAT 初始化与页保护恢复；受异常保护的加载诊断、展开表及模块引用所有权 | 传输模块、C 桥 |
+| `3f6936f` / 2.0.8 | 仅在确认 apphelp 安装读异常、业务未执行且清理完成后，改用系统导出的原生钩子安装接口；不硬编码系统调用号、不修改系统兼容性设置 | 传输模块 |
+| `873af71` / 2.0.9 | 仅消费自身内部消息，正常转发其他消息；异常时退出回调计数；卸钩后有界等待回调退出，再移除展开表和释放资源；详细生命周期诊断 | C 桥、传输模块 |
+| 架构集成 | 将回调送达、退出、清理分开接入统一会话；显式失败不得被旧的成功字段覆盖；旧生命周期 ABI 在打开进程前被拒绝 | `GameSession`、原生执行后端 |
+
+21 个发布版传输辅助函数与 2.0.9 的语法树一致。派发入口保留模块化的 `prepare_operation`、进程身份检查、`GameProfile` 配置注入与读回，C 桥保留配置驱动对象解析。功能服务没有重新引入选路、偏移或私有会话状态；`UnitRef` / `ItemRef` 和快速外部读写后端保持原边界。
+
+用户随后指定实验版为 **2.1.0 测试版**：源码版本 `2.1.0`、发布通道 `beta`、界面显式标注“测试版”，诊断标识为 `2.1.0-beta-modular-private-callback-drain`。Windows 版本资源设置 prerelease 标记；独立的 `tools/build_release_210.py` / `War3ReforgedTrainer-2.1.0-beta.spec` 只用于本实验分支，历史发布构建器不改动。发布说明以 2.0.9 为功能对照，明确主要是代码结构优化、保留既有功能与兼容修复；发布时必须标为预发布，不替代稳定版。版本元数据和说明准备完成不等同于已构建或发布。
+
+新增 `test_modular_callback_integration.py`、发布修复的导入/备用路线/真实 C 回调测试；测试 DLL 统一编译到 `build/architecture-fixture` 与 `build/architecture-runtime`。`tools/verify_bridge_transport_runtime.py` 使用独立隐藏测试窗口，验证真实 Windows 安装、回调与资源清理；其占位业务由 TLS 检查拒绝，不能算作游戏功能验收。
+
+用户于 2026-09-29 反馈已发布 2.0.9 在该问题外机成功。本次未收到该成功运行的新日志，也未在外机运行实验分支；用户反馈、实验分支夹具结果、Windows 传输实测分别记录，不相互替代。
+
+### 本次迁移验证结果
+
+- 139 个测试模块独立运行：2579 passed、29 skipped、120 subtests passed，无失败。29 项仍是历史证据/旧 helper 前置条件缺失；定向 124 项包含在全量统计中，不重复相加。
+- 新编译的实验桥已通过 8 种真实 Windows 进程场景：正常加载、已有模块恢复、SEC_IMAGE、原生备用安装、已加载原生安装、无响应超时保护、回调尾部阻塞、首路真实异常后的备用安装。最后一项仅将异常模块归属替换为外机证据，不能当作本机复现了完整 apphelp 环境。
+- 改变测试适配包的对象表 RVA，在正常、备用与阻塞尾部三种路径下均完成配置写入/读回，并通过真实传输报告验证 `GameSession` 的送达、退出、清理状态；没有把占位业务标为读回或游戏效果已验证。
+- 同快照微基准相对 `70446ba`：冷对象解析中位数 +5.01%、P95 +4.57%；热解析 +4.81%/+5.75%；24 单位读取 +4.27%/+5.04%，满足 10% 阈值。
+- 架构依赖审计完成，公开服务仍经会话绑定；发布版桥接代码与实验配置扩展的差异已核对。
+- 本轮只编译测试/开发 DLL，没有构建 EXE、发布、修改游戏或改动发布工作树。实验分支游戏实测、外机实测未执行。
+
+传输场景可在已编译开发桥后复核：
+
+```powershell
+python tools/verify_bridge_transport_runtime.py build/architecture-runtime/war3_bridge_24268.dll normal
+python tools/verify_bridge_transport_runtime.py build/architecture-runtime/war3_bridge_24268.dll native
+python tools/verify_bridge_transport_runtime.py build/architecture-runtime/war3_bridge_24268.dll tail_block
+python tools/verify_bridge_transport_runtime.py build/architecture-runtime/war3_bridge_24268.dll native_timeout
+python tools/verify_bridge_transport_runtime.py build/architecture-fixture/engine-hero-fixture.dll recovery_fault
+```
+
+### 2.1.0 测试版最终自检
+
+版本及说明准备完成后重新运行全量测试：**141 个模块，2591 passed、29 skipped、120 subtests passed，无失败**。先前 139 模块及定向运行的结果被本次覆盖，不重复累计。
+
+`test_release209_equivalence.py` 固定对照已发布提交 `873af7140f6af95f826565d8ae0397f840022b32`，检查 471 个方法签名、390 个搬迁方法的已审差异、28 个原生服务及快捷键。`test_beta_release_contract.py` 检查测试版标识、发布清单、动态协议收集及缺少配置/服务/协议/预发布标记时的构建验收拒绝。新增测试版标签的英文翻译遗漏已修复并通过回归。
+
+发布说明为 `RELEASE_NOTES_v2.1.0-beta.md`。当前交付的是已提交的实验分支源码、开发 DLL、构建配置和待发布说明；EXE 构建及发布未执行。授权构建后在本工作树运行 `python tools/build_release_210.py`，产物必须通过 `python tools/build_release_210.py --verify-only` 及 EXE 自检，再按测试版发布。

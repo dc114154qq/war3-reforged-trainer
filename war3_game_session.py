@@ -106,6 +106,7 @@ class OperationEvidence:
     effect_verified: bool = False
     cleanup_complete: bool = False
     uncertain: bool = False
+    callback_exited: bool = False
 
 
 def process_creation(memory):
@@ -308,6 +309,8 @@ class GameSession:
     def finish(self, dispatch, readback=False):
         cleanup = bool(
             not dispatch.get("allocations_retained")
+            and dispatch.get("cleanup_verified") is not False
+            and dispatch.get("safe_to_release") is not False
             and (
                 dispatch.get("work_freed")
                 and dispatch.get("block_freed")
@@ -317,19 +320,21 @@ class GameSession:
                 and dispatch.get("block_freed") is not False
             )
         )
-        state = dispatch.get("after_send") or dispatch.get("after_cleanup") or {}
-        began = bool(
-            state.get("callback_count")
-            or state.get("query_stage")
-            or dispatch.get("callback_verified")
-        )
+        state = dispatch.get("after_cleanup") or dispatch.get("after_send") or {}
+        # Receipt is distinct from callback exit and resource release. Legacy
+        # fixture reports may only carry callback_verified; an explicit new
+        # lifecycle result always takes precedence over that compatibility key.
+        delivered = bool(dispatch.get("callback_received", dispatch.get("callback_verified")))
+        exited = bool(dispatch.get("callback_exited", dispatch.get("callback_verified")))
+        began = bool(state.get("callback_count") or state.get("query_stage") or delivered)
         completed = bool(dispatch.get("query_completed"))
         self.last_evidence = OperationEvidence(
-            bool(dispatch.get("callback_verified")),
-            bool(readback),
-            False,
-            cleanup,
-            bool(began and not completed or not cleanup),
+            delivered=delivered,
+            readback_verified=bool(readback and delivered and completed),
+            effect_verified=False,
+            cleanup_complete=cleanup,
+            uncertain=bool(began and (not completed or not exited) or not cleanup),
+            callback_exited=exited,
         )
         if self.last_evidence.uncertain:
             self.uncertain = True

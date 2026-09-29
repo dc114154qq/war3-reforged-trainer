@@ -111,7 +111,7 @@ def normalized_path(value):
 
 
 def can_release(completed, delivered, state):
-    return bool(completed and (not state['hook'] or
+    return bool(completed and state.get('active',0)==0 and (not state['hook'] or
         delivered and state['stage'] == 3 and state['detached'] and state['active'] == 0)
         and (not state.get('unwind_registered') or state.get('unwind_removed')))
 
@@ -201,38 +201,107 @@ def target_mitigation_policies(handle):
     return policies
 
 
-def diagnose_mapped_loader(handle,entry,path,load,error,ldr_load,free_library):
-    block=p['alloc'](handle,None,56,0x3000,4)
+def initialize_mapped_imports(memory, image_base, pe):
+    """Bind only existing Windows dependencies, before executing mapped code.
+
+    SEC_IMAGE maps sections but does not run the loader's import fixups.
+    Make only each IAT slot writable, then restore its original protection.
+    Do not change apphelp, game code, or process mitigation policies.
+    """
+    if getattr(pe, 'DIRECTORY_ENTRY_DELAY_IMPORT', ()):
+        raise RuntimeError('Mapped bridge delay imports are unsupported')
+    plan = []
+    image_size = int(pe.OPTIONAL_HEADER.SizeOfImage)
+    preferred_base = int(pe.OPTIONAL_HEADER.ImageBase)
+    seen = set()
+    for descriptor in getattr(pe, 'DIRECTORY_ENTRY_IMPORT', ()):
+        library = descriptor.dll.decode('ascii')
+        if library.lower() not in ('kernel32.dll', 'ntdll.dll', 'user32.dll'):
+            raise RuntimeError('Mapped bridge dependency is unsupported: ' + library)
+        for item in descriptor.imports:
+            rva = int(item.address) - preferred_base
+            if not item.name or rva < 0 or rva + 8 > image_size or rva % 8 or rva in seen:
+                raise RuntimeError('Invalid mapped bridge import slot')
+            seen.add(rva)
+            name = item.name.decode('ascii')
+            # Resolve the export in the target, never copy a local function pointer.
+            target = resolve(memory, library, name)
+            plan.append((image_base+rva, target, library, name))
+    protect = api(k, 'VirtualProtectEx', c.c_int, P, P, Z, U, c.POINTER(U))
+    result = []
+    for slot, target, library, name in plan:
+        original = U()
+        if not protect(memory.handle, slot, 8, 4, c.byref(original)):
+            raise c.WinError(c.get_last_error())
+        try:
+            value = c.c_ulonglong(target); written = Z()
+            if not p['write'](memory.handle, slot, c.byref(value), 8, c.byref(written)) or written.value != 8:
+                raise RuntimeError('Incomplete mapped bridge import write: '+name)
+            if p['bytes_at'](memory.handle, slot, 8) != struct.pack('<Q', target):
+                raise RuntimeError('Mapped bridge import readback differs: '+name)
+        finally:
+            ignored = U()
+            if not protect(memory.handle, slot, 8, original.value, c.byref(ignored)):
+                raise RuntimeError('Mapped bridge IAT protection restore failed: '+name)
+        result.append({'library':library, 'name':name, 'slot':hex(slot),
+                       'target':hex(target), 'original_protect':hex(original.value),
+                       'readback_verified':True, 'protection_restored':True})
+    return result
+
+
+def diagnose_mapped_loader(handle,entry,path,load,error,ldr_load,free_library, *, unwind=None, keep_loaded=False):
+    size = 112 if unwind else 56
+    block=p['alloc'](handle,None,size,0x3000,4)
     if not block:raise c.WinError(c.get_last_error())
     completed=False;started=False
+    result={}
     try:
-        value=c.create_string_buffer(struct.pack('<4QIIQi4x',path,load,error,0,0,0,ldr_load,0),56)
+        payload = struct.pack('<4QIIQi4x',path,load,error,0,0,0,ldr_load,0)
+        if unwind:
+            payload += struct.pack('<5Q4I', *unwind, 0, 0, 0)
+        value=c.create_string_buffer(payload,size)
         written=Z()
-        if not p['write'](handle,block,value,56,c.byref(written)) or written.value!=56:
+        if not p['write'](handle,block,value,size,c.byref(written)) or written.value!=size:
             raise c.WinError(c.get_last_error())
         started=True
         exit_code,tid=remote_thread_call(handle,entry,block,5000)
         completed=True
-        data=p['bytes_at'](handle,block,56)
+        data=p['bytes_at'](handle,block,size)
         module,last_error,stage=struct.unpack_from('<QII',data,24)
         ntstatus=struct.unpack_from('<I',data,48)[0]
         result={'thread_id':tid,'exit_code':hex(exit_code),'module':hex(module),
                 'last_error':last_error,'ldr_status':hex(ntstatus),
                 'stage':stage,'completed':exit_code==1 and stage==2}
-        if module:
+        if unwind:
+            count, registered, removed, exception = struct.unpack_from('<4I',data,96)
+            result['unwind'] = {'count':count, 'registered_manually':bool(registered),
+                                'removed':bool(removed), 'exception_code':hex(exception)}
+            result['completed'] = bool(result['completed'] and registered and removed and not exception)
+            result['image_must_remain_mapped'] = bool(registered and not removed)
+        if module and keep_loaded and result['completed']:
+            result['ownership_transferred'] = True
+        elif module:
             try:
                 result['cleanup']=remote_free_library(type('Memory',(),{'handle':handle})(),module,free_library)
             except Exception as exc:
                 result['cleanup_error']=repr(exc)
         return result
     except Exception as exc:
-        return {'completed':False,'error':repr(exc),'allocations_retained':started and not completed}
+        result.update(completed=False,error=repr(exc),allocations_retained=started and not completed)
+        return result
     finally:
-        if completed or not started:p['free'](handle,block,0,0x8000)
+        if completed or not started:
+            try:
+                result['command_freed']=bool(p['free'](handle,block,0,0x8000))
+            except Exception as exc:
+                result['command_freed']=False
+                result['command_free_error']=repr(exc)
+            if not result['command_freed']:
+                result['allocations_retained']=True
 
 
 
-def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt=1,delivery_mode=None):
+def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt=1,delivery_mode=None,hook_api='user32'):
     from war3_operations import prepare_operation
     expected_abi,marker_name,query_name=prepare_operation(kind,work_payload)
     owner=U()
@@ -247,7 +316,14 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
         delivery_mode = 'send'
     hook_kind = 3 if delivery_mode == 'posted' else 4
     hook_name = 'WH_GETMESSAGE' if delivery_mode == 'posted' else 'WH_CALLWNDPROC'
+    if hook_api not in ('user32','win32u'):
+        raise ValueError('Unsupported hook installer')
     pe=pefile.PE(str(image));exports={s.name:s.address for s in pe.DIRECTORY_ENTRY_EXPORT.symbols}
+    if hook_api=='win32u':
+        native_marker=exports.get(b'bridge_native_hook_abi')
+        if native_marker is None or pe.get_data(native_marker,12)!=struct.pack('<3I',0x24268049,216,6):
+            raise ValueError('Bridge lacks verified native hook installer ABI')
+        hook_kind |= 0x40000000
     marker=exports.get(marker_name)
     if marker is None or pe.get_data(marker,len(expected_abi))!=expected_abi:
         raise ValueError('24268 bridge ABI differs; rebuild the current-engine module')
@@ -258,6 +334,10 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
     if (profile_rva is None or profile_marker is None
             or pe.get_data(profile_marker, 8) != profile_payload[:8]):
         raise ValueError('Bridge profile ABI differs; use a bridge built for this architecture')
+    lifecycle_marker = exports.get(b'bridge_callback_lifecycle_abi')
+    if (lifecycle_marker is None or b'bridge_callback_lifecycle' not in exports
+            or pe.get_data(lifecycle_marker, 12) != struct.pack('<3I', 0x2426804a, 216, 32)):
+        raise ValueError('Bridge callback lifecycle ABI differs; rebuild the architecture bridge')
     install_rva=exports[b'BridgeInstall'];uninstall_rva=exports[b'BridgeUninstall']
     report={'pid':pid,'hwnd':hex(hwnd),'expected_callback_tid':tid,
             'target_window':{'hwnd':hex(hwnd),'pid':pid,'thread_id':tid},
@@ -270,6 +350,9 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
             'image_sha256':hashlib.sha256(image.read_bytes()).hexdigest(),
             'calls_game_handlers':True,'query_mode':query_mode,'delivery_mode':delivery_mode,
             'image_route':'target_loadlibrary','route_attempt':attempt}
+    report['hook_install_api']='NtUserSetWindowsHookEx' if hook_api=='win32u' else 'SetWindowsHookExW'
+    if hook_api=='win32u':
+        report['route_policy']='target_loader_or_SEC_IMAGE+NtUserSetWindowsHookEx+SendMessageTimeout'
     handle=file=section=block=thread=work=None
     load_path=None;memory=None
     image_base=0;remote_module=0;free_library_address=0
@@ -282,7 +365,8 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
         memory=type('Memory',(),{'handle':handle,'pid':pid})()
         from war3_game_session import verify_opened_process
         verify_opened_process(memory)
-        addresses=[resolve(memory,lib,name) for lib,name in [('user32','SetWindowsHookExW'),
+        hook_export=('win32u','NtUserSetWindowsHookEx') if hook_api=='win32u' else ('user32','SetWindowsHookExW')
+        addresses=[resolve(memory,lib,name) for lib,name in [hook_export,
             ('user32','UnhookWindowsHookEx'),('user32','CallNextHookEx'),
             ('kernel32','GetCurrentThreadId'),('kernel32','GetLastError')]]
         sleep_address=resolve(memory,'kernel32','Sleep')
@@ -338,23 +422,57 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
             report['image_route']='sec_image_fallback'
             report['image_map']={'method':'NtMapViewOfSection','status':hex(status & 0xffffffff),
                                  'size':int(size.value),'completed':True}
-            diagnostic_rva=exports.get(b'BridgeDiagnoseLoad')
+            report['mapped_imports'] = initialize_mapped_imports(memory, image_base, pe)
+            diagnostic_rva=exports.get(b'BridgeDiagnoseLoadSafe')
             if diagnostic_rva:
+                directory=pe.OPTIONAL_HEADER.DATA_DIRECTORY[3]
+                if not directory.Size or directory.Size % 12:
+                    raise RuntimeError('Unwind table missing before loader diagnostic')
                 diagnostic=diagnose_mapped_loader(
                     handle,image_base+diagnostic_rva,load_path,load_library_address,
-                    addresses[4],resolve(memory,'ntdll','LdrLoadDll'),free_library_address)
+                    addresses[4],resolve(memory,'ntdll','LdrLoadDll'),free_library_address,
+                    unwind=(resolve(memory,'ntdll','RtlAddFunctionTable'),
+                            resolve(memory,'ntdll','RtlDeleteFunctionTable'),
+                            resolve(memory,'ntdll','__C_specific_handler'),
+                            image_base+directory.VirtualAddress,image_base,directory.Size//12),
+                    keep_loaded=True)
                 report['image_loader']['diagnostic']=diagnostic
-                if diagnostic.get('allocations_retained') or diagnostic.get('module') not in (None,'0x0') and not diagnostic.get('cleanup',{}).get('unloaded'):
+                if diagnostic.get('ownership_transferred'):
+                    remote_module=int(diagnostic['module'],16)
+                    loader_succeeded=True
+                if diagnostic.get('allocations_retained') or diagnostic.get('image_must_remain_mapped') or diagnostic.get('module') not in (None,'0x0') and not diagnostic.get('ownership_transferred') and not diagnostic.get('cleanup',{}).get('unloaded'):
                     remote_thread_active=True
                     loader_completed=False
                     safe=False
                     raise RuntimeError('Remote loader diagnostic resources must remain allocated')
+                if not diagnostic.get('completed'):
+                    if b'bridge_fault' in exports:
+                        report['fault']=decode_fault(bytes_at(handle,image_base+exports[b'bridge_fault'],96))
+                    raise RuntimeError('Protected loader diagnostic failed; no business callback executed')
+                if remote_module:
+                    # A successful LdrLoadDll result is a loader-owned image.
+                    # Do not unload it only to install a hook from the manual map.
+                    status=int(x['unmap_section'](handle,view)) & 0xffffffff
+                    report['diagnostic_image_unmap_status']=hex(status)
+                    if status:
+                        safe=False
+                        raise RuntimeError('Protected loader diagnostic image could not be released')
+                    manual_mapped=False
+                    view=P()
+                    image_base=remote_module
+                    report['image_route']='target_loader_recovered'
+            else:
+                report['image_loader']['diagnostic']={'skipped':True,
+                    'reason':'bridge_has_no_protected_loader_diagnostic'}
         else:
             report['image_route']='target_loadlibrary'
         # module_base caches the initial module list while resolving the API
         # addresses above; force a fresh snapshot after LoadLibraryW.
         if not manual_mapped:
-            image_base=h['module_base'](memory,image.name,refresh=True) or 0
+            observed_base=h['module_base'](memory,image.name,refresh=True) or 0
+            if remote_module and observed_base != remote_module:
+                raise RuntimeError('Recovered module does not match target module list')
+            image_base=observed_base
             if not image_base:
                 safe=False
                 raise RuntimeError('Target loader returned but bridge module is absent from the target module list')
@@ -458,13 +576,32 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
         remote_thread_active=not completed
         report['install_thread']['completed']=completed
         state=fields(handle,block);report['after_cleanup']=state
+        if b'bridge_callback_lifecycle' in exports:
+            values=struct.unpack('<8I',bytes_at(handle,image_base+exports[b'bridge_callback_lifecycle'],32))
+            report['callback_lifecycle']=dict(zip(
+                ('phase','owned_messages','forwarded_messages','forward_exception',
+                 'cleanup_wait_ms','cleanup_timed_out','callback_exits','reserved'),values))
+        if manual_mapped:
+            report['image_unwind'].update(
+                registered_manually=bool(state.get('unwind_registered')),
+                removed=bool(state.get('unwind_removed')))
         safe=can_release(completed, delivered, state) and not remote_thread_active
-        report['callback_verified']=bool(safe and state['callback_tid']==tid and state['callback_count']==1)
+        report['callback_received']=bool(state['callback_tid']==tid and state['callback_count']==1)
+        report['callback_exited']=bool(report['callback_received'] and state['stage']==3 and state['active']==0)
+        report['cleanup_verified']=bool(safe)
+        report['callback_verified']=bool(safe and report['callback_received'])
         report['query_completed']=query_completed(state)
         if b'bridge_fault' in exports:
             report['fault']=decode_fault(bytes_at(handle,image_base+exports[b'bridge_fault'],96))
             if report['fault']:
                 report['fault']['instruction_mapping']=describe_fault_instruction(handle,report['fault'])
+                report['fault']['access_address_mapping']=describe_fault_instruction(
+                    handle, {'instruction':report['fault']['address']})
+                report['fault']['access_kind']={0:'read',1:'write',8:'execute'}.get(report['fault']['access'],'unknown')
+                address=int(report['fault']['address'],16)
+                iat=pe.OPTIONAL_HEADER.DATA_DIRECTORY[12]
+                report['fault']['access_in_bridge_iat']=bool(
+                    iat.Size and image_base+iat.VirtualAddress <= address < image_base+iat.VirtualAddress+iat.Size)
         if b'bridge_recovered_faults' in exports:
             report['recovered_tail_faults']=struct.unpack('<I',bytes_at(handle,image_base+exports[b'bridge_recovered_faults'],4))[0]
         if work:report['work_result_hex']=p['bytes_at'](handle,work,len(work_payload)).hex()
@@ -565,6 +702,7 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
         report['safe_to_release']=bool(
             safe and not remote_thread_active and module_unloaded and
             not load_path and not report.get('allocations_retained'))
+        report['cleanup_verified']=report['safe_to_release']
     return report
 def _retryable_hook_install_failure(report):
     state=report.get('after_cleanup') or report.get('after_send') or {}
@@ -574,6 +712,8 @@ def _retryable_hook_install_failure(report):
         and state.get('stage') == 2 and not state.get('hook')
         and state.get('callback_count') == 0 and state.get('callback_tid') == 0
         and state.get('query_stage') == 0
+        and state.get('active',0) == 0
+        and (not state.get('unwind_registered') or state.get('unwind_removed'))
         and (trace in ('0x105','0x106') or state.get('last_error') in (126,))
     )
 
@@ -582,6 +722,9 @@ def _retry_summary(report):
     state=report.get('after_cleanup') or report.get('after_send') or {}
     return dict(
         route_attempt=report.get('route_attempt'),
+        image_route=report.get('image_route'),
+        hook_install_api=report.get('hook_install_api'),
+        image_unwind=report.get('image_unwind'),
         image_loader=report.get('image_loader'),
         bridge_install_trace=state.get('bridge_install_trace'),
         last_error=state.get('last_error'),
@@ -589,6 +732,23 @@ def _retry_summary(report):
         fault=report.get('fault'),
         safe_to_release=report.get('safe_to_release'),
     )
+
+
+def _apphelp_install_read_fault(report):
+    """Only recover the observed pre-callback SHIM null-read, after cleanup."""
+    if not _retryable_hook_install_failure(report):
+        return False
+    fault=report.get('fault') or {}
+    mapping=fault.get('instruction_mapping') or {}
+    name=str(mapping.get('mapped_file','')).replace('\\','/').lower().rsplit('/',1)[-1]
+    try:
+        address=int(str(fault.get('address','')),16)
+    except ValueError:
+        return False
+    return bool(report.get('image_route')=='sec_image_fallback' and name=='apphelp.dll'
+        and report.get('hook_install_api')!='NtUserSetWindowsHookEx'
+        and fault.get('code')=='0xc0000005' and fault.get('access')==0
+        and 0 <= address < 0x1000)
 
 
 def dispatch(pid,hwnd,tid,image,tls_index,work_payload,kind="hero"):
@@ -599,6 +759,13 @@ def dispatch(pid,hwnd,tid,image,tls_index,work_payload,kind="hero"):
     if not _retryable_hook_install_failure(first):
         first['same_route_retry']={'attempted':False}
         return first
+    if _apphelp_install_read_fault(first):
+        second=_dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind=kind,
+            attempt=2,delivery_mode='send',hook_api='win32u')
+        second['same_route_retry']={'attempted':True,
+            'reason':'clean_apphelp_install_read_fault',
+            'fallback_route':second.get('route_policy'),'first_attempt':_retry_summary(first)}
+        return second
     # Reinitialize only after the first route proved that no callback ran and
     # every resource was released. The compatibility route changes both the
     # hook delivery mechanism and message delivery; normal calls stay on the

@@ -40,6 +40,9 @@ typedef struct BridgeCommand {
 } BridgeCommand;
 _Static_assert(sizeof(BridgeCommand) == 216, "BridgeCommand ABI");
 #define BRIDGE_PERSISTENT_HOOK 0x80000000u
+#define BRIDGE_NATIVE_HOOK 0x40000000u
+#define BRIDGE_HOOK_FLAGS (BRIDGE_PERSISTENT_HOOK | BRIDGE_NATIVE_HOOK)
+__declspec(dllexport) const uint32_t bridge_native_hook_abi[3]={0x24268049u,216u,6u};
 static BridgeCommand *g_dispatch;
 typedef EXCEPTION_DISPOSITION (*BridgeHandler)(PEXCEPTION_RECORD,void *,PCONTEXT,PDISPATCHER_CONTEXT);
 EXCEPTION_DISPOSITION BridgeSpecificHandler(PEXCEPTION_RECORD e,void *f,PCONTEXT c,PDISPATCHER_CONTEXT d) {
@@ -81,53 +84,100 @@ static void BridgeDetach(BridgeCommand *cmd) {
     cmd->last_error = error;
 }
 
+typedef struct BridgeCallbackLifecycle {
+    volatile LONG phase, owned_messages, forwarded_messages, forward_exception;
+    DWORD cleanup_wait_ms, cleanup_timed_out;
+    volatile LONG callback_exits;
+    DWORD reserved;
+} BridgeCallbackLifecycle;
+_Static_assert(sizeof(BridgeCallbackLifecycle)==32,"Callback lifecycle ABI");
+__declspec(dllexport) const uint32_t bridge_callback_lifecycle_abi[3]={0x2426804au,216u,32u};
+__declspec(dllexport) BridgeCallbackLifecycle bridge_callback_lifecycle;
+
 static LRESULT CALLBACK BridgeCallback(int code, WPARAM w, LPARAM l) {
     BridgeCommand *cmd = g_dispatch;
     DWORD hook_kind;
-    LRESULT result;
+    LRESULT result = 0;
+    int owned = 0, completed = 0;
     if (!cmd) return 0;
-    hook_kind = cmd->hook_kind & ~BRIDGE_PERSISTENT_HOOK;
+    hook_kind = cmd->hook_kind & ~BRIDGE_HOOK_FLAGS;
     InterlockedIncrement(&cmd->active);
-    if (code >= 0 && l) {
-        HWND hwnd;
-        UINT message;
-        WPARAM nonce;
-        if (hook_kind == WH_GETMESSAGE) {
-            const MSG *msg=(const MSG *)l;
-            hwnd=msg->hwnd;message=msg->message;nonce=msg->wParam;
-        } else {
-            const CWPSTRUCT *msg=(const CWPSTRUCT *)l;
-            hwnd=msg->hwnd;message=msg->message;nonce=msg->wParam;
-        }
-        if (hwnd == cmd->window && message == cmd->message && nonce == cmd->nonce &&
-            cmd->stage == 2 && (hook_kind != WH_GETMESSAGE || w == PM_REMOVE)) {
-            cmd->callback_tid = cmd->current_tid();
-            InterlockedIncrement(&cmd->callback_count);
-            __try {
-                cmd->tls_value = cmd->get_tls(cmd->tls_index);
-                if (cmd->query) {
-                    cmd->query_stage = 1;
-                    cmd->query_result = cmd->query();
-                    cmd->query_stage = 2;
+    __try {
+        __try {
+            bridge_callback_lifecycle.phase=1;
+            if (code >= 0 && l) {
+                HWND hwnd;
+                UINT message;
+                WPARAM nonce;
+                if (hook_kind == WH_GETMESSAGE) {
+                    const MSG *msg=(const MSG *)l;
+                    hwnd=msg->hwnd;message=msg->message;nonce=msg->wParam;
+                } else {
+                    const CWPSTRUCT *msg=(const CWPSTRUCT *)l;
+                    hwnd=msg->hwnd;message=msg->message;nonce=msg->wParam;
                 }
-            } __except (BridgeExceptionFilter(GetExceptionInformation())) {
-                cmd->exception_code = GetExceptionCode();
-                cmd->query_stage = 3;
+                owned = hwnd==cmd->window && message==cmd->message && nonce==cmd->nonce;
+                if (owned && cmd->stage==2 &&
+                    (hook_kind!=WH_GETMESSAGE || w==PM_REMOVE)) {
+                    cmd->callback_tid=cmd->current_tid();
+                    InterlockedIncrement(&cmd->callback_count);
+                    InterlockedIncrement(&bridge_callback_lifecycle.owned_messages);
+                    bridge_callback_lifecycle.phase=2;
+                    __try {
+                        cmd->tls_value=cmd->get_tls(cmd->tls_index);
+                        if (cmd->query) {
+                            cmd->query_stage=1;
+                            cmd->query_result=cmd->query();
+                            cmd->query_stage=2;
+                        }
+                    } __except (BridgeExceptionFilter(GetExceptionInformation())) {
+                        cmd->exception_code=GetExceptionCode();
+                        cmd->query_stage=3;
+                    }
+                    bridge_callback_lifecycle.phase=3;
+                    if (!(cmd->hook_kind & BRIDGE_PERSISTENT_HOOK)) BridgeDetach(cmd);
+                    completed=1;
+                }
             }
-            if (!(cmd->hook_kind & BRIDGE_PERSISTENT_HOOK)) {
-                BridgeDetach(cmd);
+            /* Consume only our registered private message with matching HWND
+               and nonce. Its query has completed; forwarding it after detach
+               needlessly re-enters foreign hooks/SHIM code. Negative hook
+               codes and all unrelated messages still traverse the hook chain. */
+            if (!owned) {
+                bridge_callback_lifecycle.phase=4;
+                InterlockedIncrement(&bridge_callback_lifecycle.forwarded_messages);
+                result=cmd->next_hook(NULL,code,w,l);
+                bridge_callback_lifecycle.phase=5;
             }
-            InterlockedExchange(&cmd->stage, 3);
+        } __except (BridgeExceptionFilter(GetExceptionInformation())) {
+            cmd->exception_code=GetExceptionCode();
+            bridge_callback_lifecycle.forward_exception=GetExceptionCode();
+            bridge_callback_lifecycle.phase=6;
         }
+    } __finally {
+        InterlockedIncrement(&bridge_callback_lifecycle.callback_exits);
+        InterlockedDecrement(&cmd->active);
+        if (completed) InterlockedExchange(&cmd->stage,3);
     }
-    result = cmd->next_hook(NULL, code, w, l);
-    InterlockedDecrement(&cmd->active);
     return result;
 }
 
+static void BridgeDrainCallbacks(BridgeCommand *cmd) {
+    ULONGLONG start=GetTickCount64();
+    while (InterlockedCompareExchange(&cmd->active,0,0)!=0) {
+        if (GetTickCount64()-start>=500) {
+            bridge_callback_lifecycle.cleanup_timed_out=1;
+            break;
+        }
+        cmd->sleep_ms(1);
+    }
+    bridge_callback_lifecycle.cleanup_wait_ms=(DWORD)(GetTickCount64()-start);
+}
+
 __declspec(dllexport) DWORD WINAPI BridgeInstall(BridgeCommand *cmd) {
-    DWORD hook_kind = cmd->hook_kind & ~BRIDGE_PERSISTENT_HOOK;
+    DWORD hook_kind = cmd->hook_kind & ~BRIDGE_HOOK_FLAGS;
     memset(&bridge_fault, 0, sizeof(bridge_fault));
+    memset(&bridge_callback_lifecycle,0,sizeof(bridge_callback_lifecycle));
     InterlockedExchange(&cmd->stage, 1);
     cmd->query_result = 1; /* install entered */
     g_dispatch = cmd;
@@ -163,11 +213,27 @@ __declspec(dllexport) DWORD WINAPI BridgeInstall(BridgeCommand *cmd) {
         HINSTANCE hook_module = cmd->unwind_count
             ? NULL
             : (HINSTANCE)(uintptr_t)cmd->image_base;
-        cmd->hook = cmd->set_hook(
-            hook_kind == WH_GETMESSAGE ? WH_GETMESSAGE : WH_CALLWNDPROC,
-            BridgeCallback,
-            hook_module,
-            cmd->target_tid);
+        if (cmd->hook_kind & BRIDGE_NATIVE_HOOK) {
+            /* Called inside the target process, for its already verified
+               window thread only. Mirror USER32's six-argument Unicode call
+               using the OS export; no hardcoded syscall number or OS patch. */
+            struct { USHORT length, maximum; wchar_t *buffer; } empty_name={0,0,NULL};
+            typedef HHOOK (WINAPI *NativeSetHook)(HINSTANCE,void *,DWORD,int,HOOKPROC,BOOL);
+            if (!cmd->target_tid || !cmd->set_hook ||
+                (hook_kind!=WH_GETMESSAGE && hook_kind!=WH_CALLWNDPROC)) {
+                cmd->last_error=ERROR_INVALID_PARAMETER;
+                cmd->hook=NULL;
+            } else {
+                cmd->hook=((NativeSetHook)(uintptr_t)cmd->set_hook)(
+                    NULL,&empty_name,cmd->target_tid,(int)hook_kind,BridgeCallback,FALSE);
+            }
+        } else {
+            cmd->hook = cmd->set_hook(
+                hook_kind == WH_GETMESSAGE ? WH_GETMESSAGE : WH_CALLWNDPROC,
+                BridgeCallback,
+                hook_module,
+                cmd->target_tid);
+        }
     } __except (BridgeExceptionFilter(GetExceptionInformation())) {
         cmd->exception_code = GetExceptionCode();
         cmd->last_error = cmd->get_error();
@@ -185,6 +251,7 @@ __declspec(dllexport) DWORD WINAPI BridgeInstall(BridgeCommand *cmd) {
     if (cmd->hook) {
         while (!cmd->stop_requested) cmd->sleep_ms(1);
         BridgeDetach(cmd);
+        if (cmd->detached) BridgeDrainCallbacks(cmd);
     }
     if ((!cmd->hook || cmd->detached) && !cmd->active && cmd->unwind_registered)
         cmd->unwind_removed = cmd->delete_table(cmd->unwind_table);
@@ -214,7 +281,7 @@ _Static_assert(sizeof(BridgeLoadDiagnostic) == 56, "BridgeLoadDiagnostic ABI");
 __declspec(dllexport) DWORD WINAPI BridgeDiagnoseLoad(BridgeLoadDiagnostic *probe) {
     probe->stage = 1;
     probe->module = (uint64_t)(uintptr_t)probe->load(probe->path);
-    probe->error = probe->get_error();
+    probe->error = probe->module ? 0 : probe->get_error();
     if (!probe->module && probe->ldr_load) {
         struct { USHORT Length, MaximumLength; wchar_t *Buffer; } name;
         size_t count = 0;
@@ -228,6 +295,41 @@ __declspec(dllexport) DWORD WINAPI BridgeDiagnoseLoad(BridgeLoadDiagnostic *prob
     }
     probe->stage = 2;
     return 1;
+}
+
+/* SEC_IMAGE does not register .pdata with the loader.  Establish SEH before
+   re-entering the loader, and report manual registration independently. */
+typedef struct BridgeSafeLoadDiagnostic {
+    BridgeLoadDiagnostic load;
+    BOOLEAN (WINAPI *add_table)(PRUNTIME_FUNCTION,DWORD,DWORD64);
+    BOOLEAN (WINAPI *delete_table)(PRUNTIME_FUNCTION);
+    void *specific_handler;
+    PRUNTIME_FUNCTION table;
+    DWORD64 base;
+    DWORD count, registered, removed, exception_code;
+} BridgeSafeLoadDiagnostic;
+_Static_assert(sizeof(BridgeSafeLoadDiagnostic) == 112, "Safe loader diagnostic ABI");
+__declspec(dllexport) DWORD WINAPI BridgeDiagnoseLoadSafe(BridgeSafeLoadDiagnostic *p) {
+    BridgeCommand context;
+    DWORD result = 0;
+    memset(&context, 0, sizeof(context));
+    memset(&bridge_fault, 0, sizeof(bridge_fault));
+    if (!p || !p->add_table || !p->delete_table || !p->specific_handler ||
+        !p->table || !p->base || !p->count || !p->load.load || !p->load.get_error)
+        return 0;
+    context.specific_handler = p->specific_handler;
+    g_dispatch = &context;
+    p->registered = p->add_table(p->table, p->count, p->base);
+    if (!p->registered) { g_dispatch = NULL; return 0; }
+    __try {
+        result = BridgeDiagnoseLoad(&p->load);
+    } __except (BridgeExceptionFilter(GetExceptionInformation())) {
+        p->exception_code = GetExceptionCode();
+        p->load.stage = 3;
+    }
+    p->removed = p->delete_table(p->table);
+    g_dispatch = NULL;
+    return result;
 }
 
 /* Current-engine selection query. Included after BridgeCommand/g_dispatch. */

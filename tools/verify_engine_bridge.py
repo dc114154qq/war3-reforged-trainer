@@ -40,6 +40,10 @@ def main() -> None:
         b"BridgeInstall",
         b"BridgeUninstall",
         b"BridgeDiagnoseLoad",
+        b"BridgeDiagnoseLoadSafe",
+        b"bridge_native_hook_abi",
+        b"bridge_callback_lifecycle_abi",
+        b"bridge_callback_lifecycle",
         b"BridgeHeroQuery",
         b"BridgeHeroAttributesQuery",
         b"BridgeAttackSpeedQuery",
@@ -77,6 +81,8 @@ def main() -> None:
             raise AssertionError(f"{name.decode('ascii')} ABI mismatch: {actual.hex()}")
 
     marker(b"bridge_abi", (0x2426801C, 216, 632))
+    marker(b"bridge_native_hook_abi", (0x24268049, 216, 6))
+    marker(b"bridge_callback_lifecycle_abi", (0x2426804a, 216, 32))
     marker(b"hero_attributes_batch_abi", (0x24268030, 216, 1144))
     marker(b"attack_speed_batch_abi", (0x24268032, 216, 640))
     marker(b"ability_batch_abi", (0x24268012, 216, 840))

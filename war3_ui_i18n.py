@@ -315,6 +315,7 @@ _EN_TRANSLATIONS = {
     'native helper 当前单位身份已变化，请重试': 'The native helper current-unit identity changed; retry',
     "魔兽争霸3重制版修改器": "Warcraft III: Reforged Trainer",
     "普通读取版": "Normal Read Edition",
+    "测试版": "Beta",
     " by B站 两杯沈梦溪": " by Bilibili Two Cups of Shen Mengxi",
     "正在连接 Warcraft III...": "Connecting to Warcraft III...",
     "已连接 Warcraft III": "Connected to Warcraft III",

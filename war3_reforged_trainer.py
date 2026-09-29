@@ -47,11 +47,12 @@ from war3_3_stats import STAT_DETAIL_BY_KEY, STAT_DETAIL_SPECS
 from war3_ui_i18n import detect_ui_language, translate_ui_text
 
 
-APP_VERSION = "2.0.7"
+APP_VERSION = "2.1.0"
+APP_RELEASE_CHANNEL = "beta"
 GAME_BUILD = "3.0.0.24268"
 PRODUCT_READ_MODE = "normal"
-PRODUCT_EDITION_LABEL = "普通读取版"
-WIN10_COMPAT_REVISION = "current-24268-classic-manual-map-getmessage-oneshot"
+PRODUCT_EDITION_LABEL = "普通读取版（测试版）"
+WIN10_COMPAT_REVISION = "2.1.0-beta-modular-private-callback-drain"
 
 
 if sys.platform == "win32":
@@ -2042,6 +2043,7 @@ def collect_runtime_diagnostics(
     result: dict[str, object] = {
         "schema": 2,
         "app_version": APP_VERSION,
+        "release_channel": APP_RELEASE_CHANNEL,
         "game_build": GAME_BUILD,
         "compat_revision": WIN10_COMPAT_REVISION,
         "trainer": trainer,
@@ -2205,6 +2207,7 @@ class Win10ReadLogger:
             "log_start",
             log_schema=2,
             app_version=APP_VERSION,
+            release_channel=APP_RELEASE_CHANNEL,
             game_build=GAME_BUILD,
             compat_revision=WIN10_COMPAT_REVISION,
             pid=self.game_pid,

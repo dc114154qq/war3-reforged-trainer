@@ -50,6 +50,11 @@ class EngineExecutionError(RuntimeError):
             route=dispatch.get('image_route'), route_attempt=attempts,
             route_policy=dispatch.get('route_policy'),
             hook_kind=dispatch.get('hook_kind'),
+            hook_install_api=dispatch.get('hook_install_api'),
+            callback_received=dispatch.get('callback_received'),
+            callback_exited=dispatch.get('callback_exited'),
+            cleanup_verified=dispatch.get('cleanup_verified'),
+            callback_lifecycle=dispatch.get('callback_lifecycle'),
             message_delivery=dispatch.get('message_delivery'),
             hwnd=dispatch.get('hwnd'),
             expected_callback_tid=dispatch.get('expected_callback_tid'),
@@ -216,7 +221,8 @@ class Engine24268(UnitsService, AbilitiesService, ItemsService, ExtensionsServic
                     from war3_operation_reports import record_status
                     record_status(kind,evidence,report)
                     released_ok = (
-                        evidence.get('callback_verified')
+                        not self.session.last_evidence.uncertain
+                        and evidence.get('callback_verified')
                         and evidence.get('query_completed')
                         and evidence.get('work_freed')
                         and evidence.get('block_freed')

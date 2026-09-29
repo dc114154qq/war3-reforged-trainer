@@ -23,3 +23,13 @@
 5. **发布适配包**：候选定位结果须唯一且通过结构、语义及能力验证，正式包须匹配游戏指纹、数据结构版本和桥接口版本。发布清单记录来源提交、版本、文件哈希、能力范围及验证缺口；仅在用户授权发布的任务中发布。数据包仅允许严格数据，不自动联网下载、不加载任意脚本；仅数据变化优先发适配包，调用语义或桥接口变化才升级相应模块/EXE。本规则本身不构成构建或发布授权。
 
 新增/迁移功能必须经功能服务、统一 `GameSession`、类型化 `UnitRef`/`ItemRef` 和执行后端；不得重新在功能层散落版本地址、会话缓存或传输选路。保持快速外部字段访问与原生执行两个后端的职责边界，单项扩展失败只禁用依赖它的能力。
+
+## External-machine fixes integrated from 2.0.8 and 2.0.9
+
+- This architecture branch is based on 2.0.7 (`70446ba`) but also contains the complete external-machine repair delta through `873af7140f6af95f826565d8ae0397f840022b32`: mapped import initialization/protected loader recovery, gated apphelp native-hook recovery, and private callback exit/drain/diagnostics. Do not restore the 2.0.7 transport when adapting it.
+- Keep loading and route selection in `war3_engine_transport.py`; preserve `prepare_operation`, profile configuration write/readback and fresh opened-process identity checks on every route. Keep delivery, callback exit, cleanup, readback and game effect as separate evidence in `GameSession`. Uncertain callback exit or cleanup must block replay.
+- The user reported the published 2.0.9 successful on the previously failing machine on 2026-09-29. This is user-reported validation of that released artifact, not a claim that this unpublished architecture branch has run there. See `ARCHITECTURE.md` for migration scope and verification.
+
+## 2.1.0 beta identity
+
+The user assigned this experimental branch version `2.1.0`, release channel `beta`. Keep the UI's beta label, diagnostic channel, Windows prerelease flag and `RELEASE_NOTES_v2.1.0-beta.md` consistent. The dedicated builder is `tools/build_release_210.py`; its manifest and package checks must cover all services/protocols, the profile and the 2.0.8/2.0.9 bridge repairs. Do not use the frozen 2.0.7 builder for this branch. Release notes compare functionality with stable 2.0.9: structural optimization, no new intended game features, retained compatibility repairs. Publishing must be explicitly authorized and marked prerelease; preparing version metadata is not publication.

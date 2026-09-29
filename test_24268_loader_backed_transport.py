@@ -50,6 +50,8 @@ class _FakePE:
             _Export(b"bridge_abi", 0),
             _Export(b"bridge_profile_abi", 0x60),
             _Export(b"bridge_profile", 0x80),
+            _Export(b"bridge_callback_lifecycle_abi", 0x180),
+            _Export(b"bridge_callback_lifecycle", 0x190),
             _Export(b"BridgeInstall", 0x30),
             _Export(b"BridgeUninstall", 0x40),
             _Export(b"BridgeHeroQuery", 0x50),
@@ -65,6 +67,7 @@ class _FakePE:
         if address == 0 and size == len(transport.ABI):
             return transport.ABI
         if address == 0x60 and size == 8:return transport.current_profile().bridge_bytes()[:8]
+        if address == 0x180 and size == 12:return struct.pack("<3I", 0x2426804a, 216, 32)
         return b"X" * size
 
 
@@ -207,6 +210,7 @@ def test_dispatch_uses_target_loader_and_unloads_after_verified_callback(tmp_pat
             patch.object(transport, "x", fake_x), \
             patch.object(transport, "window_thread", side_effect=fake_window_thread), \
             patch.object(transport, "register_message", return_value=55), \
+            patch.object(transport, "bytes_at", return_value=bytes(32)), \
             patch.object(transport, "fields", side_effect=fake_fields):
         result = transport.dispatch(
             1234, 0x99, 44, image, 7, _hero_payload(), kind="hero",
@@ -276,3 +280,25 @@ def test_dispatch_does_not_retry_when_resources_are_retained():
 
     assert result["same_route_retry"] == {"attempted": False}
     dispatch_once.assert_called_once()
+
+
+def test_both_install_routes_failing_never_counts_as_recovery():
+    # Reported external failure can survive a change of hook/message type.
+    # This is an injected failure, not a reproduction of the external SHIM.
+    def failed(*args, **kwargs):
+        return {
+            'route_attempt': kwargs['attempt'], 'safe_to_release': True,
+            'image_route': 'sec_image_fallback', 'callback_verified': False,
+            'query_completed': False,
+            'fault': {'code': '0xc0000005', 'address': '0x108'},
+            'after_cleanup': {'stage': 2, 'hook': 0, 'callback_tid': 0,
+                'callback_count': 0, 'query_stage': 0,
+                'bridge_install_trace': '0x105', 'last_error': 570,
+                'exception_code': '0xc0000005'},
+        }
+    with patch.object(transport, '_dispatch_once', side_effect=failed) as invoke:
+        result = transport.dispatch(1, 2, 3, None, 4, b'', kind='camera')
+    assert invoke.call_count == 2
+    assert not result['callback_verified'] and not result['query_completed']
+    assert result['fault']['address'] == '0x108'
+    assert result['same_route_retry']['first_attempt']['exception_code'] == '0xc0000005'

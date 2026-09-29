@@ -429,6 +429,7 @@ _EN_TRANSLATIONS = {
     "锁定项缺少资源组地址，请删除后重新锁定": "The lock has no resource-group address; remove it and create the lock again",
     "native selection manager 已定位，但当前选择列表没有可映射单位": "The native selection manager was found, but the current selection list has no mappable unit",
     "没有找到标题为 Warcraft III 的可见窗口": "No visible window titled Warcraft III was found",
+    "没有找到 Warcraft III 正式服或测试服的可见窗口": "No visible Warcraft III retail or public-test window was found",
     "游戏拒绝写入该技能字段": "The game rejected this ability-field write",
     "游戏没有接受任何减益技能命令": "The game did not accept any debuff ability command",
     "游戏没有接受任何增益技能命令": "The game did not accept any buff ability command",

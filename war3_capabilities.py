@@ -35,6 +35,11 @@ class CapabilitySet:
 
     def check(self, name, signatures=(), request=None):
         missing = list(self.common)
+        # Internal attack routines need separately located addresses; a generic
+        # native handler table cannot make inherited/unknown RVAs executable.
+        if name == "attack_speed" and any(self.profile.section("addresses")[key] == 0
+                for key in ("speed_factor", "effective_interval", "unit_resolver")):
+            missing.append("Attack timing internals have not been adapted for this build")
         modules = MODULES.get(name, ())
         if name == "extension" and request is not None:
             action = request.get("action", 0)

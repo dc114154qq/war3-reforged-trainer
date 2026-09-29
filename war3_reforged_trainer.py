@@ -2730,6 +2730,9 @@ def _window_text(hwnd: int) -> str:
     return buf.value
 
 
+WAR3_WINDOW_TITLES = frozenset({"Warcraft III", "Warcraft III Public Test"})
+
+
 def enum_war3_windows() -> list[tuple[int, int, str]]:
     windows: list[tuple[int, int, str]] = []
 
@@ -2738,7 +2741,7 @@ def enum_war3_windows() -> list[tuple[int, int, str]]:
         if not user32.IsWindowVisible(hwnd):
             return True
         title = _window_text(hwnd)
-        if title != "Warcraft III":
+        if title not in WAR3_WINDOW_TITLES:
             return True
         pid = ctypes.c_ulong()
         user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
@@ -2754,7 +2757,7 @@ def find_war3(pid: int | None = None) -> tuple[int, int]:
     if pid is not None:
         matches = [m for m in matches if m[1] == pid]
     if not matches:
-        raise RuntimeError("没有找到标题为 Warcraft III 的可见窗口")
+        raise RuntimeError("没有找到 Warcraft III 正式服或测试服的可见窗口")
     if pid is None and len({match[1] for match in matches}) > 1:
         raise RuntimeError("Multiple Warcraft III clients are open; select an explicit PID")
     hwnd, found_pid, _title = matches[0]
@@ -2832,7 +2835,7 @@ def resolve_requested_war3_pid(requested_pid: int | None) -> int | None:
 def is_war3_window(hwnd: int, pid: int) -> bool:
     if not hwnd or not user32.IsWindow(hwnd) or not user32.IsWindowVisible(hwnd):
         return False
-    if _window_text(hwnd) != "Warcraft III":
+    if _window_text(hwnd) not in WAR3_WINDOW_TITLES:
         return False
     found_pid = ctypes.c_ulong()
     user32.GetWindowThreadProcessId(hwnd, ctypes.byref(found_pid))

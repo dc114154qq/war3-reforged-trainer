@@ -9,9 +9,16 @@ import war3_engine_transport as transport
 from war3_object_registry import ObjectRegistry24268
 from war3_selection_protocol import SIGNATURES
 from war3_talent_icon_control_protocol import build_work,decode_work
+from war3_game_profile import current_profile
 
 ORIGINAL=bytes.fromhex('488b4424208b8c24900000003b0c0774094084f6750433d2eb02b201488bcbe8a54b1bff')
 SITE_RVA=0x10058c7
+
+def _module_address(name, fallback):
+    try:
+        return int(current_profile().section('module_addresses')[name])
+    except (KeyError, TypeError):
+        return fallback
 
 class TalentIconDisplay:
     def __init__(self,engine,image):
@@ -70,7 +77,8 @@ class TalentIconDisplay:
                 game=ObjectRegistry24268.attach(memory)
                 self.game_base=game.base
                 try:
-                    code=memory.read(game.base+SITE_RVA,len(ORIGINAL))
+                    site_rva=_module_address('talent_icon_site', SITE_RVA)
+                    code=memory.read(game.base+site_rva,len(ORIGINAL))
                 except OSError as exc:
                     # Some game code pages are readable only while dispatched
                     # on the UI thread. IconInstall still requires exact bytes
@@ -90,7 +98,9 @@ class TalentIconDisplay:
             status=transport.x['map_section'](section,self.handle,c.byref(view),0,0,None,c.byref(size),2,0,2)
             if status<0 or not view.value:raise RuntimeError('Talent display image mapping failed: '+hex(status&0xffffffff))
             self.base=int(view.value)
-            config=struct.pack('<6Q8I36s4x',self.game_base,self.game_base+0x1ba490,
+            site_rva=_module_address('talent_icon_site', SITE_RVA)
+            resolver_rva=_module_address('talent_icon_resolver', 0x1ba490)
+            config=struct.pack('<6Q8I36s4x',self.game_base,self.game_base+resolver_rva,
                 transport.resolve(memory,'kernel32','GetCurrentThreadId'),
                 transport.resolve(memory,'kernel32','VirtualProtect'),
                 transport.resolve(memory,'kernel32','FlushInstructionCache'),
@@ -153,7 +163,8 @@ class TalentIconDisplay:
                 and not self.last_result.get('installed')
                 and not self.last_result.get('registered')
             )
-            if not never_patched and transport.bytes_at(self.handle,self.game_base+SITE_RVA,len(ORIGINAL))!=ORIGINAL:
+            site_rva=_module_address('talent_icon_site', SITE_RVA)
+            if not never_patched and transport.bytes_at(self.handle,self.game_base+site_rva,len(ORIGINAL))!=ORIGINAL:
                 raise RuntimeError('Original display instructions not restored; image retained')
             status=transport.x['unmap_section'](self.handle,transport.P(self.base))
             if status<0:raise RuntimeError('Display image unmap failed: '+hex(status&0xffffffff))

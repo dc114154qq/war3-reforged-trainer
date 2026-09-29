@@ -1,61 +1,61 @@
 {
   "schema_version": 1,
   "bridge_profile_version": 1,
-  "id": "war3-3.0.0.24268-r1",
-  "game_version": "3.0.0.24268",
+  "id": "war3-3.0.1.24323-r1",
+  "game_version": "3.0.1.24323",
   "adapter_version": 1,
   "status": "validated",
   "fingerprint": {
     "machine": 34404,
-    "timestamp": 1789189744,
-    "image_size": 236277760
+    "timestamp": 1790661601,
+    "image_size": 236408832
   },
   "addresses": {
-    "registry_root": 49809392,
-    "object_resolver": 1659312,
-    "game_state": 48868608,
-    "tls_index": 49657128,
-    "speed_factor": 5281392,
-    "effective_interval": 5282208,
-    "unit_resolver": 9362704
+    "registry_root": 49940888,
+    "object_resolver": 1684384,
+    "game_state": 48999872,
+    "tls_index": 49788088,
+    "speed_factor": 5308816,
+    "effective_interval": 5309888,
+    "unit_resolver": 9397104
   },
   "module_addresses": {
-    "talent_icon_site": 16799943,
-    "talent_icon_resolver": 1811600
+    "talent_icon_site": 16904871,
+    "talent_icon_resolver": 1838144
   },
   "checks": {
     "resolver": [
       {
-        "rva": 1659312,
-        "bytes": "8bc1448bcac1e81f84c0752a488b052db6de023b48307357488b40188bc94803c9833cc8fe7548488b4cc80833c0395124480f44c1c3488b1503b6de028bc10fbaf01f3b426873274c8b42504803c041833cc0fe75198bc10fbaf01f4803c0498b4cc00833c044394924480f44c1c333c0c3"
+        "rva": 1684384,
+        "bytes": "8bc1448bcac1e81f84c0752a488b05e555e0023b48307357488b40188bc94803c9833cc8fe7548488b4cc80833c0395124480f44c1c3488b15bb55e0028bc10fbaf01f3b426873274c8b42504803c041833cc0fe75198bc10fbaf01f4803c0498b4cc00833c044394924480f44c1c333c0c3"
       }
     ],
     "game_state": [
       {
-        "rva": 13267996,
-        "bytes": "488b1ddd381f02"
+        "rva": 13362892,
+        "bytes": "488b1dedc61f02"
       },
       {
-        "rva": 13268085,
+        "rva": 13362981,
         "bytes": "48d1cb48b8295b9bfc376fe05b48c1c31e4803d848b82b1367efb7c7113a4833d848b83d5d7f3e90272c2d4803d8"
       },
       {
-        "rva": 9158480,
-        "bytes": "4883ec2883fa1b761683faff740ab957000000e8f8e489ff33c04883c428c33b919826000073f14863c2488b84c1a02600004883c428c3"
+        "rva": 9192896,
+        "bytes": "4883ec2883fa1b761683faff740ab957000000e818c089ff33c04883c428c33b919826000073f14863c2488b84c1a02600004883c428c3"
       }
     ],
     "context": [
       {
-        "rva": 1587453,
-        "bytes": "8b0d257cdd02e8d86dcf01"
+        "rva": 1612429,
+        "bytes": "8b0d251adf02e8b8a7d001"
       },
       {
-        "rva": 1587550,
+        "rva": 1612526,
         "bytes": "4885c9740b488b44d9104883c4205bc333c04883c4205bc3"
       },
       {
-        "rva": 22193808,
-        "bytes": "4883ec28b90d000000e81292c5fe488b4020488b88b800000083b9e8300000010f94c04883c428c3"
+        "rva": 22298944,
+        "bytes": "4883ec28b90d000000e8f258c4fe488b4020488b88b800000083b9e8300000010f94c04883c428c3"
       }
     ]
   },
@@ -113,7 +113,7 @@
     "max_count": 24
   },
   "bridge_layout": {
-    "registry_root_rva": 49809392,
+    "registry_root_rva": 49940888,
     "primary": 24,
     "alternate": 80,
     "table_count": 24,
@@ -123,7 +123,7 @@
     "owner_data": 144,
     "object_handle": 24,
     "object_rawcode": 112,
-    "unit_attack": 1888
+    "unit_attack": 1880
   },
   "native_abi": {
     "machine": "win64",
@@ -134,57 +134,57 @@
   },
   "modules": {
     "legacy_layout": {
-      "implementation": "legacy_layout_24268_v1",
+      "implementation": "legacy_layout_24323_v1",
       "enabled": true,
       "fingerprint": [
         34404,
-        1789189744,
-        236277760
+        1790661601,
+        236408832
       ]
     },
     "talents": {
-      "implementation": "talents_24268_v1",
+      "implementation": "talents_24323_v1",
       "enabled": true,
       "fingerprint": [
         34404,
-        1789189744,
-        236277760
+        1790661601,
+        236408832
       ]
     },
     "talent_icons": {
-      "implementation": "talent_icons_24268_v1",
-      "enabled": true,
+      "implementation": "talent_icons_24323_v1",
+      "enabled": false,
       "fingerprint": [
         34404,
-        1789189744,
-        236277760
+        1790661601,
+        236408832
       ]
     },
     "equipment": {
-      "implementation": "equipment_24268_v1",
+      "implementation": "equipment_24323_v1",
       "enabled": true,
       "fingerprint": [
         34404,
-        1789189744,
-        236277760
+        1790661601,
+        236408832
       ]
     },
     "stat_details": {
-      "implementation": "stat_details_24268_v1",
+      "implementation": "stat_details_24323_v1",
       "enabled": true,
       "fingerprint": [
         34404,
-        1789189744,
-        236277760
+        1790661601,
+        236408832
       ]
     },
     "direct_effect": {
-      "implementation": "direct_effect_24268_v1",
+      "implementation": "direct_effect_24323_v1",
       "enabled": true,
       "fingerprint": [
         34404,
-        1789189744,
-        236277760
+        1790661601,
+        236408832
       ]
     }
   }

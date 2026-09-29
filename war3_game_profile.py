@@ -78,9 +78,10 @@ class GameProfile:
         if module is None or not module["enabled"]:
             raise ProfileError("Adapter capability disabled: " + name)
         # Code-dependent extensions cannot be retargeted by merely renaming a pack.
+        from war3_version_modules import validate_implementation
         if (
             tuple(module["fingerprint"]) != self.fingerprint
-            or tuple(module["fingerprint"]) != default_profile().fingerprint
+            or not validate_implementation(name, module["implementation"], self.fingerprint)
         ):
             raise ProfileError(
                 "Version-specific module needs separate adaptation: " + name
@@ -158,13 +159,19 @@ def load_profile(path) -> GameProfile:
         if not 0 <= value <= 0xFFFFFFFF or (key.endswith("_rva") and value >= size):
             raise ProfileError("Invalid bridge layout: " + key)
     for key, value in data["addresses"].items():
-        if not 0 < value < size:
+        optional_internal = key in ("speed_factor", "effective_interval", "unit_resolver")
+        if not (0 <= value < size if optional_internal else 0 < value < size):
             raise ProfileError("Invalid game RVA: " + key)
+    module_addresses = data["module_addresses"]
+    for key, value in module_addresses.items():
+        if not 0 < value < size:
+            raise ProfileError("Invalid module RVA: " + key)
     # Native ABI is supplied by compiled typed wrappers, never by arbitrary JSON.
     if data["native_abi"] != template["native_abi"]:
         raise ProfileError("Native machine ABI changes require a compiled adapter")
     for name, module in data["modules"].items():
-        if module["implementation"] != template["modules"][name]["implementation"]:
+        from war3_version_modules import known_implementation
+        if not known_implementation(name, module["implementation"]):
             raise ProfileError("Unknown compiled adapter module: " + name)
     if any(not 0 < data["decoder"][key] < 64 for key in ("ror", "rol")):
         raise ProfileError("Invalid decoder rotation")
@@ -257,8 +264,13 @@ def installed_profile_directory():
 
 class ProfileCatalog:
     def __init__(self, directory=None):
-        self.profiles = [default_profile()]
+        self.profiles = []
         self.errors = {}
+        for path in sorted(PROFILE_ROOT.glob("*.json")):
+            try:
+                self.profiles.append(load_profile(path))
+            except (ValueError, OSError) as exc:
+                self.errors[str(path)] = str(exc)
         directory = (
             installed_profile_directory() if directory is None else Path(directory)
         )

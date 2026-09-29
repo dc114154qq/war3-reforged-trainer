@@ -50,30 +50,39 @@ def test_world_effect_protocol_accepts_all_current_callback_modes(action):
         ("cast_fullscreen_auto_effect", {"success_limit": 9}, [("AEfk", 852526, 1)]),
     ],
 )
-def test_current_fullscreen_area_features_stay_on_local_caster(method, args, expected):
+def test_fullscreen_features_use_the_1_0_18_runtime_ability_chain(method, args, expected):
     trainer = object.__new__(product.War3Trainer)
     trainer._native_selection_unavailable = True
     trainer._run_direct_ability_over_enemy_units = Mock(
-        side_effect=AssertionError("enemy units must not become the caster")
+        side_effect=lambda ability, mode, **kwargs: (1, 1)
     )
-    trainer.cast_native_area_24268 = Mock(return_value={})
+    trainer._run_selected_ability_effect = Mock(return_value=(1, 1))
 
     result = getattr(trainer, method)(**args)
 
     assert result == (len(expected), len(expected))
-    assert [(call.args[0], call.args[1], call.kwargs["cast_kind"])
-            for call in trainer.cast_native_area_24268.call_args_list] == expected
+    if method in ("cast_fullscreen_swarm", "cast_fullscreen_forked_lightning"):
+        assert [call.args[:2] for call in trainer._run_direct_ability_over_enemy_units.call_args_list] == [
+            (ability, "point" if method == "cast_fullscreen_swarm" else "target")
+            for ability, _order, _kind in expected
+        ]
+    else:
+        assert trainer._run_selected_ability_effect.call_count == len(expected)
 
 
 @pytest.mark.parametrize("method", ["cast_fullscreen_swarm", "cast_fullscreen_monsoon"])
-def test_current_fullscreen_point_features_use_native_point_orders(method):
+def test_fullscreen_point_features_use_runtime_point_effects(method):
     trainer = object.__new__(product.War3Trainer)
-    trainer.cast_native_area_24268 = Mock(return_value={})
+    trainer._run_direct_ability_over_enemy_units = Mock(return_value=(1, 1))
+    trainer._run_selected_ability_effect = Mock(return_value=(1, 1))
 
     getattr(trainer, method)()
 
-    assert all(call.kwargs["cast_kind"] == 2
-               for call in trainer.cast_native_area_24268.call_args_list)
+    if method == "cast_fullscreen_swarm":
+        assert all(call.args[1] == "point"
+                   for call in trainer._run_direct_ability_over_enemy_units.call_args_list)
+    else:
+        assert trainer._run_selected_ability_effect.call_args.args[:2] == ("ANmo", "point")
 
 
 def test_current_point_effect_forwards_area_to_effect_bridge():

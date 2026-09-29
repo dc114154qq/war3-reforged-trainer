@@ -400,40 +400,49 @@ class AbilitiesFacade:
         entries = (("ACca", 852218), ("ACcv", 852218), ("AOsh", 852125))
         attempted = succeeded = 0
         for ability, order_id in entries:
-            attempted += 1
-            self.cast_native_area_24268(ability, order_id, cast_kind=2)
-            succeeded += 1
+            current_attempted, current_succeeded = self._run_direct_ability_over_enemy_units(
+                ability, "point", success_limit=success_limit,
+            )
+            attempted += current_attempted
+            succeeded += current_succeeded
         return attempted, succeeded
 
 
     def cast_fullscreen_clap(self, *, success_limit: int = 0) -> tuple[int, int]:
-        entries = (("AHtc", 852096), ("AOws", 852127))
+        entries = ("AHtc", "AOws")
         attempted = succeeded = 0
-        for ability, order_id in entries:
-            attempted += 1
-            self.cast_native_area_24268(ability, order_id, cast_kind=1)
-            succeeded += 1
+        for ability in entries:
+            current_attempted, current_succeeded = self._run_selected_ability_effect(
+                ability, "noarg", area=100000.0,
+            )
+            attempted += current_attempted
+            succeeded += current_succeeded
         return attempted, succeeded
 
 
     def cast_fullscreen_monsoon(self, *, success_limit: int = 0) -> tuple[int, int]:
-        self.cast_native_area_24268("ANmo", 852591, cast_kind=2, hold_seconds=12.0)
-        return 1, 1
+        return self._run_selected_ability_effect(
+            "ANmo", "point", area=100000.0, hold_seconds=12.0,
+        )
 
 
     def cast_fullscreen_starfall(self, *, success_limit: int = 0) -> tuple[int, int]:
-        self.cast_native_area_24268("AEsb", 852183, cast_kind=1, hold_seconds=12.0)
-        return 1, 1
+        return self._run_selected_ability_effect(
+            "AEsb", "immediate", area=100000.0, hold_seconds=12.0,
+        )
 
 
     def cast_fullscreen_forked_lightning(self, *, success_limit: int = 0) -> tuple[int, int]:
-        self.cast_native_area_24268("ACfl", 852587, cast_kind=3)
-        return 1, 1
+        return self._run_direct_ability_over_enemy_units(
+            "ACfl", "target", success_limit=success_limit,
+        )
 
 
     def cast_fullscreen_auto_effect(self, *, success_limit: int = 0) -> tuple[int, int]:
-        self.cast_native_area_24268("AEfk", 852526, cast_kind=1)
-        return 1, 1
+        passes = int(success_limit) if success_limit else 5
+        return self._run_selected_ability_effect(
+            "AEfk", "noarg", passes=passes, area=100000.0,
+        )
 
 
     def take_selected_unit_control(self) -> int:

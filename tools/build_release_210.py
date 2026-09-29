@@ -125,8 +125,10 @@ def inspect_exe(exe: Path, expected: dict[str, str] | None = None) -> dict[str, 
         bundled[name] = hashlib.sha256(archive.extract(name)).hexdigest().upper()
         if expected is not None and bundled[name] != expected[name]:
             raise RuntimeError(f"Packaged binary differs from compiled image: {name}")
-    if "profiles\\3.0.0.24268.json" not in archive.toc:
-        raise RuntimeError("Packaged game profile is missing")
+    for profile_path in (ROOT / "profiles").glob("*.json"):
+        entry = "profiles\\" + profile_path.name
+        if entry not in archive.toc or archive.extract(entry) != profile_path.read_bytes():
+            raise RuntimeError(f"Packaged game profile missing or different: {entry}")
     from war3_operations import OPERATIONS
     pyz = archive.open_embedded_archive("PYZ-00.pyz")
     required = {spec.protocol for spec in OPERATIONS.values() if spec.protocol}

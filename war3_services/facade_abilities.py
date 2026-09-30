@@ -280,20 +280,22 @@ class AbilitiesFacade:
         elif point is not None:
             raise ValueError("Only point effects accept coordinates")
         if getattr(self, "_native_selection_unavailable", False):
+            if duration:
+                from war3_services.effect_lifetime import run_held_effect
+                run_held_effect(self._engine_instance_24268(), ability_rawcode,
+                    mode, count, area or 100000.0, duration)
+                return count, count
             # The current bridge owns temporary ability creation, area
             # restoration, and all passes inside one game-thread callback.
             # Point callbacks keep their coordinate payload, while other
             # callbacks use the bridge's bounded area/pass option payload.
             if mode == 3:
-                if point is None:
-                    point_x, point_y = self.query_mouse_world_position()
-                    packed_point = self._float_bits(point_x) | (self._float_bits(point_y) << 32)
                 result = self.effect_batch_24268(
                     ability_rawcode,
                     mode,
                     packed_point & 0xFFFFFFFF,
                     (packed_point >> 32) & 0xFFFFFFFF,
-                    area=area,
+                    area=area, use_unit_position=point is None,
                 )
             else:
                 result = self.effect_batch_24268(

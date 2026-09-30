@@ -51,6 +51,17 @@ def _read(memory, address, size):
     return data
 
 
+def _registry_table(memory, address, index, count_offset, stride):
+    data = _read(memory, address, count_offset + 4)
+    table = struct.unpack_from("<Q", data)[0]
+    count = struct.unpack_from("<I", data, count_offset)[0]
+    if not _ptr(table) or not index < count <= 0x10000000:
+        raise ObjectIdentityError("Object index is outside registry bounds")
+    if not _ptr(table + index * stride):
+        raise ObjectIdentityError("Invalid object slot address")
+    return table
+
+
 def _module_record(base, name, path=""):
     return int(base), str(name or ""), str(path or "")
 
@@ -169,9 +180,9 @@ class ObjectRegistry24268:
     def __init__(self, memory, module_base):
         self.base = module_base
         self.profile = current_profile()
-        self.layout = self.profile.section("registry")
-        self.players_layout = self.profile.section("players")
-        self.addresses = self.profile.section("addresses")
+        (self.layout, self.players_layout, self.addresses,
+         fingerprint, resolver_bytes, state_check,
+         self._handle_layout, self._unit_layout) = self.profile.registry_metadata
         header = _read(memory, module_base, 0x40)
         if header[:2] != b"MZ":
             raise ObjectIdentityError("Game image has no DOS header")
@@ -181,10 +192,10 @@ class ObjectRegistry24268:
         nt = _read(memory, module_base + nt_offset, 0x58)
         if (nt[:4], struct.unpack_from("<H", nt, 4)[0],
             struct.unpack_from("<I", nt, 8)[0], struct.unpack_from("<I", nt, 0x50)[0]) != (
-                b"PE\0\0", *self.profile.fingerprint):
+                b"PE\0\0", *fingerprint):
             raise ObjectIdentityError("Game build has no verified object registry profile")
         try:
-            resolver_code = _read(memory, module_base + self.addresses["object_resolver"], len(self.profile.checks("resolver")[0][1]))
+            resolver_code = _read(memory, module_base + self.addresses["object_resolver"], len(resolver_bytes))
         except OSError as exc:
             # 3.0 may map this resolver as execute-only. The exact PE
             # fingerprint above and the readable player accessor below still
@@ -194,7 +205,7 @@ class ObjectRegistry24268:
                 raise
             resolver_code = None
             self.resolver_code_unreadable = True
-        if resolver_code is not None and resolver_code != self.profile.checks("resolver")[0][1]:
+        if resolver_code is not None and resolver_code != resolver_bytes:
             raise ObjectIdentityError("Game object resolver code differs from verified profile")
         if resolver_code is not None:
             self.resolver_code_unreadable = False
@@ -202,7 +213,7 @@ class ObjectRegistry24268:
         # Its arithmetic was recovered from the captured shared image section.
         # Verify the readable player accessor in addition to PE + agent code;
         # players() independently validates every resulting object identity.
-        rva, code = self.profile.checks("game_state")[-1]
+        rva, code = state_check
         if _read(memory, module_base + rva, len(code)) != code:
             raise ObjectIdentityError("Game player-array code differs from verified profile")
 
@@ -229,44 +240,41 @@ class ObjectRegistry24268:
             raise ObjectIdentityError("Full object handle is outside uint64")
         low = full_handle & 0xFFFFFFFF
         index = low & 0x7FFFFFFF
-        offset = self.layout["alternate"] if low & 0x80000000 else self.layout["primary"]
-        root = self._qword(memory, self.base + self.addresses["registry_root"])
+        primary, alternate, count_offset, stride, owner_offset, handle_offset = self._handle_layout
+        root_address = self.base + self.addresses["registry_root"]
+        qword = self._qword
+        offset = alternate if low & 0x80000000 else primary
+        root = qword(memory, root_address)
         if not _ptr(root):
             raise ObjectIdentityError("Object registry is not initialized")
 
-        def table_state():
-            data = _read(memory, root + offset, self.layout["count"] + 4)
-            table = struct.unpack_from("<Q", data)[0]
-            count = struct.unpack_from("<I", data, self.layout["count"])[0]
-            if not _ptr(table) or not index < count <= 0x10000000:
-                raise ObjectIdentityError("Object index is outside registry bounds")
-            if not _ptr(table + index * self.layout["stride"]):
-                raise ObjectIdentityError("Invalid object slot address")
-            return table
-
-        table = table_state()
-        slot = _read(memory, table + index * self.layout["stride"], self.layout["stride"])
+        table_address = root + offset
+        table = _registry_table(memory, table_address, index, count_offset, stride)
+        slot_address = table + index * stride
+        slot = _read(memory, slot_address, stride)
         marker = struct.unpack_from("<I", slot)[0]
-        owner = struct.unpack_from("<Q", slot, self.layout["slot_owner"])[0]
+        owner = struct.unpack_from("<Q", slot, owner_offset)[0]
         if marker != 0xFFFFFFFE or not _ptr(owner):
             raise ObjectIdentityError("Object slot is not live")
-        if self._qword(memory, owner + self.layout["owner_handle"]) != full_handle:
+        if qword(memory, owner + handle_offset) != full_handle:
             raise ObjectIdentityError("Object handle generation changed")
-        if (table_state() != table or _read(memory, table + index * self.layout["stride"], self.layout["stride"]) != slot
-                or self._qword(memory, owner + self.layout["owner_handle"]) != full_handle
-                or self._qword(memory, self.base + self.addresses["registry_root"]) != root):
+        if (_registry_table(memory, table_address, index, count_offset, stride) != table or _read(memory, slot_address, stride) != slot
+                or qword(memory, owner + handle_offset) != full_handle
+                or qword(memory, root_address) != root):
             raise ObjectIdentityError("Object registry changed while reading")
         return owner
 
     def resolve_unit(self, memory, unit):
         if not _ptr(unit):
             raise ObjectIdentityError("Invalid unit pointer")
-        handle = self._qword(memory, unit + self.layout["object_handle"])
+        qword = self._qword
+        object_handle_offset, owner_tag_offset, owner_data_offset, unit_tag, owner_handle_offset = self._unit_layout
+        handle = qword(memory, unit + object_handle_offset)
         owner = self.resolve_handle(memory, handle)
-        if (self._qword(memory, owner + self.layout["owner_tag"]) != self.layout["unit_tag"]
-                or self._qword(memory, owner + self.layout["owner_data"]) != unit
-                or self._qword(memory, owner + self.layout["owner_handle"]) != handle
-                or self._qword(memory, unit + self.layout["object_handle"]) != handle):
+        if (qword(memory, owner + owner_tag_offset) != unit_tag
+                or qword(memory, owner + owner_data_offset) != unit
+                or qword(memory, owner + owner_handle_offset) != handle
+                or qword(memory, unit + object_handle_offset) != handle):
             raise ObjectIdentityError("Unit identity changed or mismatches registry")
         return handle, owner
 

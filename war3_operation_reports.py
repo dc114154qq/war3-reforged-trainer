@@ -2,6 +2,18 @@
 import struct
 
 def record_status(kind,evidence,report):
+    if kind=='game_speed' and evidence.get('work_result_hex'):
+        raw=bytes.fromhex(evidence['work_result_hex'])
+        if len(raw)==104:
+            action,target,before,after,changed,error,completed,lock_before,lock_after,*reserved=struct.unpack_from('<12I',raw,56)
+            status=dict(action=action,target=target,before=before,after=after,
+                        error=error,completed=completed,lock_before=lock_before,lock_after=lock_after)
+            # Only a fully observed, unchanged rejection is safe to retry manually.
+            if (error==362 and action==1 and before==after and before in range(5)
+                    and lock_before==lock_after and lock_before in (0,1)
+                    and changed==0 and not any(reserved)):
+                status['changed']=0
+            report['game_speed_status']=status
     if kind=='ability' and evidence.get('work_result_hex'):
         raw=bytes.fromhex(evidence['work_result_hex'])
         from war3_ability_protocol import WORK_SIZE as ABILITY_WORK_SIZE

@@ -26,6 +26,7 @@ OUTPUT = ROOT / "dist-2.1.0-beta-verified"
 PACKAGE_BINARIES = (
     "tools\\war3_bridge_24268.dll",
     "tools\\war3_talent_icon_display.dll",
+    "tools\\war3_speed_clock.dll",
 )
 
 
@@ -49,6 +50,8 @@ def source_paths() -> tuple[Path, ...]:
     files.update(ROOT.glob("war3_services/*.py"))
     files.update(ROOT.glob("diagnostics/*.py"))
     files.update(ROOT.glob("profiles/*.json"))
+    files.update(path for path in ROOT.glob("third_party/minhook/src/**/*") if path.is_file())
+    files.update(ROOT.glob("third_party/minhook/include/*.h"))
     files.add(ROOT / "tools/generate_bridge_profile.py")
     files.update(ROOT.glob("tools/war3_bridge_*.h"))
     files.update(ROOT.glob("tools/war3_talent_icon_*.h"))
@@ -62,6 +65,11 @@ def source_paths() -> tuple[Path, ...]:
             "tools/verify_engine_bridge.py",
             "tools/build_talent_icon_display.ps1",
             "tools/verify_talent_icon_display.py",
+            "tools/war3_speed_clock.c",
+            "tools/build_speed_clock.ps1",
+            "tools/verify_speed_clock.py",
+            "third_party/minhook/LICENSE.txt",
+            "third_party/MINHOOK.md",
             "tools/build_release_210.py",
             "tools/war3-2.1.0-beta-version-info.txt",
             "tools/capstone.dll",
@@ -134,6 +142,7 @@ def inspect_exe(exe: Path, expected: dict[str, str] | None = None) -> dict[str, 
     required = {spec.protocol for spec in OPERATIONS.values() if spec.protocol}
     required.update("war3_services." + path.stem for path in (ROOT / "war3_services").glob("*.py") if path.stem != "__init__")
     required.update({"war3_game_session", "war3_game_profile", "war3_capabilities", "war3_external_backend"})
+    required.add("war3_speed_clock_backend")
     if required - set(pyz.toc):
         raise RuntimeError(f"Packaged architecture modules missing: {sorted(required - set(pyz.toc))}")
     bridge = pefile.PE(data=archive.extract(PACKAGE_BINARIES[0]))
@@ -150,6 +159,15 @@ def inspect_exe(exe: Path, expected: dict[str, str] | None = None) -> dict[str, 
             raise RuntimeError(f"Packaged architecture profile differs: {name!r}")
     if not {b"BridgeDiagnoseLoadSafe", b"bridge_callback_lifecycle"}.issubset(exported):
         raise RuntimeError("Packaged bridge lacks the 2.0.8/2.0.9 repairs")
+    clock=pefile.PE(data=archive.extract(PACKAGE_BINARIES[2]))
+    exports={entry.name:entry.address for entry in clock.DIRECTORY_ENTRY_EXPORT.symbols}
+    if (clock.FILE_HEADER.Machine!=0x8664 or b"SpeedControl" not in exports
+            or b"speed_clock_abi" not in exports
+            or clock.get_data(exports[b"speed_clock_abi"],16)!=struct.pack("<4I",0x57435331,1,88,1000)):
+        raise RuntimeError("Packaged speed clock ABI differs")
+    license_entry="licenses\\LICENSE.txt"
+    if license_entry not in archive.toc or archive.extract(license_entry)!=(ROOT/"third_party/minhook/LICENSE.txt").read_bytes():
+        raise RuntimeError("MinHook distribution license missing or different")
     return bundled
 
 
@@ -182,13 +200,17 @@ def build() -> None:
             "tools/build_engine_bridge.ps1", "-OutputDirectory", str(native))
         run("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
             "tools/build_talent_icon_display.ps1", "-OutputDirectory", str(native))
+        run("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+            "tools/build_speed_clock.ps1", "-OutputDirectory", str(native))
         compiled = {
             PACKAGE_BINARIES[0]: sha256(native / "war3_bridge_24268.dll"),
             PACKAGE_BINARIES[1]: sha256(native / "war3_talent_icon_display.dll"),
+            PACKAGE_BINARIES[2]: sha256(native / "war3_speed_clock.dll"),
         }
         environment = dict(os.environ)
         environment["RELEASE_210_BRIDGE_DLL"] = str(native / "war3_bridge_24268.dll")
         environment["RELEASE_210_ICON_DLL"] = str(native / "war3_talent_icon_display.dll")
+        environment["RELEASE_210_SPEED_DLL"] = str(native / "war3_speed_clock.dll")
         run(sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean",
             "--distpath", str(stage / "dist"), "--workpath", str(stage / "build"),
             "War3ReforgedTrainer-2.1.0-beta.spec", env=environment)

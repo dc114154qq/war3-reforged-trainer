@@ -22,6 +22,8 @@ USER_AGENT = "war3-release-mirror/1.0"
 
 
 def release_compatibility(tag: str) -> str:
+    if tag in ("v2.1.0-beta", "v2.1.0"):
+        return "Warcraft III 3.0.0.24268 / 3.0.1.24323（测试适配）"
     return REFORGED_3_COMPATIBILITY if tag.startswith("v2.") else DEFAULT_COMPATIBILITY
 
 
@@ -163,6 +165,7 @@ def normalize_github_release(
 
     return {
         "tag": release["tag_name"],
+        "prerelease": bool(release.get("prerelease")),
         "name": release.get("name") or release["tag_name"],
         "published_at": release.get("published_at") or release.get("created_at"),
         "compatibility": release_compatibility(str(release["tag_name"])),
@@ -203,11 +206,12 @@ def release_index(repository: str, releases: list[dict[str, Any]]) -> dict[str, 
         key=lambda release: str(release.get("published_at") or ""),
         reverse=True,
     )
+    stable = next((release for release in ordered if not release.get("prerelease")), ordered[0])
     return {
         "repository": repository,
         "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "release_count": len(ordered),
-        "latest": ordered[0]["tag"],
+        "latest": stable["tag"],
         "releases": ordered,
     }
 

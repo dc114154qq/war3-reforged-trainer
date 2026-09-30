@@ -657,6 +657,7 @@ ELEPHANT_HOTKEY_SPECS = (
     GlobalHotkeySpec("allied_cooldowns", "Alt+C  重置我方全部技能冷却", MOD_ALT, ord("C")),
     GlobalHotkeySpec("rapid_build", "Alt+V  持续快速建造/升级", MOD_ALT, ord("V")),
     GlobalHotkeySpec("instant_victory", "Alt+B  直接胜利", MOD_ALT, ord("B")),
+    GlobalHotkeySpec("game_speed", "Alt+N  加速/恢复游戏", MOD_ALT, ord("N")),
     GlobalHotkeySpec("stat_hp_regen", "Ctrl+Alt+F1  生命值恢复", MOD_CONTROL | MOD_ALT, VK_F1),
     GlobalHotkeySpec("stat_mp_regen", "Ctrl+Alt+F2  法力恢复", MOD_CONTROL | MOD_ALT, VK_F1 + 1),
     GlobalHotkeySpec("stat_attack_speed", "Ctrl+Alt+F3  实际攻速", MOD_CONTROL | MOD_ALT, VK_F1 + 2),
@@ -6484,6 +6485,7 @@ def run_gui(
     elephant_tech_rawcode = tk.StringVar(value="")
     elephant_tech_level = tk.StringVar(value="1")
     elephant_xp_rate = tk.StringVar(value="1.0")
+    elephant_game_speed = tk.StringVar(value="2")
     elephant_item_charges = tk.StringVar(value="999")
     elephant_resource_amount = tk.StringVar(value="100000")
     elephant_mass_clone_count = tk.StringVar(value="10")
@@ -8221,6 +8223,13 @@ def run_gui(
         actual = elephant_trainer().set_local_player_xp_rate(rate)
         return f"本地玩家经验倍率已设置为 {actual:g}"
 
+    def elephant_toggle_game_speed() -> str:
+        factor = parse_float(elephant_game_speed.get(), "游戏加速倍率")
+        result = elephant_trainer().toggle_game_speed(factor)
+        if result.get('unchanged'):
+            return f"游戏已处于所选倍率：{result['rate']:g}x"
+        return ("游戏加速倍率：" if result["accelerated"] else "已恢复游戏倍率：") + f"{result['rate']:g}x"
+
     def elephant_set_inventory_charges() -> str:
         charges = parse_int(elephant_item_charges.get(), "物品数量")
         trainer = elephant_trainer()
@@ -8901,6 +8910,7 @@ def run_gui(
         "skill_points": elephant_add_skill_points,
         "kill_owner_units": elephant_kill_owner_units,
         "xp_rate": elephant_set_xp_rate,
+        "game_speed": elephant_toggle_game_speed,
         "reset_ability": elephant_reset_ability,
         "all_debuffs": elephant_apply_all_debuffs,
         "all_buffs": elephant_apply_all_buffs,
@@ -10239,7 +10249,10 @@ def run_gui(
         )
         check.grid(row=0, column=0, sticky="w")
         parameter = hotkey_parameter_vars.get(spec.name)
-        if parameter is not None:
+        if spec.name == "game_speed":
+            ttk.Entry(item, textvariable=elephant_game_speed, width=6).grid(row=0, column=1, sticky="e", padx=(6, 0))
+            ttk.Label(item, text="x").grid(row=0, column=2, padx=(2,0))
+        elif parameter is not None:
             ttk.Entry(item, textvariable=parameter, width=8).grid(row=0, column=1, sticky="e", padx=(6, 0))
         item.columnconfigure(0, weight=1)
     for column in range(3):
@@ -10759,4 +10772,3 @@ def main(argv: Iterable[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

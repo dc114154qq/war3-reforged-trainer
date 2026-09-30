@@ -100,6 +100,24 @@ __declspec(dllexport) uint64_t BridgeWorldEffectQuery(void) {
     source_owner = w->get_local_player();
     if (!source_owner) { w->error = 171; return 0; }
 #ifdef BRIDGE_DIAGNOSTIC
+    if(w->action==WORLD_EFFECT_TARGET && w->rawcode==0xfffffff9u){
+        uint64_t *data=(uint64_t *)(void *)&w->selection;
+        __try {
+            if(w->success_limit==0u){
+                float timeout=600.0f;
+                data[4]=((uint64_t (*)(void))(uintptr_t)w->get_ability)();
+                if(!data[4]){w->error=320;__leave;}
+                ((void (*)(uint64_t,float *,uint32_t,uint64_t))(uintptr_t)w->get_ability_id)(
+                    data[4],&timeout,0,0);
+            }else if(w->success_limit==1u){
+                w->rawcode=((uint32_t (*)(uint64_t))(uintptr_t)w->add_ability)((uint64_t)(uintptr_t)w->resolve_agent);
+            }else if(w->success_limit==2u){
+                ((void (*)(uint64_t))(uintptr_t)w->remove_ability)((uint64_t)(uintptr_t)w->resolve_agent);
+            }else {w->error=321;__leave;}
+            w->completed=1;
+        } __except(EXCEPTION_EXECUTE_HANDLER){w->error=GetExceptionCode();}
+        return 0;
+    }
     if(w->action==WORLD_EFFECT_TARGET && w->success_limit==65534u){
         uint64_t target=w->rawcode;
         __try {

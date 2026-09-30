@@ -70,6 +70,19 @@ class GameProfile:
     def checks(self, name):
         return self._checks[name]
 
+    @cached_property
+    def registry_metadata(self):
+        """Bind immutable adapter data once; process memory is never cached here."""
+        registry = self.section("registry")
+        handle_layout = tuple(registry[key] for key in
+            ("primary", "alternate", "count", "stride", "slot_owner", "owner_handle"))
+        unit_layout = tuple(registry[key] for key in
+            ("object_handle", "owner_tag", "owner_data", "unit_tag", "owner_handle"))
+        return (self.section("registry"), self.section("players"),
+                self.section("addresses"), self.fingerprint,
+                self.checks("resolver")[0][1], self.checks("game_state")[-1],
+                handle_layout, unit_layout)
+
     def to_dict(self):
         return _plain(self.data)
 

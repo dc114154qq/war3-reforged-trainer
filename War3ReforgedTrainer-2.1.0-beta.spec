@@ -5,6 +5,7 @@ from war3_operations import OPERATIONS
 
 bridge_image = os.environ.get('RELEASE_210_BRIDGE_DLL', 'tools/war3_bridge_24268.dll')
 icon_image = os.environ.get('RELEASE_210_ICON_DLL', 'tools/war3_talent_icon_display.dll')
+speed_image = os.environ.get('RELEASE_210_SPEED_DLL', 'build/speed-clock-runtime/war3_speed_clock.dll')
 
 a = Analysis(
     ['war3_reforged_trainer.py'],
@@ -13,14 +14,18 @@ a = Analysis(
         ('tools/capstone.dll', 'capstone/lib'),
         (bridge_image, 'tools'),
         (icon_image, 'tools'),
+        (speed_image, 'tools'),
     ],
-    datas=[('assets/app_icon.png', 'assets'), ('profiles/*.json', 'profiles')],
+    datas=[('assets/app_icon.png', 'assets'), ('profiles/*.json', 'profiles'),
+           ('third_party/minhook/LICENSE.txt','licenses')],
     hiddenimports=[
         'capstone',
         'war3_runtime_check',
         'war3_clone_protocol',
         'war3_engine_24268',
         'war3_engine_transport',
+        'war3_speed_clock_backend',
+        'war3_services.speed',
         'war3_ability_protocol',
         'war3_ability_field_protocol',
         'war3_item_protocol',

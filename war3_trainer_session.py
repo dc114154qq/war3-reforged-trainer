@@ -9,6 +9,8 @@ _ACTIVE_TRAINER = ContextVar("active_war3_trainer", default=None)
 # These wrappers only construct a native protocol. Their own OperationSpec gates dependencies.
 NATIVE_ONLY = frozenset(
     {
+        "toggle_game_speed",
+        "toggle_native_game_speed",
         "hero_progress_24268",
         "hero_attributes_24268",
         "attack_speed_24268",

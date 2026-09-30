@@ -2,6 +2,19 @@
 from war3_selection_protocol import SIGNATURES
 
 class AbilitiesService:
+    def direct_cast(self, rawcode, action, *, mode=3, passes=1, area=100000.0, state=None):
+        from war3_direct_cast_protocol import SIGNATURES as CAST, build_work, decode_work
+        from war3_game_profile import current_profile
+        def build(entries, tls):
+            from war3_object_registry import ObjectRegistry24268
+            with self.memory_factory(self.pid) as memory:
+                base = ObjectRegistry24268.attach(memory).base
+            return build_work(entries, tls, module_base=base,
+                unit_resolver=base+current_profile().section('addresses')['unit_resolver'],
+                action=action, rawcode=rawcode, mode=mode, passes=passes, area=area, state=state)
+        return self._execute('direct_cast', tuple(n for n, _ in SIGNATURES+CAST),
+            build, decode_work, dict(rawcode=rawcode, action=action, mode=mode, passes=passes))
+
     def ability_batch(self,rawcode,action=0,level=0,target_unit=0):
         from war3_ability_protocol import SIGNATURES as ABILITIES,build_work as build,decode_work as decode
         if (isinstance(rawcode,bool) or not isinstance(rawcode,int) or not 0<rawcode<=0xffffffff
@@ -39,7 +52,7 @@ class AbilitiesService:
         )
 
 
-    def effect_batch(self, rawcode, action, x_bits=0, y_bits=0, *, area_bits=0, passes=1):
+    def effect_batch(self, rawcode, action, x_bits=0, y_bits=0, *, area_bits=0, passes=1, use_unit_position=False):
         from war3_effect_protocol import SIGNATURES as EFFECT_SIGNATURES, build_work as build, decode_work as decode
         if (isinstance(rawcode, bool) or not isinstance(rawcode, int) or not 0 < rawcode <= 0xFFFFFFFF
                 or isinstance(action, bool) or action not in range(1, 5)
@@ -55,6 +68,7 @@ class AbilitiesService:
             lambda entries, tls: build(
                 entries, tls, rawcode, action, wire_x, wire_y, area_bits,
                 resolver=self._effect_resolver,
+                use_unit_position=use_unit_position,
                 unit_map=self._effect_unit_map,
             ),
             decode,

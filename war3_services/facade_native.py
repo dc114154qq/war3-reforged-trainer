@@ -3,6 +3,28 @@ from __future__ import annotations
 from contextlib import contextmanager
 
 class NativeFacade:
+    def toggle_game_speed(self, factor=2):
+        from war3_services.speed import toggle_scaled_speed
+        return toggle_scaled_speed(self,factor)
+
+    def toggle_native_game_speed(self, target=2):
+        if type(target) is not int or target not in range(5):
+            raise ValueError('Game speed must be a native tier in 0..4')
+        engine = self._engine_instance_24268()
+        with engine.session.lock:
+            current = engine.game_speed()
+            cache = engine.session.cache
+            original = cache.get('game_speed_original')
+            if original is None:
+                if current['after']==target:
+                    return dict(current,accelerated=False,unchanged=True)
+                result = engine.game_speed(1, target, expected_epoch=engine.session.epoch)
+                cache['game_speed_original'] = result['before']
+                return dict(result, accelerated=True)
+            result = engine.game_speed(1, original, expected_epoch=engine.session.epoch)
+            cache.pop('game_speed_original', None)
+            return dict(result, accelerated=False)
+
     def _engine_instance_24268(self):
         from war3_engine_24268 import Engine24268
         engine = getattr(self, "_engine24268", None)
@@ -163,7 +185,7 @@ class NativeFacade:
 
     def effect_batch_24268(
         self, rawcode: int | str, action: int, x_bits: int = 0, y_bits: int = 0,
-        *, area: float | None = None, passes: int = 1,
+        *, area: float | None = None, passes: int = 1, use_unit_position: bool = False,
     ) -> dict:
         code = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
         if not code:
@@ -178,7 +200,7 @@ class NativeFacade:
             area_bits = self._float_bits(area_value)
         return self._engine_instance_24268().effect_batch(
             code, int(action), int(x_bits), int(y_bits),
-            area_bits=area_bits, passes=int(passes),
+            area_bits=area_bits, passes=int(passes), use_unit_position=bool(use_unit_position),
         )
 
 

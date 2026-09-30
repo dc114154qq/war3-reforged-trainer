@@ -22,6 +22,10 @@ class OperationSpec:
 
 
 OPERATIONS = {
+    "game_speed": OperationSpec("game_speed", "war3_game_speed_protocol",
+        b"game_speed_abi", b"BridgeGameSpeedQuery", False, True),
+    "direct_cast": OperationSpec("direct_cast", "war3_direct_cast_protocol",
+        b"direct_cast_abi", b"BridgeDirectCastQuery", False, False),
     "talent_icon_control": OperationSpec(
         "talent_icon_control",
         "war3_talent_icon_control_protocol",

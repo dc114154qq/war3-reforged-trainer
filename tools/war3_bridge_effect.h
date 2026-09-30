@@ -166,7 +166,7 @@ __declspec(dllexport) uint64_t BridgeEffectQuery(void) {
         uint8_t temporary = 0;
         uint8_t area_touched = 0;
         uint32_t original_area = 0;
-        uint32_t requested_area = w->action == EFFECT_POINT ? w->reserved : w->x_bits;
+        uint32_t requested_area = w->action == EFFECT_POINT ? (w->reserved & 0x7fffffffu) : w->x_bits;
         uint32_t passes = w->action == EFFECT_POINT ? 1u : (w->y_bits ? w->y_bits : 1u);
         uint32_t error = 0;
         uint32_t success = 0;
@@ -221,6 +221,14 @@ __declspec(dllexport) uint64_t BridgeEffectQuery(void) {
                 else target_object = *(uint64_t *)(uintptr_t)(ability + 0x68);
                 stage = 10;
                 if (!error && !target_object) error = 164;
+            }
+            if (!error) {
+                if (w->action == EFFECT_POINT && (w->reserved & 0x80000000u)) {
+                    x.bits = w->get_x(selected->unit);
+                    y.bits = w->get_y(selected->unit);
+                    if ((x.bits & 0x7f800000u) == 0x7f800000u ||
+                        (y.bits & 0x7f800000u) == 0x7f800000u) error = 151;
+                }
             }
             if (!error) {
                 stage = 11;

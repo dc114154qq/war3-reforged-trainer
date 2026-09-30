@@ -30,9 +30,10 @@ EFFECT_TARGET = 1
 EFFECT_IMMEDIATE = 2
 EFFECT_POINT = 3
 EFFECT_NOARG = 4
+POINT_USE_UNIT_POSITION = 0x80000000
 
 
-def build_work(entries, tls, rawcode, action, x_bits=0, y_bits=0, area_bits=0, *, resolver=0, unit_map=()):
+def build_work(entries, tls, rawcode, action, x_bits=0, y_bits=0, area_bits=0, *, resolver=0, unit_map=(), use_unit_position=False):
     if (isinstance(rawcode, bool) or not isinstance(rawcode, int) or not rawcode <= 0xFFFFFFFF or rawcode <= 0
             or isinstance(action, bool) or action not in range(1, 5)
             or any(isinstance(value, bool) or not isinstance(value, int) for value in (x_bits, y_bits))):
@@ -47,6 +48,10 @@ def build_work(entries, tls, rawcode, action, x_bits=0, y_bits=0, area_bits=0, *
     if isinstance(area_bits, bool) or not isinstance(area_bits, int) or not 0 <= area_bits <= 0xFFFFFFFF:
         raise ValueError("Invalid effect area bits")
     ordered_pointers = pointers[:1] + [resolver] + pointers[1:]
+    if use_unit_position:
+        if action != EFFECT_POINT or area_bits & POINT_USE_UNIT_POSITION:
+            raise ValueError("Unit-position flag is valid only once for point effects")
+        area_bits |= POINT_USE_UNIT_POSITION
     payload.extend(struct.pack(
         "<10Q8I", *(ordered_pointers + [tls]), rawcode, action, x_bits, y_bits,
         0, 0, 0, area_bits if action == EFFECT_POINT else 0,
@@ -100,6 +105,7 @@ def decode_work(payload, expected_count):
             raise ValueError("Effect result identity or status mismatch")
         rows.append(dict(selected, unit=unit, status=status, temporary=temporary))
     return dict(rawcode=rawcode, action=action, x_bits=x_bits, y_bits=y_bits,
-                area_bits=reserved if action == EFFECT_POINT else x_bits,
+                area_bits=(reserved & 0x7fffffff) if action == EFFECT_POINT else x_bits,
+                use_unit_position=bool(reserved & POINT_USE_UNIT_POSITION),
                 passes=1 if action == EFFECT_POINT else (y_bits or 1),
                 changed=changed, count=expected_count, rows=rows)

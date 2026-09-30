@@ -35,6 +35,19 @@ def detect_ui_language(locale_name: str | None = None) -> str:
 
 
 _EN_TRANSLATIONS = {
+    "游戏加速倍率": "Game acceleration factor",
+    "游戏加速倍率：": "Game acceleration factor: ",
+    "已恢复游戏倍率：": "Restored game acceleration factor: ",
+    "游戏已处于所选倍率：": "Game is already at the selected acceleration factor: ",
+    "Alt+N  加速/恢复游戏": "Alt+N  Accelerate/Restore Game",
+    "游戏加速档位：": "Accelerated game speed tier: ",
+    "已恢复游戏速度档位：": "Restored game speed tier: ",
+    "游戏已处于所选速度档位：": "Game is already at the selected speed tier: ",
+    "0 最慢": "0 Slowest",
+    "1 慢": "1 Slow",
+    "2 正常": "2 Normal",
+    "3 快": "3 Fast",
+    "4 最快": "4 Fastest",
     "手动导入经过校验的离线游戏适配包，然后退出": "Import a validated offline game adapter and exit",
     "校验并显示离线适配包信息，然后退出": "Validate and display an offline game adapter, then exit",
     "适配包已导入，下次连接游戏时重新识别：": "Adapter imported; reconnect to identify the game again: ",

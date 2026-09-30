@@ -263,7 +263,7 @@ def test_delivery_readback_and_gameplay_are_distinct(bound):
     s.require_write()
 
 
-def test_domain_extraction_preserves_baseline_method_bodies():
+def test_domain_extraction_preserves_unmodified_baseline_method_bodies():
     baseline = subprocess.check_output(
         ["git", "show", "70446ba:war3_engine_24268.py"], text=True, encoding="utf8"
     )
@@ -278,6 +278,11 @@ def test_domain_extraction_preserves_baseline_method_bodies():
         if isinstance(n, ast.FunctionDef)
     }
     count = 0
+    # New services have their own protocol tests. The intentional fullscreen
+    # change is covered by effect/lifecycle tests rather than byte-for-byte AST equality.
+    added = {'direct_cast', 'game_speed'}
+    changed = {'effect_batch'}
+    seen_added, seen_changed = set(), set()
     for path in (
         Path("war3_services") / (name + ".py")
         for name in ("units", "abilities", "items", "extensions", "world")
@@ -286,12 +291,21 @@ def test_domain_extraction_preserves_baseline_method_bodies():
             if isinstance(c, ast.ClassDef):
                 for method in c.body:
                     if isinstance(method, ast.FunctionDef):
+                        if method.name in added:
+                            assert method.name not in original
+                            seen_added.add(method.name)
+                            continue
+                        if method.name in changed:
+                            assert method.name in original
+                            seen_changed.add(method.name)
+                            continue
                         assert (
                             ast.dump(method, include_attributes=False)
                             == original[method.name]
                         )
                         count += 1
-    assert count == 28
+    assert count == 27
+    assert seen_added == added and seen_changed == changed
 
 
 def test_c_defaults_match_python_single_source():

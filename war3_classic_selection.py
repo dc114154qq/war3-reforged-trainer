@@ -37,21 +37,26 @@ def read_player_selection(memory, player: int) -> ClassicSelection:
     also catch list edits that preserve both root and count during the first read.
     """
     layout = current_profile().section("selection")
+    manager_offset = layout["manager"]
+    header_offset = layout["header"]
+    next_offset, unit_offset = layout["node_next"], layout["node_unit"]
+    max_count = layout["max_count"]
+    adjacent_fields = unit_offset == next_offset + 8
     if not _pointer(player):
         raise SelectionReadError("Invalid player pointer")
-    slot = _read(memory, player + layout["manager"], 8)
+    slot = _read(memory, player + manager_offset, 8)
     manager = struct.unpack("<Q", slot)[0]
     if not _pointer(manager):
         raise SelectionReadError("Invalid selection manager")
-    sentinel = (manager + layout["header"]) | 1
+    sentinel = (manager + header_offset) | 1
 
     def capture():
-        header = _read(memory, manager + layout["header"], 0x18)
+        header = _read(memory, manager + header_offset, 0x18)
         tail, root, count = struct.unpack_from("<QQI", header)
-        if count > layout["max_count"]:
+        if count > max_count:
             raise SelectionReadError("Selection count exceeds 24")
         if count == 0:
-            if root != sentinel or tail != manager + layout["header"]:
+            if root != sentinel or tail != manager + header_offset:
                 raise SelectionReadError("Empty selection has inconsistent sentinel")
             return header, ()
         node, last = root, 0
@@ -60,11 +65,11 @@ def read_player_selection(memory, player: int) -> ClassicSelection:
             if not _pointer(node) or node in nodes:
                 raise SelectionReadError("Selection list is truncated or cyclic")
             nodes.add(node)
-            if layout['node_unit'] == layout['node_next'] + 8:
-                next_node, unit = struct.unpack('<2Q', _read(memory, node+layout['node_next'], 16))
+            if adjacent_fields:
+                next_node, unit = struct.unpack('<2Q', _read(memory, node+next_offset, 16))
             else:
-                next_node, unit = (struct.unpack('<Q', _read(memory, node+layout[k], 8))[0]
-                                   for k in ('node_next', 'node_unit'))
+                next_node, unit = (struct.unpack('<Q', _read(memory, node+offset, 8))[0]
+                                   for offset in (next_offset, unit_offset))
             if not _pointer(unit) or unit in units:
                 raise SelectionReadError("Selection contains invalid or duplicate unit")
             units.append(unit)
@@ -74,6 +79,6 @@ def read_player_selection(memory, player: int) -> ClassicSelection:
         return header, tuple(units)
 
     first = capture()
-    if capture() != first or _read(memory, player + layout["manager"], 8) != slot:
+    if capture() != first or _read(memory, player + manager_offset, 8) != slot:
         raise SelectionReadError("Selection changed while reading")
     return ClassicSelection(player, manager, first[1])

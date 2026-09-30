@@ -2,6 +2,17 @@
 from war3_selection_protocol import SIGNATURES
 
 class WorldService:
+    def game_speed(self, action=0, target=2, *, expected_epoch=None):
+        from war3_game_speed_protocol import SIGNATURES, build_work, decode_work
+        def build(entries,tls):
+            if expected_epoch is not None and self.session.epoch!=expected_epoch:
+                from war3_game_session import SessionError
+                raise SessionError('游戏地图或会话已改变，未修改速度')
+            return build_work(entries,tls,action,target)
+        return self._execute('game_speed', tuple(n for n, _ in SIGNATURES),
+            build, decode_work,
+            dict(action=action, target=target))
+
     def world_batch(self, action, rawcode=0, value=0):
         from war3_world_protocol import SIGNATURES as WORLD_SIGNATURES, build_work as build, decode_work as decode
         if (isinstance(action, bool) or not isinstance(action, int) or action not in range(1, 7)

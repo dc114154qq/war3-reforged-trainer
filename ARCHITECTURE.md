@@ -119,3 +119,12 @@ python tools/verify_bridge_transport_runtime.py build/architecture-fixture/engin
 `test_release209_equivalence.py` 固定对照已发布提交 `873af7140f6af95f826565d8ae0397f840022b32`，检查 471 个方法签名、390 个搬迁方法的已审差异、28 个原生服务及快捷键。`test_beta_release_contract.py` 检查测试版标识、发布清单、动态协议收集及缺少配置/服务/协议/预发布标记时的构建验收拒绝。新增测试版标签的英文翻译遗漏已修复并通过回归。
 
 发布说明为 `RELEASE_NOTES_v2.1.0-beta.md`。当前交付的是已提交的实验分支源码、开发 DLL、构建配置和待发布说明；EXE 构建及发布未执行。授权构建后在本工作树运行 `python tools/build_release_210.py`，产物必须通过 `python tools/build_release_210.py --verify-only` 及 EXE 自检，再按测试版发布。
+
+
+### 2026-09-30：2.1.0 测试版发布验证
+
+在已集成 2.0.8/2.0.9 的 129c389 基线上，加入 3.0.1.24323 独立适配及后续授权的季风、游戏加速服务。公共传输、GameSession 与外部读写后端保持基线语法树一致；对象解析仅预绑定不可变配置并移除重复临时闭包，选择列表预绑定布局，仍每次读取游戏内存。两个构建及重定位布局的逐次读取、对象销毁/代际变化、选择变更拒绝与基线对照通过，未缓存游戏对象。
+
+全量回归 2663 passed、29 skipped、120 subtests passed；后续读取优化定向回归 182 passed、26 subtests passed。最终固定五轮、每项 6000 次交错微基准，冷/热/24 单位中位数与 P95 均在基线 10% 以内。真实 Windows 传输 8 场景通过；这些证据不能代替新构建和问题外机的实际游戏效果。完整细节保存在 build/publish-210-validation，发布说明分别列明本机用户反馈、自动化与未执行项。
+
+版本数据分别识别 3.0.0.24268 与 3.0.1.24323；一个 EXE 共用服务与会话，由实际 PE 指纹选择对应适配包及版本模块。更新仍按本文及 AGENTS.md 的强制流程进行。发布标为 prerelease，保留 2.0.9 稳定版入口。

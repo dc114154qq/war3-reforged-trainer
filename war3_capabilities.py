@@ -13,6 +13,7 @@ class Capability:
 
 # Modules with instruction/layout semantics remain pinned to a compiled adapter.
 MODULES = {
+    "direct_cast": ("direct_effect",),
     "extension": ("talents", "equipment"),
     "equipment": ("equipment",),
     "equipment_probe": ("equipment",),

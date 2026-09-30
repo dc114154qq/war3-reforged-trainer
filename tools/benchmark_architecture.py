@@ -1,6 +1,6 @@
 """Paired same-snapshot microbenchmark against released 70446ba (not a live-game claim)."""
 
-import json, statistics, subprocess, sys, time, types
+import gc, json, statistics, subprocess, sys, time, types
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -19,24 +19,38 @@ def baseline_module(name, path):
 def measure(old, new, count=1200):
     a = []
     b = []
-    for i in range(count):
-        pair = ((old, a), (new, b)) if i % 2 else ((new, b), (old, a))
-        for fn, out in pair:
-            start = time.perf_counter_ns()
-            fn()
-            out.append(time.perf_counter_ns() - start)
-
     def stats(x):
         return {
             "median_ns": statistics.median(x),
             "p95_ns": sorted(x)[int(len(x) * 0.95)],
         }
-
+    rounds = []
+    # Keep both implementations under the same timeit-style GC conditions.
+    # Pool every sample from five fixed rounds; never select a passing round.
+    enabled = gc.isenabled()
+    gc.collect()
+    gc.disable()
+    try:
+        for round_index in range(5):
+            left_start, right_start = len(a), len(b)
+            for i in range(count):
+                pair = ((old, a), (new, b)) if (i + round_index) % 2 else ((new, b), (old, a))
+                for fn, out in pair:
+                    start = time.perf_counter_ns()
+                    fn()
+                    out.append(time.perf_counter_ns() - start)
+            rounds.append({"baseline": stats(a[left_start:]), "current": stats(b[right_start:])})
+    finally:
+        if enabled:
+            gc.enable()
     left, right = stats(a), stats(b)
     return {
         "baseline": left,
         "current": right,
         "ratios": {k: right[k] / left[k] for k in left},
+        "rounds": rounds,
+        "samples_per_implementation": len(a),
+        "gc_during_sampling": False,
     }
 
 

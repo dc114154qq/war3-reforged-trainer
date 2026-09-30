@@ -7,6 +7,7 @@ const state = {
   language: "zh",
   manualLanguage: false,
   generatedAt: "",
+  latestTag: "",
 };
 
 const i18n = window.SITE_I18N || { zh: {}, en: {}, releaseNames: {}, releaseBodies: {} };
@@ -118,7 +119,7 @@ function applyLanguage(language, { manual = false } = {}) {
     elements.languageToggle.href = `${languageUrl.pathname}${languageUrl.search}`;
   }
   if (state.releases.length) {
-    renderLatest(state.releases[0]);
+    renderLatest(state.releases.find((release) => release.tag === state.latestTag) || state.releases[0]);
     renderList();
     elements.syncTime.textContent = state.generatedAt
       ? t("indexUpdated", { date: formatDate(state.generatedAt) })
@@ -324,7 +325,12 @@ function createReleaseElement(release, index) {
   article.id = `release-${release.tag.replace(/[^a-zA-Z0-9.-]/g, "-")}`;
   const releaseName = localizedReleaseName(release);
   title.textContent = releaseName !== release.tag ? `${release.tag} · ${releaseName}` : release.tag;
-  badge.hidden = index !== 0;
+  badge.hidden = release.tag !== state.latestTag;
+  if (release.prerelease) {
+    badge.hidden = false;
+    badge.removeAttribute("data-i18n");
+    badge.textContent = state.language === "en" ? "Test version" : "测试版";
+  }
   fragment.querySelector(".release-date").textContent = `${formatDate(release.published_at)} ${t("published")}`;
   fragment.querySelector(".release-intro").textContent = firstParagraph(localizedReleaseBody(release));
   fragment.querySelector(".markdown-body").innerHTML = markdownToHtml(localizedReleaseBody(release));
@@ -398,7 +404,8 @@ async function loadReleases() {
     if (!Array.isArray(data.releases) || data.releases.length === 0) throw new Error("empty release index");
     state.releases = data.releases.sort((a, b) => new Date(b.published_at) - new Date(a.published_at));
     state.generatedAt = data.generated_at || "";
-    renderLatest(state.releases[0]);
+    state.latestTag = data.latest || state.releases[0].tag;
+    renderLatest(state.releases.find((release) => release.tag === data.latest) || state.releases[0]);
     renderList();
     elements.syncTime.textContent = data.generated_at ? t("indexUpdated", { date: formatDate(data.generated_at) }) : "";
   } catch (error) {

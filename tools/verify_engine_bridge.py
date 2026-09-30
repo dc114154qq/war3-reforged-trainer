@@ -97,6 +97,8 @@ def main() -> None:
     marker(b"effect_batch_abi", (0x24268027, 216, 1168))
     marker(b"world_effect_batch_abi", (0x24268028, 216, 656))
     marker(b"world_cast_abi", (0x24268048, 216, 760))
+    marker(b"direct_cast_abi", (0x24268050, 216, 824))
+    marker(b"game_speed_abi", (0x24268051, 216, 104))
     marker(b"spawn_batch_abi", (0x24268018, 216, 128))
     marker(b"mouse_batch_abi", (0x24268019, 216, 128))
     marker(b"screen_mouse_batch_abi", (0x2426801A, 216, 128))

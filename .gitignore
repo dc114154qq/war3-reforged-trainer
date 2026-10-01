@@ -45,3 +45,8 @@ tools/*.test.lib
 tools/*.new.dll
 tools/*.new.exp
 tools/*.new.lib
+
+# Generated release and native build artifacts are distributed outside the source tree.
+*.exe
+*.dll
+*.zip

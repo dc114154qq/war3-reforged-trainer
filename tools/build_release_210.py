@@ -19,7 +19,11 @@ from PyInstaller.archive.readers import CArchiveReader
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-BRANCH = "codex/war3-modular-adapters-20260926"
+ALLOWED_BRANCHES = {
+    "main",
+    "master",
+    "codex/war3-modular-adapters-20260926",
+}
 VERSION = (2, 1, 0, 0)
 EXE_NAME = "War3ReforgedTrainer-v2.1.0-beta.exe"
 OUTPUT = ROOT / "dist-2.1.0-beta-verified"
@@ -46,36 +50,68 @@ def sha256(path: Path) -> str:
 
 
 def source_paths() -> tuple[Path, ...]:
-    files = set(ROOT.glob("war3_*.py"))
+    # Keep this list aligned with the actual 2.1.0 build closure.  In
+    # particular, the separate hotkey product and diagnostics probes must not
+    # silently become part of the trainer source hash or package inputs.
+    excluded_runtime = {
+        "war3_code_observation.py",
+        "war3_cooldown_probe_protocol.py",
+        "war3_lifecycle_protocol.py",
+        "war3_map_flags_protocol.py",
+        "war3_native_profile.py",
+    }
+    files = {
+        path for path in ROOT.glob("war3_*.py")
+        if not path.name.startswith("war3_hotkey_") and path.name not in excluded_runtime
+    }
     files.update(ROOT.glob("war3_services/*.py"))
-    files.update(ROOT.glob("diagnostics/*.py"))
+    files.update(ROOT / name for name in (
+        "diagnostics/__init__.py",
+        "diagnostics/war3_native_profile.py",
+    ))
     files.update(ROOT.glob("profiles/*.json"))
-    files.update(path for path in ROOT.glob("third_party/minhook/src/**/*") if path.is_file())
-    files.update(ROOT.glob("third_party/minhook/include/*.h"))
-    files.add(ROOT / "tools/generate_bridge_profile.py")
-    files.update(ROOT.glob("tools/war3_bridge_*.h"))
-    files.update(ROOT.glob("tools/war3_talent_icon_*.h"))
-    files.update(ROOT.glob("tools/war3_talent_icon_*.c"))
-    files.update(ROOT.glob("tools/war3_talent_icon_*.S"))
+    files.update(ROOT / name for name in (
+        "third_party/minhook/LICENSE.txt",
+        "third_party/minhook/include/MinHook.h",
+        "third_party/minhook/src/buffer.c",
+        "third_party/minhook/src/buffer.h",
+        "third_party/minhook/src/hook.c",
+        "third_party/minhook/src/trampoline.c",
+        "third_party/minhook/src/trampoline.h",
+        "third_party/minhook/src/hde/hde64.c",
+        "third_party/minhook/src/hde/hde64.h",
+        "third_party/minhook/src/hde/pstdint.h",
+        "third_party/minhook/src/hde/table64.h",
+        "tools/generate_bridge_profile.py",
+        "tools/war3_talent_icon_display.c",
+        "tools/war3_talent_icon_predicate.h",
+        "tools/war3_talent_icon_thunk.S",
+    ))
+    bridge_test_only = {
+        "war3_bridge_cooldown_probe.h",
+        "war3_bridge_talent_probe.h",
+        "war3_bridge_test_fixture.h",
+    }
+    files.update(
+        path for path in ROOT.glob("tools/war3_bridge_*.h")
+        if path.name not in bridge_test_only
+    )
     files.update(
         ROOT / name for name in (
             "War3ReforgedTrainer-2.1.0-beta.spec",
             "tools/war3_bridge_24268.c",
             "tools/build_engine_bridge.ps1",
-            "tools/verify_engine_bridge.py",
             "tools/build_talent_icon_display.ps1",
-            "tools/verify_talent_icon_display.py",
             "tools/war3_speed_clock.c",
             "tools/build_speed_clock.ps1",
+            "tools/verify_engine_bridge.py",
+            "tools/verify_talent_icon_display.py",
             "tools/verify_speed_clock.py",
             "third_party/minhook/LICENSE.txt",
-            "third_party/MINHOOK.md",
             "tools/build_release_210.py",
             "tools/war3-2.1.0-beta-version-info.txt",
-            "tools/capstone.dll",
             "assets/app_icon.ico",
             "assets/app_icon.png",
-            "RELEASE_NOTES_v2.1.0-beta.md",
         )
     )
     missing = sorted(str(path.relative_to(ROOT)) for path in files if not path.is_file())
@@ -93,8 +129,9 @@ def assert_workspace() -> tuple[str, str]:
     if not top.samefile(ROOT):
         raise RuntimeError(f"Wrong worktree: {top}, expected {ROOT}")
     branch = run("git", "branch", "--show-current")
-    if branch != BRANCH:
-        raise RuntimeError(f"Wrong branch: {branch}, expected {BRANCH}")
+    if branch not in ALLOWED_BRANCHES:
+        allowed = ", ".join(sorted(ALLOWED_BRANCHES))
+        raise RuntimeError(f"Wrong branch: {branch}, expected one of: {allowed}")
     tree = ast.parse((ROOT / "war3_reforged_trainer.py").read_text(encoding="utf-8"))
     versions = [node.value.value for node in tree.body
                 if isinstance(node, ast.Assign) and any(

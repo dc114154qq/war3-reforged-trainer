@@ -1,124 +1,109 @@
-<p align="right"><strong>中文</strong> | <a href="README_EN.md">English</a></p>
+# Warcraft III Reforged Trainer 2.1.0-beta / 魔兽争霸 III 重制版修改器 2.1.0-beta
 
-# 魔兽争霸 III 重制版修改器
+本仓库包含 Warcraft III Reforged 修改器 2.1.0-beta 的源码和版本适配数据。仓库不提交生成的 EXE、DLL、`dist` 目录、测试夹具、逆向分析证据或独立的改键软件源码。
 
-这是一个面向《魔兽争霸 III：重制版》的本地修改器。当前版本以稳定性优先：资源、选中单位属性、英雄已学技能和背包物品栏等功能走内存读取/写入；遇到会导致命令卡空格、技能消失或游戏崩溃的情况会拒绝写入。
+This repository contains the source code and version adapter data for the Warcraft III Reforged Trainer 2.1.0-beta. Generated EXE/DLL files, `dist` directories, test fixtures, reverse-engineering evidence, and the separate hotkey product are intentionally excluded.
 
-## 社区链接
+## 构建环境 / Build Requirements
 
-本项目已链接认可 [LINUX DO 社区](https://linux.do/)，遵循社区开源推广要求，接受社区监督。
+在 Windows 10/11 x64 上构建，需要安装：
 
-## 下载和运行
+Build on Windows 10/11 x64 with:
 
-从 GitHub Release 下载 `War3ReforgedTrainer-v1.0.19-Native.exe`，直接双击运行并允许 Windows UAC 管理员权限确认。这是 PyInstaller 打包的单文件 GUI 程序，不会额外弹出终端窗口，也不需要安装 Python。管理员权限和按需启用的 `SeDebugPrivilege` 用于访问受到进程权限限制的 Warcraft III，避免 `WinError 5: 拒绝访问`。
+- Git
+- Python 3.10 或更高版本，推荐 Python 3.12 / Python 3.10 or newer; Python 3.12 is recommended
+- LLVM/Clang，并确保 `clang` 在 `PATH` 中 / LLVM/Clang with `clang` available in `PATH`
+- Windows SDK 及其 x64 导入库，并确保 Clang 能够找到 / Windows SDK and its x64 import libraries available to the Clang toolchain
 
-运行前请先启动《魔兽争霸 III：重制版》，进入地图并选中目标单位。修改器会自动查找正在运行的 `Warcraft III.exe`。
+桥接 DLL、天赋图标模块和游戏加速模块由 Clang 编译。仅安装 Python 编译包不够，还必须安装 Windows 头文件和导入库。
 
-## 兼容版本
+The bridge DLL, talent-display module, and speed-clock module are compiled with Clang. Installing Python packages alone is not sufficient; the Windows headers and import libraries from the Windows SDK are also required.
 
-- 已实机测试版本：`Warcraft III: Reforged 2.0.4.23745`。
-- 其他 `2.0+` 版本没有逐个验证，不能保证一定可用。这个修改器依赖 Reforged 当前进程里的内存布局；如果暴雪更新改了 selected-handle、单位组件或物品栏对象结构，可能需要重新适配。
-- 如果游戏以管理员权限运行，修改器也需要用管理员权限运行。
+## 从源码完整构建 / Build From Source
 
-## 普通读取异常时使用备用读取
+在 PowerShell 中，从仓库根目录执行以下命令：
 
-如果点击 `读取所有选中单位` 后出现 `WinError 299`、字段只显示到一半、读取失败、读到错误单位，或始终锁定在第一次读取的单位，请按下面的顺序操作：
-
-1. 先在游戏中单击并只选中需要修改的目标单位。
-2. 点击普通读取按钮旁边的 `备用读取`。
-3. 备用读取成功后，继续使用同一字段表修改属性、智力、技能和物品栏；相关写入会沿用备用兼容路径。
-
-`备用读取` 只是功能名称，不限定 Windows 版本。它用于兼容不同电脑上的进程内存分页和堆布局差异，Win10、Win11 遇到上述现象时都可以使用。若备用读取仍失败，请提供修改器同目录 `log\win10-read-latest.log`；如果程序目录不可写，日志会保存在系统临时目录的 `War3ReforgedTrainer\log` 下。
-
-## 可用功能
-
-- 玩家资源：读取多个阵营/玩家资源组，修改金币、木材、人口。
-- 当前选中单位：读取并修改 HP、MP、回复、坐标、经验、技能点、三围、护甲、移动速度、攻击相关字段等。非英雄或无背包单位会只显示实际存在的组件字段，缺少英雄/技能/物品栏组件不是读取失败。
-- 单位组件发现：首次读取会建立一次按 owner 归属关系校验的全局组件索引，不依赖组件与单位 owner 的地址距离；同一游戏进程内后续读取使用已验证缓存。
-- 候选单位列表：当 Reforged 当前选择状态里同时存在历史目标、临时对象或多个单位引用时，可以列出候选单位，并显示 HP/MP、坐标、refs/known、组件、物品槽、handle/owner/unit，由用户选择最符合当前游戏画面的单位。候选表包含慢速全局扫描结果，不依赖 selected-handle 槽仍然有效。
-- 物品栏：在 `选中单位` 页面的字段表里读取 `物品槽1..6` 和 `物品槽N数量`，通过 `字段目标值` + `写入字段` 修改目标槽。当前实现只修改目标槽对应的 item 对象，不通过交换两个槽位来伪装修改；数量写入后会刷新英雄选择，让物品栏数字立即更新。
-- 英雄技能：读取并替换已学技能的 rawcode。写入时会同步英雄技能配置和运行时 ability 实例，并刷新命令卡；目标技能不要求当前局已有存活单位模板，只要 Reforged 引擎能从当前地图/对象数据创建该 rawcode 的 ability，即可生成安全的运行时模板。
-- 技能字段：在独立页面输入技能 rawcode 和字段等级，读取当前技能实例已开放的整数、实数、布尔和字符串字段，并对选中字段进行本局临时写入与读回校验。
-- 物品字段：按物品栏 1-6 槽位读取 20 个 Reforged 官方物品实例字段；19 个整数、实数和布尔字段支持本局临时写入、读回验证和失败回滚，模型字符串字段暂不开放。
-- 大象功能与快捷键：提供地图、单位、英雄、物品、技能、科技、增益/减益及全屏效果等功能，并配套 49 个可独立启用的全局快捷键。`Alt+V` 可切换 3.0 原生持续快速建造/升级，开启后每秒处理本地玩家建筑，不再发送 `warpten`；`Alt+B` 直接胜利默认关闭，需要在快捷键功能中主动启用。`Ctrl+F11` 读取所有选中单位；读取成功后会播放系统提示音。快捷键优先使用 Windows 全局注册；组合键被占用时会自动切换为兼容监听，并在界面中列出进入兼容监听的按键。
-- ID 目录：在“大象功能”后新增“物品 ID”“技能 ID”“单位 ID”三个查询页，提供 283 个物品、833 个技能和 834 个单位 rawcode。可按 ID、中英文名称搜索并复制四字符 rawcode；目录查询不会写入游戏。
-
-### ID 目录来源
-
-- 中文名称来自社区项目 [W3x2LNI 的 zhCN-1.32.8 预构建对象数据](https://github.com/sumneko/w3x2lni/tree/82916514a12b7edb15252d42225cd8cc8ce61cfd/data/zhCN-1.32.8/prebuilt)。
-- 英文名称来自 MIT 许可的 [war3-objectdata 对象数据](https://github.com/flowtsohg/war3-objectdata/tree/dc5e2da21217dba8e5f750c1e867d691ab193ec1/objectdata)，并以同 rawcode 对齐。
-- 这些是固定版本的社区快照，不代表暴雪每个后续补丁的完整差异。自定义地图新增对象通常不在通用目录内，需要从地图资源读取或手动输入。
-
-## 当前限制
-
-- 技能替换不是把地图对象记录指针硬挂到运行时实例上。目标技能会通过 Reforged 引擎临时创建 ability 模板，快照必要运行时字段后立刻删除临时实例；当前单位已有重复 rawcode、空技能槽或原技能槽无法唯一定位时，修改器会拒绝写入。
-- 重制版里已学技能的实际效果不由英雄技能栏 rawcode 或缓存 rawcode 单独决定，而是绑定在运行时 ability 实例和数据对象上。本版本只写入已验证的最小运行时字段，不复制大段 ability payload。
-- 修改器不会修改游戏文件、存档或地图文件。
-- 修改器不使用 OCR 截图识别当前目标；当前选中单位只通过内存中的 selected-handle / selected-unit 槽定位。selected-unit 会动态扫描选择状态区，并按多个地址一致指向同一个 unit 对象投票；新局初始化时会短暂重试。找不到可验证的当前选择槽时会报错，而不会按面板数值或全内存单位指针引用次数猜目标。
-- 纯外部读内存不能保证 100% 自动识别当前选中单位。Reforged 会在选择状态区保留历史目标、旁路对象或临时对象；本修改器只把强证据结果用于自动读取，弱证据只进入候选表，让用户按组件和物品槽线索手动选择。
-- 修改器只在技能需要游戏引擎创建运行时模板时调用受限 helper；helper 只允许内部 ability find/add/remove/refresh 操作，不会把对象资源记录地址直接写入运行时 ability。
-
-## 界面说明
-
-- `读取所有选中单位` 和 `刷新字段表` 都会重新读取当前游戏选中的单位，并刷新上方生命/魔法/坐标输入框，避免换过单位后继续显示旧单位数值。
-- 备用读取版使用同名的 `读取所有选中单位` 入口，专门处理 `WinError 299`、字段缺失、错误单位和普通读取失败。备用读取会重新验证游戏中的实时选择，不会用上一次读取的单位兜底。
-- `列出候选单位` 会显示当前选择状态区里所有可解释的候选。`refs/known` 越高证据越强；英雄通常会有 `hero,inventory` 组件和物品槽列表，小兵可能只有 `attack,move` 等组件。选中表格行后点 `读取所选候选`，后续 `写入选中单位` 和 `写入字段` 会固定写这个候选的 handle/owner/unit，直到再次自动读取或重新选候选。
-- 如果 selected-handle 槽失效，`读取所有选中单位` 会报错并自动填充候选表。慢速全局扫描通常需要几十秒；看 HP/MP、坐标、组件和物品槽选择目标。
-- 字段表写入会默认写回当前字段表对应的单位，而不是每次重新猜当前选择槽。这样修改装备后即使 Reforged 的 selected-handle 槽临时失效，也会读回刚才写入的同一个单位。
-- `写入选中单位` 会按界面字段分别写入当前生命、生命上限、当前魔法、魔法上限、回复率和坐标；当前值高于上限时才会自动抬高上限。
-- 装备/物品修改沿用经典修改器的字段表路径：在 `选中单位` 页面的字段表选择 `物品槽N` 或 `物品槽N数量`，填写 `字段目标值` 后点击 `写入字段`。空槽没有可直接改写的 item 对象时会报错；数量写入使用 Warcraft III native 的 item 数量字段。
-- 技能修改也走字段表路径：选择 `skillN_name`，填写目标技能 rawcode 后点击 `写入字段`。如果目标 rawcode 已存在于当前单位，或引擎无法从当前地图/对象数据创建该技能模板，写入会失败并给出原因。
-- 如果本轮没有找到可验证的当前选中单位，界面会清空旧的单位/物品栏读数并报错，不再保留上一个单位的显示值。
-
-## 能否保证别人下载 exe 就能用
-
-可以保证的是：这个 exe 是单文件 GUI 打包，当前构建不依赖本机 Python、PIL、Capstone，也不需要单独安装 helper DLL；在本机已完成编译、打包和纯内存选中单位/字段读取验证。
-
-不能绝对保证所有人都能直接用，因为它依赖以下外部条件：
-
-- Windows 64 位环境。
-- 正在运行的《魔兽争霸 III：重制版》进程。
-- 游戏版本和当前内存布局与本版本探测逻辑兼容；当前只在 `2.0.4.23745` 上实测。
-- 修改器权限不低于游戏进程权限；如果游戏以管理员运行，修改器也需要管理员运行。
-- 杀毒软件或系统策略没有拦截读取/写入游戏进程内存。
-
-如果这些条件满足，别人拿到 Release 里的 exe 应该可以直接运行。若暴雪更新导致内存布局变化，选中单位或字段地址可能需要重新适配。
-
-也不能承诺每一次都自动读到正确单位。自动读取只接受 selected-handle 或已知 selected-unit 槽这类强证据；证据不足时请使用候选单位表，按 HP/MP、坐标、组件、物品栏和 handle/owner/unit 线索选择目标。
-
-## 开发自检
+From PowerShell, run the following commands in the repository root:
 
 ```powershell
-python .\war3_reforged_trainer.py --read-selected
-python .\war3_reforged_trainer.py --read-selected-fields
-python .\war3_reforged_trainer.py --list-selection-candidates
-python .\war3_reforged_trainer.py --verify-selection-locator
+git clone https://github.com/dc114154qq/war3-reforged-trainer.git
+Set-Location war3-reforged-trainer
+git switch main
+
+py -3.12 -m venv .venv
+& .\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements-build.txt
+
+python tools/build_release_210.py
 ```
 
-这些自检只用于开发时确认进程查找和当前选中单位定位。`--read-selected`、`--read-selected-fields`、`--list-selection-candidates`、`--verify-selection-locator` 是只读操作。Release 里的 exe 是无终端 GUI 版本，不适合作为命令行工具查看输出。
+构建脚本会自动完成以下步骤：
 
-候选表打印出的 `handle,owner,unit` 三元组也可以用于固定读取或同值写入验证：
+The build script automatically performs all of these steps:
 
-```powershell
-python .\war3_reforged_trainer.py --unit-identity 0xHANDLE,0xOWNER,0xUNIT --read-selected-fields
-python .\war3_reforged_trainer.py --unit-identity 0xHANDLE,0xOWNER,0xUNIT --set-unit-field inventory_slot_1=ofir
-```
+1. 检查当前源码版本、Git 工作树和游戏适配数据。 / Check the source version, Git worktree, and game adapter data.
+2. 编译并校验 engine bridge。 / Compile and validate the engine bridge.
+3. 编译并校验天赋图标显示模块。 / Compile and validate the talent-display module.
+4. 编译并校验游戏速度模块。 / Compile and validate the speed-clock module.
+5. 使用 `War3ReforgedTrainer-2.1.0-beta.spec` 调用 PyInstaller。 / Invoke PyInstaller with `War3ReforgedTrainer-2.1.0-beta.spec`.
+6. 检查 Python 模块、游戏 profile、native ABI、版本资源和 MinHook 许可证。 / Check Python modules, game profiles, native ABIs, version resources, and the MinHook license.
 
-## 开发说明
+不需要把预编译 DLL 或 EXE 放进源码目录。/ No prebuilt DLL or EXE needs to be placed in the source checkout.
 
-- 主程序：`war3_reforged_trainer.py`
-- 打包配置：`魔兽争霸3重制版修改器.spec`
-- 开发用只读探针：`tools/war3_selected_probe.py`
-- 开发用只读 native 表反汇编：`tools/war3_disasm_native.py`
+验证后的 EXE 会写入以下被 Git 忽略的目录：
 
-打包命令：
-
-```powershell
-python -m PyInstaller .\魔兽争霸3重制版修改器.spec --noconfirm
-```
-
-打包产物：
+The verified executable is written below this Git-ignored directory:
 
 ```text
-dist\魔兽争霸3重制版修改器.exe
+dist-2.1.0-beta-verified/<sha256-prefix>/War3ReforgedTrainer-v2.1.0-beta.exe
 ```
+
+构建命令会打印实际输出路径。/ The build command prints the exact output path.
+
+## 验证已有构建 / Verify an Existing Build
+
+成功构建后，可以使用以下命令验证 EXE 和 manifest：
+
+After a successful build, verify the executable and manifest with:
+
+```powershell
+python tools/build_release_210.py --verify-only
+```
+
+只有当前源码输入、Git 提交、记录的哈希、打包 profile 和 native 模块全部一致时，验证才会成功。如果源码已经变化，请先重新构建。
+
+Verification succeeds only when the current source inputs, Git revision, recorded hashes, packaged profiles, and native modules match the recorded build. If the source has changed, build again before verifying.
+
+## 构建输入 / Build Inputs
+
+- `War3ReforgedTrainer-2.1.0-beta.spec`：本版本实际使用的 PyInstaller 规格文件。 / The PyInstaller specification used by this release.
+- `war3_*.py`、`war3_services/` 和 `diagnostics/` 中的运行时文件：修改器运行模块及显式 hidden-import。 / Runtime modules and explicit hidden imports used by the trainer.
+- `profiles/`：严格匹配游戏构建的适配数据。 / Strict game-build adapter data.
+- `tools/`：native 源码、构建脚本、profile 生成检查和 ABI 验证器。 / Native source, build scripts, profile checks, and ABI validators.
+- `third_party/minhook/`：游戏速度模块所需的 MinHook 源码和许可证。 / MinHook source closure and license required by the speed-clock module.
+- `assets/app_icon.ico`、`assets/app_icon.png`：EXE 和运行时界面图标。 / Executable and runtime UI icons.
+
+构建器会在编译前后对这些输入计算哈希。`war3_hotkey_*` 文件属于独立的改键软件，不参与本修改器构建。
+
+The builder hashes these inputs before and after compilation. The `war3_hotkey_*` files belong to a separate hotkey product and are not part of this trainer build.
+
+`diagnostics/war3_native_profile.py` 保存运行时仍需读取的 Native 索引，因此这个目录名称虽为 diagnostics，它的这份数据文件仍是构建依赖。旧的持久钩子传输和独立代码/冷却/生命周期探针不属于当前生产入口。
+
+`diagnostics/war3_native_profile.py` stores the Native index still read at runtime, so that data file remains a build dependency despite the directory name. The old persistent-hook transport and standalone code, cooldown, and lifecycle probes are outside the current production entry points.
+
+## 版本适配范围 / Version Adapter Scope
+
+当前分支包含 `profiles/` 中的游戏适配数据，包括已验证的 `3.0.0.24268` profile 和本分支提供的 `3.0.1` profile 数据。遇到未知游戏构建时，应先生成只读诊断并匹配适配包，再启用写入；只更换模块基址不代表完成版本适配。
+
+The current branch contains the game adapter data in `profiles/`, including the verified `3.0.0.24268` profile and the supported `3.0.1` profile data included in this branch. An unknown game build must first produce a read-only diagnostic and be matched with an adapter package before write operations are enabled; changing only a module base address is not a complete port.
+
+## 仓库结构 / Repository Layout
+
+- `main`、`master`：同步的当前维护源码入口。 / Synchronized maintained source entry points.
+- `release/v*`：与已发布修改器版本对应的纯源码历史分支。 / Source-only historical branches for published trainer versions.
+- `v*`：不可变的修改器发布标签。 / Immutable trainer release tags.
+- `profiles/`：按游戏构建组织的版本适配数据。 / Build-specific adapter data.
+- `tools/`：可构建的 native 源码和发布验证工具。 / Buildable native sources and release verification tools.
+
+生成文件会被 Git 忽略。发布构建前请使用干净的 checkout。/ Generated files are ignored by Git. Use a clean checkout when producing a release artifact.

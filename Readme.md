@@ -1,21 +1,29 @@
-# Warcraft III Reforged Trainer 2.1.0-beta
+# Warcraft III Reforged Trainer 2.1.0-beta / 魔兽争霸 III 重制版修改器 2.1.0-beta
 
-This repository contains the source and version adapter data for the 2.1.0-beta Warcraft III Reforged trainer. The repository does not commit generated EXE/DLL files, `dist` directories, test fixtures, reverse-engineering evidence, or the separate hotkey product.
+本仓库包含 Warcraft III Reforged 修改器 2.1.0-beta 的源码和版本适配数据。仓库不提交生成的 EXE、DLL、`dist` 目录、测试夹具、逆向分析证据或独立的改键软件源码。
 
-## Build Requirements
+This repository contains the source code and version adapter data for the Warcraft III Reforged Trainer 2.1.0-beta. Generated EXE/DLL files, `dist` directories, test fixtures, reverse-engineering evidence, and the separate hotkey product are intentionally excluded.
+
+## 构建环境 / Build Requirements
+
+在 Windows 10/11 x64 上构建，需要安装：
 
 Build on Windows 10/11 x64 with:
 
 - Git
-- Python 3.10 or newer (Python 3.12 is recommended)
-- LLVM/Clang with `clang` available in `PATH`
-- Windows SDK and its x64 import libraries, available to the Clang toolchain
+- Python 3.10 或更高版本，推荐 Python 3.12 / Python 3.10 or newer; Python 3.12 is recommended
+- LLVM/Clang，并确保 `clang` 在 `PATH` 中 / LLVM/Clang with `clang` available in `PATH`
+- Windows SDK 及其 x64 导入库，并确保 Clang 能够找到 / Windows SDK and its x64 import libraries available to the Clang toolchain
 
-The native bridge is compiled with Clang. A Python compiler package alone is not enough: the build also needs the Windows headers/import libraries supplied by the Windows SDK.
+桥接 DLL、天赋图标模块和游戏加速模块由 Clang 编译。仅安装 Python 编译包不够，还必须安装 Windows 头文件和导入库。
 
-## Build From Source
+The bridge DLL, talent-display module, and speed-clock module are compiled with Clang. Installing Python packages alone is not sufficient; the Windows headers and import libraries from the Windows SDK are also required.
 
-Run these commands from the repository root in PowerShell:
+## 从源码完整构建 / Build From Source
+
+在 PowerShell 中，从仓库根目录执行以下命令：
+
+From PowerShell, run the following commands in the repository root:
 
 ```powershell
 git clone https://github.com/dc114154qq/war3-reforged-trainer.git
@@ -30,47 +38,68 @@ python -m pip install -r requirements-build.txt
 python tools/build_release_210.py
 ```
 
-The build script performs all native compilation itself. It builds and validates the engine bridge, talent-display module, and speed-clock module in a temporary directory, then passes those validated images to PyInstaller. It also checks the packaged profiles, Python architecture modules, bridge ABI, speed-clock ABI, version resource, and packaged MinHook license.
+构建脚本会自动完成以下步骤：
 
-The verified executable is written below an ignored directory:
+The build script automatically performs all of these steps:
+
+1. 检查当前源码版本、Git 工作树和游戏适配数据。 / Check the source version, Git worktree, and game adapter data.
+2. 编译并校验 engine bridge。 / Compile and validate the engine bridge.
+3. 编译并校验天赋图标显示模块。 / Compile and validate the talent-display module.
+4. 编译并校验游戏速度模块。 / Compile and validate the speed-clock module.
+5. 使用 `War3ReforgedTrainer-2.1.0-beta.spec` 调用 PyInstaller。 / Invoke PyInstaller with `War3ReforgedTrainer-2.1.0-beta.spec`.
+6. 检查 Python 模块、游戏 profile、native ABI、版本资源和 MinHook 许可证。 / Check Python modules, game profiles, native ABIs, version resources, and the MinHook license.
+
+不需要把预编译 DLL 或 EXE 放进源码目录。/ No prebuilt DLL or EXE needs to be placed in the source checkout.
+
+验证后的 EXE 会写入以下被 Git 忽略的目录：
+
+The verified executable is written below this Git-ignored directory:
 
 ```text
 dist-2.1.0-beta-verified/<sha256-prefix>/War3ReforgedTrainer-v2.1.0-beta.exe
 ```
 
-The exact output path is printed by the build command. No prebuilt DLL or EXE is required in the checkout.
+构建命令会打印实际输出路径。/ The build command prints the exact output path.
 
-## Verify An Existing Local Build
+## 验证已有构建 / Verify an Existing Build
 
-After a successful build, verify the immutable artifact and its manifest with:
+成功构建后，可以使用以下命令验证 EXE 和 manifest：
+
+After a successful build, verify the executable and manifest with:
 
 ```powershell
 python tools/build_release_210.py --verify-only
 ```
 
-Verification succeeds only when the current source inputs, Git revision, recorded hashes, packaged profiles, and packaged native modules match the recorded build. If source files have changed, run a new build before verifying.
+只有当前源码输入、Git 提交、记录的哈希、打包 profile 和 native 模块全部一致时，验证才会成功。如果源码已经变化，请先重新构建。
 
-## Build Inputs
+Verification succeeds only when the current source inputs, Git revision, recorded hashes, packaged profiles, and native modules match the recorded build. If the source has changed, build again before verifying.
 
-- `War3ReforgedTrainer-2.1.0-beta.spec`: the PyInstaller specification used by the release builder.
-- `war3_*.py`, `war3_services/`, and the three files under `diagnostics/`: runtime Python modules included by the trainer and its explicit hidden-import list.
-- `profiles/`: strict game-build adapter data.
-- `tools/`: native source, generated-profile check, build scripts, and ABI validators used by this version.
-- `third_party/minhook/`: the MinHook source closure required by the speed-clock module and its license.
-- `assets/app_icon.ico` and `assets/app_icon.png`: application icons used by the executable and runtime UI.
+## 构建输入 / Build Inputs
 
-The builder hashes these inputs before and after compilation. The separate `war3_hotkey_*` modules are intentionally excluded because they belong to a different product.
+- `War3ReforgedTrainer-2.1.0-beta.spec`：本版本实际使用的 PyInstaller 规格文件。 / The PyInstaller specification used by this release.
+- `war3_*.py`、`war3_services/` 和 `diagnostics/` 中的运行时文件：修改器运行模块及显式 hidden-import。 / Runtime modules and explicit hidden imports used by the trainer.
+- `profiles/`：严格匹配游戏构建的适配数据。 / Strict game-build adapter data.
+- `tools/`：native 源码、构建脚本、profile 生成检查和 ABI 验证器。 / Native source, build scripts, profile checks, and ABI validators.
+- `third_party/minhook/`：游戏速度模块所需的 MinHook 源码和许可证。 / MinHook source closure and license required by the speed-clock module.
+- `assets/app_icon.ico`、`assets/app_icon.png`：EXE 和运行时界面图标。 / Executable and runtime UI icons.
 
-## Version Adapter Scope
+构建器会在编译前后对这些输入计算哈希。`war3_hotkey_*` 文件属于独立的改键软件，不参与本修改器构建。
 
-The current adapter is for the game profile included in `profiles/`, including the verified 3.0.0.24268 profile and the supported 3.0.1 profile data present in this branch. An unknown game build must be diagnosed and matched with an adapter profile before write operations are enabled; changing a module base address alone is not a complete port.
+The builder hashes these inputs before and after compilation. The `war3_hotkey_*` files belong to a separate hotkey product and are not part of this trainer build.
 
-## Repository Layout
+## 版本适配范围 / Version Adapter Scope
 
-- `main` and `master`: synchronized maintained source entry points.
-- `release/v*`: source-only branches corresponding to published trainer versions.
-- `v*`: immutable trainer release tags.
-- `profiles/`: build-specific adapter data.
-- `tools/`: buildable native sources and release verification tools.
+当前分支包含 `profiles/` 中的游戏适配数据，包括已验证的 `3.0.0.24268` profile 和本分支提供的 `3.0.1` profile 数据。遇到未知游戏构建时，应先生成只读诊断并匹配适配包，再启用写入；只更换模块基址不代表完成版本适配。
 
-Generated files are intentionally ignored. Build from a clean checkout when producing a release artifact.
+The current branch contains the game adapter data in `profiles/`, including the verified `3.0.0.24268` profile and the supported `3.0.1` profile data included in this branch. An unknown game build must first produce a read-only diagnostic and be matched with an adapter package before write operations are enabled; changing only a module base address is not a complete port.
+
+## 仓库结构 / Repository Layout
+
+- `main`、`master`：同步的当前维护源码入口。 / Synchronized maintained source entry points.
+- `release/v*`：与已发布修改器版本对应的纯源码历史分支。 / Source-only historical branches for published trainer versions.
+- `v*`：不可变的修改器发布标签。 / Immutable trainer release tags.
+- `profiles/`：按游戏构建组织的版本适配数据。 / Build-specific adapter data.
+- `tools/`：可构建的 native 源码和发布验证工具。 / Buildable native sources and release verification tools.
+
+生成文件会被 Git 忽略。发布构建前请使用干净的 checkout。/ Generated files are ignored by Git. Use a clean checkout when producing a release artifact.

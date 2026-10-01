@@ -1,17 +1,20 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 import os
+from pathlib import Path
+import capstone
 from war3_operations import OPERATIONS
 
 bridge_image = os.environ.get('RELEASE_210_BRIDGE_DLL', 'tools/war3_bridge_24268.dll')
 icon_image = os.environ.get('RELEASE_210_ICON_DLL', 'tools/war3_talent_icon_display.dll')
 speed_image = os.environ.get('RELEASE_210_SPEED_DLL', 'build/speed-clock-runtime/war3_speed_clock.dll')
+capstone_image = str(Path(capstone.__file__).with_name('lib') / 'capstone.dll')
 
 a = Analysis(
     ['war3_reforged_trainer.py'],
     pathex=[],
     binaries=[
-        ('tools/capstone.dll', 'capstone/lib'),
+        (capstone_image, 'capstone/lib'),
         (bridge_image, 'tools'),
         (icon_image, 'tools'),
         (speed_image, 'tools'),

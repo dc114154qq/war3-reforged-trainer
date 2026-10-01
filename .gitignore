@@ -50,3 +50,21 @@ tools/*.new.lib
 *.exe
 *.dll
 *.zip
+
+# Internal workspace instructions and non-build material intentionally stay
+# local; the public source tree contains the single build README below.
+/AGENTS.md
+/README.md
+/README_EN.md
+/ADAPTATION_GOAL.md
+/ARCHITECTURE.md
+/NATIVE_CHAIN_AUDIT.md
+/RELEASE_NOTES*.md
+/RESOURCE_RESTORATION_AUDIT.md
+/analysis/
+/website/
+/test_*.py
+/War3ReforgedHotkeys.spec
+/War3ReforgedTrainer-*.spec
+!/War3ReforgedTrainer-2.1.0-beta.spec
+/third_party/MINHOOK.md

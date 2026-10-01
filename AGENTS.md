@@ -37,3 +37,7 @@ The user assigned this experimental branch version `2.1.0`, release channel `bet
 ## Website release rules
 
 Read `website/README.md` before deploying the site. Tests and stable releases both appear in chronological order and the latest download; preserve the prerelease label. Compare against live files before deployment and retain announcements, subscriptions and other product pages. Deploy matching translations/scripts with cache versions, and verify the actual Chinese/English page plus download hash. Never replace newer live pages with an older worktree snapshot.
+
+## Repository branch and artifact rules
+
+`main` and `master` must point to the same current maintained source. Published tags remain immutable. Each published tag may have a matching source-only `release/<tag>` branch; do not use feature or diagnostic branches as release pointers. Generated EXE/DLL/ZIP files and `dist/`/`build/` outputs are release or local-build artifacts, not source files; keep them out of the repository and publish binaries through the Release assets and website.

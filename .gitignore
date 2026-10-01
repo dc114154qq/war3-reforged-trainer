@@ -27,9 +27,7 @@ tools/talent-icon.*.lib
 *.tmp
 *.dmp
 
-dist/*
-!dist/
-!dist/魔兽争霸3重制版修改器.exe
+dist/
 
 魔兽争霸3修改器_new.exe
 

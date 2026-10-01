@@ -7,7 +7,6 @@ const state = {
   language: "zh",
   manualLanguage: false,
   generatedAt: "",
-  latestTag: "",
 };
 
 const i18n = window.SITE_I18N || { zh: {}, en: {}, releaseNames: {}, releaseBodies: {} };
@@ -23,6 +22,7 @@ const elements = {
   search: document.querySelector("#release-search"),
   sort: document.querySelector("#release-sort"),
   latestTitle: document.querySelector("#latest-title"),
+  latestEyebrow: document.querySelector(".latest-copy > .eyebrow"),
   latestSummary: document.querySelector("#latest-summary"),
   latestDownload: document.querySelector("#latest-download"),
   latestNotesLink: document.querySelector("#latest-notes-link"),
@@ -30,7 +30,11 @@ const elements = {
   latestSize: document.querySelector("#latest-size"),
   latestDate: document.querySelector("#latest-date"),
   latestSha: document.querySelector("#latest-sha"),
-  latestCopy: document.querySelector("#copy-latest-sha"),
+  copyLatestSha: document.querySelector("#copy-latest-sha"),
+  notifyForm: document.querySelector("#notify-form"),
+  notifyEmail: document.querySelector("#notify-email"),
+  notifySubmit: document.querySelector("#notify-submit"),
+  notifyStatus: document.querySelector("#notify-status"),
   syncTime: document.querySelector("#sync-time"),
   languageToggle: document.querySelector("#language-toggle"),
   siteTitle: document.querySelector("#site-title"),
@@ -47,18 +51,23 @@ function t(key, values = {}) {
 }
 
 function localizedReleaseBody(release) {
-  return i18n.releaseBodies?.[state.language]?.[release.tag] || release.body || "";
+  const key = release.i18n_key || release.tag;
+  return i18n.releaseBodies?.[state.language]?.[key] || release.body || "";
 }
 
 function localizedReleaseName(release) {
-  return i18n.releaseNames?.[state.language]?.[release.tag]
+  const key = release.i18n_key || release.tag;
+  return i18n.releaseNames?.[state.language]?.[key]
     || release.name
     || release.tag;
 }
 
 function localizeRoot(root = document) {
   root.querySelectorAll("[data-i18n]").forEach((element) => {
-    element.textContent = t(element.dataset.i18n);
+    const key = element.dataset.i18n;
+    if (i18n[state.language]?.[key] !== undefined || i18n.zh?.[key] !== undefined) {
+      element.textContent = t(key);
+    }
   });
   root.querySelectorAll("[data-i18n-placeholder]").forEach((element) => {
     element.placeholder = t(element.dataset.i18nPlaceholder);
@@ -119,7 +128,7 @@ function applyLanguage(language, { manual = false } = {}) {
     elements.languageToggle.href = `${languageUrl.pathname}${languageUrl.search}`;
   }
   if (state.releases.length) {
-    renderLatest(state.releases.find((release) => release.tag === state.latestTag) || state.releases[0]);
+    renderLatest(state.releases[0]);
     renderList();
     elements.syncTime.textContent = state.generatedAt
       ? t("indexUpdated", { date: formatDate(state.generatedAt) })
@@ -276,20 +285,74 @@ async function copyText(value, button) {
   }
 }
 
+function setNotifyStatus(message, kind = "") {
+  if (!elements.notifyStatus) return;
+  elements.notifyStatus.textContent = message;
+  elements.notifyStatus.className = `notify-status${kind ? ` is-${kind}` : ""}`;
+}
+
+async function submitNotificationSubscription(event) {
+  event.preventDefault();
+  if (!elements.notifyForm || !elements.notifyEmail || !elements.notifySubmit) return;
+
+  const email = elements.notifyEmail.value.trim();
+  if (!elements.notifyEmail.checkValidity()) {
+    setNotifyStatus(t("notifyInvalid"), "error");
+    elements.notifyEmail.focus();
+    return;
+  }
+
+  const honeypot = elements.notifyForm.elements.website?.value || "";
+  elements.notifySubmit.disabled = true;
+  setNotifyStatus(t("notifySubmitting"));
+  try {
+    const response = await fetch("/api/notify/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ email, website: honeypot }),
+    });
+    let data = {};
+    try {
+      data = await response.json();
+    } catch {
+      // Keep the generic error below for a non-JSON server response.
+    }
+    if (!response.ok || !data.ok) {
+      const message = response.status === 429 ? t("notifyRateLimited") : t("notifyUnavailable");
+      throw new Error(message);
+    }
+    elements.notifyEmail.value = email;
+    setNotifyStatus(data.created ? t("notifySuccess") : t("notifyAlready"), "success");
+  } catch (error) {
+    setNotifyStatus(error instanceof Error && error.message ? error.message : t("notifyUnavailable"), "error");
+  } finally {
+    elements.notifySubmit.disabled = false;
+  }
+}
+
 function renderLatest(release) {
   const assets = release.assets?.length ? release.assets : release.asset ? [release.asset] : [];
   const primaryAsset = assets[0];
   elements.latestTitle.textContent = release.tag;
+  if (elements.latestEyebrow) {
+    elements.latestEyebrow.textContent = t(release.prerelease ? "latestTestEyebrow" : "latestEyebrow");
+  }
   elements.latestSummary.textContent = firstParagraph(localizedReleaseBody(release));
-  elements.latestCompatibility.textContent = release.compatibility || "Warcraft III 2.0.4.23745";
-  elements.latestSize.textContent = assets.map((asset) => formatBytes(asset.size)).join(" / ");
-  elements.latestDate.textContent = formatDate(release.published_at);
-  elements.latestSha.textContent = primaryAsset?.sha256 || t("noAsset");
   elements.latestDownload.href = primaryAsset?.url || "#";
   elements.latestDownload.classList.remove("is-disabled");
   elements.latestDownload.removeAttribute("aria-disabled");
   elements.latestDownload.querySelector("span").textContent =
     assets.length > 1 ? assetLabel(primaryAsset) : t("latestDownload");
+  if (elements.latestCompatibility) {
+    elements.latestCompatibility.textContent = release.compatibility || t("unknown");
+  }
+  if (elements.latestSize) elements.latestSize.textContent = formatBytes(primaryAsset?.size);
+  if (elements.latestDate) elements.latestDate.textContent = formatDate(release.published_at);
+  if (elements.latestSha) elements.latestSha.textContent = primaryAsset?.sha256 || t("noAsset");
+  if (elements.copyLatestSha) {
+    elements.copyLatestSha.disabled = !primaryAsset?.sha256;
+    elements.copyLatestSha.dataset.sha256 = primaryAsset?.sha256 || "";
+  }
   elements.latestDownload.parentElement
     .querySelectorAll(".latest-extra-download")
     .forEach((button) => button.remove());
@@ -302,8 +365,6 @@ function renderLatest(release) {
     elements.latestDownload.after(button);
   });
   elements.latestNotesLink.href = `#release-${release.tag.replace(/[^a-zA-Z0-9.-]/g, "-")}`;
-  elements.latestCopy.disabled = !primaryAsset?.sha256;
-  elements.latestCopy.onclick = () => copyText(primaryAsset.sha256, elements.latestCopy);
 }
 
 function assetLabel(asset) {
@@ -325,11 +386,11 @@ function createReleaseElement(release, index) {
   article.id = `release-${release.tag.replace(/[^a-zA-Z0-9.-]/g, "-")}`;
   const releaseName = localizedReleaseName(release);
   title.textContent = releaseName !== release.tag ? `${release.tag} · ${releaseName}` : release.tag;
-  badge.hidden = release.tag !== state.latestTag;
+  badge.hidden = index !== 0;
   if (release.prerelease) {
     badge.hidden = false;
     badge.removeAttribute("data-i18n");
-    badge.textContent = state.language === "en" ? "Test version" : "测试版";
+    badge.textContent = t(index === 0 ? "latestTestBadge" : "testBadge");
   }
   fragment.querySelector(".release-date").textContent = `${formatDate(release.published_at)} ${t("published")}`;
   fragment.querySelector(".release-intro").textContent = firstParagraph(localizedReleaseBody(release));
@@ -404,8 +465,7 @@ async function loadReleases() {
     if (!Array.isArray(data.releases) || data.releases.length === 0) throw new Error("empty release index");
     state.releases = data.releases.sort((a, b) => new Date(b.published_at) - new Date(a.published_at));
     state.generatedAt = data.generated_at || "";
-    state.latestTag = data.latest || state.releases[0].tag;
-    renderLatest(state.releases.find((release) => release.tag === data.latest) || state.releases[0]);
+    renderLatest(state.releases[0]);
     renderList();
     elements.syncTime.textContent = data.generated_at ? t("indexUpdated", { date: formatDate(data.generated_at) }) : "";
   } catch (error) {
@@ -426,6 +486,12 @@ elements.search.addEventListener("input", (event) => {
 elements.sort.addEventListener("change", (event) => {
   state.sort = event.target.value;
   renderList();
+});
+
+elements.notifyForm?.addEventListener("submit", submitNotificationSubscription);
+elements.copyLatestSha?.addEventListener("click", () => {
+  const sha = elements.copyLatestSha.dataset.sha256 || "";
+  if (sha) copyText(sha, elements.copyLatestSha);
 });
 
 window.addEventListener("DOMContentLoaded", () => {

@@ -7,10 +7,10 @@
   <meta name="theme-color" content="#f4f3f0">
   <title id="site-title">魔兽争霸 III 重制版修改器 - 版本下载</title>
   <link rel="icon" href="../assets/app-icon.png?v=d37af36b" type="image/png">
-  <link rel="stylesheet" href="../styles.css?v=20260812">
+  <link rel="stylesheet" href="../styles.css?v=20260922">
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
-  <script src="../i18n.js?v=20260812" defer></script>
-  <script src="../app.js?v=20260930-beta" defer></script>
+  <script src="../i18n.js?v=20261001-release-fix" defer></script>
+  <script src="../app.js?v=20261001-release-fix" defer></script>
 </head>
 <body data-release-index="/releases.json">
   <header class="site-header">
@@ -69,9 +69,25 @@
     <section class="latest-band" aria-labelledby="hero-title">
       <div class="latest-copy">
         <h1 id="hero-title" class="hero-title"><span data-i18n="heroTitleA">魔兽争霸 III</span><span data-i18n="heroTitleB">重制版修改器</span></h1>
-        <p class="eyebrow" data-i18n="latestEyebrow">最新稳定版</p>
+        <p class="eyebrow" data-i18n="latestEyebrow">最新发布</p>
         <h2 id="latest-title" class="latest-version-title">正在读取版本信息</h2>
         <p id="latest-summary" class="latest-summary">正在连接版本索引...</p>
+        <div class="download-notices">
+          <aside class="download-notice bug-report-notice" aria-labelledby="bug-report-title">
+            <div class="download-notice-heading">
+              <i data-lucide="file-warning" aria-hidden="true"></i>
+              <strong id="bug-report-title" data-i18n="bugReportTitle">反馈 Bug 前请附上日志</strong>
+            </div>
+            <p data-i18n="bugReportBody">反馈问题时，请自行选择任意云盘，将修改器同目录下的 log 文件夹完整上传，并把分享链接一并发来。没有这份日志，我无法定位问题。</p>
+          </aside>
+          <aside class="download-notice version-notice" aria-labelledby="version-notice-title">
+            <div class="download-notice-heading">
+              <i data-lucide="badge-alert" aria-hidden="true"></i>
+              <strong id="version-notice-title" data-i18n="versionNoticeTitle">先确认游戏版本，再下载修改器</strong>
+            </div>
+            <p data-i18n="versionNoticeBody">修改器 v2.0.x 适用于 Warcraft III 3.0.0.24268；v2.1.0 测试版尝试适配 3.0.0.24268 与 3.0.1.24323，连接时自动选择对应链路。如果游戏是 2.0 系列（例如 2.0.4.23745），请在下方版本历史中下载 v1.0.x。请以各版本标注的具体游戏构建为准；版本不匹配可能导致无法连接、读取失败或功能异常。</p>
+          </aside>
+        </div>
         <div class="latest-actions">
           <a id="latest-download" class="primary-button is-disabled" href="#" aria-disabled="true">
             <i data-lucide="download" aria-hidden="true"></i>
@@ -82,38 +98,35 @@
             <span data-i18n="latestNotes">查看更新内容</span>
           </a>
         </div>
-        <aside class="copy-workflow-notice" aria-labelledby="copy-workflow-title">
-          <i data-lucide="info" aria-hidden="true"></i>
-          <div>
-            <strong id="copy-workflow-title" data-i18n="copyWorkflowTitle">双版本下载说明</strong>
-            <p data-i18n="copyWorkflowBody">修改器现提供同步更新的普通读取版和备用读取版。普通读取一直正常的电脑请选择普通读取版；遇到 WinError 299、字段缺失、读错单位或锁定旧单位时请选择备用读取版。两版所有相关功能均固定使用各自的读取路径，不会交叉切换。v1.0.14 起，复制单位和大量复制均会直接复制当前选中单位的英雄状态、技能和背包数据，无需提前读取。</p>
-          </div>
-        </aside>
       </div>
-    <dl class="latest-meta" aria-label="最新版文件信息" data-i18n-aria-label="latestMeta">
-        <div>
-          <dt data-i18n="compatibility">适配版本</dt>
-          <dd id="latest-compatibility">-</dd>
+    <div class="latest-sidebar">
+      <aside class="notify-card" aria-labelledby="notify-title">
+        <div class="notify-card-heading">
+          <i data-lucide="mail" aria-hidden="true"></i>
+          <div>
+            <p class="eyebrow" data-i18n="notifyEyebrow">版本提醒</p>
+            <h2 id="notify-title" data-i18n="notifyTitle">有新版本时提醒我</h2>
+          </div>
         </div>
-        <div>
-          <dt data-i18n="fileSize">文件大小</dt>
-          <dd id="latest-size">-</dd>
-        </div>
-        <div>
-          <dt data-i18n="releaseDate">发布时间</dt>
-          <dd id="latest-date">-</dd>
-        </div>
-        <div class="checksum-row">
-          <dt data-i18n="sha256">SHA256</dt>
-          <dd>
-            <code id="latest-sha">-</code>
-            <button id="copy-latest-sha" class="copy-button" type="button" title="复制 SHA256" data-i18n-title="copySha" disabled>
-              <i data-lucide="copy" aria-hidden="true"></i>
-            <span class="sr-only" data-i18n="copySha">复制 SHA256</span>
-            </button>
-          </dd>
-        </div>
-      </dl>
+        <p class="notify-body" data-i18n="notifyBody">留下邮箱，版本号发生变化时会收到一封提醒邮件。</p>
+        <form id="notify-form" class="notify-form" novalidate>
+          <label class="notify-field">
+            <span class="sr-only" data-i18n="notifyEmailLabel">邮箱地址</span>
+            <input id="notify-email" class="notify-input" name="email" type="email" autocomplete="email" maxlength="254" placeholder="name@example.com" data-i18n-placeholder="notifyEmailPlaceholder" required>
+          </label>
+          <label class="notify-honeypot" aria-hidden="true">
+            <span>Website</span>
+            <input name="website" type="text" tabindex="-1" autocomplete="off">
+          </label>
+          <button id="notify-submit" class="notify-submit" type="submit">
+            <i data-lucide="bell-plus" aria-hidden="true"></i>
+            <span data-i18n="notifySubmit">登记提醒</span>
+          </button>
+        </form>
+        <p id="notify-status" class="notify-status" role="status" aria-live="polite"></p>
+        <p class="notify-note" data-i18n="notifyNote">仅用于版本更新提醒，可随时取消订阅。</p>
+      </aside>
+    </div>
     </section>
 
     <section class="read-help-band" aria-labelledby="read-help-title">

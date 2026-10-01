@@ -33,3 +33,7 @@
 ## 2.1.0 beta identity
 
 The user assigned this experimental branch version `2.1.0`, release channel `beta`. Keep the UI's beta label, diagnostic channel, Windows prerelease flag and `RELEASE_NOTES_v2.1.0-beta.md` consistent. The dedicated builder is `tools/build_release_210.py`; its manifest and package checks must cover all services/protocols, the profile and the 2.0.8/2.0.9 bridge repairs. Do not use the frozen 2.0.7 builder for this branch. Release notes compare functionality with stable 2.0.9: structural optimization, no new intended game features, retained compatibility repairs. Publishing must be explicitly authorized and marked prerelease; preparing version metadata is not publication.
+
+## Website release rules
+
+Read `website/README.md` before deploying the site. Tests and stable releases both appear in chronological order and the latest download; preserve the prerelease label. Compare against live files before deployment and retain announcements, subscriptions and other product pages. Deploy matching translations/scripts with cache versions, and verify the actual Chinese/English page plus download hash. Never replace newer live pages with an older worktree snapshot.

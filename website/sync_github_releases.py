@@ -211,7 +211,8 @@ def release_index(repository: str, releases: list[dict[str, Any]]) -> dict[str, 
         "repository": repository,
         "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "release_count": len(ordered),
-        "latest": stable["tag"],
+        "latest": ordered[0]["tag"],
+        "latest_stable": stable["tag"] if not stable.get("prerelease") else None,
         "releases": ordered,
     }
 

@@ -429,9 +429,16 @@ class AbilitiesFacade:
 
 
     def cast_fullscreen_starfall(self, *, success_limit: int = 0) -> tuple[int, int]:
-        return self._run_selected_ability_effect(
-            "AEsb", "immediate", area=100000.0, hold_seconds=12.0,
+        # Starfall's native immediate-order path can return a business-level
+        # rejection after creating the temporary ability.  Keep this ability
+        # on the older staged world-cast transaction, which records the exact
+        # order id and owns cleanup inside the game-thread callback.
+        self.cast_native_area_24268(
+            "AEsb", 852183, cast_kind=1, area=100000.0, hold_seconds=12.0,
         )
+        # cast_native_area_24268 already validates either mana or cooldown
+        # change and always performs the matching cleanup transaction.
+        return 1, 1
 
 
     def cast_fullscreen_forked_lightning(self, *, success_limit: int = 0) -> tuple[int, int]:

@@ -57,6 +57,9 @@ def test_fullscreen_features_use_the_1_0_18_runtime_ability_chain(method, args, 
         side_effect=lambda ability, mode, **kwargs: (1, 1)
     )
     trainer._run_selected_ability_effect = Mock(return_value=(1, 1))
+    trainer.cast_native_area_24268 = Mock(return_value={
+        "state": {"cooldown_after": 6.0},
+    })
 
     result = getattr(trainer, method)(**args)
 
@@ -66,6 +69,10 @@ def test_fullscreen_features_use_the_1_0_18_runtime_ability_chain(method, args, 
             (ability, "point" if method == "cast_fullscreen_swarm" else "target")
             for ability, _order, _kind in expected
         ]
+    elif method == "cast_fullscreen_starfall":
+        trainer.cast_native_area_24268.assert_called_once_with(
+            "AEsb", 852183, cast_kind=1, area=100000.0, hold_seconds=12.0,
+        )
     else:
         assert trainer._run_selected_ability_effect.call_count == len(expected)
 

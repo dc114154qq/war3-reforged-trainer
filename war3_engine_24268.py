@@ -18,6 +18,30 @@ _CURRENT_BRIDGE_FILENAMES = (
 )
 
 
+def classify_direct_cast_failure(kind, evidence, raw_result):
+    """Classify a finished direct-cast callback without hiding unsafe states."""
+    if kind != 'direct_cast' or len(raw_result) != 824:
+        return None
+    direct_error = struct.unpack_from('<I', raw_result, 728)[0]
+    direct_completed = struct.unpack_from('<I', raw_result, 732)[0]
+    direct_cleanup = struct.unpack_from('<I', raw_result, 820)[0]
+    transport_released = all((
+        evidence.get('callback_verified'),
+        evidence.get('callback_exited'),
+        evidence.get('work_freed'),
+        evidence.get('block_freed'),
+        evidence.get('image_unmap_status') == '0x0',
+    ))
+    if not direct_error or direct_completed or not transport_released:
+        return None
+    return {
+        'error': direct_error,
+        'completed': direct_completed,
+        'cleanup': direct_cleanup,
+        'session_continuable': direct_cleanup == 0,
+    }
+
+
 def _default_bridge_image():
     root = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
     if not hasattr(sys,'_MEIPASS'):
@@ -241,7 +265,21 @@ class Engine24268(UnitsService, AbilitiesService, ItemsService, ExtensionsServic
                     try:
                         result=decoder(bytes.fromhex(evidence['work_result_hex']),int(evidence['after_send']['query_result'],16))
                     except Exception:
-                        # Completed callback is not proof that a partially applied transaction is replayable.
+                        # A completed callback only proves the bridge transaction
+                        # ended.  A direct-cast business rejection is different
+                        # from an unresolved bridge/resource state: the native
+                        # callback reports its own cleanup word, so allow later
+                        # independent operations when that word is zero and the
+                        # transport lifecycle is fully released.
+                        raw_result=bytes.fromhex(evidence.get('work_result_hex',''))
+                        business_status=classify_direct_cast_failure(kind,evidence,raw_result)
+                        if business_status and business_status['session_continuable']:
+                            report['business_status']=business_status
+                            raise
+                        if business_status:
+                            report['business_status']=business_status
+                        # Completed callback is not proof that a partially
+                        # applied transaction is replayable.
                         statuses=[value for key,value in report.items() if key.endswith('_status') and isinstance(value,dict)]
                         proven_no_change=bool(statuses) and all(value.get('changed')==0 for value in statuses)
                         if not proven_no_change:

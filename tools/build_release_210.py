@@ -53,14 +53,20 @@ def source_paths() -> tuple[Path, ...]:
     # Keep this list aligned with the actual 2.1.0 build closure.  In
     # particular, the separate hotkey product and diagnostics probes must not
     # silently become part of the trainer source hash or package inputs.
+    excluded_runtime = {
+        "war3_code_observation.py",
+        "war3_cooldown_probe_protocol.py",
+        "war3_lifecycle_protocol.py",
+        "war3_map_flags_protocol.py",
+        "war3_native_profile.py",
+    }
     files = {
         path for path in ROOT.glob("war3_*.py")
-        if not path.name.startswith("war3_hotkey_")
+        if not path.name.startswith("war3_hotkey_") and path.name not in excluded_runtime
     }
     files.update(ROOT.glob("war3_services/*.py"))
     files.update(ROOT / name for name in (
         "diagnostics/__init__.py",
-        "diagnostics/war3_engine_persistent_transport.py",
         "diagnostics/war3_native_profile.py",
     ))
     files.update(ROOT.glob("profiles/*.json"))

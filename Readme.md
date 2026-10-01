@@ -88,6 +88,10 @@ Verification succeeds only when the current source inputs, Git revision, recorde
 
 The builder hashes these inputs before and after compilation. The `war3_hotkey_*` files belong to a separate hotkey product and are not part of this trainer build.
 
+`diagnostics/war3_native_profile.py` 保存运行时仍需读取的 Native 索引，因此这个目录名称虽为 diagnostics，它的这份数据文件仍是构建依赖。旧的持久钩子传输和独立代码/冷却/生命周期探针不属于当前生产入口。
+
+`diagnostics/war3_native_profile.py` stores the Native index still read at runtime, so that data file remains a build dependency despite the directory name. The old persistent-hook transport and standalone code, cooldown, and lifecycle probes are outside the current production entry points.
+
 ## 版本适配范围 / Version Adapter Scope
 
 当前分支包含 `profiles/` 中的游戏适配数据，包括已验证的 `3.0.0.24268` profile 和本分支提供的 `3.0.1` profile 数据。遇到未知游戏构建时，应先生成只读诊断并匹配适配包，再启用写入；只更换模块基址不代表完成版本适配。

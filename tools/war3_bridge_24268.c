@@ -481,7 +481,6 @@ BOOL WINAPI DllMain(HINSTANCE module,DWORD reason,LPVOID reserved) {
 #include "war3_bridge_item.h"
 #include "war3_bridge_item_catalog.h"
 #include "war3_bridge_clone.h"
-#include "war3_bridge_unit_bindings.h"
 #include "war3_bridge_unit_action.h"
 #include "war3_bridge_unit_stats.h"
 #include "war3_bridge_world.h"
@@ -504,17 +503,12 @@ BOOL WINAPI DllMain(HINSTANCE module,DWORD reason,LPVOID reserved) {
 #endif
 #ifdef BRIDGE_DIAGNOSTIC
 #include "war3_bridge_talent_probe.h"
-#include "war3_bridge_inherited_probe.h"
-#include "war3_equipment_attribute_probe.h"
 #endif
 #include "war3_bridge_talent_order.h"
 #ifdef BRIDGE_TEST
 #include "war3_bridge_test_fixture.h"
 #include "war3_equipment_effect_fixture.h"
 #include "war3_item_safety_fixture.h"
-#include "war3_stat_flat_fixture.h"
-#include "war3_unit_bindings_fixture.h"
-#include "war3_camera_fixture.h"
 #endif
 
 #ifdef BRIDGE_TEST

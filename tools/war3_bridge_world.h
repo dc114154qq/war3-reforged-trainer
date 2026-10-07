@@ -10,7 +10,7 @@ typedef struct WorldWork {
     uint64_t (*get_local_player)(void);
     void (*set_tech_max)(uint64_t,uint32_t,uint32_t);
     void (*set_tech_researched)(uint64_t,uint32_t,uint32_t);
-    void (*set_xp_rate)(uint64_t,const float *);
+    void (*set_xp_rate)(uint64_t,float);
     void (*fog_enable)(uint32_t);
     void (*fog_mask_enable)(uint32_t);
     uint8_t (*is_fog_enabled)(void);
@@ -19,11 +19,9 @@ typedef struct WorldWork {
     void (*end_game)(uint32_t);
     void *expected_tls;
     uint32_t action,rawcode,value,changed,error,completed,after0,after1,reserved0,reserved1;
-    uint32_t fog_gate[4],fog_tail[2];
-    uint64_t (*get_xp_rate)(uint64_t);
 } WorldWork;
-_Static_assert(sizeof(WorldWork)==160,"WorldWork ABI");
-__declspec(dllexport) const uint32_t world_batch_abi[3]={0x2426805cu,216u,160u};
+_Static_assert(sizeof(WorldWork)==128,"WorldWork ABI");
+__declspec(dllexport) const uint32_t world_batch_abi[3]={0x24268017u,216u,128u};
 
 static float WorldReal(uint32_t bits) {
     union {uint32_t bits;float value;} value;value.bits=bits;return value.value;
@@ -37,7 +35,7 @@ static int BridgeFogExceptionFilter(
 ) {
     uint64_t address=(uint64_t)(uintptr_t)info->ExceptionRecord->ExceptionAddress;
     *error=info->ExceptionRecord->ExceptionCode;
-    (void)value;
+    if (value) *value=(uint32_t)(info->ContextRecord->Rax&1u);
     if (w) {
         w->rawcode=phase;
         w->reserved0=(uint32_t)address;
@@ -47,7 +45,7 @@ static int BridgeFogExceptionFilter(
             w->set_tech_researched=(void (*)(uint64_t,uint32_t,uint32_t))
                 (uintptr_t)(info->ExceptionRecord->NumberParameters>=1?
                     info->ExceptionRecord->ExceptionInformation[0]:~0ULL);
-            w->set_xp_rate=(void (*)(uint64_t,const float *))
+            w->set_xp_rate=(void (*)(uint64_t,float))
                 (uintptr_t)(info->ExceptionRecord->NumberParameters>=2?
                     info->ExceptionRecord->ExceptionInformation[1]:~0ULL);
         } else if (phase==2u) {
@@ -63,7 +61,7 @@ static int BridgeFogExceptionFilter(
         } else if (phase==4u) {
             w->set_tech_max=(void (*)(uint64_t,uint32_t,uint32_t))(uintptr_t)address;
             w->set_tech_researched=(void (*)(uint64_t,uint32_t,uint32_t))(uintptr_t)info->ContextRecord->Rsp;
-            w->set_xp_rate=(void (*)(uint64_t,const float *))(uintptr_t)info->ContextRecord->Rbx;
+            w->set_xp_rate=(void (*)(uint64_t,float))(uintptr_t)info->ContextRecord->Rbx;
             w->fog_enable=(void (*)(uint32_t))(uintptr_t)info->ContextRecord->Rax;
             w->fog_mask_enable=(void (*)(uint32_t))(uintptr_t)info->ContextRecord->Rcx;
             w->is_fog_enabled=(uint8_t (*)(void))(uintptr_t)info->ContextRecord->Rdx;
@@ -74,37 +72,30 @@ static int BridgeFogExceptionFilter(
 }
 
 static int BridgeKnownFogGate(
-    WorldWork *w,uint64_t fn,uint32_t phase,uint32_t code,uint32_t flags,uint32_t parameters,
+    uint64_t fn,uint32_t phase,uint32_t code,uint32_t flags,uint32_t parameters,
     uint64_t instruction,uint64_t access,uint64_t address,uint32_t *length
 ) {
     uint64_t offset;
-    if (!w || phase<1u || phase>4u) return 0;
-    offset=w->fog_gate[phase-1u];*length=phase<=2u?5u:3u;
-    if (!offset || offset>=0x10000u) return 0;
+    if (phase==1u) {offset=0x519u;*length=5u;}
+    else if (phase==2u) {offset=0x3c9u;*length=5u;}
+    else if (phase==3u || phase==4u) {offset=0x3d2u;*length=3u;}
+    else return 0;
     return fn>=0x10000u && fn<0x800000000000ULL-offset &&
         code==EXCEPTION_ACCESS_VIOLATION && !(flags&EXCEPTION_NONCONTINUABLE) &&
         parameters>=2u && instruction==fn+offset && access==0u && address==0u;
 }
 
 static int BridgeKnownFogTail(
-    WorldWork *w,uint64_t fn,uint32_t phase,uint32_t code,uint32_t flags,uint32_t parameters,
+    uint64_t fn,uint32_t phase,uint32_t code,uint32_t flags,uint32_t parameters,
     uint64_t instruction,uint64_t access,uint64_t address
 ) {
     uint64_t offset;
-    if (!w || phase<1u || phase>2u) return 0;
-    offset=w->fog_tail[phase-1u];
-    if (!offset || offset>=0x10000u) return 0;
+    if (phase==1u) offset=0xb58u;
+    else if (phase==2u) offset=0x8a8u;
+    else return 0;
     return fn>=0x10000u && fn<0x800000000000ULL-offset &&
         code==EXCEPTION_ACCESS_VIOLATION && !(flags&EXCEPTION_NONCONTINUABLE) &&
         parameters>=2u && instruction==fn+offset && access==0u && address==0u;
-}
-
-static int BridgeFogOpcode(uint64_t instruction,uint32_t phase) {
-    const uint8_t *p=(const uint8_t *)(uintptr_t)instruction;
-    __try {
-        if (phase<=2u) return p[0]==0x41 && p[1]==0x0f && p[2]==0xb6 && p[3]==0x04 && p[4]==0x24;
-        return p[0]==0x0f && p[1]==0xb6 && p[2]==0x00;
-    } __except(EXCEPTION_EXECUTE_HANDLER) {return 0;}
 }
 
 static int BridgeFogControlFlowFilter(
@@ -114,21 +105,21 @@ static int BridgeFogControlFlowFilter(
     EXCEPTION_RECORD *e=info->ExceptionRecord;
     uint32_t length=0;
     if (!*resumed && BridgeKnownFogGate(
-        w,(uint64_t)(uintptr_t)fn,phase,e->ExceptionCode,e->ExceptionFlags,
+        (uint64_t)(uintptr_t)fn,phase,e->ExceptionCode,e->ExceptionFlags,
         e->NumberParameters,(uint64_t)(uintptr_t)e->ExceptionAddress,
         e->ExceptionInformation[0],e->ExceptionInformation[1],&length
-    ) && BridgeFogOpcode((uint64_t)(uintptr_t)e->ExceptionAddress,phase)) {
+    )) {
         *resumed=1u;
         info->ContextRecord->Rip+=length;
         ++bridge_recovered_faults;
         return EXCEPTION_CONTINUE_EXECUTION;
     }
     if (BridgeKnownFogTail(
-        w,(uint64_t)(uintptr_t)fn,phase,e->ExceptionCode,e->ExceptionFlags,
+        (uint64_t)(uintptr_t)fn,phase,e->ExceptionCode,e->ExceptionFlags,
         e->NumberParameters,(uint64_t)(uintptr_t)e->ExceptionAddress,
         e->ExceptionInformation[0],e->ExceptionInformation[1]
-    ) && BridgeFogOpcode((uint64_t)(uintptr_t)e->ExceptionAddress,phase)) {
-        *error=ERROR_SUCCESS;
+    )) {
+        *error=e->ExceptionCode;
         ++bridge_recovered_faults;
         return EXCEPTION_EXECUTE_HANDLER;
     }
@@ -167,11 +158,7 @@ __declspec(dllexport) uint64_t BridgeWorldQuery(void) {
     WorldWork *w=(WorldWork *)g_dispatch->work;
     uint64_t player;
     float rate;
-    uint32_t enabled,i;
-    if (w) for(i=0;i<6u;++i) {
-        uint32_t offset=i<4u?w->fog_gate[i]:w->fog_tail[i-4u];
-        if (!offset || offset>=0x10000u) {w->error=80;return 0;}
-    }
+    uint32_t enabled;
     if (!w || w->expected_tls!=g_dispatch->tls_value || w->action<WORLD_SET_TECH || w->action>WORLD_END_GAME ||
         (w->action==WORLD_SET_TECH ? (!w->rawcode || w->value>100000) :
          w->action==WORLD_SET_XP_RATE ? (w->rawcode || (rate=WorldReal(w->value),rate!=rate || rate<0.0f || rate>10000.0f)) :
@@ -190,17 +177,15 @@ __declspec(dllexport) uint64_t BridgeWorldQuery(void) {
                 w->set_tech_researched(player,w->rawcode,w->value);
                 w->after0=w->value;
             } else {
-                float rate=WorldReal(w->value);
-                if(!w->get_xp_rate){w->error=84;return 0;}
-                w->set_xp_rate(player,&rate);
-                w->after0=(uint32_t)w->get_xp_rate(player);
-                if(w->after0!=w->value){w->error=84;return 0;}
+                w->set_xp_rate(player,WorldReal(w->value));
+                w->after0=w->value;
             }
             w->changed=1;
         } else if (w->action==WORLD_QUERY_FOG) {
             DWORD fog_query_error=BridgeFogQuery(w->is_fog_enabled,&w->after0,w,3u);
             DWORD mask_query_error=BridgeFogQuery(w->is_fog_mask_enabled,&w->after1,w,4u);
-            if (fog_query_error || mask_query_error) {
+            if ((fog_query_error && fog_query_error!=EXCEPTION_ACCESS_VIOLATION) ||
+                (mask_query_error && mask_query_error!=EXCEPTION_ACCESS_VIOLATION)) {
                 w->error=fog_query_error ? fog_query_error : mask_query_error;
                 return 0;
             }
@@ -209,15 +194,10 @@ __declspec(dllexport) uint64_t BridgeWorldQuery(void) {
             enabled=w->value?0u:1u;
             fog_error=BridgeFogCall(w->fog_enable,enabled,w,1u);
             mask_error=BridgeFogCall(w->fog_mask_enable,enabled,w,2u);
-            if (fog_error || mask_error) {
-                w->changed=2u; /* A setter may have applied part of its state. */
-                w->error=fog_error?fog_error:mask_error;
-                return 0;
-            }
             fog_query_error=BridgeFogQuery(w->is_fog_enabled,&w->after0,w,3u);
             mask_query_error=BridgeFogQuery(w->is_fog_mask_enabled,&w->after1,w,4u);
-            if (fog_query_error || mask_query_error) {
-                w->changed=2u;
+            if ((fog_query_error && fog_query_error!=EXCEPTION_ACCESS_VIOLATION) ||
+                (mask_query_error && mask_query_error!=EXCEPTION_ACCESS_VIOLATION)) {
                 w->error=fog_query_error ? fog_query_error : mask_query_error;
                 return 0;
             }

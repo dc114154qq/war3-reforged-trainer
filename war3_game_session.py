@@ -342,19 +342,6 @@ class GameSession:
             self.retained["dispatch"] = dispatch
         return self.last_evidence
 
-    def require_native_query(self):
-        active=_ACTIVE_EPOCH.get()
-        if active is not None and active[0] is self and active[1]!=self.epoch:
-            raise SessionError('Map context changed; stale query was not dispatched')
-        if self.closed or self.identity is None:
-            raise SessionError('Game session has not been verified')
-        if self.retained or self.uncertain and not (
-                self.last_evidence.callback_exited and self.last_evidence.cleanup_complete):
-            raise SessionError('Previous callback or execution channel is still unresolved; native query deferred')
-        # A business write remains uncertain, but the execution channel is
-        # independently known to have exited and released its resources.
-        # Queries do not clear that uncertainty or permit write replay.
-
     def bind_unit(self, memory, registry, address):
         if self.identity is None or self.closed:
             raise SessionError("Object binding requires a live verified session")
@@ -371,8 +358,6 @@ class GameSession:
             raise SessionError("Object binding requires a live verified session")
         if type(handle) is not FullHandle:
             raise TypeError("Item resolver requires FullHandle")
-        if handle.value in self.cache.get('retired_items', ()):
-            raise SessionError('Item was explicitly removed; stale references are invalid')
         owner = registry.resolve_handle(memory, handle.value)
         layout = registry.layout
         q = lambda address: struct.unpack("<Q", memory.read(address, 8))[0]
@@ -391,14 +376,6 @@ class GameSession:
         self.resolve(memory, registry, ref)
         return ref
 
-    def retire_item(self, ref):
-        """Native deletion can leave an engine tombstone; reject its cached refs."""
-        if type(ref) is not ItemRef:
-            raise TypeError('Expected ItemRef for retirement')
-        with self.lock:
-            if ref.session==self.identity and ref.epoch==self.epoch:
-                self.cache.setdefault('retired_items',set()).add(ref.handle.value)
-
     def resolve(self, memory, registry, ref):
         if type(ref) not in (UnitRef, ItemRef):
             raise TypeError("Expected typed object reference")
@@ -406,8 +383,6 @@ class GameSession:
             raise SessionError("Stale object reference")
         if type(ref.handle) is not FullHandle or type(ref.address) is not ObjectAddress:
             raise TypeError("Invalid object identity type")
-        if type(ref) is ItemRef and ref.handle.value in self.cache.get('retired_items', ()):
-            raise SessionError('Item was explicitly removed; stale references are invalid')
         owner = registry.resolve_handle(memory, ref.handle.value)
         address = struct.unpack(
             "<Q", memory.read(owner + registry.layout["owner_data"], 8)

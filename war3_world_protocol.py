@@ -2,8 +2,8 @@
 import math
 import struct
 
-WORK_SIZE = 160
-ABI = struct.pack('<3I', 0x2426805c, 216, WORK_SIZE)
+WORK_SIZE = 128
+ABI = struct.pack('<3I', 0x24268017, 216, WORK_SIZE)
 SIGNATURES = (
     ('GetLocalPlayer', '()Hplayer;'),
     ('SetPlayerTechMaxAllowed', '(Hplayer;II)V'),
@@ -15,7 +15,6 @@ SIGNATURES = (
     ('IsFogMaskEnabled', '()B'),
     ('PauseGame', '(B)V'),
     ('EndGame', '(B)V'),
-    ('GetPlayerHandicapXP', '(Hplayer;)R'),
 )
 
 ACTION_SET_TECH = 1
@@ -37,27 +36,17 @@ def _pointers(entries):
 
 
 def build_work(entries, tls, action, rawcode=0, value=0):
-    from war3_game_profile import current_profile
-    recovery = current_profile().section('fog_recovery')
     payload = struct.pack(
-        '<11Q10I', *_pointers(entries)[:10], tls, action, rawcode, value,
+        '<11Q10I', *_pointers(entries), tls, action, rawcode, value,
         0, 0, 0, 0, 0, 0, 0,
     )
-    payload += struct.pack('<6I', *(recovery[key] for key in (
-        'enable_gate', 'mask_gate', 'enabled_gate', 'masked_gate',
-        'enable_tail', 'mask_tail')))
-    payload += struct.pack('<Q',_pointers(entries)[10])
     validate_work(payload)
     return payload
 
 
 def validate_work(payload):
     if len(payload) != WORK_SIZE:
-        raise ValueError('World work must contain 160 bytes')
-    if not 0x10000<=struct.unpack_from('<Q',payload,152)[0]<0x800000000000:
-        raise ValueError('Invalid experience-rate getter')
-    if any(not 0 < offset < 0x10000 for offset in struct.unpack_from('<6I', payload, 128)):
-        raise ValueError('Invalid fog recovery configuration')
+        raise ValueError('World work must contain 128 bytes')
     values = struct.unpack_from('<11Q10I', payload, 0)
     pointers, tls = values[:10], values[10]
     action, rawcode, value, *outputs = values[11:]

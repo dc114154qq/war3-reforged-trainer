@@ -124,20 +124,18 @@ class Engine24268(UnitsService, AbilitiesService, ItemsService, ExtensionsServic
 
 
     def _execute(self,kind,names,builder,decoder,request):
-        from war3_operations import OPERATIONS,is_read_query
+        from war3_operations import OPERATIONS
         operation=OPERATIONS.get(kind)
         if operation is None or operation.diagnostic and not self.diagnostic:
             raise ValueError('Unknown or diagnostic-only operation: '+kind)
         with self.lock:
             try:
-                read_query=is_read_query(kind,request)
-                if not read_query and (self.quarantined or self.session.closed or self.session.uncertain or self.session.retained):
+                if self.quarantined or self.session.closed or self.session.uncertain or self.session.retained:
                     raise RuntimeError('Previous dispatch retained resources or execution unresolved; no automatic replay')
                 if not self.image.is_file():raise RuntimeError('Missing current 24268 bridge module: '+str(self.image))
                 with self.memory_factory(self.pid) as memory:
                     self.session.prepare(memory)
-                if read_query:self.session.require_native_query()
-                else:self.session.require_write()
+                self.session.require_write()
                 if getattr(self.session,'native_registry_error',None):
                     raise RuntimeError('Native execution unavailable: '+self.session.native_registry_error)
                 with session_scope(self.session):
@@ -151,10 +149,7 @@ class Engine24268(UnitsService, AbilitiesService, ItemsService, ExtensionsServic
 
     def _execute_prepared(self,kind,names,builder,decoder,request):
         with self.lock:
-            from war3_operations import is_read_query
-            if self.quarantined:
-                if is_read_query(kind,request):self.session.require_native_query()
-                else:raise EngineExecutionError('Previous dispatch retained resources; inspect before reconnecting',self.last_report)
+            if self.quarantined:raise EngineExecutionError('Previous dispatch retained resources; inspect before reconnecting',self.last_report)
             start=time.perf_counter();report={
                 'pid':self.pid, 'game_pid':self.pid,
                 'target_game_pid':self.pid, 'trainer_pid':os.getpid(),
@@ -284,18 +279,6 @@ class Engine24268(UnitsService, AbilitiesService, ItemsService, ExtensionsServic
                         elif kind == 'item_safety':
                             from war3_item_safety_protocol import failure_status
                             business_status=failure_status(raw_result)
-                        elif kind == 'stat_details':
-                            from war3_stat_details_protocol import failure_status
-                            business_status=failure_status(raw_result)
-                        elif kind == 'clone':
-                            from war3_clone_protocol import failure_status
-                            business_status=failure_status(raw_result)
-                        elif kind == 'clone_bound':
-                            from war3_clone_bound_protocol import failure_status
-                            business_status=failure_status(raw_result)
-                        elif kind == 'unit_bindings':
-                            from war3_unit_bindings_protocol import failure_status
-                            business_status=failure_status(raw_result)
                         if business_status and business_status['session_continuable']:
                             report['business_status']=business_status
                             raise
@@ -304,7 +287,7 @@ class Engine24268(UnitsService, AbilitiesService, ItemsService, ExtensionsServic
                         # Completed callback is not proof that a partially
                         # applied transaction is replayable.
                         statuses=[value for key,value in report.items() if key.endswith('_status') and isinstance(value,dict)]
-                        proven_no_change=not business_status and bool(statuses) and all(value.get('changed')==0 for value in statuses)
+                        proven_no_change=bool(statuses) and all(value.get('changed')==0 for value in statuses)
                         if not proven_no_change:
                             self.session.uncertain=True
                             self.session.last_evidence.uncertain=True
@@ -326,7 +309,5 @@ class Engine24268(UnitsService, AbilitiesService, ItemsService, ExtensionsServic
             except Exception as exc:
                 self._native_context_cache=None
                 self.session.cache.pop('natives',None)
-                if isinstance(getattr(exc,'integrity_report',None),dict):
-                    report['integrity']=exc.integrity_report
                 report['error']=str(exc);raise EngineExecutionError(str(exc),report) from exc
             finally:report['elapsed_ms']=(time.perf_counter()-start)*1000

@@ -148,14 +148,6 @@ OPERATIONS = {
         False,
         False,
     ),
-    "clone_bound": OperationSpec(
-        "clone_bound", "war3_clone_bound_protocol",
-        b"clone_bound_abi", b"BridgeCloneBoundQuery", False, False,
-    ),
-    "unit_bindings": OperationSpec(
-        "unit_bindings", "war3_unit_bindings_protocol",
-        b"unit_bindings_abi", b"BridgeUnitBindingsQuery", False, True,
-    ),
     "world": OperationSpec(
         "world",
         "war3_world_protocol",
@@ -318,15 +310,3 @@ def prepare_operation(kind, payload):
             raise ValueError("Invalid diagnostic payload size")
         abi = struct.pack("<3I", magic, 216, size)
     return abi, spec.marker, spec.query
-
-
-def is_read_query(kind, request):
-    """Classify only fixed production queries, never trust a caller's label."""
-    if kind in ('camera','terrain','map_bounds','mouse','screen_mouse','unit_bindings'):
-        return True
-    if kind=='hero':return request.get('target')==0
-    if kind=='hero_attributes':return request.get('target') is None
-    if kind=='attack_speed':return request.get('target_aps')==0
-    if kind in ('unit_stats','stat_details','ability','ability_field','item','item_field','extension','game_speed'):
-        return request.get('action')==0
-    return False

@@ -2,25 +2,14 @@
 import struct
 
 def record_status(kind,evidence,report):
-    if kind=='stat_details' and evidence.get('work_result_hex'):
-        raw=bytes.fromhex(evidence['work_result_hex'])
-        if len(raw)==1056:
-            changed,error,completed,count=struct.unpack_from('<4I',raw,600)
-            report['stat_details_status']=dict(error=error,completed=completed,
-                changed=None if error else changed,present_count=count,
-                diagnostic_stage=struct.unpack_from('<I',raw,1004)[0])
     if kind=='equipment_effect' and evidence.get('work_result_hex'):
         raw=bytes.fromhex(evidence['work_result_hex'])
-        if len(raw) in (1488,1648,1672):
+        if len(raw) in (1488,1648):
             error,completed,changed,cleanup=struct.unpack_from('<4I',raw,688)
             report['equipment_effect_status']=dict(error=error,completed=completed,
                 changed=changed,cleanup=cleanup)
-            if len(raw)>=1648:
+            if len(raw)==1648:
                 report['equipment_effect_status']['skip_code']=struct.unpack_from('<I',raw,1548)[0]
-            if len(raw)==1672:
-                retired,removed,called,released=struct.unpack_from('<4I',raw,1656)
-                report['equipment_effect_status'].update(native_invalidated=retired,references_removed=removed,
-                    destroy_called=called,owner_released=released)
     if kind=='item_safety' and evidence.get('work_result_hex'):
         raw=bytes.fromhex(evidence['work_result_hex'])
         if len(raw)==600:
@@ -80,15 +69,11 @@ def record_status(kind,evidence,report):
         if len(raw)==5136:
             changed,error,completed=struct.unpack_from('<3I',raw,552+12)
             report['item_field_status']=dict(changed=changed,error=error,completed=completed)
-    if kind in ('clone','clone_bound') and evidence.get('work_result_hex'):
+    if kind=='clone' and evidence.get('work_result_hex'):
         raw=bytes.fromhex(evidence['work_result_hex'])
-        if len(raw)==(2680 if kind=='clone_bound' else 1888):
+        if len(raw)==1872:
             changed,error,completed=struct.unpack_from('<3I',raw,700)
             report['clone_status']=dict(changed=changed,error=error,completed=completed)
-            from war3_clone_protocol import failure_status
-            failure = failure_status(raw[:1888])
-            if failure:
-                report['clone_status'].update(failure)
     if kind=='unit_action' and evidence.get('work_result_hex'):
         raw=bytes.fromhex(evidence['work_result_hex'])
         if len(raw)==1432:
@@ -101,7 +86,7 @@ def record_status(kind,evidence,report):
             report['position_status']=dict(changed=changed,error=error,completed=completed)
     if kind=='world' and evidence.get('work_result_hex'):
         raw=bytes.fromhex(evidence['work_result_hex'])
-        if len(raw)==152:
+        if len(raw)==128:
             (action,diagnostic_phase,value,changed,error,completed,
              after0,after1,fault_low,fault_high)=struct.unpack_from('<10I',raw,88)
             report['world_status']=dict(

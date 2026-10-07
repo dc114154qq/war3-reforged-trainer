@@ -47,12 +47,12 @@ from war3_3_stats import STAT_DETAIL_BY_KEY, STAT_DETAIL_SPECS
 from war3_ui_i18n import detect_ui_language, translate_ui_text
 
 
-APP_VERSION = "2.1.03"
-APP_RELEASE_CHANNEL = "stable"
+APP_VERSION = "2.1.01"
+APP_RELEASE_CHANNEL = "beta"
 GAME_BUILD = "3.0.0.24268"
 PRODUCT_READ_MODE = "normal"
-PRODUCT_EDITION_LABEL = "普通读取版"
-WIN10_COMPAT_REVISION = "2.1.03-process-identity-item-lifecycle"
+PRODUCT_EDITION_LABEL = "普通读取版（测试版）"
+WIN10_COMPAT_REVISION = "2.1.01-beta-native-item-effects"
 
 
 if sys.platform == "win32":
@@ -2384,24 +2384,8 @@ def record_operation_failure(
         if isinstance(session_report, dict):logger.log("game_session_report", report=session_report)
         engine_report = getattr(exc, "report", None)
         if isinstance(engine_report, dict):
-            if isinstance(engine_report.get("integrity"), dict):
-                logger.log("permission_check", **engine_report["integrity"])
             logger.log("engine24268_failure_summary", summary=summarize_engine_report(engine_report))
             logger.log("engine24268_execution_report", report=engine_report)
-        # A later wrapper must not erase the earlier transport/identity result.
-        failures = []
-        seen = set()
-        current = exc
-        while current is not None and id(current) not in seen and len(failures) < 8:
-            seen.add(id(current))
-            entry = {"type": type(current).__name__, "message": str(current),
-                     "winerror": getattr(current, "winerror", None)}
-            report = getattr(current, "report", None)
-            if isinstance(report, dict):
-                entry["report"] = report
-            failures.append(entry)
-            current = current.__cause__ or current.__context__
-        logger.log("failure_chain", failures=failures, truncated=current is not None)
         return str(logger.archive_path)
     finally:
         logger.close()
@@ -2790,11 +2774,6 @@ def enum_war3_windows() -> list[tuple[int, int, str]]:
             return True
         pid = ctypes.c_ulong()
         user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-        # A folder named Warcraft III has the same window title. Never bind
-        # its explorer.exe process or count it as a second game client.
-        executable = process_executable_path(int(pid.value))
-        if Path(executable).name.casefold() not in {"warcraft iii.exe", "war3.exe"}:
-            return True
         windows.append((int(hwnd), int(pid.value), title))
         return True
 
@@ -2807,10 +2786,6 @@ def find_war3(pid: int | None = None) -> tuple[int, int]:
     if pid is not None:
         matches = [m for m in matches if m[1] == pid]
     if not matches:
-        if pid is not None:
-            executable = process_executable_path(pid)
-            if executable and Path(executable).name.casefold() not in {"warcraft iii.exe", "war3.exe"}:
-                raise RuntimeError("所选进程不是 Warcraft III 游戏，请清空 PID 后重新连接，或填写游戏进程的 PID")
         raise RuntimeError("没有找到 Warcraft III 正式服或测试服的可见窗口")
     if pid is None and len({match[1] for match in matches}) > 1:
         raise RuntimeError("Multiple Warcraft III clients are open; select an explicit PID")
@@ -4894,22 +4869,7 @@ class War3Trainer(NativeFacade, ExtensionsFacade, UnitsFacade, AbilitiesFacade, 
                 1000, 0,
             )
             if candidate is None:
-                from war3_game_profile import current_profile
-                from war3_selection_diagnostics import inspect_candidate_failure
-                failure = RuntimeError("3.0 classic selection identity validation failed")
-                failure.report = {
-                    "operation": "selection",
-                    "selection_failure": getattr(self, "_last_selection_candidate_failure", {}),
-                    "full_handle": handle, "owner": owner, "unit": unit,
-                    "game_fingerprint": current_profile().fingerprint,
-                }
-                try:
-                    failure.report["selection_failure_evidence"] = inspect_candidate_failure(
-                        pm, owner, unit, handle, current_profile(),
-                    )
-                except Exception as diagnostic_error:
-                    failure.report["diagnostic_capture_error"] = repr(diagnostic_error)
-                raise failure
+                raise RuntimeError("3.0 classic selection identity validation failed")
             selected.append((candidate, handle))
         # Identity reads may take time; don't publish a list from an earlier
         # selection if the user has changed it while those reads were running.
@@ -5861,13 +5821,6 @@ class War3Trainer(NativeFacade, ExtensionsFacade, UnitsFacade, AbilitiesFacade, 
         *,
         persistent_snapshots: Iterable[PersistentNativeUnitSnapshot] | None = None,
     ) -> list[tuple[UnitCandidate, int]]:
-        if persistent_snapshots is None and getattr(self, "_game_session", None) is not None:
-            # Production reads use the version-bound external reader directly.
-            # Do not label this deliberate backend choice as a native timeout.
-            if pm is not None:
-                return self._classic_selection_candidates(pm)
-            with self._process_memory() as memory:
-                return self._classic_selection_candidates(memory)
         if persistent_snapshots is None:
             try:
                 if getattr(self, "_native_selection_unavailable", False):
@@ -8796,24 +8749,7 @@ def run_gui(
         slot = extension_selected_bag_slot()
         snapshot = trainer().drop_extension_bag_item_24268(slot)
         root.after(0, populate_extension_snapshot, snapshot)
-        if snapshot.get('operation_skipped'):
-            return snapshot['operation_skipped']['reason']
         return f"已将扩展背包第 {slot + 1} 格物品丢到角色脚下"
-
-    def extension_repair_bag_item() -> str:
-        slot = extension_selected_bag_slot()
-        snapshot = trainer().repair_extension_bag_item_24268(slot)
-        root.after(0, populate_extension_snapshot, snapshot)
-        if snapshot.get('operation_skipped'):
-            return snapshot['operation_skipped']['reason']
-        return ui_text("物品原生状态已验证，物品仍保留在背包中")
-
-    def extension_repair_equipment_state() -> str:
-        snapshot=trainer().repair_extension_equipment_state_24268()
-        root.after(0,populate_extension_snapshot,snapshot)
-        result=snapshot['equipment_state_repair']
-        return (ui_text("装备状态原位修复完成：")+str(len(result['repaired']))+
-                ui_text(" 件已修复，")+str(len(result['skipped']))+ui_text(" 件无需修复；原装备槽和数量保持不变"))
 
     def extension_add_backpack_equipment() -> str:
         label = extension_backpack_choice.get().strip()
@@ -9047,37 +8983,6 @@ def run_gui(
             return
         if messagebox.askyesno("确认丢弃", f"把扩展背包第 {slot + 1} 格物品丢到角色脚下？"):
             call_async(extension_drop_bag_item)
-
-    def extension_destroy_clicked(area: str) -> None:
-        try:
-            slot = (extension_selected_bag_slot() if area == 'bag'
-                    else extension_selected_equipment_slot())
-        except Exception as exc:
-            messagebox.showerror(ui_text("错误"), __import__("war3_error_messages").format_error(exc, ui_language["code"]))
-            return
-
-        def prepare() -> str:
-            target = trainer()
-            expected = target.prepare_extension_item_destruction_24268(area, slot)
-            code = expected['item'].rawcode.to_bytes(4, 'big').decode('ascii', 'replace')
-
-            def confirm() -> None:
-                if state.get('closing'):
-                    return
-                prompt = (f"永久销毁物品 {code}？物品及其效果将被移除，不能撤销。"
-                          if ui_language['code'] != 'en' else
-                          f"Permanently destroy item {code}? The item and its effects will be removed. This cannot be undone.")
-                if messagebox.askyesno(ui_text("确认销毁"), prompt, parent=root):
-                    def execute() -> str:
-                        snapshot = target.destroy_extension_item_24268(area, slot, expected=expected)
-                        root.after(0, populate_extension_snapshot, snapshot)
-                        return (f"已销毁 {code}，物品对象及槽位引用已验证清理"
-                                if ui_language['code'] != 'en' else
-                                f"Destroyed {code}; object retirement and inventory cleanup were verified")
-                    call_async(execute, operation_key='extension_destroy')
-            root.after(0, confirm)
-            return ui_text("等待确认销毁")
-        call_async(prepare, operation_key='extension_destroy_prepare')
 
     def extension_reset_talents_clicked() -> None:
         if messagebox.askyesno("确认洗点", "对全部选中单位执行洗点；没有天赋控制器的单位自动跳过？"):
@@ -10053,9 +9958,6 @@ def run_gui(
     ttk.Button(
         extension_bag_frame, text="添加物品", command=lambda: call_async(extension_add_item),
     ).grid(row=1, column=1, sticky="w", padx=(6, 0), pady=(8, 0))
-    ttk.Button(
-        extension_bag_frame, text="修复物品状态", command=lambda: call_async(extension_repair_bag_item),
-    ).grid(row=1, column=2, columnspan=2, sticky="w", padx=(6, 0), pady=(8, 0))
     ttk.Entry(extension_bag_frame, textvariable=extension_item_charges, width=10).grid(
         row=2, column=0, sticky="w", pady=(6, 0),
     )
@@ -10068,9 +9970,6 @@ def run_gui(
     ttk.Button(
         extension_bag_frame, text="丢弃所选", command=extension_drop_clicked,
     ).grid(row=2, column=3, sticky="w", padx=(6, 0), pady=(6, 0))
-    ttk.Button(
-        extension_bag_frame, text="销毁所选", command=lambda: extension_destroy_clicked('bag'),
-    ).grid(row=2, column=4, sticky="w", padx=(6, 0), pady=(6, 0))
     ttk.Combobox(
         extension_bag_frame, textvariable=extension_backpack_choice,
         values=official_backpack_labels, state="readonly", width=24,
@@ -10117,9 +10016,6 @@ def run_gui(
     )
     extension_loadout_box.grid(row=2, column=0, columnspan=2, sticky="w", pady=(6, 0))
     ttk.Button(
-        extension_equipment_frame, text="销毁所选", command=lambda: extension_destroy_clicked('equipment'),
-    ).grid(row=1, column=4, sticky="w", padx=(6, 0), pady=(8, 0))
-    ttk.Button(
         extension_equipment_frame, text="恢复选中套装", command=lambda: call_async(extension_restore_loadout),
     ).grid(row=2, column=2, sticky="w", padx=(6, 0), pady=(6, 0))
     ttk.Button(
@@ -10147,9 +10043,6 @@ def run_gui(
         row=4, column=2, sticky='w', padx=(6, 0), pady=(6, 0))
     ttk.Button(extension_equipment_frame, text='从文件选择方案', command=extension_import_plans).grid(
         row=4, column=3, sticky='w', padx=(6, 0), pady=(6, 0))
-    ttk.Button(extension_equipment_frame,text='一键修复装备状态',
-        command=lambda: call_async(extension_repair_equipment_state)).grid(
-        row=5,column=0,columnspan=2,sticky='w',pady=(6,0))
     extension_equipment_frame.rowconfigure(0, weight=1)
     extension_equipment_frame.columnconfigure(0, weight=1)
 

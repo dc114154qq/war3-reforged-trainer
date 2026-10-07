@@ -61,7 +61,7 @@ def require_creation_capacity(host, rawcode, target, definition=None):
         raise RuntimeError('Classic inventory is full; free one temporary slot before regenerating ordinary equipment. No item was created')
 
 
-def classify_state(host, snapshot, slot, area, *, destruction=False):
+def classify_state(host, snapshot, slot, area):
     from war3_reforged_trainer import ProcessMemory
     engine=host._engine_instance_24268();session=engine.session
     candidate,_=host._direct_selected_context()
@@ -70,7 +70,7 @@ def classify_state(host, snapshot, slot, area, *, destruction=False):
         raise RuntimeError('背包入口物品不能放进装备槽；请保持在经典物品栏中')
     definition=preflight_creation(host,int(snapshot[area][slot]['rawcode']),int(snapshot['target_unit']))
     from war3_equipment_effect_protocol import ORDINARY_CLASSES
-    if not destruction and (definition.get('equipment_type') or definition.get('original_class') not in ORDINARY_CLASSES):
+    if definition.get('equipment_type') or definition.get('original_class') not in ORDINARY_CLASSES:
         raise RuntimeError('普通物品原生分类不匹配，未执行装备写入')
     with ProcessMemory(host.pid) as memory:
         registry,_,_=session.prepare(memory)
@@ -99,130 +99,6 @@ def classify_state(host, snapshot, slot, area, *, destruction=False):
                 active=active_abilities(host,memory,candidate))
 
 
-def build_bound_work(host,state,entries,tls,action,slot):
-    from war3_reforged_trainer import ProcessMemory
-    from war3_equipment_effect_protocol import build_work
-    session=host._engine_instance_24268().session
-    if state['item'].epoch!=session.epoch or state['unit'].session!=session.identity:
-        raise RuntimeError('地图或进程身份在装备操作前已变化')
-    with ProcessMemory(host.pid) as memory:
-        registry,_,_=session.prepare(memory)
-        session.resolve(memory,registry,state['unit']);session.resolve(memory,registry,state['item'])
-    return build_work(entries,tls,base=state['base'],target=state['native_unit'].value,
-        unit_full=state['unit'].handle.value,item=state['native_item'].value,
-        item_full=state['item'].handle.value,equipment=state['equipment'],action=action,
-        slot=slot,rawcode=state['item'].rawcode,original_class=state['original_class'],
-        flags=state['flags'],item_class=state['item_class'],cached_type=state['cached_type'],layout=state['layout'])
-
-
-def guard_drop(host,snapshot,slot):
-    """Repair an inherited classifier before invoking the ordinary native drop."""
-    from war3_game_session import GameSession
-    if not isinstance(getattr(host._engine_instance_24268(),'session',None),GameSession):return snapshot
-    state=classify_state(host,snapshot,slot,'bag',destruction=True)
-    if state['flags']&0x4000 and not state['cached_type']:
-        return repair_bag(host,snapshot,slot)
-    return snapshot
-
-
-def repair_bag(host,before,slot):
-    from war3_equipment_effect_protocol import SIGNATURES,TRANSFER_SIGNATURES,decode_work
-    session=host._engine_instance_24268().session
-    with session.lock:
-        state=classify_state(host,before,slot,'bag')
-        if not state['flags']&0x4000 and not state['cached_type']:
-            return before
-        with session_scope(session):
-            result=host._engine_instance_24268()._execute('equipment_effect',
-                tuple(n for n,_ in SELECTION+SIGNATURES+TRANSFER_SIGNATURES),
-                lambda entries,tls:build_bound_work(host,state,entries,tls,6,slot),
-                decode_work,dict(action=6,target=state['native_unit'].value,item=state['native_item'].value,slot=slot))
-        after=host.extension_snapshot_24268(state['native_unit'].value)
-        if result.get('skipped'):return skipped_snapshot(after,state['item'].rawcode)
-        matches=[r for r in after['bag'] if r['handle']==state['native_item'].value]
-        if (len(matches)!=1 or matches[0]['rawcode']!=state['item'].rawcode or
-                matches[0]['charges']!=before['bag'][slot]['charges']):
-            session.uncertain=True
-            raise RuntimeError('物品状态修复后的实例读回不一致，已停止后续写入')
-        after['repaired_item']=dict(rawcode=state['item'].rawcode,slot=matches[0]['slot'],native_state_verified=True)
-        return after
-
-
-def repair_equipment(host, before):
-    """Rehydrate inherited instance classifiers in place, without equip events."""
-    from war3_reforged_trainer import ProcessMemory
-    from war3_equipment_effect_protocol import SIGNATURES,TRANSFER_SIGNATURES,decode_work,ORDINARY_CLASSES
-    engine=host._engine_instance_24268();session=engine.session
-    kinds=(1,2,3,4,5,5,6,7,8)
-    repaired=[];skipped=[]
-    with session.lock:
-        current=before
-        for slot,row in enumerate(before['equipment']):
-            if not row['handle']:
-                continue
-            state=classify_state(host,current,slot,'equipment',destruction=True)
-            if state['original_class'] not in ORDINARY_CLASSES:
-                skipped.append(dict(slot=slot,reason='正式装备无需普通物品分类修复'))
-                continue
-            if (state['item_class']==7 and state['cached_type']==kinds[slot]
-                    and state['flags']&0x4000):
-                skipped.append(dict(slot=slot,reason='装备状态正常，无需修复'))
-                continue
-            if state['item_class']!=state['original_class'] or state['cached_type']:
-                raise RuntimeError('装备实例分类与跨章节丢失状态不符，未修改该物品；请保留日志')
-            with session_scope(session):
-                result=engine._execute('equipment_effect',
-                    tuple(n for n,_ in SELECTION+SIGNATURES+TRANSFER_SIGNATURES),
-                    lambda entries,tls:build_bound_work(host,state,entries,tls,7,slot),decode_work,
-                    dict(action=7,target=state['native_unit'].value,item=state['native_item'].value,slot=slot))
-            after=host.extension_snapshot_24268(state['native_unit'].value)
-            identity=lambda rows:tuple((r['slot'],r['handle'],r['rawcode'],r['charges']) for r in rows)
-            with ProcessMemory(host.pid) as memory:
-                registry,_,_=session.prepare(memory)
-                session.resolve(memory,registry,state['unit'])
-                session.resolve(memory,registry,state['item'])
-                active=active_abilities(host,memory,state['candidate'])
-            if (after['target_unit']!=current['target_unit'] or current['bag']!=after['bag']
-                    or identity(current['equipment'])!=identity(after['equipment'])
-                    or after['equipment'][slot]['equipment_type']!=current['equipment'][slot]['equipment_type']
-                    or active!=state['active']):
-                session.uncertain=True
-                raise RuntimeError('原位修复后的装备实例、数量、分类或能力读回不一致，已停止后续写入')
-            repaired.append(dict(slot=slot,rawcode=row['rawcode'],native=row['handle'],
-                full=state['item'].handle.value,runtime_classification_verified=True,
-                native_definition_type_unchanged=True,
-                ability_list_unchanged=True))
-            current=after
-        current=dict(current)
-        current['equipment_state_repair']=dict(repaired=repaired,skipped=skipped,
-            in_place=True,no_equip_or_drop_events=True)
-        return current
-
-
-def destroy(host,before,slot,area,*,expected=None):
-    from war3_equipment_effect_protocol import SIGNATURES,TRANSFER_SIGNATURES,decode_work
-    session=host._engine_instance_24268().session
-    with session.lock:
-        state=classify_state(host,before,slot,area,destruction=True)
-        if expected is not None and any(state[key]!=expected[key]
-                for key in ('unit','item','native_unit','native_item')):
-            raise RuntimeError('确认销毁后英雄、地图或物品实例已变化，未执行删除；请刷新后重新选择')
-        action=4 if area=='bag' else 5
-        with session_scope(session):
-            result=host._engine_instance_24268()._execute('equipment_effect',
-                tuple(n for n,_ in SELECTION+SIGNATURES+TRANSFER_SIGNATURES),
-                lambda entries,tls:build_bound_work(host,state,entries,tls,action,slot),
-                decode_work,dict(action=action,target=state['native_unit'].value,item=state['native_item'].value,slot=slot))
-        session.retire_item(state['item'])
-        after=host.extension_snapshot_24268(state['native_unit'].value)
-        if any(int(row['handle'])==state['native_item'].value for a in ('bag','equipment') for row in after[a]):
-            session.uncertain=True
-            raise RuntimeError('销毁后仍读到物品引用，已停止后续写入')
-        after['destroyed_item']=dict(rawcode=state['item'].rawcode,area=area,slot=slot,
-            **result['destruction_evidence'])
-        return after
-
-
 def perform(host, before, source_slot, equipment_slot, *, equip):
     from war3_reforged_trainer import ProcessMemory
     from war3_equipment_effect_protocol import SIGNATURES,TRANSFER_SIGNATURES,build_work,decode_work
@@ -231,7 +107,18 @@ def perform(host, before, source_slot, equipment_slot, *, equip):
         state=classify_state(host,before,source_slot,'bag' if equip else 'equipment')
         with session_scope(session):
             def builder(entries,tls):
-                return build_bound_work(host,state,entries,tls,1 if equip else 2,equipment_slot)
+                if state['item'].epoch!=session.epoch or state['unit'].session!=session.identity:
+                    raise RuntimeError('地图或进程身份在装备操作前已变化')
+                with ProcessMemory(host.pid) as memory:
+                    registry,_,_=session.prepare(memory)
+                    session.resolve(memory,registry,state['unit'])
+                    session.resolve(memory,registry,state['item'])
+                return build_work(entries,tls,base=state['base'],target=state['native_unit'].value,
+                    unit_full=state['unit'].handle.value,item=state['native_item'].value,
+                    item_full=state['item'].handle.value,equipment=state['equipment'],
+                    action=1 if equip else 2,slot=equipment_slot,rawcode=state['item'].rawcode,
+                    original_class=state['original_class'],flags=state['flags'],
+                    item_class=state['item_class'],cached_type=state['cached_type'],layout=state['layout'])
             try:
                 result=engine._execute('equipment_effect',tuple(n for n,_ in SELECTION+SIGNATURES+TRANSFER_SIGNATURES),
                     builder,decode_work,dict(action=1 if equip else 2,target=state['native_unit'].value,

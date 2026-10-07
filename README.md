@@ -1,15 +1,15 @@
-# Warcraft III Reforged Trainer 2.1.03 — 历史构建源码
+# Warcraft III Reforged Trainer 2.1.01 测试版 — 历史构建源码
 
-这是个人网站于 2026-10-04 发布的 2.1.03 对应源码，按当时的构建文件哈希恢复，不是将当前版本改名。支持范围为当时的 3.0.0.24268 / 3.0.1.24323；不包含后来的 24332 适配与 2.1.04 修改。
+本分支补齐当时个人网站发布的 2.1.01 测试版构建源码。文件逐一对应旧构建记录，不是将当前代码改名；不包含后来的 2.1.03/2.1.04 改动。支持范围是当时的 3.0.0.24268 / 3.0.1.24323。
 
-本分支仅包含生产源码、适配数据、构建脚本、图标及依赖许可，没有 EXE/DLL、测试、日志、网站或独立工具。`diagnostics/war3_native_profile.py` 是运行时 Native 数据依赖，保留该文件不代表收录整个逆向资料库。
+只收录生产源码、适配数据、构建脚本、图标及依赖许可；不包含 EXE/DLL、测试、日志、逆向资料、网站或独立工具。`diagnostics/war3_native_profile.py` 是运行时 Native 数据依赖，必须保留。
 
 ## Windows 10/11 x64 构建
 
-安装 Git、Python 3.12、LLVM/Clang、Windows SDK，确保 clang 和 SDK 导入库可用，然后在 PowerShell 中执行：
+安装 Git、Python 3.12、LLVM/Clang、Windows SDK，然后在 PowerShell 执行：
 
 ```powershell
-git clone --branch release/v2.1.03 https://github.com/dc114154qq/war3-reforged-trainer.git
+git clone --branch release/v2.1.01-beta https://github.com/dc114154qq/war3-reforged-trainer.git
 Set-Location war3-reforged-trainer
 git switch -c main
 py -3.12 -m venv .venv
@@ -19,6 +19,4 @@ python tools/build_release_210.py
 python tools/build_release_210.py --verify-only
 ```
 
-输出为 `dist-2.1.03-verified/<sha256-prefix>/War3ReforgedTrainer-v2.1.03.exe`。旧构建器要求 main/master 等构建分支，所以下载历史分支后先建立本地 main；不要在当前开发工作树中强制切换。
-
-This is the exact historical 2.1.03 production source reconstructed against its published build hashes. Use the release source branch in a separate checkout. Generated binaries, tests, logs and unrelated tools are excluded. A fresh build may differ in binary timestamp/path metadata; the published EXE is not replaced.
+旧构建器限制构建分支，先在独立克隆中建立本地 main；不要强制切换现有工作树。输出位于 `dist-2.1.01-beta-verified/`。本次只补源码，不替换以前发布的安装包；当前用户版本仍请下载最新的 2.1.04。

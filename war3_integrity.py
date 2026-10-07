@@ -1,4 +1,4 @@
-"""Directional Windows integrity preflight for the current-engine bridge."""
+"""Windows integrity-level matching for the current-engine bridge."""
 
 import ctypes
 import os
@@ -141,21 +141,17 @@ def process_integrity(pid=None):
 
 
 def require_matching_integrity(target_pid):
-    """Reject known write-up, not an elevated trainer targeting a normal game."""
+    """Return a report or raise only when both levels are known and differ."""
     trainer = process_integrity()
     target = process_integrity(target_pid)
-    report = {"trainer": trainer, "target": target, "matched": None, "permitted": None}
-    if "rid" not in trainer or "rid" not in target:
+    report = {"trainer": trainer, "target": target, "matched": None}
+    if "name" not in trainer or "name" not in target:
         return report
     report["matched"] = trainer["name"] == target["name"]
-    report["permitted"] = trainer["rid"] >= target["rid"]
-    if not report["permitted"]:
-        failure = RuntimeError(
+    if not report["matched"]:
+        raise RuntimeError(
             "修改器与游戏完整性级别不一致："
             f"trainer={trainer['name']} target={target['name']}；"
             "请以与游戏相同权限重新启动修改器"
         )
-        failure.integrity_report = report
-        failure.report = {"operation": "access_preflight", "integrity": report}
-        raise failure
     return report

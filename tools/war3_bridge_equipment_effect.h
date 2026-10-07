@@ -26,11 +26,9 @@ typedef struct EquipmentEffectWork {
     void (*set_droppable)(uint64_t,int32_t);
     uint32_t droppable_before,droppable_after,rollback_verified,skip_code;
     uint64_t classic_before[6],classic_after[6];
-    void (*remove_item)(uint64_t);
-    uint32_t object_retired,references_removed,destroy_called,owner_released;
 } EquipmentEffectWork;
-_Static_assert(sizeof(EquipmentEffectWork)==1672,"EquipmentEffectWork ABI");
-__declspec(dllexport) const uint32_t equipment_effect_abi[3]={0x2426805bu,216u,1672u};
+_Static_assert(sizeof(EquipmentEffectWork)==1648,"EquipmentEffectWork ABI");
+__declspec(dllexport) const uint32_t equipment_effect_abi[3]={0x24268054u,216u,1648u};
 
 static int EquipmentEffectSnapshot(EquipmentEffectWork *w,uint64_t *eq,uint64_t *bag){
     if(w->bag_size(w->target)!=30)return 0;
@@ -69,125 +67,11 @@ static int EquipmentEffectRestore(EquipmentEffectWork *w,uint64_t item){
     return 1;
 }
 
-static int EquipmentEffectUnequip(EquipmentEffectWork *w,uint64_t item){
-    static const uint32_t kinds[9]={1u,2u,3u,4u,5u,5u,6u,7u,8u};
-    w->changed=2u;
-    /* StoreUnit can restore the equipment flag/record without restoring the
-       per-instance classifier. Rebuild that classifier before native removal. */
-    if(!w->type_before && w->class_before==w->original_class && (w->flags_before&0x4000u)){
-        *(uint32_t *)(uintptr_t)(item+w->class_offset)=7u;
-        *(uint32_t *)(uintptr_t)(item+w->type_offset)=kinds[w->slot];
-    }
-    if(w->unequip(w->target,w->slot_enum((int32_t)w->slot))!=w->item)return 0;
-    if(w->equipped(w->target,w->slot_enum((int32_t)w->slot)))return 0;
-    uint32_t found=0;
-    for(int i=0;i<30;++i)if(w->bagged(w->target,i)==w->item)++found;
-    return found==1;
-}
-
-static void EquipmentEffectDestroy(EquipmentEffectWork *w,uint64_t item){
-    uint32_t bag_found=0,eq_found=0,classic_found=0,occupied=0;
-    for(int i=0;i<30;++i){if(w->bag_before[i])++occupied;if(w->bag_before[i]==w->item)++bag_found;}
-    for(int i=0;i<9;++i)if(w->eq_before[i]==w->item)++eq_found;
-    for(int i=0;i<6;++i)if(w->classic_before[i]==w->item)++classic_found;
-    if(!w->remove_item || classic_found || bag_found+eq_found!=1 ||
-       (w->action==4 ? w->bag_before[w->slot]!=w->item : w->eq_before[w->slot]!=w->item)){
-        w->error=401;return;
-    }
-    if(w->action==5){
-        if(occupied==30){w->error=389;return;}
-        if(!EquipmentEffectUnequip(w,item)){w->error=402;w->cleanup=1;return;}
-    }else if((w->flags_before&0x4000u) && !w->type_before){
-        /* Old record-only removal left this equipped-item discriminator
-           invalid in a bag. Give the destructor a valid equipment classifier. */
-        w->changed=2u;
-        *(uint32_t *)(uintptr_t)(item+w->class_offset)=7u;
-        *(uint32_t *)(uintptr_t)(item+w->type_offset)=9u;
-    }
-    w->changed=2u;w->destroy_called=1;w->remove_item(w->item);
-    /* Never dereference the item's storage after the destructor. */
-    /* RemoveItem invalidates the native item immediately, but the object table
-       can retain a tombstone while engine/script references are released.
-       Verify native invalidation separately from physical table release. */
-    w->object_retired=!w->item_id(w->item);
-    w->owner_released=!BridgeEffectResolveObjectTable(w->base,w->item_full);
-    if(!EquipmentEffectSnapshot(w,w->eq_after,w->bag_after)){w->error=403;w->cleanup=1;return;}
-    EquipmentClassicSnapshot(w,w->classic_after);
-    w->references_removed=1;
-    for(int i=0;i<9;++i)if(w->eq_after[i]==w->item)w->references_removed=0;
-    for(int i=0;i<30;++i)if(w->bag_after[i]==w->item)w->references_removed=0;
-    for(int i=0;i<6;++i)if(w->classic_after[i]==w->item)w->references_removed=0;
-    if(!w->object_retired || !w->references_removed){w->error=404;w->cleanup=1;return;}
-    w->droppable_after=w->droppable_before;w->actual_slot=w->slot;
-    w->changed=1;w->completed=1;
-}
-
-static int EquipmentEffectRepairBag(EquipmentEffectWork *w,uint64_t item){
-    uint32_t found=0;
-    for(int i=0;i<30;++i)if(w->bag_before[i]==w->item)++found;
-    if(found!=1 || w->bag_before[w->slot]!=w->item || w->class_before!=w->original_class ||
-       w->type_before || !(w->flags_before&0x4000u))return 0;
-    for(int i=0;i<9;++i)if(w->eq_before[i]==w->item)return 0;
-    for(int i=0;i<6;++i)if(w->classic_before[i]==w->item)return 0;
-    w->changed=2;
-    *(uint32_t *)(uintptr_t)(item+w->class_offset)=7u;
-    *(uint32_t *)(uintptr_t)(item+w->type_offset)=9u;
-    w->remove_from_unit(w->target,w->item);
-    for(int i=0;i<30;++i)if(w->bagged(w->target,i)==w->item)return 0;
-    for(int i=0;i<9;++i)if(w->equipped(w->target,w->slot_enum(i))==w->item)return 0;
-    for(int i=0;i<6;++i)if(w->classic_item(w->target,i)==w->item)return 0;
-    if(w->item_id(w->item)!=w->rawcode || !w->add_to_unit(w->target,w->item))return 0;
-    *(uint32_t *)(uintptr_t)(item+w->flag_offset)&=~0x4000u;
-    *(uint32_t *)(uintptr_t)(item+w->class_offset)=w->original_class;
-    *(uint32_t *)(uintptr_t)(item+w->type_offset)=0;
-    w->changed=1;return 1;
-}
-
-static int EquipmentEffectRehydrate(EquipmentEffectWork *w,uint64_t item){
-    static const uint32_t kinds[9]={1u,2u,3u,4u,5u,5u,6u,7u,8u};
-    uint32_t count=0;
-    for(int i=0;i<9;++i)if(w->eq_before[i]==w->item)++count;
-    if(count!=1 || w->eq_before[w->slot]!=w->item || w->class_before!=w->original_class || w->type_before){
-        w->error=407;return 0;
-    }
-    for(int i=0;i<30;++i)if(w->bag_before[i]==w->item){w->error=407;return 0;}
-    for(int i=0;i<6;++i)if(w->classic_before[i]==w->item){w->error=407;return 0;}
-    w->changed=2;
-    volatile int repaired=0;
-    __try {
-        *(uint32_t *)(uintptr_t)(item+w->flag_offset)=w->flags_before|0x4000u;
-        *(uint32_t *)(uintptr_t)(item+w->class_offset)=7u;
-        *(uint32_t *)(uintptr_t)(item+w->type_offset)=kinds[w->slot];
-        /* GetItemEquipmentType reads the rawcode definition, not this cache.
-           Keep that ordinary definition unchanged; verify the classifier
-           actually consumed by native equip/unequip on this bound instance. */
-        if(w->equipment_type(w->item)!=0 || w->item_id(w->item)!=w->rawcode ||
-           w->equipped(w->target,w->slot_enum((int32_t)w->slot))!=w->item ||
-           *(uint32_t *)(uintptr_t)(item+w->flag_offset)!=(w->flags_before|0x4000u) ||
-           *(uint32_t *)(uintptr_t)(item+w->class_offset)!=7u ||
-           *(uint32_t *)(uintptr_t)(item+w->type_offset)!=kinds[w->slot])w->error=406;
-        else repaired=1;
-    } __finally {
-        if(!repaired){
-            *(uint32_t *)(uintptr_t)(item+w->flag_offset)=w->flags_before;
-            *(uint32_t *)(uintptr_t)(item+w->class_offset)=w->class_before;
-            *(uint32_t *)(uintptr_t)(item+w->type_offset)=w->type_before;
-            if(*(uint32_t *)(uintptr_t)(item+w->flag_offset)==w->flags_before &&
-               *(uint32_t *)(uintptr_t)(item+w->class_offset)==w->class_before &&
-               *(uint32_t *)(uintptr_t)(item+w->type_offset)==w->type_before){
-                w->changed=0;w->rollback_verified=1;
-            }else w->cleanup=1;
-        }
-    }
-    if(w->error)return 0;
-    w->changed=1;return 1;
-}
-
 __declspec(dllexport) uint64_t BridgeEquipmentEffectQuery(void){
     EquipmentEffectWork *w=(EquipmentEffectWork *)g_dispatch->work;
     uint32_t count,matches=0;uint64_t item_owner,unit_owner,item,unit,records;
-    if(!w || w->expected_tls!=g_dispatch->tls_value || w->slot>=((w->action==4 || w->action==6)?30u:9u) ||
-       w->action<1 || w->action>7 || w->reserved || w->owner_released)return 0;
+    if(!w || w->expected_tls!=g_dispatch->tls_value || w->slot>=9 ||
+       (w->action!=1 && w->action!=2 && w->action!=3) || w->reserved)return 0;
     count=(uint32_t)BridgeSelect();
     for(uint32_t i=0;i<count;++i)if(w->selection.rows[i].unit==w->target)++matches;
     if(w->selection.error || !w->selection.destroyed || matches!=1){w->error=380;return count;}
@@ -220,8 +104,7 @@ __declspec(dllexport) uint64_t BridgeEquipmentEffectQuery(void){
         if(w->ability_count==32 && w->item_ability(w->item,32)){w->error=384;return count;}
         EquipmentClassicSnapshot(w,w->classic_before);
         w->droppable_before=!!w->item_boolean(w->item,0x6964726fu);
-        if(w->action==4 || w->action==5){EquipmentEffectDestroy(w,item);return count;}
-        if(!w->droppable_before && w->action!=7){
+        if(!w->droppable_before){
             /* Do not fire pickup/drop events for protected legacy items. */
             for(int i=0;i<9;++i)w->eq_after[i]=w->eq_before[i];
             for(int i=0;i<30;++i)w->bag_after[i]=w->bag_before[i];
@@ -231,11 +114,7 @@ __declspec(dllexport) uint64_t BridgeEquipmentEffectQuery(void){
             w->skip_code=1;w->completed=1;return count;
         }
         __try {
-        if(w->action==7){
-            EquipmentEffectRehydrate(w,item);
-        }else if(w->action==6){
-            if(!EquipmentEffectRepairBag(w,item)){w->error=405;w->cleanup=!!w->changed;}
-        }else if(w->action==3){
+        if(w->action==3){
             uint32_t occupied=0;
             if(w->slot>=6 || !w->remove_from_unit || !w->add_to_unit || !w->classic_item ||
                w->classic_item(w->target,(int32_t)w->slot)!=w->item)
@@ -303,7 +182,7 @@ __declspec(dllexport) uint64_t BridgeEquipmentEffectQuery(void){
             uint32_t occupied=0;
             for(int i=0;i<30;++i)if(w->bag_before[i])++occupied;
             if(occupied==30 || w->eq_before[w->slot]!=w->item){w->error=389;return count;}
-            if(!EquipmentEffectUnequip(w,item))
+            if(w->unequip(w->target,w->slot_enum((int32_t)w->slot))!=w->item)
                 {w->error=390;w->cleanup=1;return count;}
             *(uint32_t *)(uintptr_t)(item+w->flag_offset)&=~0x4000u;
             *(uint32_t *)(uintptr_t)(item+w->class_offset)=w->original_class;

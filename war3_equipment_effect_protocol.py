@@ -2,8 +2,8 @@
 import struct
 from war3_selection_protocol import build_work as selection_work, validate_work as selection_validate, decode_work as selection_decode
 
-WORK_SIZE = 1672
-ABI = struct.pack('<3I', 0x2426805b, 216, WORK_SIZE)
+WORK_SIZE = 1648
+ABI = struct.pack('<3I', 0x24268054, 216, WORK_SIZE)
 SIGNATURES = (
     ('GetItemTypeId', '(Hitem;)I'),
     ('GetItemEquipmentType', '(Hitem;)HequipmentType;'),
@@ -23,7 +23,6 @@ TRANSFER_SIGNATURES = (
     ('UnitItemInSlot', '(Hunit;I)Hitem;'),
     ('BlzGetItemBooleanField', '(Hitem;Hitembooleanfield;)B'),
     ('SetItemDroppable', '(Hitem;B)V'),
-    ('RemoveItem', '(Hitem;)V'),
 )
 LAYOUT_NAMES = ('item_flags', 'item_class', 'item_equipment_type', 'equipment_count',
                 'equipment_records', 'equipment_capacity', 'ability_owner', 'item_rawcode_mirror')
@@ -49,8 +48,8 @@ def build_work(entries, tls, *, base, target, unit_full, item, item_full, equipm
              +struct.pack('<8I',*(layout[k] for k in LAYOUT_NAMES))
              +struct.pack('<8I',action,slot,rawcode,original_class,flags,item_class,cached_type,0)
              +bytes(1488-688)
-             +struct.pack('<6Q', *transfer[:3], classic_inventory, *transfer[3:5])
-             +bytes(112)+struct.pack('<Q',transfer[5])+bytes(16))
+             +struct.pack('<6Q', *transfer[:3], classic_inventory, *transfer[3:])
+             +bytes(112))
     validate_work(payload)
     return payload
 
@@ -65,18 +64,12 @@ def validate_work(payload):
     offsets=struct.unpack_from('<8I',payload,624)
     if any(not 0<o<=0x10000 for o in offsets):raise ValueError('Equipment effect layout invalid')
     action,slot,rawcode,original,flags,kind,cached,reserved=struct.unpack_from('<8I',payload,656)
-    if (action not in (1,2,3,4,5,6,7) or slot >= (6 if action == 3 else 30 if action in (4,6) else 9)
-            or not rawcode or original not in (range(9) if action in (4,5) else ORDINARY_CLASSES) or reserved):
+    if action not in (1,2,3) or slot >= (6 if action == 3 else 9) or not rawcode or original not in ORDINARY_CLASSES or reserved:
         raise ValueError('Equipment effect request invalid')
     if action in (1,3) and (kind!=original or cached or flags&0x4000):
         raise ValueError('Ordinary item was already classified/equipped')
-    if action==2 and (not flags&0x4000 or not (
-            (kind==7 and cached in range(1,9)) or (kind==original and cached==0))):
+    if action==2 and (kind!=7 or cached not in range(1,9) or not flags&0x4000):
         raise ValueError('Ordinary equipment classification differs')
-    if action==6 and (not flags&0x4000 or kind!=original or cached):
-        raise ValueError('Inherited bag item classification differs')
-    if action==7 and (kind!=original or cached):
-        raise ValueError('Inherited equipment repair classification differs')
     if any(payload[688:1488]):raise ValueError('Equipment effect outputs must be zero')
     transfer=struct.unpack_from('<3Q',payload,1488)
     if any(not 0x10000<=p<0x800000000000 for p in transfer + struct.unpack_from('<2Q',payload,1520)):
@@ -85,11 +78,7 @@ def validate_work(payload):
     if action==3 and not 0x10000<=classic_inventory<0x800000000000:
         raise ValueError('Bag transfer inventory identity invalid')
     if action!=3 and classic_inventory:raise ValueError('Unexpected classic inventory identity')
-    remove=struct.unpack_from('<Q',payload,1648)[0]
-    if not 0x10000<=remove<0x800000000000:
-        raise ValueError('Item destruction handler invalid')
-    if any(payload[1536:1648]) or any(payload[1656:]):
-        raise ValueError('Equipment transaction evidence must be zero')
+    if any(payload[1536:]):raise ValueError('Equipment transaction evidence must be zero')
 
 
 def decode_work(payload,count):
@@ -121,23 +110,7 @@ def decode_work(payload,count):
                     bag_before=bag_before,bag_after=bag_after,
                     droppable_before=droppable_before,droppable_after=droppable_after)
     if changed!=1:raise ValueError('Equipment change was not verified')
-    if action in (4,5):
-        retired,cleared,called,owner_released=struct.unpack_from('<4I',payload,1656)
-        valid=(retired==cleared==called==1 and owner_released in (0,1) and item not in after and item not in bag_after)
-        if action==4:
-            valid &= bag_before[slot]==item and before==after and all(
-                a==(0 if i==slot else b) for i,(b,a) in enumerate(zip(bag_before,bag_after)))
-        else:
-            valid &= before[slot]==item and bag_before==bag_after and all(
-                a==(0 if i==slot else b) for i,(b,a) in enumerate(zip(before,after)))
-    elif action==7:
-        valid=(before==after and bag_before==bag_after and before[slot]==item and
-               before.count(item)==1 and values[7]==values[4]|0x4000 and values[8]==7 and
-               values[9]==(1,2,3,4,5,5,6,7,8)[slot])
-    elif action==6:
-        valid=(before==after and bag_before[slot]==item and bag_before.count(item)==bag_after.count(item)==1
-               and values[8]==original and values[9]==0 and not values[7]&0x4000)
-    elif action==3:
+    if action==3:
         valid=(item not in bag_before and bag_after.count(item)==1 and before==after
                and values[8]==original and values[9]==0 and not values[7]&0x4000)
     elif action==1:
@@ -161,8 +134,6 @@ def decode_work(payload,count):
     if action != 3 and classic_before != classic_after:
         raise ValueError('Equipment transaction changed classic inventory')
     return dict(action=action,slot=slot,rawcode=rawcode,changed=changed,cleanup=cleanup,
-                destruction_evidence=(dict(native_invalidated=bool(retired),references_removed=bool(cleared),
-                    owner_released=bool(owner_released)) if action in (4,5) else None),
                 ability_ids=struct.unpack_from('<32I',payload,1360)[:values[10]],
                 before=before,after=after,bag_before=bag_before,bag_after=bag_after,
                 flags_before=values[4],flags_after=values[7],

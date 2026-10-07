@@ -1,9 +1,9 @@
 {
-  "schema_version": 4,
-  "bridge_profile_version": 2,
-  "id": "war3-3.0.1.24323-r5",
+  "schema_version": 2,
+  "bridge_profile_version": 1,
+  "id": "war3-3.0.1.24323-r3",
   "game_version": "3.0.1.24323",
-  "adapter_version": 5,
+  "adapter_version": 3,
   "status": "validated",
   "fingerprint": {
     "machine": 34404,
@@ -22,21 +22,6 @@
   "module_addresses": {
     "talent_icon_site": 16904871,
     "talent_icon_resolver": 1838144
-  },
-  "fog_recovery": {
-    "enable_gate": 1257,
-    "mask_gate": 969,
-    "enabled_gate": 978,
-    "masked_gate": 978,
-    "enable_tail": 3000,
-    "mask_tail": 2264
-  },
-  "stat_runtime": {
-    "cooldown_vtable": 37486952,
-    "amplification_vtable": 37489432,
-    "spell_vamp_vtable": 37491912,
-    "resolve_vtable": 37494360,
-    "flat_flag": 296
   },
   "checks": {
     "resolver": [
@@ -138,8 +123,7 @@
     "owner_data": 144,
     "object_handle": 24,
     "object_rawcode": 112,
-    "unit_attack": 1880,
-    "ability_level_tail": 1244
+    "unit_attack": 1880
   },
   "native_abi": {
     "machine": "win64",

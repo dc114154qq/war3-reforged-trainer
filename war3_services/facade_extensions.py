@@ -565,16 +565,11 @@ class ExtensionsFacade:
                     raise RuntimeError("原生来源槽物品身份与背包目标不一致")
                 # Only redirect this instance. Other slots contain the game's
                 # post-equip state; replaying old records can alias bag items.
-                if source_slot != equipment_slot:
-                    # The second word belongs to the engine's item record.
-                    # Moving a handle must carry that state with it; clearing
-                    # it or rewriting an already correct slot loses state.
-                    records_redirected = True
-                    item_state = native_records[source_slot][1]
-                    memory.write_u64(records + source_slot * 12, 0xFFFFFFFFFFFFFFFF)
-                    memory.write_u32(records + source_slot * 12 + 8, 0)
-                    memory.write_u64(records + equipment_slot * 12, item_full)
-                    memory.write_u32(records + equipment_slot * 12 + 8, item_state)
+                records_redirected = True
+                memory.write_u64(records + source_slot * 12, 0xFFFFFFFFFFFFFFFF)
+                memory.write_u32(records + source_slot * 12 + 8, 0)
+                memory.write_u64(records + equipment_slot * 12, item_full)
+                memory.write_u32(records + equipment_slot * 12 + 8, 0)
             for displaced in displaced_items:
                 engine.extension(action=4, target_unit=target,
                                  item_rawcode=int(displaced["rawcode"]),

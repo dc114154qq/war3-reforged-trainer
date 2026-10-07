@@ -2,27 +2,6 @@
 import re
 
 BUSINESS_REASONS = {
-    ('unit_bindings',3): ('校验期间选中单位数量发生变化，未执行后续修改；请重新选择后重试。','Selection count changed; no subsequent write was performed. Reselect and retry.'),
-    ('unit_bindings',4): ('游戏执行句柄与读取到的单位对象不一致，未执行后续修改；请重新读取目标。','The native handle does not match the read object; no subsequent write was performed. Refresh the target.'),
-    ('unit_bindings',5): ('单位身份查询发生异常，具体原因尚未确认；请保留诊断日志。','Unit identity querying raised an exception; the exact cause is unconfirmed. Keep the diagnostic log.'),
-    ('clone',60): ('复制单位所需的游戏接口未通过校验，未开始复制。','The required clone interfaces failed validation; no copy began.'),
-    ('clone',61): ('没有读到完整的选中单位列表，未开始复制；请重新选择单位后重试。','The selection could not be fully read; reselect the units and retry.'),
-    ('clone',62): ('选中单位的身份、归属或位置已失效，未开始复制；请重新选择单位后重试。','The selected unit identity, owner or position is invalid; no copy began.'),
-    ('clone',63): ('游戏未创建符合原单位类型和归属的副本，复制未完成。','The game did not create a clone with the expected type and owner.'),
-    ('clone',64): ('副本的英雄等级未按原单位读回，复制未完成。','The clone hero level differs from the original.'),
-    ('clone',65): ('原单位含当前未能复制的技能组件，已取消本次复制。','The source contains a skill component that could not be copied.'),
-    ('clone',66): ('游戏拒绝给副本添加原单位的技能，复制未完成。','The game rejected adding a source skill to the clone.'),
-    ('clone',67): ('副本的技能等级未按原单位读回，复制未完成。','The clone skill level differs from the original.'),
-    ('clone',68): ('副本的物品创建或类型检查失败，复制未完成。','The clone item creation or type validation failed.'),
-    ('clone',69): ('副本的物品数量未按原物品读回，复制未完成。','The copied item charge count differs from the original.'),
-    ('clone',70): ('原单位的物品技能未能完整读取，复制未完成。','The source item skills could not be fully read.'),
-    ('clone',71): ('副本的剩余技能点未按原英雄读回，复制未完成。','The clone unspent skill points differ from the original.'),
-    ('clone',72): ('复制期间原单位发生变化，已停止复制，未继续操作失效对象。','A source unit changed during copying; stale objects were not used.'),
-    ('clone',73): ('复制时游戏接口发生异常，未确认复制成功；具体原因请保留日志核对。','A native exception occurred during copying; success was not confirmed.'),
-    ('clone',74): ('复制失败后的临时单位或物品未能确认清理完成，请保留日志并重新连接重启后的游戏。','Temporary clone cleanup could not be confirmed; keep the log and reconnect after restarting the game.'),
-    ('clone',75): ('原单位的技能数量超过本次复制可完整处理的范围，已取消复制，避免生成缺少技能的副本。','The source skill count exceeds the complete-copy limit; the copy was cancelled.'),
-    ('clone',76): ('游戏返回的对象不是新副本，已停止复制以保护原单位。','The returned object was not a new clone; copying stopped to protect the originals.'),
-    ('clone',77): ('开始复制时的选中单位已变化，已停止本轮复制；不会改用后来选中的对象。','The original selection changed; this copy stopped without using newly selected objects.'),
     ('world',84): ('游戏未按目标经验倍率读回，本次修改未确认成功。','The experience-rate readback differs from the request; the write was not confirmed.'),
     ('equipment_effect',406): ('装备实例分类修复后未通过原生读回，未确认修复成功。','Native readback did not confirm the repaired equipment classification.'),
     ('equipment_effect',407): ('待修复物品的槽位、归属或分类已变化，未修改该物品。','The source slot, ownership or classification changed; the item was not modified.'),
@@ -32,8 +11,6 @@ BUSINESS_REASONS = {
     ('equipment_effect',403): ('销毁后的背包或装备状态读取失败，结果未确认；请保留日志。','Inventory readback after destruction failed; the result remains unconfirmed. Keep the log.'),
     ('equipment_effect',404): ('游戏执行删除后仍存在物品或槽位引用，销毁未通过验证；请保留日志并重启游戏。','The game still retains the item or a slot reference; destruction verification failed. Keep the log and restart the game.'),
     ('stat_details',274): ('3.0 属性能力的运行时分类或对象身份校验失败，未确认属性修改成功。','The runtime stat classification or object identity check failed; the write was not confirmed.'),
-    ('stat_details',268): ('游戏未接受当前属性的模式转换，未确认修改成功。','The game rejected the stat mode conversion; the write was not confirmed.'),
-    ('stat_details',269): ('游戏拒绝写入当前属性值，未确认修改成功。','The game rejected the stat value write; success was not confirmed.'),
     ('stat_details',271): ('游戏读回的属性值与目标不一致，本次修改未确认成功。','The stat readback differs from the requested value; the write was not confirmed.'),
     ('stat_details',273): ('属性修改后的恢复未通过验证，已停止后续写入；请保留日志并重启游戏。','Stat rollback could not be verified; later writes are blocked. Keep the log and restart the game.'),
     ('stat_details',275): ('当前单位没有可触发的暴击来源，请先增加对应暴击几率或装备暴击物品。','No triggering critical source exists. Add the matching chance or critical equipment first.'),
@@ -92,9 +69,8 @@ def describe_error(exc, language='zh'):
         elif stage in ('owner_handle','owner_unit','unit_handle','identity_unreadable','unit_changed'):
             reason=('选中单位的身份已变化或读取不完整，未修改游戏。请重新选中单位后重试。','The selected unit identity changed or could not be fully read. No game write occurred. Reselect the unit and retry.')
             category='selection_identity';confirmed=True
-    business_operation='clone' if operation=='clone_bound' else operation
-    if (business_operation,code) in BUSINESS_REASONS:
-        reason=BUSINESS_REASONS[(business_operation,code)];category='business';confirmed=True
+    if (operation,code) in BUSINESS_REASONS:
+        reason=BUSINESS_REASONS[(operation,code)];category='business';confirmed=True
     if report.get('batch_failures'):
         causes=report['batch_failures']
         reason=('批量操作有失败项：'+'；'.join(c['reason'] for c in causes[:3]),
@@ -116,8 +92,6 @@ def describe_error(exc, language='zh'):
         reason=('该物品已销毁，旧物品引用已失效；请刷新背包或装备列表。','This item was destroyed and its old references are invalid. Refresh the inventory.');category='retired_item';confirmed=True
     elif reason is None and any(word in text.lower() for word in ('signature differs','signature mismatch','abi differs','abi mismatch')):
         reason=('当前游戏接口与适配数据不一致；该操作未通过接口校验。','The game interface differs from the adapter; interface validation failed.');category='interface';confirmed=True
-    elif reason is None and 'native query deferred' in text:
-        reason=('上次游戏回调或执行通道尚未确认清理，原生查询暂时未执行；可独立读取的单位字段仍可读取。','The previous callback or execution channel remains unresolved; native queries are deferred while independent unit fields remain readable.');category='pending_query';confirmed=True
     elif reason is None and any(s in text for s in ('execution unresolved', 'retained resources',
             'Session is not writable', 'Session has unresolved execution/resources')):
         reason=('上一次操作的执行或清理状态未确认，已阻止重复写入。请保存日志并重新启动游戏后连接。','The previous execution or cleanup remains uncertain. Save the log, restart the game, and reconnect.');category='uncertain_session';confirmed=True

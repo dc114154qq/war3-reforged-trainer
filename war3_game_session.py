@@ -342,19 +342,6 @@ class GameSession:
             self.retained["dispatch"] = dispatch
         return self.last_evidence
 
-    def require_native_query(self):
-        active=_ACTIVE_EPOCH.get()
-        if active is not None and active[0] is self and active[1]!=self.epoch:
-            raise SessionError('Map context changed; stale query was not dispatched')
-        if self.closed or self.identity is None:
-            raise SessionError('Game session has not been verified')
-        if self.retained or self.uncertain and not (
-                self.last_evidence.callback_exited and self.last_evidence.cleanup_complete):
-            raise SessionError('Previous callback or execution channel is still unresolved; native query deferred')
-        # A business write remains uncertain, but the execution channel is
-        # independently known to have exited and released its resources.
-        # Queries do not clear that uncertainty or permit write replay.
-
     def bind_unit(self, memory, registry, address):
         if self.identity is None or self.closed:
             raise SessionError("Object binding requires a live verified session")

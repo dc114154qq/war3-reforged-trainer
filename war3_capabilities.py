@@ -39,8 +39,6 @@ class CapabilitySet:
 
     def check(self, name, signatures=(), request=None):
         missing = list(self.common)
-        if name in ('clone_bound','unit_bindings') and not self.profile.section('addresses')['unit_resolver']:
-            missing.append('Bound clone unit resolver has not been adapted for this build')
         # Internal attack routines need separately located addresses; a generic
         # native handler table cannot make inherited/unknown RVAs executable.
         if name == "attack_speed" and any(self.profile.section("addresses")[key] == 0

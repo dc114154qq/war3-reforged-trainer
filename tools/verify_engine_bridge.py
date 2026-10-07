@@ -33,7 +33,7 @@ def main() -> None:
 
     profile=json.loads((Path(__file__).resolve().parents[1]/'profiles/3.0.0.24268.json').read_text(encoding='utf8'))
     values=profile['bridge_layout']
-    expected=struct.pack('<'+'I'*(2+len(values)),profile['bridge_profile_version'],8+4*len(values),*values.values())
+    expected=struct.pack('<'+'I'*(2+len(values)),1,8+4*len(values),*values.values())
     if pe.get_data(exports[b'bridge_profile_abi'],8)!=expected[:8]:raise AssertionError('Bridge profile ABI mismatch')
     if pe.get_data(exports[b'bridge_profile'],len(expected))!=expected:raise AssertionError('Bridge profile defaults differ')
     required = (
@@ -93,9 +93,7 @@ def main() -> None:
     marker(b"item_safety_abi", (0x24268056, 216, 600))
     marker(b"item_catalog_batch_abi", (0x2426802B, 216, 0))
     marker(b"item_field_batch_abi", (0x24268022, 216, 5136))
-    marker(b"clone_batch_abi", (0x24268063, 216, 1888))
-    marker(b"clone_bound_abi", (0x24268064, 216, 2680))
-    marker(b"unit_bindings_abi", (0x24268065, 216, 1280))
+    marker(b"clone_batch_abi", (0x24268015, 216, 1872))
     marker(b"unit_action_batch_abi", (0x24268016, 216, 1432))
     marker(b"world_batch_abi", (0x2426805c, 216, 160))
     marker(b"bulk_batch_abi", (0x2426803A, 216, 656))

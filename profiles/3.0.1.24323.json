@@ -1,9 +1,9 @@
 {
-  "schema_version": 4,
-  "bridge_profile_version": 2,
-  "id": "war3-3.0.1.24323-r5",
+  "schema_version": 3,
+  "bridge_profile_version": 1,
+  "id": "war3-3.0.1.24323-r4",
   "game_version": "3.0.1.24323",
-  "adapter_version": 5,
+  "adapter_version": 4,
   "status": "validated",
   "fingerprint": {
     "machine": 34404,
@@ -138,8 +138,7 @@
     "owner_data": 144,
     "object_handle": 24,
     "object_rawcode": 112,
-    "unit_attack": 1880,
-    "ability_level_tail": 1244
+    "unit_attack": 1880
   },
   "native_abi": {
     "machine": "win64",

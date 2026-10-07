@@ -60,56 +60,9 @@ class UnitsService:
         )
 
 
-    def bind_unit_refs(self, refs, strict_selection=True):
-        """Resolve exact external identities into the Native handle namespace."""
-        from war3_game_session import FullHandle, ObjectAddress, UnitRef
-        if type(strict_selection) is not bool:
-            raise TypeError('Unit binding selection mode must be boolean')
-        if type(refs) is not tuple or not 1 <= len(refs) <= 24:
-            raise ValueError('Unit binding requires a tuple of 1..24 UnitRef objects')
-        if any(type(ref) is not UnitRef or type(ref.handle) is not FullHandle
-               or type(ref.address) is not ObjectAddress for ref in refs):
-            raise TypeError('Unit binding requires UnitRef with full handles and object addresses')
-        if (len({ref.handle.value for ref in refs}) != len(refs)
-                or len({ref.address.value for ref in refs}) != len(refs)):
-            raise ValueError('Unit binding contains duplicate object identities')
-        if any((ref.session, ref.epoch) != (refs[0].session, refs[0].epoch) for ref in refs):
-            raise ValueError('Unit binding sources belong to different sessions or epochs')
-        from war3_unit_bindings_protocol import build_work as build, decode_work as decode
-
-        def builder(entries, tls):
-            with self.memory_factory(self.pid) as memory:
-                registry, _, _ = self.session.prepare(memory)
-                for ref in refs:
-                    self.session.resolve(memory, registry, ref)
-                resolver_rva = self.session.profile.section('addresses')['unit_resolver']
-                if not resolver_rva:
-                    raise ValueError('Unit binding resolver has not been adapted')
-                return build(entries, tls, base=registry.base,
-                             unit_resolver=registry.base + resolver_rva,
-                             refs=refs, strict_selection=strict_selection)
-
-        def decoder(payload,count):
-            bindings=decode(payload,count,expected_sources=refs)
-            with self.memory_factory(self.pid) as memory:
-                registry,_,_=self.session.prepare(memory)
-                for ref in refs:self.session.resolve(memory,registry,ref)
-            return bindings
-
-        return self._execute(
-            'unit_bindings', tuple(name for name, _ in SIGNATURES), builder,
-            decoder,
-            dict(strict_selection=strict_selection, expected_count=len(refs),
-                 sources=tuple(dict(full_handle=ref.handle.value,
-                                    object_address=ref.address.value, rawcode=ref.rawcode)
-                               for ref in refs)),
-        )
-
-
     def clone_batch(self, *, keep=False, preserve_owner=False,
                     copy_abilities=True, copy_items=True,
-                    spawn=False, spawn_x_bits=0, spawn_y_bits=0,
-                    expected_sources=None):
+                    spawn=False, spawn_x_bits=0, spawn_y_bits=0):
         from war3_clone_protocol import (
             SIGNATURES as CLONE_SIGNATURES,
             CLONE_COPY_ABILITIES, CLONE_COPY_ITEMS, CLONE_KEEP,
@@ -123,49 +76,15 @@ class UnitsService:
         if copy_items: flags |= CLONE_COPY_ITEMS
         if spawn: flags |= CLONE_USE_SPAWN
         names = tuple(n for n, _ in SIGNATURES + CLONE_SIGNATURES)
-        request = dict(keep=keep, preserve_owner=preserve_owner,
-                       copy_abilities=copy_abilities, copy_items=copy_items,
-                       spawn=spawn, spawn_x_bits=spawn_x_bits, spawn_y_bits=spawn_y_bits)
-        if expected_sources is None:
-            return self._execute(
-                'clone', names,
-                lambda entries, tls: build(entries, tls, flags=flags,
-                                           spawn_x_bits=spawn_x_bits,
-                                           spawn_y_bits=spawn_y_bits),
-                decode, request,
-            )
-        from war3_clone_bound_protocol import (
-            build_work as build_bound, decode_work as decode_bound,
-            validate_expected_sources,
-        )
-        validate_expected_sources(expected_sources)
-        request['expected_sources'] = tuple(dict(
-            native_handle=native.value, full_handle=ref.handle.value,
-            object_address=ref.address.value, rawcode=ref.rawcode,
-        ) for native, ref in expected_sources)
-
-        def builder(entries, tls):
-            # Reopen and verify the process/map and every original object on
-            # each iteration. Never rebuild the bindings from current selection.
-            with self.memory_factory(self.pid) as memory:
-                registry, _, _ = self.session.prepare(memory)
-                self.session.require_write()
-                for _, ref in expected_sources:
-                    self.session.resolve(memory, registry, ref)
-                resolver_rva = self.session.profile.section('addresses')['unit_resolver']
-                if not resolver_rva:
-                    raise ValueError('Bound clone unit resolver has not been adapted')
-                return build_bound(
-                    entries, tls, base=registry.base,
-                    unit_resolver=registry.base + resolver_rva,
-                    expected_sources=expected_sources, flags=flags,
-                    spawn_x_bits=spawn_x_bits, spawn_y_bits=spawn_y_bits,
-                )
-
         return self._execute(
-            'clone_bound', names, builder,
-            lambda payload, count: decode_bound(payload, count, expected_sources=expected_sources),
-            request,
+            'clone', names,
+            lambda entries, tls: build(entries, tls, flags=flags,
+                                       spawn_x_bits=spawn_x_bits,
+                                       spawn_y_bits=spawn_y_bits),
+            decode,
+            dict(keep=keep, preserve_owner=preserve_owner,
+                 copy_abilities=copy_abilities, copy_items=copy_items,
+                 spawn=spawn, spawn_x_bits=spawn_x_bits, spawn_y_bits=spawn_y_bits),
         )
 
 

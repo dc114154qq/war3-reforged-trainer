@@ -14,11 +14,10 @@ typedef struct BridgeProfile {
     uint32_t object_handle;
     uint32_t object_rawcode;
     uint32_t unit_attack;
-    uint32_t ability_level_tail;
 } BridgeProfile;
 __declspec(dllexport) volatile BridgeProfile bridge_profile = {
-    2u, sizeof(BridgeProfile),
-    0x2f807f0u, 0x18u, 0x50u, 0x18u, 0x10u, 0x8u, 0x20u, 0x90u, 0x18u, 0x70u, 0x760u, 0x4bcu
+    1u, sizeof(BridgeProfile),
+    0x2f807f0u, 0x18u, 0x50u, 0x18u, 0x10u, 0x8u, 0x20u, 0x90u, 0x18u, 0x70u, 0x760u
 };
-__declspec(dllexport) const uint32_t bridge_profile_abi[2] = {2u, sizeof(BridgeProfile)};
+__declspec(dllexport) const uint32_t bridge_profile_abi[2] = {1u, sizeof(BridgeProfile)};
 #endif

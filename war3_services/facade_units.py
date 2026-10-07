@@ -256,12 +256,8 @@ class UnitsFacade:
     def query_mouse_world_position(self) -> tuple[float, float]:
         if getattr(self, "_native_selection_unavailable", False):
             snapshot = self.camera_snapshot_24268()
-            if getattr(self,'_game_session',None) is not None:
-                from war3_services.cursor import projection_viewport
-                snapshot,client_size,screen_scale=projection_viewport(self.hwnd,snapshot)
-            else:
-                client_size = self._client_size_24268()
-                screen_scale = self._screen_scale_24268()
+            client_size = self._client_size_24268()
+            screen_scale = self._screen_scale_24268()
             initial = self._mouse_world_from_camera_24268(
                 snapshot, *client_size, screen_scale,
             )

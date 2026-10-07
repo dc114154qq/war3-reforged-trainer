@@ -2413,10 +2413,6 @@ class SelectionFacade:
 
         components: dict[str, tuple[int, int]] = {}
         for name, offset in self.UNIT_COMPONENT_DATA_OFFSETS.items():
-            if name=='attack' and getattr(self,'_game_session',None) is not None:
-                # The shared method consumes the already verified, per-build
-                # native attack-component offset rather than the legacy layout.
-                offset=self._game_session.profile.section('bridge_layout')['unit_attack']
             try:
                 data = pm.read_u64(unit + offset)
                 data_vtable = pm.read_u64(data) if self._sane_heap_ptr(data) else 0

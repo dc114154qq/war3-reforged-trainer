@@ -1698,19 +1698,6 @@ _EN_TRANSLATIONS.update({
     "槽位已读回；该能力在单位上已有其他来源，未重复计算": "The slot read back; the unit already has this ability from another source, so it was not counted twice",
 })
 
-_EN_TRANSLATIONS.update({
-    " 个有效副本；第 ": " valid copies; round ",
-    " 原因：": " Reason: ",
-    " 轮已完成，保留 ": " rounds completed; retaining ",
-    " 轮未确认成功，后续轮次未执行，不会自动重放或删除已完成副本。": " was not confirmed; later rounds were not executed. Completed copies will not be replayed or deleted.",
-    "3.0 批量复制的副本读回不完整，已停止后续轮次": "Batch-copy readback is incomplete; later rounds stopped",
-    "原生绑定源单位的完整身份已变化，未执行后续操作": "The full source identity changed; no subsequent operation was executed",
-    "原生绑定需要 1 到 24 个稳定的单位身份": "Native binding requires 1 to 24 stable unit identities",
-    "复制源单位的原生绑定与捕获身份不一致，未开始复制": "The native binding differs from the captured source identity; copying did not start",
-    "属性目标的原生绑定与完整单位身份不一致": "The stat target's native binding differs from its full object identity",
-    "批量复制已停止：前 ": "Batch copying stopped: the first ",
-})
-
 _EN_REPLACEMENTS = tuple(
     sorted(_EN_TRANSLATIONS.items(), key=lambda item: len(item[0]), reverse=True)
 )

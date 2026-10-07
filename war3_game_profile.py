@@ -15,8 +15,8 @@ import re
 import struct
 import tempfile
 
-SCHEMA_VERSION = 4
-BRIDGE_PROFILE_VERSION = 2
+SCHEMA_VERSION = 3
+BRIDGE_PROFILE_VERSION = 1
 PROFILE_ROOT = Path(__file__).resolve().parent / "profiles"
 _ACTIVE = ContextVar("war3_game_profile", default=None)
 
@@ -180,8 +180,6 @@ def load_profile(path) -> GameProfile:
     for key, value in data["bridge_layout"].items():
         if not 0 <= value <= 0xFFFFFFFF or (key.endswith("_rva") and value >= size):
             raise ProfileError("Invalid bridge layout: " + key)
-    if not 0 < data['bridge_layout']['ability_level_tail'] < 0x10000:
-        raise ProfileError('Invalid ability setter recovery offset')
     for key, value in data["addresses"].items():
         optional_internal = key in ("speed_factor", "effective_interval", "unit_resolver")
         if not (0 <= value < size if optional_internal else 0 < value < size):

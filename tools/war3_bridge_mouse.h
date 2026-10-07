@@ -1,8 +1,8 @@
 /* Current-build 24268 mouse world-point query through registered natives. */
 typedef struct MouseWork {
     uint64_t (*get_mouse_position)(void);
-    float (*get_location_x)(uint64_t);
-    float (*get_location_y)(uint64_t);
+    uint32_t (*get_location_x)(uint64_t);
+    uint32_t (*get_location_y)(uint64_t);
     void (*remove_location)(uint64_t);
     void *expected_tls;
     uint32_t x_bits, y_bits, changed, error, completed, reserved0, reserved1;
@@ -25,8 +25,10 @@ __declspec(dllexport) uint64_t BridgeMouseQuery(void) {
     __try {
         location = w->get_mouse_position();
         if (!location) { w->error = 102; return 0; }
-        x = w->get_location_x(location);
-        y = w->get_location_y(location);
+        w->x_bits=w->get_location_x(location);
+        w->y_bits=w->get_location_y(location);
+        x=((union {uint32_t bits;float value;}){w->x_bits}).value;
+        y=((union {uint32_t bits;float value;}){w->y_bits}).value;
         w->remove_location(location);
         if (!(x == x) || !(y == y) || x < -1000000.0f || x > 1000000.0f ||
             y < -1000000.0f || y > 1000000.0f) {

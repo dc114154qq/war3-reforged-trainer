@@ -25,9 +25,10 @@ typedef struct StatDetailsWork {
     uint32_t diagnostic_field,diagnostic_stage;
     uint64_t diagnostic_converted_field;
     uint64_t target_full_handle,resolver_base;
+    uint32_t stat_vtables[4],flat_flag_offset,layout_reserved;
 } StatDetailsWork;
-_Static_assert(sizeof(StatDetailsWork)==1032,"StatDetailsWork ABI");
-__declspec(dllexport) const uint32_t stat_details_batch_abi[3]={0x2426803Eu,216u,1032u};
+_Static_assert(sizeof(StatDetailsWork)==1056,"StatDetailsWork ABI");
+__declspec(dllexport) const uint32_t stat_details_batch_abi[3]={0x24268058u,216u,1056u};
 
 enum { STAT_AI_XR=1,STAT_AI_SC,STAT_AI_CR,STAT_AI_AP,STAT_AI_VX,STAT_AI_SV,STAT_AI_LV,STAT_AI_SS };
 
@@ -80,56 +81,115 @@ static float StatDetailsReal(StatDetailsWork *w,uint64_t ability,uint32_t field)
     w->diagnostic_stage=2;
     result.bits=(uint32_t)w->get_real_level(ability,converted,0);return result.value;
 }
+/* A write requires one live owner-bound instance; a read can agree across
+   duplicate instances. No rawcode is treated as proof of flat mode. */
+static uint32_t StatDetailsRuntimeFlag(StatDetailsWork *w,uint64_t ability,uint32_t field,
+                                      uint64_t *flag_address) {
+    w->diagnostic_ability=ability;w->diagnostic_field=field;w->diagnostic_stage=3;
+    /* These four 3.0 classes keep DataB as a real-valued cache entry,
+       while the public boolean getter faults on that entry. Read the
+       engine's initialized boolean instead, never infer it from rawcode.
+       Verified paired DataB=0/1 instances and class initialization methods
+       both place this byte at +0x128. Removed nodes remain owner-linked. */
+    if(flag_address)*flag_address=0;
+    uint32_t id=w->get_ability_id(ability),class_id=0,vtable_rva=0;
+    if(field==0x49637232u){class_id=0x41496372u;vtable_rva=w->stat_vtables[0];}
+    else if(field==0x49736132u){class_id=0x41496170u;vtable_rva=w->stat_vtables[1];}
+    else if(field==0x49737632u){class_id=0x41497376u;vtable_rva=w->stat_vtables[2];}
+    else if(field==0x496c7632u){class_id=0x41496c76u;vtable_rva=w->stat_vtables[3];}
+    if(!vtable_rva || vtable_rva>=0x40000000u || vtable_rva%8u ||
+       !w->flat_flag_offset || w->flat_flag_offset>=0x1000u || w->layout_reserved){w->error=274;return 0;}
+    uint64_t owner=BridgeEffectResolveObjectTable(w->resolver_base,w->target_full_handle);
+    uint64_t unit=owner?*(uint64_t *)(uintptr_t)(owner+bridge_profile.owner_data):0;
+    uint32_t target_type=0,found=0,value=0;uint64_t address=0;
+    for(uint32_t i=0;i<w->selection.count;++i)
+        if(w->selection.rows[i].unit==w->target_unit)target_type=w->selection.rows[i].rawcode;
+    if(!class_id || !unit || !target_type || *(uint32_t *)(uintptr_t)(unit+bridge_profile.object_rawcode)!=target_type)
+        {w->error=274;return 0;}
+    uint64_t node=*(uint64_t *)(uintptr_t)(owner+bridge_profile.component_head),previous=owner+bridge_profile.component_sentinel;
+    for(uint32_t i=0;node && i<4096u;++i){
+        uint64_t wrapper=node-bridge_profile.component_node,data=*(uint64_t *)(uintptr_t)(wrapper+bridge_profile.component_data);
+        if(*(uint64_t *)(uintptr_t)(wrapper+bridge_profile.component_previous)!=previous ||
+           *(uint64_t *)(uintptr_t)(wrapper+bridge_profile.component_owner)!=owner){w->error=274;return 0;}
+        if(data && *(uint32_t *)(uintptr_t)(data+bridge_profile.ability_rawcode)==id &&
+           *(uint32_t *)(uintptr_t)(data+bridge_profile.ability_mirror_rawcode)==id &&
+           (*(uint32_t *)(uintptr_t)(data+bridge_profile.ability_flags)&bridge_profile.ability_live_mask)==bridge_profile.ability_live_value){
+            uint64_t full=*(uint64_t *)(uintptr_t)(data+bridge_profile.ability_handle);
+            if(*(uint64_t *)(uintptr_t)(data+bridge_profile.ability_owner)!=unit ||
+               *(uint64_t *)(uintptr_t)data!=w->resolver_base+vtable_rva ||
+               (uint32_t)(*(uint64_t *)(uintptr_t)(wrapper+bridge_profile.component_tag)>>32)!=class_id ||
+               BridgeEffectResolveObjectTable(w->resolver_base,full)!=wrapper)
+                {w->error=274;return 0;}
+            uint32_t current=*(uint8_t *)(uintptr_t)(data+w->flat_flag_offset);
+            if(current>1 || (found && (current!=value || flag_address))){w->error=274;return 0;}
+            address=data+w->flat_flag_offset;value=current;++found;
+        }
+        previous=node;node=*(uint64_t *)(uintptr_t)(wrapper+bridge_profile.component_next);
+    }
+    if(node || !found){w->error=274;return 0;}
+    if(flag_address)*flag_address=address;
+    w->diagnostic_stage=5;
+    return value;
+}
 static uint32_t StatDetailsBool(StatDetailsWork *w,uint64_t ability,uint32_t field) {
     w->diagnostic_ability=ability;w->diagnostic_field=field;w->diagnostic_stage=3;
 #ifdef BRIDGE_TEST
     if(!w->resolver_base && !w->target_full_handle) {
     uint64_t converted=w->convert_boolean_level_field(field);
     w->diagnostic_converted_field=converted;
+    if(!converted){w->error=274;return 0;}
     w->diagnostic_stage=4;
     return (uint32_t)w->get_boolean_level(ability,converted,0)&1u;
     }
 #endif
-    /* These four 3.0 classes keep DataB as a real-valued cache entry,
-       while the public boolean getter faults on that entry. Read the
-       engine's initialized boolean instead, never infer it from rawcode.
-       Verified paired DataB=0/1 instances and class initialization methods
-       both place this byte at +0x128. Removed nodes remain owner-linked. */
-    uint32_t id=w->get_ability_id(ability),class_id=0,vtable_rva=0;
-    if(field==0x49637232u){class_id=0x41496372u;vtable_rva=0x23a50c8u;}
-    else if(field==0x49736132u){class_id=0x41496170u;vtable_rva=0x23a5a78u;}
-    else if(field==0x49737632u){class_id=0x41497376u;vtable_rva=0x23a6408u;}
-    else if(field==0x496c7632u){class_id=0x41496c76u;vtable_rva=0x23a6d98u;}
-    uint64_t owner=BridgeEffectResolveObjectTable(w->resolver_base,w->target_full_handle);
-    uint64_t unit=owner?*(uint64_t *)(uintptr_t)(owner+0x90):0;
-    uint32_t target_type=0,found=0,value=0;
-    for(uint32_t i=0;i<w->selection.count;++i)
-        if(w->selection.rows[i].unit==w->target_unit)target_type=w->selection.rows[i].rawcode;
-    if(!class_id || !unit || !target_type || *(uint32_t *)(uintptr_t)(unit+0x70)!=target_type)
-        {w->error=274;return 0;}
-    uint64_t node=*(uint64_t *)(uintptr_t)(owner+0xd8),previous=owner+0xd0;
-    for(uint32_t i=0;node && i<4096u;++i){
-        uint64_t wrapper=node-0x38,data=*(uint64_t *)(uintptr_t)(wrapper+0x90);
-        if(*(uint64_t *)(uintptr_t)(wrapper+0x38)!=previous ||
-           *(uint64_t *)(uintptr_t)(wrapper+0x50)!=owner){w->error=274;return 0;}
-        if(data && *(uint32_t *)(uintptr_t)(data+0x70)==id &&
-           *(uint32_t *)(uintptr_t)(data+0x78)==id &&
-           (*(uint32_t *)(uintptr_t)(data+0x38)&0x148u)==0x100u){
-            uint64_t full=*(uint64_t *)(uintptr_t)(data+0x18);
-            if(*(uint64_t *)(uintptr_t)(data+0x68)!=unit ||
-               *(uint64_t *)(uintptr_t)data!=w->resolver_base+vtable_rva ||
-               (uint32_t)(*(uint64_t *)(uintptr_t)(wrapper+0x18)>>32)!=class_id ||
-               BridgeEffectResolveObjectTable(w->resolver_base,full)!=wrapper)
-                {w->error=274;return 0;}
-            uint32_t current=*(uint8_t *)(uintptr_t)(data+0x128);
-            if(current>1 || (found && current!=value)){w->error=274;return 0;}
-            value=current;++found;
-        }
-        previous=node;node=*(uint64_t *)(uintptr_t)(wrapper+0x40);
+    return StatDetailsRuntimeFlag(w,ability,field,0);
+}
+
+static int StatDetailsRuntimeFlatField(uint32_t field) {
+    return field==0x49737632u || field==0x496c7632u;
+}
+
+static uint32_t StatDetailsSetBoolean(StatDetailsWork *w,uint64_t ability,
+                                      uint32_t field,uint32_t value) {
+    w->diagnostic_ability=ability;w->diagnostic_field=field;w->diagnostic_stage=6;
+    uint64_t converted=w->convert_boolean_level_field(field);
+    w->diagnostic_converted_field=converted;
+    if(!converted || value>1u){w->error=268;return 0;}
+    w->diagnostic_stage=7;
+    return w->set_boolean_level(ability,converted,0,value);
+}
+
+/* Isv2/Ilv2 have no native flat variant in 24268/24323 AbilityData:
+   AIsv/ASVq..ASVi and AIlv/AIRq..AIR5 all initialize DataB=0. The 24323
+   AIsv initializer (RVA 0x56ea90) converts real DataB to this byte; its
+   effect removal (0x58ad70) selects different accumulators at +0x128.
+   Clear DataA through the native setter BEFORE changing mode, so removing
+   the old contribution uses the old accumulator. The following DataA write
+   refreshes the native effect with the new mode. Never pass a null boolean
+   conversion or a REAL DataB field to the rejected public setters. */
+static uint32_t StatDetailsSwitchFlat(StatDetailsWork *w,uint64_t ability,
+                                     uint32_t field,uint32_t flat_field,uint32_t value) {
+    uint64_t address=0,verified_address=0;
+    uint32_t old_flat,current;float zero=0.0f;
+    if(!StatDetailsRuntimeFlatField(flat_field) || value>1u){w->error=268;return 0;}
+    old_flat=StatDetailsRuntimeFlag(w,ability,flat_field,&address);
+    if(w->error || !address)return 0;
+    uint64_t converted=w->convert_real_level_field(field);
+    w->diagnostic_ability=ability;w->diagnostic_field=field;
+    w->diagnostic_converted_field=converted;w->diagnostic_stage=6;
+    if(!converted){w->error=269;return 0;}
+    if(!w->set_real_level(ability,converted,0,&zero)){w->error=269;return 0;}
+    if((uint32_t)w->get_real_level(ability,converted,0)!=0u){w->error=271;return 0;}
+    current=StatDetailsRuntimeFlag(w,ability,flat_field,&verified_address);
+    if(w->error || verified_address!=address || current!=old_flat){
+        if(!w->error)w->error=271;return 0;
     }
-    if(node || !found){w->error=274;return 0;}
-    w->diagnostic_stage=5;
-    return value;
+    w->diagnostic_stage=7;
+    *(uint8_t *)(uintptr_t)address=(uint8_t)value;
+    if(StatDetailsBool(w,ability,flat_field)!=value || w->error){
+        if(!w->error)w->error=271;return 0;
+    }
+    return 1;
 }
 static int StatDetailsAggregate(StatDetailsWork *w,uint64_t unit,float *out,
                                 uint64_t *controller,uint32_t *controller_kind) {
@@ -203,7 +263,7 @@ static int StatDetailsSpec(uint32_t index,uint32_t *kind,uint32_t *field,
 __declspec(dllexport) uint64_t BridgeStatDetailsQuery(void) {
     StatDetailsWork *w=(StatDetailsWork *)g_dispatch->work;
     uint32_t count,i,matches=0,kind=0,expected_kind=0,field=0,flat_field=0,flat_value=0;
-    uint32_t old_bits=0,old_flat=0;uint64_t controller=0,write_controller=0;
+    uint32_t old_bits=0,old_flat=0;uint64_t controller=0,write_controller=0,value_converted=0;
     uint8_t added=0,captured=0,write_attempted=0,flat_write_attempted=0;
     uint64_t critical_abilities[STAT_PRESENT_MAX]={0};
     uint32_t critical_old[STAT_PRESENT_MAX]={0},critical_chance[STAT_PRESENT_MAX]={0};
@@ -297,6 +357,8 @@ __declspec(dllexport) uint64_t BridgeStatDetailsQuery(void) {
                 for(i=0;i<STAT_DETAIL_COUNT;++i){union{float value;uint32_t bits;}v;v.value=after[i];w->after[i]=v.bits;}
                 w->changed=1;w->completed=1;return count;
             }
+            value_converted=w->convert_real_level_field(field);
+            if(!value_converted){w->error=269;return count;}
             if(!controller) {
                 if(!w->add_ability(w->target_unit,w->controller_rawcode)){w->error=266;return count;}
                 added=1;
@@ -316,7 +378,7 @@ __declspec(dllexport) uint64_t BridgeStatDetailsQuery(void) {
             }
             /* Do not alter visibility of a pre-existing native skill. */
             if(added)w->hide_ability(w->target_unit,w->controller_rawcode,1);
-            old_bits=(uint32_t)w->get_real_level(controller,w->convert_real_level_field(field),0);old_value.bits=old_bits;
+            old_bits=(uint32_t)w->get_real_level(controller,value_converted,0);old_value.bits=old_bits;
             if(flat_field)old_flat=StatDetailsBool(w,controller,flat_field);
             if(w->error)goto rollback;
             write_controller=controller;captured=1;
@@ -326,9 +388,17 @@ __declspec(dllexport) uint64_t BridgeStatDetailsQuery(void) {
             write_attempted=1;
             if(flat_field && old_flat!=flat_value){
                 flat_write_attempted=1;
-                if(!w->set_boolean_level(controller,w->convert_boolean_level_field(flat_field),0,flat_value)){w->error=268;goto rollback;}
+                if(StatDetailsRuntimeFlatField(flat_field)){
+                    if(!StatDetailsSwitchFlat(w,controller,field,flat_field,flat_value))goto rollback;
+                }else if(!StatDetailsSetBoolean(w,controller,flat_field,flat_value)){
+                    if(!w->error)w->error=268;goto rollback;
+                }
             }
-            if(!w->set_real_level(controller,w->convert_real_level_field(field),0,&new_value.value)){w->error=269;goto rollback;}
+            if(!w->set_real_level(controller,value_converted,0,&new_value.value)){w->error=269;goto rollback;}
+            if((uint32_t)w->get_real_level(controller,value_converted,0)!=new_value.bits ||
+               (flat_field && StatDetailsBool(w,controller,flat_field)!=flat_value) || w->error){
+                if(!w->error)w->error=271;goto rollback;
+            }
             if(!StatDetailsAggregate(w,w->target_unit,after,&controller,&kind)){if(!w->error)w->error=270;goto rollback;}
             diff=after[w->stat_index]-target.value;if(diff<0.0f)diff=-diff;
             if(diff>0.0005f){w->error=271;goto rollback;}
@@ -362,13 +432,19 @@ rollback:
             if(added){
                 if(!w->remove_ability(w->target_unit,w->controller_rawcode))w->error=273;
             }else{
-                uint32_t restored=1;
-                if(flat_write_attempted)restored=w->set_boolean_level(write_controller,w->convert_boolean_level_field(flat_field),0,old_flat);
+                uint32_t restored=1,failure=w->error;w->error=0;
+                if(flat_write_attempted){
+                    if(StatDetailsRuntimeFlatField(flat_field))
+                        restored=StatDetailsSwitchFlat(w,write_controller,field,flat_field,old_flat);
+                    else restored=StatDetailsSetBoolean(w,write_controller,flat_field,old_flat);
+                }
                 old_value.bits=old_bits;
-                if(!w->set_real_level(write_controller,w->convert_real_level_field(field),0,&old_value.value))restored=0;
-                if((uint32_t)w->get_real_level(write_controller,w->convert_real_level_field(field),0)!=old_bits)restored=0;
-                if(flat_field && StatDetailsBool(w,write_controller,flat_field)!=old_flat)restored=0;
-                if(!restored)w->error=273;
+                if(restored && !w->error){
+                    if(!w->set_real_level(write_controller,value_converted,0,&old_value.value))restored=0;
+                    if((uint32_t)w->get_real_level(write_controller,value_converted,0)!=old_bits)restored=0;
+                    if(flat_field && StatDetailsBool(w,write_controller,flat_field)!=old_flat)restored=0;
+                }
+                w->error=(!restored || w->error)?273:failure;
             }
         } __except(EXCEPTION_EXECUTE_HANDLER){w->error=273;}
         w->changed=0;w->completed=0;

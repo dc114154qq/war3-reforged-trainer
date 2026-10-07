@@ -1,0 +1,2 @@
+# Preserve exact source snapshot bytes across Windows and archive checkouts.
+* -text

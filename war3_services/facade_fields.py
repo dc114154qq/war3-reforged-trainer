@@ -6,7 +6,7 @@ class FieldsFacade:
     def _selected_components(self, pm: ProcessMemory, owner: int) -> dict[str, tuple[int, int]]:
         if not owner:
             return {}
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             # Read the live list every time: a valid cached subset can still
             # miss components attached after the previous read.
             return {name: (wrapper, data) for name, wrapper, data in
@@ -82,155 +82,24 @@ class FieldsFacade:
         owner: int,
         components: dict[str, tuple[int, int]],
     ) -> dict[str, tuple[int, int]]:
-        valid: dict[str, tuple[int, int]] = {}
-        unit_components = self._components_from_unit_object(pm, owner)
-        for name, (wrapper, data) in components.items():
-            if not wrapper:
-                if unit_components.get(name) == (0, data):
-                    valid[name] = (wrapper, data)
-                continue
-            try:
-                vtable = pm.read_u64(wrapper)
-                tag = pm.read_u64(wrapper + 0x18)
-                wrapper_owner = pm.read_u64(wrapper + 0x50)
-                wrapper_data = pm.read_u64(wrapper + 0x90)
-                data_vtable = pm.read_u64(data)
-            except OSError:
-                continue
-            if (
-                self.COMPONENT_NAMES.get(tag) == name
-                and wrapper_owner == owner
-                and wrapper_data == data
-                and self._looks_like_vtable(vtable)
-                and self._looks_like_vtable(data_vtable)
-            ):
-                valid[name] = (wrapper, data)
-        return valid
+        from war3_game_profile import current_profile
+        return current_profile().adapter.legacy._validated_owner_components(self, pm, owner, components)
 
 
     def _scan_component_index(
         self,
         pm: ProcessMemory,
     ) -> dict[int, dict[str, tuple[int, int]]]:
-        components_by_owner: dict[int, dict[str, tuple[int, int]]] = {}
-        patterns = tuple(
-            (struct.pack("<Q", tag), tag, name)
-            for tag, name in self.COMPONENT_NAMES.items()
-        )
-        tail_len = 7
-        for region in pm.regions():
-            if region.typ != MEM_PRIVATE or region.size > 16 * 1024 * 1024:
-                continue
-            offset = 0
-            tail = b""
-            while offset < region.size:
-                size = min(4 * 1024 * 1024, region.size - offset)
-                try:
-                    block = tail + pm.read(region.base + offset, size)
-                except OSError:
-                    offset += size
-                    tail = b""
-                    continue
-                block_base = region.base + offset - len(tail)
-                for pattern, expected_tag, name in patterns:
-                    search = 0
-                    while True:
-                        index = block.find(pattern, search)
-                        if index < 0:
-                            break
-                        search = index + 1
-                        tag_address = block_base + index
-                        if tag_address < region.base:
-                            continue
-                        wrapper = tag_address - 0x18
-                        try:
-                            vtable = pm.read_u64(wrapper)
-                            tag = pm.read_u64(wrapper + 0x18)
-                            owner = pm.read_u64(wrapper + 0x50)
-                            data = pm.read_u64(wrapper + 0x90)
-                        except OSError:
-                            continue
-                        if tag != expected_tag or not self._sane_heap_ptr(owner):
-                            continue
-                        if not self._looks_like_vtable(vtable) or not self._sane_heap_ptr(data):
-                            continue
-                        try:
-                            data_vtable = pm.read_u64(data)
-                        except OSError:
-                            continue
-                        if not self._looks_like_vtable(data_vtable):
-                            continue
-                        components_by_owner.setdefault(owner, {}).setdefault(name, (wrapper, data))
-                tail = block[-tail_len:]
-                offset += size
-        return components_by_owner
+        from war3_game_profile import current_profile
+        return current_profile().adapter.legacy._scan_component_index(self, pm)
 
 
     def _scan_component_index_win10(
         self,
         pm: ProcessMemory,
     ) -> dict[int, dict[str, tuple[int, int]]]:
-        components_by_owner = War3Trainer._scan_component_index(self, pm)
-        if components_by_owner:
-            return components_by_owner
-
-        pm.regions(force_refresh=True)
-        patterns = tuple(
-            (struct.pack("<Q", tag), tag, name)
-            for tag, name in self.COMPONENT_NAMES.items()
-        )
-        for region in pm.regions():
-            if region.typ != MEM_PRIVATE:
-                continue
-            tail = b""
-            previous_end = 0
-            for block_address, block in self._iter_readable_blocks_win10(
-                pm,
-                region.base,
-                region.size,
-            ):
-                if previous_end != block_address:
-                    tail = b""
-                data = tail + block
-                data_base = block_address - len(tail)
-                for pattern, expected_tag, name in patterns:
-                    search = 0
-                    while True:
-                        index = data.find(pattern, search)
-                        if index < 0:
-                            break
-                        search = index + 1
-                        tag_address = data_base + index
-                        if tag_address < region.base:
-                            continue
-                        wrapper = tag_address - 0x18
-                        try:
-                            vtable = pm.read_u64(wrapper)
-                            tag = pm.read_u64(wrapper + 0x18)
-                            owner = pm.read_u64(wrapper + 0x50)
-                            component_data = pm.read_u64(wrapper + 0x90)
-                        except OSError:
-                            continue
-                        if tag != expected_tag or not self._sane_heap_ptr(owner):
-                            continue
-                        if (
-                            not self._looks_like_vtable(vtable)
-                            or not self._sane_heap_ptr(component_data)
-                        ):
-                            continue
-                        try:
-                            data_vtable = pm.read_u64(component_data)
-                        except OSError:
-                            continue
-                        if not self._looks_like_vtable(data_vtable):
-                            continue
-                        components_by_owner.setdefault(owner, {}).setdefault(
-                            name,
-                            (wrapper, component_data),
-                        )
-                tail = data[-7:]
-                previous_end = block_address + len(block)
-        return components_by_owner
+        from war3_game_profile import current_profile
+        return current_profile().adapter.legacy._scan_component_index_win10(self, pm)
 
 
     def _rebuild_component_index(self, pm: ProcessMemory) -> None:
@@ -299,103 +168,21 @@ class FieldsFacade:
 
 
     def _append_attack_fields(
-        self,
-        pm: ProcessMemory,
-        fields: list[UnitMemoryField],
-        key_prefix: str,
-        label_prefix: str,
-        data: int,
-        current_24268: bool = False,
+        self, pm: ProcessMemory, fields: list[UnitMemoryField], key_prefix: str,
+        label_prefix: str, data: int, current_24268: bool = False,
         timing_24268: dict | None = None,
     ) -> None:
-        damage_note = "运行时攻击组件字段；用于实际选中单位，面板黄字可能有缓存"
-        timing_note = "运行时攻击组件字段；已按当前选中单位链读写验证"
-        candidate_note = "经典版字段候选；当前样本稳定，但语义仍以游戏内效果为准"
-        readonly_candidate_note = "经典版字段候选；只读展示，未开放写入"
-        self._append_unit_field(pm, fields, f"{key_prefix}_multiplier", f"{label_prefix}倍率/骰面", "i32", data + 0xF8, "攻击", note=damage_note)
-        self._append_unit_field(pm, fields, f"{key_prefix}_multiplier_cache", f"{label_prefix}倍率缓存", "i32", data + 0xFC, "攻击", note=damage_note)
-        self._append_unit_field(pm, fields, f"{key_prefix}_dice", f"{label_prefix}骰子", "i32", data + 0x100, "攻击", note=damage_note)
-        self._append_unit_field(pm, fields, f"{key_prefix}_base1", f"{label_prefix}基础1(当前)", "i32", data + 0x104, "攻击", note=damage_note)
-        self._append_unit_field(pm, fields, f"{key_prefix}_base2", f"{label_prefix}基础2(当前)", "i32", data + 0x108, "攻击", note=damage_note)
-        self._append_unit_field(pm, fields, f"{key_prefix}_dice_cache", f"{label_prefix}骰子缓存", "i32", data + 0x10C, "攻击", note=damage_note)
-        self._append_unit_field(pm, fields, f"{key_prefix}_internal_bonus1", f"{label_prefix}内部加成槽1", "i32", data + 0x110, "攻击", note=damage_note)
-        self._append_unit_field(pm, fields, f"{key_prefix}_internal_bonus2", f"{label_prefix}内部加成槽2", "i32", data + 0x114, "攻击", note=damage_note)
-        self._append_unit_field(pm, fields, f"{key_prefix}_sound", f"{label_prefix}攻击音效码", "i32", data + 0x118, "攻击", note=damage_note)
-        self._append_unit_field(pm, fields, f"{key_prefix}_damage_loss_factor", f"{label_prefix}丢失因子(候选只读)", "f32", data + 0x11C, "攻击", writable=False, note=readonly_candidate_note)
-        self._append_unit_field(pm, fields, f"{key_prefix}_type", f"{label_prefix}种类", "i32", data + 0x16C, "攻击")
-        self._append_unit_field(pm, fields, f"{key_prefix}_max_targets", f"{label_prefix}最大目标数(候选)", "i32", data + 0x178, "攻击", note=candidate_note)
-        if current_24268:
-            self._append_unit_field(
-                pm, fields, f"{key_prefix}_interval", f"{label_prefix}基础间隔/冷却",
-                "f32", data + 0x228, "攻击",
-                note="3.0 当前武器基础冷却；不是敏捷和攻速加成后的最终攻击间隔",
-            )
-            if timing_24268 is not None:
-                speed_factor = float(timing_24268["speed_factor"])
-                effective_interval = float(timing_24268["after_effective_interval"])
-                true_aps = float(timing_24268["after_true_aps"])
-                exact_note = "按 3.0 游戏内部最终攻击间隔函数的等价公式从当前运行时组件读取"
-                fields.extend((
-                    UnitMemoryField(
-                        key=f"{key_prefix}_speed_factor",
-                        label=f"{label_prefix}当前攻速倍率",
-                        value_type="f32", value=speed_factor,
-                        address=data + 0x2B8, category="攻击",
-                        write_address=0, write_type="", note=exact_note,
-                    ),
-                    UnitMemoryField(
-                        key=f"{key_prefix}_effective_interval",
-                        label=f"{label_prefix}当前引擎实际攻击间隔(秒)",
-                        value_type="f32", value=effective_interval,
-                        address=data + 0x228, category="攻击",
-                        write_address=0, write_type="", note=exact_note,
-                    ),
-                    UnitMemoryField(
-                        key=f"{key_prefix}_true_speed",
-                        label=f"{label_prefix}当前引擎实际攻速(次/秒)",
-                        value_type="f32", value=true_aps,
-                        address=data + 0x228, category="攻击",
-                        write_address=0, write_type="", native_write=True,
-                        note=(
-                            exact_note + "；这是当前游戏实际使用的数值，可能已经受换图敏捷 bug 影响；"
-                            "可写：输入目标每秒攻击次数，修改器会通过游戏接口"
-                            "反算基础冷却并以最终攻击间隔读回确认"
-                        ),
-                    ),
-                ))
-        else:
-            self._append_unit_field(pm, fields, f"{key_prefix}_interval", f"{label_prefix}间隔/冷却", "f32", data + 0x200, "攻击", note=timing_note)
-            self._append_unit_field(pm, fields, f"{key_prefix}_first_delay", f"{label_prefix}首次延时", "f32", data + 0x228, "攻击", note=timing_note)
-        self._append_unit_field(pm, fields, f"{key_prefix}_acquire_range", f"{label_prefix}主动攻击范围", "f32", data + 0x370, "攻击", note=timing_note)
-        self._append_unit_field(pm, fields, f"{key_prefix}_projectile_speed", f"{label_prefix}投射物速度", "f32", data + 0x398, "攻击", note=timing_note)
-        self._append_unit_field(pm, fields, f"{key_prefix}_range", f"{label_prefix}范围", "f32", data + 0x3A8, "攻击", note=timing_note)
-        self._append_unit_field(pm, fields, f"{key_prefix}_range_buffer", f"{label_prefix}范围缓冲", "f32", data + 0x3C0, "攻击", note=timing_note)
+        from war3_game_profile import current_profile
+        return current_profile().adapter.attack.append_fields(
+            self, pm, fields, key_prefix, label_prefix, data,
+            current_24268, timing_24268, UnitMemoryField,
+        )
 
 
     @staticmethod
     def _attack_timing_24268_from_memory(pm: ProcessMemory, data: int) -> dict:
-        attack_kind = pm.read_i32(data + 0x35C)
-        base_cooldown = pm.read_f32(data + 0x228)
-        if attack_kind in {1, 64, 128, 256}:
-            speed_factor = 1.0
-        else:
-            speed_factor = pm.read_f32(data + 0x2B8)
-            negative_modifier = pm.read_f32(data + 0x2D0)
-            if negative_modifier < 0.0 and abs(negative_modifier) >= 0.001:
-                speed_factor += negative_modifier
-            speed_factor = min(5.0, max(0.2, speed_factor))
-        if (
-            not math.isfinite(base_cooldown) or not 0.001 <= base_cooldown <= 1000.0
-            or not math.isfinite(speed_factor) or not 0.2 <= speed_factor <= 5.0
-        ):
-            raise RuntimeError("3.0 攻速运行时字段超出有效范围")
-        effective_interval = base_cooldown / speed_factor
-        return {
-            "base_cooldown": base_cooldown,
-            "speed_factor": speed_factor,
-            "after_effective_interval": effective_interval,
-            "after_true_aps": 1.0 / effective_interval,
-        }
+        from war3_game_profile import current_profile
+        return current_profile().adapter.attack.timing(pm, data)
 
 
     @staticmethod
@@ -414,58 +201,12 @@ class FieldsFacade:
 
 
     def _ability_instance_from_wrapper(
-        self,
-        pm: ProcessMemory,
-        candidate: UnitCandidate,
-        wrapper: int,
+        self, pm: ProcessMemory, candidate: UnitCandidate, wrapper: int,
         component_rawcodes: set[int],
     ) -> AbilityInstance | None:
-        try:
-            vtable = pm.read_u64(wrapper)
-            tag = pm.read_u64(wrapper + 0x18)
-            wrapper_owner = pm.read_u64(wrapper + 0x50)
-            data = pm.read_u64(wrapper + 0x90)
-        except OSError:
-            return None
-        if wrapper_owner != candidate.owner_address:
-            return None
-        if not self._looks_like_vtable(vtable) or not self._sane_heap_ptr(data):
-            return None
-        class_rawcode = (tag >> 32) & 0xFFFFFFFF
-        if class_rawcode in component_rawcodes:
-            return None
-        if not self._looks_like_rawcode(class_rawcode):
-            return None
-        try:
-            data_vtable = pm.read_u64(data)
-            unit = pm.read_u64(data + 0x68)
-            rawcode = pm.read_u32(data + 0x70)
-            mirror_rawcode = pm.read_u32(data + 0x78)
-            handle = pm.read_u64(wrapper + 0x20)
-            data_cache_pointer = pm.read_u64(data + 0xA0)
-        except OSError:
-            return None
-        if not self._looks_like_vtable(data_vtable):
-            return None
-        if unit != candidate.unit_address:
-            return None
-        if rawcode != mirror_rawcode or not self._looks_like_item_rawcode(rawcode):
-            return None
-        return AbilityInstance(
-            slot=0,
-            wrapper_address=wrapper,
-            data_address=data,
-            wrapper_vtable=vtable,
-            data_vtable=data_vtable,
-            wrapper_tag_address=wrapper + 0x18,
-            wrapper_tag=tag,
-            handle=handle,
-            class_rawcode=class_rawcode,
-            rawcode=rawcode,
-            rawcode_address=data + 0x70,
-            mirror_rawcode_address=data + 0x78,
-            data_cache_address=data + 0xA0,
-            data_cache_pointer=data_cache_pointer if self._sane_heap_ptr(data_cache_pointer) else 0,
+        from war3_game_profile import current_profile
+        return current_profile().adapter.abilities.instance(
+            self, pm, candidate, wrapper, component_rawcodes, AbilityInstance,
         )
 
 
@@ -476,19 +217,22 @@ class FieldsFacade:
         key: tuple[int, int, int, bool],
     ) -> list[AbilityInstance] | None:
         cached = self._ability_instances_cache.get(key)
+        from war3_game_profile import current_profile
+        component_layout = current_profile().section("layouts")["component_list"]
+        ability_layout = current_profile().section("layouts")["ability"]
         if cached is None:
             return None
         for instance in cached:
             try:
-                if pm.read_u64(instance.wrapper_address + 0x50) != candidate.owner_address:
+                if pm.read_u64(instance.wrapper_address + component_layout["owner"]) != candidate.owner_address:
                     return None
-                if pm.read_u64(instance.wrapper_address + 0x90) != instance.data_address:
+                if pm.read_u64(instance.wrapper_address + component_layout["data"]) != instance.data_address:
                     return None
-                if pm.read_u64(instance.data_address + 0x68) != candidate.unit_address:
+                if pm.read_u64(instance.data_address + ability_layout["unit_owner"]) != candidate.unit_address:
                     return None
-                if pm.read_u32(instance.data_address + 0x70) != instance.rawcode:
+                if pm.read_u32(instance.data_address + ability_layout["rawcode"]) != instance.rawcode:
                     return None
-                if pm.read_u32(instance.data_address + 0x78) != instance.rawcode:
+                if pm.read_u32(instance.data_address + ability_layout["mirror_rawcode"]) != instance.rawcode:
                     return None
             except OSError:
                 return None
@@ -501,42 +245,8 @@ class FieldsFacade:
         candidate: UnitCandidate,
         component_rawcodes: set[int],
     ) -> tuple[list[AbilityInstance], set[int]]:
-        start = candidate.owner_address - self.ABILITY_WRAPPER_SCAN_BACK
-        end = candidate.owner_address + self.ABILITY_WRAPPER_SCAN_FORWARD
-        instances: list[AbilityInstance] = []
-        seen_wrappers: set[int] = set()
-        for region in pm.regions():
-            region_start = max(start, region.base)
-            region_end = min(end, region.base + region.size)
-            if region_end - region_start < 0x98:
-                continue
-            try:
-                data = pm.read(region_start, region_end - region_start)
-            except OSError:
-                continue
-            first = (8 - ((region_start - candidate.owner_address) & 7)) & 7
-            for offset in range(first, len(data) - 0x97, 8):
-                wrapper = region_start + offset
-                try:
-                    vtable = struct.unpack_from("<Q", data, offset)[0]
-                    tag = struct.unpack_from("<Q", data, offset + 0x18)[0]
-                    owner = struct.unpack_from("<Q", data, offset + 0x50)[0]
-                    ability_data = struct.unpack_from("<Q", data, offset + 0x90)[0]
-                except struct.error:
-                    continue
-                if owner != candidate.owner_address:
-                    continue
-                if not self._looks_like_vtable(vtable) or not self._sane_heap_ptr(ability_data):
-                    continue
-                class_rawcode = (tag >> 32) & 0xFFFFFFFF
-                if class_rawcode in component_rawcodes or not self._looks_like_rawcode(class_rawcode):
-                    continue
-                instance = self._ability_instance_from_wrapper(pm, candidate, wrapper, component_rawcodes)
-                if instance is None:
-                    continue
-                seen_wrappers.add(wrapper)
-                instances.append(instance)
-        return instances, seen_wrappers
+        from war3_game_profile import current_profile
+        return current_profile().adapter.legacy._near_ability_instances_from_candidate(self, pm, candidate, component_rawcodes)
 
 
     def _ability_instances_from_candidate(
@@ -546,9 +256,11 @@ class FieldsFacade:
         required_rawcodes: set[int] | None = None,
         allow_global_scan: bool = False,
     ) -> list[AbilityInstance]:
+        from war3_game_profile import current_profile
+        _al = current_profile().section("layouts")
         if not candidate.owner_address or not candidate.unit_address:
             return []
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             from war3_unit_components import read_unit_component_nodes
             from war3_object_registry import ObjectRegistry24268
             registry = self._classic_object_registry or ObjectRegistry24268.attach(pm)
@@ -611,9 +323,9 @@ class FieldsFacade:
                     instance = AbilityInstance(
                         slot=0, wrapper_address=wrapper, data_address=data,
                         wrapper_vtable=wrapper_vtable, data_vtable=data_vtable,
-                        wrapper_tag_address=wrapper + 0x18, wrapper_tag=tag, handle=full,
-                        class_rawcode=tag >> 32, rawcode=rawcode, rawcode_address=data + 0x70,
-                        mirror_rawcode_address=data + 0x78, data_cache_address=data + 0xa0,
+                        wrapper_tag_address=wrapper + _al["component_list"]["tag"], wrapper_tag=tag, handle=full,
+                        class_rawcode=tag >> 32, rawcode=rawcode, rawcode_address=data + _al["ability"]["rawcode"],
+                        mirror_rawcode_address=data + _al["ability"]["mirror_rawcode"], data_cache_address=data + _al["ability"]["data_cache"],
                         data_cache_pointer=cache if 0x10000 <= cache < 0x0000800000000000 else 0,
                     )
                     identity = (instance.handle, instance.data_address, instance.wrapper_address)
@@ -643,72 +355,23 @@ class FieldsFacade:
 
 
     def _inventory_record_address(
-        self,
-        pm: ProcessMemory,
-        candidate: UnitCandidate,
-        inventory_data: int,
+        self, pm: ProcessMemory, candidate: UnitCandidate, inventory_data: int,
     ) -> int:
-        if not inventory_data or not candidate.unit_address:
-            return 0
-        if getattr(self, "_native_selection_unavailable", False):
-            # AInv is the wrapper class. The actual ability rawcode may be
-            # AInv, Aihn or map-defined; it does not change the list identity.
-            if pm.read_u64(inventory_data + 0x68) != candidate.unit_address:
-                raise RuntimeError("Inventory component changed unit")
-            capacity = pm.read_u64(inventory_data + 0xD0)
-            count = pm.read_u64(inventory_data + 0xE0)
-            if capacity != 6 or count != 6:
-                raise RuntimeError("Inventory slot layout differs from verified six-slot record")
-            return inventory_data
-        for offset in range(0, 0x4000, 0x210):
-            record = inventory_data + offset
-            try:
-                if (
-                    pm.read_u64(record + 0x68) == candidate.unit_address
-                    and pm.read_u32(record + 0x70) == 0x41496E76
-                ):
-                    return record
-            except OSError:
-                continue
-        return 0
+        from war3_game_profile import current_profile
+        adapter = current_profile().adapter.items
+        return adapter.inventory_record(
+            pm, candidate, inventory_data,
+            int(self._coerce_memory_value("rawcode", "AInv")),
+            indexed=uses_indexed_backend(self),
+        )
 
 
     def _item_object_from_handle(self, pm: ProcessMemory, owner: int, handle: int) -> int:
-        if not handle or handle == 0xFFFFFFFFFFFFFFFF:
-            return 0
-        if owner:
-            for offset in range(-0x8000, 0x8000, 8):
-                wrapper = owner + offset
-                try:
-                    if pm.read_u64(wrapper + 0x18) != self.ITEM_OWNER_TAG:
-                        continue
-                    if pm.read_u64(wrapper + 0x20) != handle:
-                        continue
-                    item = pm.read_u64(wrapper + 0x90)
-                    if (
-                        self._sane_heap_ptr(item)
-                        and self._looks_like_vtable(pm.read_u64(item))
-                        and pm.read_u64(item + 0x18) == handle
-                        and self._looks_like_rawcode(pm.read_u32(item + 0x70))
-                        and pm.read_u32(item + 0x70) == pm.read_u32(item + 0x178)
-                    ):
-                        return item
-                except OSError:
-                    continue
-
-        for address in pm.scan_bytes_private(struct.pack("<Q", handle), max_region_size=1024 * 1024):
-            item = address - 0x18
-            try:
-                if (
-                    self._looks_like_vtable(pm.read_u64(item))
-                    and pm.read_u64(item + 0x18) == handle
-                    and self._looks_like_rawcode(pm.read_u32(item + 0x70))
-                    and pm.read_u32(item + 0x70) == pm.read_u32(item + 0x178)
-                ):
-                    return item
-            except OSError:
-                continue
-        return 0
+        from war3_game_profile import current_profile
+        adapter = current_profile().adapter.items
+        return adapter.item_data_near_owner(
+            pm, owner, handle, self._sane_heap_ptr, self._looks_like_rawcode, self._looks_like_vtable,
+        )
 
 
     def _item_objects_from_handles(
@@ -717,155 +380,8 @@ class FieldsFacade:
         handles: Iterable[int],
         owner: int = 0,
     ) -> dict[int, int]:
-        wanted = {
-            int(handle)
-            for handle in handles
-            if int(handle) and int(handle) != 0xFFFFFFFFFFFFFFFF
-        }
-        if not wanted:
-            return {}
-        found: dict[int, int] = {}
-        session = getattr(self,"_game_session",None)
-        if session is not None:
-            from war3_game_session import FullHandle
-            registry = self._classic_object_registry
-            if registry is None:raise RuntimeError("物品解析会话尚未完成校验")
-            for handle in wanted:
-                try:
-                    ref=session.bind_item(pm,registry,FullHandle(handle))
-                    found[handle]=session.resolve(pm,registry,ref)
-                except (OSError,RuntimeError,ValueError):continue
-            return found
-        # 3.0 inventory entries contain the full object handle. Resolve it
-        # through the verified engine registry before considering any legacy
-        # owner-local or process-region search.
-        registry = getattr(self, "_classic_object_registry", None)
-        if registry is not None:
-            for handle in tuple(wanted):
-                try:
-                    owner_address = registry.resolve_handle(pm, handle)
-                    if (
-                        pm.read_u64(owner_address + 0x18) == self.ITEM_OWNER_TAG
-                        and pm.read_u64(owner_address + 0x20) == handle
-                    ):
-                        item = pm.read_u64(owner_address + 0x90)
-                        if (
-                            self._sane_heap_ptr(item)
-                            and self._looks_like_vtable(pm.read_u64(item))
-                            and pm.read_u64(item + 0x18) == handle
-                            and self._looks_like_item_rawcode(pm.read_u32(item + 0x70))
-                            and pm.read_u32(item + 0x70) == pm.read_u32(item + 0x178)
-                        ):
-                            found[handle] = item
-                            self._item_object_cache[handle] = item
-                            wanted.remove(handle)
-                except (OSError, RuntimeError):
-                    continue
-            # A verified 3.0 registry is authoritative. Falling through to
-            # legacy region scans would reintroduce stale-handle ambiguity.
-            return found
-        if not wanted:
-            return found
-        for handle in list(wanted):
-            item = self._item_object_cache.get(handle, 0)
-            if not item:
-                continue
-            try:
-                if self._looks_like_vtable(pm.read_u64(item)) and pm.read_u64(item + 0x18) == handle:
-                    found[handle] = item
-                else:
-                    self._item_object_cache.pop(handle, None)
-            except OSError:
-                self._item_object_cache.pop(handle, None)
-        missing = wanted.difference(found)
-        if not missing:
-            return found
-        if owner:
-            start = owner - 0x8000
-            end = owner + 0x8000
-            for region in pm.regions():
-                if not missing:
-                    break
-                region_start = max(start, region.base)
-                region_end = min(end, region.base + region.size)
-                if region_end - region_start < 0x98:
-                    continue
-                try:
-                    data = pm.read(region_start, region_end - region_start)
-                except OSError:
-                    continue
-                first = (8 - ((region_start - owner) & 7)) & 7
-                for offset in range(first, len(data) - 0x97, 8):
-                    if not missing:
-                        break
-                    try:
-                        tag = struct.unpack_from("<Q", data, offset + 0x18)[0]
-                        handle = struct.unpack_from("<Q", data, offset + 0x20)[0]
-                        item = struct.unpack_from("<Q", data, offset + 0x90)[0]
-                    except struct.error:
-                        continue
-                    if tag != self.ITEM_OWNER_TAG or handle not in missing:
-                        continue
-                    try:
-                        if (
-                            self._sane_heap_ptr(item)
-                            and self._looks_like_vtable(pm.read_u64(item))
-                            and pm.read_u64(item + 0x18) == handle
-                            and self._looks_like_rawcode(pm.read_u32(item + 0x70))
-                            and pm.read_u32(item + 0x70) == pm.read_u32(item + 0x178)
-                        ):
-                            found[handle] = item
-                            self._item_object_cache[handle] = item
-                            missing.remove(handle)
-                    except OSError:
-                        continue
-        if not missing:
-            return found
-        patterns = {struct.pack("<Q", handle): handle for handle in missing}
-        tail_len = 7
-        for region in pm.regions():
-            if len(found) == len(wanted):
-                break
-            if region.typ != MEM_PRIVATE or region.size > 1024 * 1024:
-                continue
-            offset = 0
-            tail = b""
-            while offset < region.size and len(found) < len(wanted):
-                size = min(4 * 1024 * 1024, region.size - offset)
-                try:
-                    data = tail + pm.read(region.base + offset, size)
-                except OSError:
-                    offset += size
-                    tail = b""
-                    continue
-                base = region.base + offset - len(tail)
-                for pattern, handle in patterns.items():
-                    if handle in found:
-                        continue
-                    start = 0
-                    while True:
-                        idx = data.find(pattern, start)
-                        if idx < 0:
-                            break
-                        address = base + idx
-                        if address >= region.base:
-                            item = address - 0x18
-                            try:
-                                if (
-                                    self._looks_like_vtable(pm.read_u64(item))
-                                    and pm.read_u64(item + 0x18) == handle
-                                    and self._looks_like_rawcode(pm.read_u32(item + 0x70))
-                                    and pm.read_u32(item + 0x70) == pm.read_u32(item + 0x178)
-                                ):
-                                    found[handle] = item
-                                    self._item_object_cache[handle] = item
-                                    break
-                            except OSError:
-                                pass
-                        start = idx + 1
-                tail = data[-tail_len:]
-                offset += size
-        return found
+        from war3_game_profile import current_profile
+        return current_profile().adapter.legacy._item_objects_from_handles(self, pm, handles, owner)
 
 
     def _native_snapshot_for_candidate(
@@ -902,6 +418,8 @@ class FieldsFacade:
     def _parse_native_inventory_items(self, values: tuple[int, ...]) -> list[InventoryItem]:
         if len(values) != 49 or not 0 <= values[0] <= 6:
             raise RuntimeError("Invalid DLL inventory payload length or capacity")
+        from war3_game_profile import current_profile
+        item_layout = current_profile().adapter.items.layout
         items = []
         seen_handles, seen_full, seen_objects = set(), set(), set()
         for index in range(6):
@@ -918,31 +436,28 @@ class FieldsFacade:
             ability = ability if self._looks_like_rawcode(ability) else 0
             items.append(InventoryItem(
                 slot=index+1, handle=full, handle_address=0, item_address=obj, rawcode=rawcode,
-                rawcode_address=obj+0x70 if obj else 0,
+                rawcode_address=obj+item_layout["rawcode"] if obj else 0,
                 charges=ctypes.c_int32(charges & 0xFFFFFFFF).value,
-                charges_address=obj+self.ITEM_CHARGES_OFFSET if obj else 0,
-                mirror_rawcode=mirror, mirror_rawcode_address=obj+0x178 if mirror else 0,
-                ability_rawcode=ability, ability_rawcode_address=obj+0x1B8 if ability else 0,
+                charges_address=obj+item_layout["charges"] if obj else 0,
+                mirror_rawcode=mirror, mirror_rawcode_address=obj+item_layout["rawcode_mirror"] if mirror else 0,
+                ability_rawcode=ability, ability_rawcode_address=obj+item_layout["ability_rawcode"] if ability else 0,
                 native_slot=index < values[0],
             ))
         return items
 
 
     def _inventory_items_from_candidate(
-        self,
-        pm: ProcessMemory,
-        candidate: UnitCandidate,
+        self, pm: ProcessMemory, candidate: UnitCandidate,
         components: dict[str, tuple[int, int]] | None = None,
     ) -> list[InventoryItem]:
         if pm is None and self._native_snapshot_for_candidate(candidate) is None:
             with self._process_memory() as inventory_memory:
-                return self._inventory_items_from_candidate(
-                    inventory_memory, candidate, components=components,
-                )
+                return self._inventory_items_from_candidate(inventory_memory, candidate, components=components)
         native = self._native_snapshot_for_candidate(candidate)
         if native is not None:
             return self._native_inventory_items(candidate)
-
+        from war3_game_profile import current_profile
+        adapter = current_profile().adapter.items
         components = components if components is not None else self._selected_components(pm, candidate.owner_address)
         inventory = components.get("inventory")
         if inventory is None:
@@ -951,90 +466,40 @@ class FieldsFacade:
         record = self._inventory_record_address(pm, candidate, data)
         if not record:
             return []
-
-        items: list[InventoryItem] = []
-        slot_handles: list[tuple[int, int, int]] = []
+        layout = adapter.inventory_layout
         try:
-            slot_array = pm.read_u64(record + 0xD8)
+            slot_array = pm.read_u64(record + layout["slot_array"])
         except OSError:
-            slot_array = 0
+            return []
         if not self._sane_heap_ptr(slot_array):
             return []
-        for index in range(6):
-            # Warcraft III 3.0 stores six 12-byte inventory entries at D8.
-            # The old 2.0 layout used D4; reading that offset shifts every
-            # slot and produces invalid item handles.
-            handle_address = slot_array + index * 0x0C
+        slot_handles = []
+        for index in range(layout["slot_count"]):
+            handle_address = slot_array + index * layout["slot_stride"]
             try:
                 handle = pm.read_u64(handle_address)
             except OSError:
                 handle = 0
             slot_handles.append((index, handle_address, handle))
         item_by_handle = self._item_objects_from_handles(
-            pm,
-            (handle for _index, _address, handle in slot_handles),
-            candidate.owner_address,
+            pm, (handle for _index, _address, handle in slot_handles), candidate.owner_address,
         )
+        items = []
+        item_layout = adapter.layout
         for index, handle_address, handle in slot_handles:
             item_address = item_by_handle.get(handle, 0)
-            rawcode = 0
-            rawcode_address = 0
-            mirror_rawcode = 0
-            mirror_rawcode_address = 0
-            ability_rawcode = 0
-            ability_rawcode_address = 0
-            charges = 0
-            charges_address = 0
+            values = {"rawcode": 0, "rawcode_address": 0, "mirror_rawcode": 0,
+                      "mirror_rawcode_address": 0, "ability_rawcode": 0,
+                      "ability_rawcode_address": 0, "charges": 0, "charges_address": 0}
             if item_address:
-                rawcode_address = item_address + 0x70
                 try:
-                    rawcode = pm.read_u32(rawcode_address)
+                    values = adapter.fields(pm, item_address, self._looks_like_rawcode)
                 except OSError:
-                    rawcode = 0
-                    rawcode_address = 0
-                mirror_rawcode_address = item_address + 0x178
-                try:
-                    mirror_rawcode = pm.read_u32(mirror_rawcode_address)
-                    if not self._looks_like_rawcode(mirror_rawcode):
-                        mirror_rawcode = 0
-                        mirror_rawcode_address = 0
-                except OSError:
-                    mirror_rawcode = 0
-                    mirror_rawcode_address = 0
-                ability_rawcode_address = item_address + 0x1B8
-                try:
-                    ability_rawcode = pm.read_u32(ability_rawcode_address)
-                    if not self._looks_like_rawcode(ability_rawcode):
-                        ability_rawcode = 0
-                        ability_rawcode_address = 0
-                except OSError:
-                    ability_rawcode = 0
-                    ability_rawcode_address = 0
-                charges_address = item_address + self.ITEM_CHARGES_OFFSET
-                try:
-                    charges = pm.read_i32(charges_address)
-                    if not 0 <= charges <= 999:
-                        charges = 0
-                        charges_address = 0
-                except OSError:
-                    charges = 0
-                    charges_address = 0
-            items.append(
-                InventoryItem(
-                    slot=index + 1,
-                    handle=handle,
-                    handle_address=handle_address,
-                    item_address=item_address,
-                    rawcode=rawcode,
-                    rawcode_address=rawcode_address,
-                    mirror_rawcode=mirror_rawcode,
-                    mirror_rawcode_address=mirror_rawcode_address,
-                    ability_rawcode=ability_rawcode,
-                    ability_rawcode_address=ability_rawcode_address,
-                    charges=charges,
-                    charges_address=charges_address,
-                )
-            )
+                    pass
+            items.append(InventoryItem(
+                slot=index + 1, handle=handle, handle_address=handle_address,
+                item_address=item_address, **values,
+            ))
         return items
 
 
@@ -1067,18 +532,24 @@ class FieldsFacade:
         pm: ProcessMemory | None,
         candidate: UnitCandidate,
     ) -> list[UnitMemoryField]:
+        from war3_game_profile import current_profile
+        _al = current_profile().section("layouts")
         if pm is None and self._native_snapshot_for_candidate(candidate) is None:
             with self._process_memory() as field_memory:
                 return self._unit_fields_from_candidate(field_memory, candidate)
         fields: list[UnitMemoryField] = []
+        from war3_game_profile import current_profile
+        adapter = current_profile().adapter
+        unit_layout = adapter.units.layout
+        hero_layout = adapter.units.hero_layout
+        ability_layout = current_profile().section("layouts")["ability"]
         native = self._native_snapshot_for_candidate(candidate)
         self._unit_field_warnings = []
 
         def note_optional_query_failure(key: str, label: str, exc: Exception) -> None:
-            report = getattr(exc, "report", None)
-            dispatch = report.get("dispatch", {}) if isinstance(report, dict) else {}
-            if dispatch.get("allocations_retained") or getattr(getattr(self, "_engine24268", None), "quarantined", False):
-                raise exc
+            # A failed game-thread query does not invalidate fields already
+            # read through the external backend. Keep the panel readable even
+            # while unresolved native resources still guard later writes.
             try:
                 log_path = record_operation_failure(
                     self.pid, key, exc, requested_pid=self.pid, target_hwnd=self.hwnd,
@@ -1146,7 +617,7 @@ class FieldsFacade:
 
         current_unit_stats = None
         bridge_install_failed = False
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             try:
                 current_unit_stats = self._unit_stats_for_candidate_24268(candidate)
             except Exception as exc:
@@ -1163,9 +634,9 @@ class FieldsFacade:
         if move is not None:
             _wrapper, data = move
             if native is None:
-                self._append_unit_field(pm, fields, "move_speed", "移动速度", "f32", data + 0xD8, "移动")
+                self._append_unit_field(pm, fields, "move_speed", "移动速度", "f32", data + unit_layout["move_speed"], "移动")
             else:
-                append_native_real("move_speed", "移动速度", native.move_speed, data + 0xD8, "移动")
+                append_native_real("move_speed", "移动速度", native.move_speed, data + unit_layout["move_speed"], "移动")
 
         if current_unit_stats is not None:
             identity = (int(current_unit_stats["unit"]), int(current_unit_stats["rawcode"]))
@@ -1181,9 +652,9 @@ class FieldsFacade:
                 category="防御", native_write=True, native_component_identity=identity,
                 note="3.0 UNIT_IF_DEFENSE_TYPE 原生读写；0小型、1中型、2大型、3城甲、4普通、5英雄、6神圣、7无甲",
             ))
-        elif candidate.unit_address and not getattr(self, "_native_selection_unavailable", False):
-            self._append_unit_field(pm, fields, "armor", "护甲", "f32", candidate.unit_address + 0x2E8, "防御")
-            self._append_unit_field(pm, fields, "armor_type", "护甲类型", "i32", candidate.unit_address + 0x2F0, "防御")
+        elif candidate.unit_address and not uses_indexed_backend(self):
+            self._append_unit_field(pm, fields, "armor", "护甲", "f32", candidate.unit_address + unit_layout["armor"], "防御")
+            self._append_unit_field(pm, fields, "armor_type", "护甲类型", "i32", candidate.unit_address + unit_layout["armor_type"], "防御")
 
         # The 3.0 stat-details bridge is a live-process query.  Keep legacy
         # fixture and offline field paths independent from it; real trainer
@@ -1241,19 +712,19 @@ class FieldsFacade:
         if native is not None and native.hero_level > 0:
             data = hero[1] if hero is not None else 0
             append_native_int("hero_level", "英雄等级", native.hero_level, 0, "英雄")
-            append_native_int("xp", "经验值", native.hero_xp, data + 0x100 if data else 0, "英雄")
-            append_native_int("base_strength", "力量(基础)", native.base_strength, data + 0x108 if data else 0, "英雄")
-            append_native_int("base_agility", "敏捷(基础)", native.base_agility, data + 0x130 if data else 0, "英雄")
+            append_native_int("xp", "经验值", native.hero_xp, data + hero_layout["xp"] if data else 0, "英雄")
+            append_native_int("base_strength", "力量(基础)", native.base_strength, data + hero_layout["base_strength"] if data else 0, "英雄")
+            append_native_int("base_agility", "敏捷(基础)", native.base_agility, data + hero_layout["base_agility"] if data else 0, "英雄")
             append_native_int("base_intelligence", "智力(基础)", native.base_intelligence, 0, "英雄")
             append_native_int("strength_total", "力量(当前总值)", native.strength, 0, "英雄")
             append_native_int("agility_total", "敏捷(当前总值)", native.agility, 0, "英雄")
-            append_native_int("intelligence_total", "智力(当前总值)", native.intelligence, data + 0x118 if data else 0, "英雄")
+            append_native_int("intelligence_total", "智力(当前总值)", native.intelligence, data + hero_layout["intelligence_total"] if data else 0, "英雄")
         if hero is not None:
             _wrapper, data = hero
             if native is None:
-                self._append_unit_field(pm, fields, "xp", "经验值", "i32", data + 0x100, "英雄")
-                self._append_unit_field(pm, fields, "base_strength", "力量(基础)", "i32", data + 0x108, "英雄")
-                self._append_unit_field(pm, fields, "base_agility", "敏捷(基础)", "i32", data + 0x130, "英雄")
+                self._append_unit_field(pm, fields, "xp", "经验值", "i32", data + hero_layout["xp"], "英雄")
+                self._append_unit_field(pm, fields, "base_strength", "力量(基础)", "i32", data + hero_layout["base_strength"], "英雄")
+                self._append_unit_field(pm, fields, "base_agility", "敏捷(基础)", "i32", data + hero_layout["base_agility"], "英雄")
                 if current_unit_stats is not None:
                     identity = (int(current_unit_stats["unit"]), int(current_unit_stats["rawcode"]))
                     fields.append(UnitMemoryField(
@@ -1267,7 +738,7 @@ class FieldsFacade:
                         category="英雄", native_write=True, native_component_identity=identity,
                         note="3.0 GetHeroInt(true)；写入时保留装备与光环加成并读回确认",
                     ))
-                elif getattr(self, "_native_selection_unavailable", False):
+                elif uses_indexed_backend(self):
                     # The indexed cache is not the 3.0 native intelligence value.
                     pass
                 else:
@@ -1279,9 +750,9 @@ class FieldsFacade:
                                 label="智力(当前总值)",
                                 value_type="i32",
                                 value=total_intelligence,
-                                address=data + 0x118,
+                                address=data + hero_layout["intelligence_total"],
                                 category="英雄",
-                                write_address=data + 0x118,
+                                write_address=data + hero_layout["intelligence_total"],
                                 write_type="i32",
                                 note=(
                                     "内部 GetHeroInt 真实总智力；写入通过内部 SetHeroInt；"
@@ -1296,20 +767,20 @@ class FieldsFacade:
                             "intelligence_total",
                             "智力(当前总值候选)",
                             "f32",
-                            data + 0x118,
+                            data + hero_layout["intelligence_total"],
                             "英雄",
                             note=f"内部 GetHeroInt 读取失败，暂用旧缓存候选：{exc}",
                         )
-            self._append_unit_field(pm, fields, "skill_points", "技能点", "i32", data + 0x104, "英雄")
+            self._append_unit_field(pm, fields, "skill_points", "技能点", "i32", data + hero_layout["skill_points"], "英雄")
             growth_note = "英雄组件成长值，不是面板装备/光环加成"
-            self._append_unit_field(pm, fields, "strength_growth", "力量成长/级", "f32", data + 0x188, "英雄", note=growth_note)
-            self._append_unit_field(pm, fields, "intelligence_growth", "智力成长/级", "f32", data + 0x198, "英雄", note=growth_note)
-            self._append_unit_field(pm, fields, "agility_growth", "敏捷成长/级", "f32", data + 0x1A8, "英雄", note=growth_note)
-            current_24268 = bool(getattr(self, "_native_selection_unavailable", False))
-            skill_name_offset = 0x1BC if current_24268 else 0x204
-            skill_cache_offset = 0x1D4 if current_24268 else 0x1BC
-            skill_level_offset = 0x1EC if current_24268 else 0x1D4
-            skill_requirement_offset = 0x204 if current_24268 else 0x1EC
+            self._append_unit_field(pm, fields, "strength_growth", "力量成长/级", "f32", data + hero_layout["strength_growth"], "英雄", note=growth_note)
+            self._append_unit_field(pm, fields, "intelligence_growth", "智力成长/级", "f32", data + hero_layout["intelligence_growth"], "英雄", note=growth_note)
+            self._append_unit_field(pm, fields, "agility_growth", "敏捷成长/级", "f32", data + hero_layout["agility_growth"], "英雄", note=growth_note)
+            current_24268 = bool(uses_indexed_backend(self))
+            skill_name_offset = hero_layout["skill_name_native"] if current_24268 else hero_layout["skill_name_legacy"]
+            skill_cache_offset = hero_layout["skill_cache_native"] if current_24268 else hero_layout["skill_cache_legacy"]
+            skill_level_offset = hero_layout["skill_level_native"] if current_24268 else hero_layout["skill_level_legacy"]
+            skill_requirement_offset = hero_layout["skill_requirement_native"] if current_24268 else hero_layout["skill_requirement_legacy"]
             skill_name_note = "英雄技能栏 rawcode；替换时由引擎从地图资源创建技能"
             skill_cache_note = "旧版候选/运行时缓存；单改这里通常不改变已学技能效果"
             for index in range(self.HERO_SKILL_SLOT_COUNT):
@@ -1523,7 +994,7 @@ class FieldsFacade:
         attack = components.get("attack")
         if attack is not None:
             _wrapper, data = attack
-            current_24268 = bool(getattr(self, "_native_selection_unavailable", False))
+            current_24268 = bool(uses_indexed_backend(self))
             timing_24268 = None
             if current_24268:
                 timing_24268 = self._attack_timing_24268_from_memory(pm, data)
@@ -1533,10 +1004,10 @@ class FieldsFacade:
                 timing_24268=timing_24268,
             )
             try:
-                attack2_data = data + 0x638
+                attack2_data = data + current_profile().section("layouts")["attack"]["second_component"]
                 has_attack2 = pm.attack2 if native is not None else (
                     self._looks_like_vtable(pm.read_u64(attack2_data))
-                    and pm.read_i32(attack2_data + 0x08) == pm.read_i32(data + 0x08))
+                    and pm.read_i32(attack2_data + _al["attack"]["identity_kind"]) == pm.read_i32(data + _al["attack"]["identity_kind"]))
                 if has_attack2:
                     self._append_attack_fields(pm, fields, "attack2", "攻击2", attack2_data)
             except OSError:
@@ -2010,7 +1481,9 @@ class FieldsFacade:
         hero_data: int,
     ) -> tuple[list[int], dict[int, AbilityInstance], list[AbilityInstance]]:
         configs: list[int] = []
-        config_offset = 0x1BC if getattr(self, "_native_selection_unavailable", False) else 0x204
+        from war3_game_profile import current_profile
+        layout = current_profile().adapter.units.hero_layout
+        config_offset = layout["skill_name_native"] if uses_indexed_backend(self) else layout["skill_name_legacy"]
         for index in range(self.HERO_SKILL_SLOT_COUNT):
             try:
                 configs.append(pm.read_u32(hero_data + config_offset + index * 4))
@@ -2188,71 +1661,8 @@ class FieldsFacade:
         excluded_wrappers: set[int] | None = None,
         excluded_data: set[int] | None = None,
     ) -> AbilityInstance | None:
-        excluded_wrappers = excluded_wrappers or set()
-        excluded_data = excluded_data or set()
-        component_rawcodes = {tag >> 32 for tag in self.COMPONENT_TAGS.values()}
-        seen_data: set[int] = set()
-        seen_wrappers: set[int] = set()
-        rawcode_pattern = struct.pack("<I", rawcode & 0xFFFFFFFF)
-        for rawcode_address in pm.scan_bytes_private(rawcode_pattern, max_region_size=8 * 1024 * 1024):
-            data = rawcode_address - 0x70
-            if data in seen_data or data in excluded_data:
-                continue
-            seen_data.add(data)
-            try:
-                data_vtable = pm.read_u64(data)
-                unit = pm.read_u64(data + 0x68)
-                data_rawcode = pm.read_u32(data + 0x70)
-                mirror_rawcode = pm.read_u32(data + 0x78)
-                data_cache_pointer = pm.read_u64(data + 0xA0)
-            except OSError:
-                continue
-            if data_rawcode != rawcode or mirror_rawcode != rawcode:
-                continue
-            if not self._looks_like_vtable(data_vtable) or not self._sane_heap_ptr(unit):
-                continue
-            for data_ref in pm.scan_bytes_private(struct.pack("<Q", data), max_region_size=8 * 1024 * 1024):
-                wrapper = data_ref - 0x90
-                if wrapper in seen_wrappers or wrapper in excluded_wrappers:
-                    continue
-                seen_wrappers.add(wrapper)
-                try:
-                    wrapper_vtable = pm.read_u64(wrapper)
-                    tag = pm.read_u64(wrapper + 0x18)
-                    owner = pm.read_u64(wrapper + 0x50)
-                    wrapper_data = pm.read_u64(wrapper + 0x90)
-                    handle = pm.read_u64(wrapper + 0x20)
-                except OSError:
-                    continue
-                if wrapper_data != data:
-                    continue
-                if not self._looks_like_vtable(wrapper_vtable) or not self._sane_heap_ptr(owner):
-                    continue
-                source_candidate = self._ability_template_source_candidate(pm, owner, unit)
-                if source_candidate is None:
-                    continue
-                if self._find_engine_ability_data(pm, source_candidate, rawcode) != data:
-                    continue
-                class_rawcode = (tag >> 32) & 0xFFFFFFFF
-                if class_rawcode in component_rawcodes or not self._looks_like_rawcode(class_rawcode):
-                    continue
-                return AbilityInstance(
-                    slot=0,
-                    wrapper_address=wrapper,
-                    data_address=data,
-                    wrapper_vtable=wrapper_vtable,
-                    data_vtable=data_vtable,
-                    wrapper_tag_address=wrapper + 0x18,
-                    wrapper_tag=tag,
-                    handle=handle,
-                    class_rawcode=class_rawcode,
-                    rawcode=rawcode,
-                    rawcode_address=data + 0x70,
-                    mirror_rawcode_address=data + 0x78,
-                    data_cache_address=data + 0xA0,
-                    data_cache_pointer=data_cache_pointer if self._sane_heap_ptr(data_cache_pointer) else 0,
-                )
-        return None
+        from war3_game_profile import current_profile
+        return current_profile().adapter.legacy._find_ability_runtime_template(self, pm, rawcode, excluded_wrappers=excluded_wrappers, excluded_data=excluded_data)
 
 
     def _selected_ability_level_for_candidate(
@@ -2303,6 +1713,8 @@ class FieldsFacade:
         new_rawcode: int,
     ) -> UnitMemoryField:
         """Replace one current-build hero skill through engine callbacks."""
+        from war3_game_profile import current_profile
+        _al = current_profile().section("layouts")
         try:
             selected = self._selected_candidates_snapshot(pm)
         except (AttributeError, OSError, RuntimeError) as exc:
@@ -2317,10 +1729,10 @@ class FieldsFacade:
         if hero is None:
             raise RuntimeError("当前选中单位没有英雄组件，不能替换英雄技能")
         _hero_wrapper, hero_data = hero
-        if pm.read_u64(hero_data + 0x68) != candidate.unit_address:
+        if pm.read_u64(hero_data + _al["ability"]["unit_owner"]) != candidate.unit_address:
             raise RuntimeError("3.0 英雄组件身份已经变化，请重新读取")
-        name_address = hero_data + 0x1BC + index * 4
-        cache_address = hero_data + 0x1D4 + index * 4
+        name_address = hero_data + _al["hero"]["skill_name_native"] + index * 4
+        cache_address = hero_data + _al["hero"]["skill_cache_native"] + index * 4
         old_rawcode = pm.read_u32(name_address)
         old_cache = pm.read_u32(cache_address)
         if not old_rawcode:
@@ -2331,7 +1743,7 @@ class FieldsFacade:
                 extra_writes=(), native_write=True,
                 note="3.0 当前引擎技能栏已是目标资源",
             )
-        configs = [pm.read_u32(hero_data + 0x1BC + slot * 4)
+        configs = [pm.read_u32(hero_data + _al["hero"]["skill_name_native"] + slot * 4)
                    for slot in range(self.HERO_SKILL_SLOT_COUNT)]
         if new_rawcode in configs[:index] + configs[index + 1:]:
             raise RuntimeError(f"{format_rawcode(new_rawcode)} 已存在于当前英雄的其它技能槽")
@@ -2406,13 +1818,15 @@ class FieldsFacade:
         field: UnitMemoryField,
         value: int | float | str,
     ) -> UnitMemoryField:
+        from war3_game_profile import current_profile
+        _al = current_profile().section("layouts")
         index = self._skill_index_from_field_key(field.key)
         if index is None:
             raise RuntimeError(f"不是英雄技能名称字段：{field.key}")
         new_rawcode = int(self._coerce_memory_value("rawcode", value)) & 0xFFFFFFFF
         if not self._looks_like_rawcode(new_rawcode):
             raise ValueError(f"技能 rawcode 无效：{format_rawcode(new_rawcode)}")
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             return self._write_hero_skill_name_field_24268(
                 pm, candidate, field, index, new_rawcode,
             )
@@ -2436,7 +1850,7 @@ class FieldsFacade:
             return replace(field, value=new_rawcode, write_address=0, write_type="", extra_writes=(),
                            native_write=True,
                            note=f"引擎从地图资源替换技能；当前等级={results[1].arg1}")
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             # Changing rawcode/class tags does not construct a new ability or
             # update engine-owned effect state. Never publish that as replacement.
             raise RuntimeError(
@@ -2447,12 +1861,12 @@ class FieldsFacade:
         if hero is None:
             raise RuntimeError("当前选中单位没有英雄组件，不能写入英雄技能")
         _hero_wrapper, hero_data = hero
-        name_address = hero_data + 0x204 + index * 4
-        cache_address = hero_data + 0x1BC + index * 4
+        name_address = hero_data + _al["hero"]["skill_name_legacy"] + index * 4
+        cache_address = hero_data + _al["hero"]["skill_cache_legacy"] + index * 4
         configs: list[int] = []
         for slot_index in range(self.HERO_SKILL_SLOT_COUNT):
             try:
-                configs.append(pm.read_u32(hero_data + 0x204 + slot_index * 4))
+                configs.append(pm.read_u32(hero_data + _al["hero"]["skill_name_legacy"] + slot_index * 4))
             except OSError:
                 configs.append(0)
         old_rawcode = configs[index] if index < len(configs) else 0
@@ -2682,7 +2096,7 @@ class FieldsFacade:
         new_rawcode = int(self._coerce_memory_value("rawcode", value)) & 0xFFFFFFFF
         if not self._looks_like_item_rawcode(new_rawcode):
             raise ValueError(f"物品 rawcode 无效：{format_rawcode(new_rawcode)}")
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             snapshot = self.item_batch_24268()
             targets = [row for row in snapshot.get("rows", ())
                        if int(row.get("rawcode", 0)) == int(candidate.unit_type_id)]
@@ -2896,7 +2310,7 @@ class FieldsFacade:
 
         old_charges = snapshot.charges
         old_flags = pm.read_u32(snapshot.item_address + self.ITEM_CHARGES_FLAG_OFFSET)
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             pm.write_i32(snapshot.charges_address, new_charges)
             if pm.read_i32(snapshot.charges_address) != new_charges:
                 raise RuntimeError("物品数量直接写入读回不一致")
@@ -2981,6 +2395,8 @@ class FieldsFacade:
         field: UnitMemoryField,
         value: int | float | str,
     ) -> UnitMemoryField:
+        from war3_game_profile import current_profile
+        _al = current_profile().section("layouts")
         try:
             target_aps = float(str(value).strip()) if isinstance(value, str) else float(value)
         except (TypeError, ValueError) as exc:
@@ -2992,14 +2408,14 @@ class FieldsFacade:
         if attack is None or field.key != "attack1_true_speed":
             raise RuntimeError("当前单位没有经过校验的第一攻击组件")
         attack_data = attack[1]
-        if field.address != attack_data + 0x228:
+        if field.address != attack_data + _al["attack"]["cooldown"]:
             raise RuntimeError("当前引擎实际攻速字段绑定的攻击组件已经变化，请重新读取")
         result = self.attack_speed_24268(candidate, attack_data, target_aps, 0)
         actual = float(result["after_true_aps"])
         return replace(
             field,
             value=actual,
-            address=attack_data + 0x228,
+            address=attack_data + _al["attack"]["cooldown"],
             write_address=0,
             write_type="",
             native_write=True,
@@ -3044,7 +2460,7 @@ class FieldsFacade:
         specs = list(specs)
         if not specs:
             return []
-        if pm is None and getattr(self, "_native_selection_unavailable", False):
+        if pm is None and uses_indexed_backend(self):
             with self._process_memory(write=True) as memory:
                 return self._write_unit_fields_to_candidate(memory, candidate, specs)
         # Resolve and validate all requested fields before any mutation. Native
@@ -3113,7 +2529,7 @@ class FieldsFacade:
             basic_readback = self._write_basic_unit_values_to_candidate(pm, candidate, **basic_values)
             snapshot = self._native_snapshot_for_candidate(basic_readback)
             if snapshot is None:
-                if native_bound or not getattr(self, "_native_selection_unavailable", False):
+                if native_bound or not uses_indexed_backend(self):
                     raise RuntimeError("No native snapshot after basic field write")
                 from war3_basic_fields import FIELDS
                 for index in basic_indices:
@@ -3185,7 +2601,7 @@ class FieldsFacade:
             registry_required=not str(key).startswith("inventory_slot_"))
         if candidate is None:
             raise RuntimeError("候选单位已经失效，请重新读取候选列表")
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             with self._process_memory(write=True) as memory:
                 return self._write_unit_fields_to_candidate(
                     memory, candidate, [MemoryWriteSpec(key, 0, "", value)]
@@ -3256,7 +2672,7 @@ class FieldsFacade:
             return candidate
 
         native = self._native_snapshot_for_candidate(candidate)
-        if getattr(self, "_native_selection_unavailable", False) and native is None:
+        if uses_indexed_backend(self) and native is None:
             from war3_object_registry import ObjectRegistry24268
             from war3_basic_fields import write_basic_fields
             close_pm = pm is None

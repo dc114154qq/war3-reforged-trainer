@@ -14,10 +14,48 @@ typedef struct BridgeProfile {
     uint32_t object_handle;
     uint32_t object_rawcode;
     uint32_t unit_attack;
+    uint32_t ability_level_tail;
+    uint32_t component_head;
+    uint32_t component_sentinel;
+    uint32_t component_node;
+    uint32_t component_tag;
+    uint32_t component_handle;
+    uint32_t component_previous;
+    uint32_t component_next;
+    uint32_t component_owner;
+    uint32_t component_data;
+    uint32_t ability_owner;
+    uint32_t ability_rawcode;
+    uint32_t ability_mirror_rawcode;
+    uint32_t ability_cache;
+    uint32_t ability_flags;
+    uint32_t ability_handle;
+    uint32_t ability_live_mask;
+    uint32_t ability_live_value;
+    uint32_t ability_excluded_flags;
+    uint32_t effect_target_callback;
+    uint32_t talent_initialize_callback;
+    uint32_t talent_records;
+    uint32_t talent_record_stride;
+    uint32_t equipment_count;
+    uint32_t equipment_records;
+    uint32_t equipment_capacity;
+    uint32_t equipment_record_stride;
+    uint32_t equipment_record_state;
+    uint32_t item_flags;
+    uint32_t item_class;
+    uint32_t item_equipment_type;
+    uint32_t item_rawcode_mirror;
+    uint32_t item_equipment_mask;
 } BridgeProfile;
 __declspec(dllexport) volatile BridgeProfile bridge_profile = {
-    1u, sizeof(BridgeProfile),
-    0x2f807f0u, 0x18u, 0x50u, 0x18u, 0x10u, 0x8u, 0x20u, 0x90u, 0x18u, 0x70u, 0x760u
+    3u, sizeof(BridgeProfile),
+    0x2f807f0u, 0x18u, 0x50u, 0x18u, 0x10u, 0x8u, 0x20u, 0x90u, 0x18u, 0x70u, 0x760u, 0x4bcu, 0xd8u, 0xd0u, 0x38u, 0x18u, 0x20u, 0x38u, 0x40u, 0x50u, 0x90u, 0x68u, 0x70u, 0x78u, 0xa0u, 0x38u, 0x18u, 0x148u, 0x100u, 0x48u, 0x998u, 0x120u, 0xd4u, 0xcu, 0xd0u, 0xd8u, 0xe0u, 0xcu, 0x8u, 0x38u, 0x1c0u, 0x948u, 0x178u, 0x4000u
 };
-__declspec(dllexport) const uint32_t bridge_profile_abi[2] = {1u, sizeof(BridgeProfile)};
+__declspec(dllexport) const uint32_t bridge_profile_abi[2] = {3u, sizeof(BridgeProfile)};
+static void BridgeProfileCopy(volatile BridgeProfile *destination, const volatile BridgeProfile *source) {
+    volatile uint32_t *out = (volatile uint32_t *)destination;
+    const volatile uint32_t *in = (const volatile uint32_t *)source;
+    for (uint32_t i = 0; i < sizeof(BridgeProfile) / sizeof(uint32_t); ++i) out[i] = in[i];
+}
 #endif

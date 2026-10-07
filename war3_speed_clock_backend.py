@@ -12,6 +12,21 @@ MAGIC=0x57435331
 WORK_SIZE=88
 
 
+class TimingHealthError(RuntimeError):
+    """Exited control with a known broken clock path; unrelated writes stay usable."""
+    def __init__(self,message,report=None):
+        super().__init__(message)
+        self.report=report or {}
+
+
+class ResidentClockMismatch(RuntimeError):
+    """Read-only validation rejected an older resident image; no new code ran."""
+    def __init__(self,detail):
+        super().__init__('游戏中驻留的是旧加速组件，请重开游戏后使用加速；其他功能仍可使用。')
+        self.report=dict(operation='game_speed',cause='resident_clock_mismatch',
+            detail=detail,dispatch_started=False,image_left_resident=True)
+
+
 def encode_speed_factor(factor):
     """Encode user input without a product-imposed maximum multiplier."""
     import math
@@ -83,6 +98,17 @@ class SpeedClockBackend:
     def attach(self):
         try:
             return self._attach()
+        except ResidentClockMismatch as exc:
+            self.incompatible_resident=True
+            self.unavailable_reason=str(exc)
+            self.pinned=True
+            # Only local handles belong to this attempt. Never invoke new RVAs
+            # in the old image, unload it, or poison unrelated game features.
+            raise
+        except TimingHealthError:
+            # A completed, identity-checked resident health query is not an
+            # unresolved attachment. Keep the image pinned, not other features.
+            raise
         except Exception as exc:
             if self.base:
                 # A resident generation mismatch must never be retried using
@@ -118,19 +144,19 @@ class SpeedClockBackend:
             self.pinned=True
             actual=transport.bytes_at(self.handle,self.base+self.exports[b'speed_clock_abi'],16)
             if actual!=struct.pack('<4I',MAGIC,1,WORK_SIZE,1000):
-                raise RuntimeError('Resident timing ABI differs; restart the game before updating it')
+                raise ResidentClockMismatch('Resident timing ABI differs')
             header=transport.bytes_at(self.handle,self.base,4096)
             offset=struct.unpack_from('<I',header,60)[0]
             if (offset+88>len(header) or header[:2]!=b'MZ' or header[offset:offset+4]!=b'PE\0\0'
                     or struct.unpack_from('<I',header,offset+8)[0]!=self.pe.FILE_HEADER.TimeDateStamp
                     or struct.unpack_from('<I',header,offset+80)[0]!=self.pe.OPTIONAL_HEADER.SizeOfImage):
-                raise RuntimeError('Resident timing image differs; keep it resident and restart the game')
+                raise ResidentClockMismatch('Resident timing image generation differs')
             mapped=self.pe.get_memory_mapped_image(ImageBase=self.base)
             for section in self.pe.sections:
                 if section.Characteristics&0x20000000:
                     address=section.VirtualAddress;length=section.Misc_VirtualSize
                     if transport.bytes_at(self.handle,self.base+address,length)!=mapped[address:address+length]:
-                        raise RuntimeError('Resident timing code differs; keep it resident and restart the game')
+                        raise ResidentClockMismatch('Resident timing executable section differs')
             return self.query()
         file=section=None
         try:
@@ -149,6 +175,8 @@ class SpeedClockBackend:
             if file:transport.p['close'](file)
 
     def _call(self,action,rate=1000):
+        if getattr(self,'incompatible_resident',False):
+            raise ResidentClockMismatch('No control dispatch permitted against an incompatible resident')
         self._validate()
         if self.uncertain:raise RuntimeError('Timing control completion unknown; no automatic replay')
         payload=struct.pack('<4I2Q2I8I2Q',MAGIC,WORK_SIZE,action,rate,
@@ -157,6 +185,7 @@ class SpeedClockBackend:
         block=transport.p['alloc'](self.handle,None,WORK_SIZE,0x3000,4)
         if not block:raise c.WinError(c.get_last_error())
         completed=False
+        health_report=None
         try:
             data=c.create_string_buffer(payload);written=transport.Z()
             if not transport.p['write'](self.handle,block,data,len(payload),c.byref(written)) or written.value!=len(payload):
@@ -179,9 +208,24 @@ class SpeedClockBackend:
                 # No hook reached the enable step. Other feature backends stay
                 # usable; keep the registered image resident but disable speed.
                 self.uncertain=False
-                self.unavailable_reason='Speed clock API is unsupported; no acceleration was applied'
+                detail={7:'计时接口地址没有执行权限',8:'当前系统计时入口不支持此加速方式',
+                    9:'系统未能分配加速组件所需内存',10:'系统拒绝修改计时入口的内存保护',
+                    11:'游戏进程未加载所需计时库',12:'系统缺少所需计时接口'}.get(
+                        hook_status,'加速组件初始化失败')
+                self.unavailable_reason=detail+'；本次未开启加速，其他功能仍可使用。'
                 self.engine.session.last_evidence=OperationEvidence(delivered=True,callback_exited=True)
                 raise RuntimeError(self.unavailable_reason)
+            known_health_failure=(error in (5023,170) and done==1 and init==1 and installed==1
+                and pinned==1 and current>=1000 and mask&7==7 and not mask&~15)
+            if known_health_failure:
+                self.uncertain=False
+                self.engine.session.last_evidence=OperationEvidence(delivered=True,callback_exited=True)
+                message=('加速控制正在更新，请稍后重试；其他功能仍可使用。' if error==170 else
+                    '加速计时组件未通过生效检查，请重新开启加速；其他功能仍可使用。')
+                health_report=dict(operation='game_speed',clock_state=dict(self.last_result),
+                    cause='control_busy' if error==170 else 'clock_health_failed',
+                    verification=dict(worker_exited=True,uncertain=False,cleanup_complete=False))
+                raise TimingHealthError(message,health_report)
             state_invalid=(any(value not in (0,1) for value in (init,installed,done,pinned))
                 or current<1000 or mask&~15
                 or (installed and (not init or not pinned or mask&7!=7))
@@ -192,7 +236,7 @@ class SpeedClockBackend:
                 raise RuntimeError('Timing control failed: '+str(self.last_result))
             self.uncertain=False
             if pinned and not init and not installed and not mask:
-                self.unavailable_reason='An inactive failed timing module is resident; restart the game before retrying speed'
+                self.unavailable_reason='游戏中已有未能启动的加速组件，请重开游戏后再试；其他功能仍可使用。'
             self.engine.session.last_evidence=OperationEvidence(delivered=True,readback_verified=True,
                 callback_exited=True,cleanup_complete=False)
             return dict(self.last_result)
@@ -210,6 +254,9 @@ class SpeedClockBackend:
                 self.engine.session.last_evidence=OperationEvidence(uncertain=True,callback_exited=completed)
                 self.engine.session.retained['speed_clock']=dict(self.last_result,base=hex(self.base),
                     command_block=hex(block) if not completed or release_error else None)
+            if health_report is not None:
+                health_report['verification'].update(uncertain=self.uncertain,
+                    cleanup_complete=not self.uncertain and release_error is None)
             if release_error is not None:raise release_error
 
     def query(self):return self._call(0)
@@ -224,6 +271,10 @@ class SpeedClockBackend:
         if not self._alive():
             transport.p['close'](self.handle);self.handle=None;self.base=0
             return {'closed':True,'process_exited':True}
+        if getattr(self,'incompatible_resident',False):
+            transport.p['close'](self.handle);self.handle=None
+            return {'closed':True,'restored_rate':None,'resident_until_process_exit':True,
+                    'restart_required_for_speed':True}
         if self.uncertain:raise RuntimeError('Timing cleanup uncertain; image remains mapped')
         if self.pinned:
             if not getattr(self,'unavailable_reason',None):

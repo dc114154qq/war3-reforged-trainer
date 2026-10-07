@@ -20,8 +20,8 @@ static int BridgeDirectCastIdentity(DirectCastWork *d) {
     uint64_t data=BridgeEffectFindAbilityDataByFullHandle(
         (EffectResolveFn)(uintptr_t)d->module_base,d->unit_full,w->rawcode,0);
     return data==d->ability_data && BridgeEffectReadable(data,0x80) &&
-        *(uint64_t *)(uintptr_t)(data+0x18)==d->ability_full &&
-        *(uint64_t *)(uintptr_t)(data+0x68)==object &&
+        *(uint64_t *)(uintptr_t)(data+bridge_profile.ability_handle)==d->ability_full &&
+        *(uint64_t *)(uintptr_t)(data+bridge_profile.ability_owner)==object &&
         d->get_level(w->source,w->rawcode)==d->level_index+1u;
 }
 
@@ -79,7 +79,7 @@ __declspec(dllexport) uint64_t BridgeDirectCastQuery(void) {
             d->ability_data=BridgeEffectFindAbilityDataByFullHandle(
                 (EffectResolveFn)(uintptr_t)d->module_base,d->unit_full,w->rawcode,0);
             if(!w->ability_handle || !BridgeEffectReadable(d->ability_data,0x80)){w->error=345;__leave;}
-            d->ability_full=*(uint64_t *)(uintptr_t)(d->ability_data+0x18);
+            d->ability_full=*(uint64_t *)(uintptr_t)(d->ability_data+bridge_profile.ability_handle);
             uint32_t level=d->get_level(w->source,w->rawcode);
             if(!level){w->error=346;__leave;}
             d->level_index=level-1;captured=1;

@@ -4,6 +4,7 @@ import ctypes as c
 import hashlib,json,os,struct,time,traceback,uuid
 from pathlib import Path
 import pefile
+from war3_remote_exports import RemoteExportResolver,ApiSetNamespace,RemoteExportError
 from war3_hero_protocol import ABI,validate_work
 P,U,Z=c.c_void_p,c.c_ulong,c.c_size_t
 k=c.WinDLL('kernel32',use_last_error=True)
@@ -32,6 +33,7 @@ unmap_section=api(nt,'NtUnmapViewOfSection',c.c_long,P,P)
 register_message=api(u,'RegisterWindowMessageW',U,c.c_wchar_p)
 window_thread=api(u,'GetWindowThreadProcessId',U,P,c.POINTER(U))
 send_message_timeout=api(u,'SendMessageTimeoutW',Z,P,U,Z,c.c_ssize_t,U,U,c.POINTER(Z))
+post_thread_message=api(u,'PostThreadMessageW',c.c_int,U,U,Z,c.c_size_t)
 
 def bytes_at(handle,address,size):
     data=c.create_string_buffer(size);actual=Z()
@@ -71,20 +73,48 @@ x=dict(create_file=create_file,create_mapping=create_mapping,map_section=map_sec
 def remote_entry_valid(data):
     return len(data)==16 and any(data)
 
+def _target_api_set_host(memory,contract,importer=None):
+    namespace=getattr(memory,'_target_api_sets',None)
+    if namespace is None:
+        # Current transport is x64. This is Windows PEB/API-set layout, not a
+        # game-build address; reject unsupported schemas rather than guessing.
+        basic=c.create_string_buffer(48)
+        query=api(nt,'NtQueryInformationProcess',c.c_long,P,c.c_int,P,U,P)
+        status=query(memory.handle,0,basic,len(basic),None)
+        if status<0:raise RemoteExportError('Target PEB query failed: '+hex(status&0xffffffff))
+        peb=struct.unpack_from('<Q',basic.raw,8)[0]
+        if not 0x10000<=peb<0x800000000000:raise RemoteExportError('Invalid target PEB address')
+        address=struct.unpack('<Q',p['bytes_at'](memory.handle,peb+0x68,8))[0]
+        if not 0x10000<=address<0x800000000000:raise RemoteExportError('Invalid target API-set address')
+        version,size=struct.unpack('<2I',p['bytes_at'](memory.handle,address,8))
+        if version!=6 or not 28<=size<=2*1024*1024:
+            raise RemoteExportError('Unsupported target API-set schema')
+        namespace=ApiSetNamespace(p['bytes_at'](memory.handle,address,size))
+        memory._target_api_sets=namespace
+    return namespace.host(contract,importer)
+
+
 def resolve(memory,library,name):
-    fn=getattr(c.WinDLL(library),name);local=c.cast(fn,P).value
-    owner=P();text=c.create_unicode_buffer(1024)
-    if not p['get_module'](6,local,c.byref(owner)):raise c.WinError(c.get_last_error())
-    if not h['module_name'](p['current_process'](),owner,text,len(text)):raise c.WinError(c.get_last_error())
-    remote=h['module_base'](memory,text.value)
-    if not remote:raise RuntimeError('Missing remote module '+text.value)
-    address=remote+local-owner.value
-    # The owning-module RVA is stable across processes on the same host.
-    # Windows hotpatching and security software may legitimately instrument
-    # only one process, so byte equality is not a valid compatibility gate.
-    if not remote_entry_valid(p['bytes_at'](memory.handle,address,16)):
-        raise RuntimeError('Remote entry is unreadable: '+name)
-    return address
+    resolver=getattr(memory,'_target_exports',None)
+    if resolver is None:
+        resolver=RemoteExportResolver(lambda address,size:p['bytes_at'](memory.handle,address,size),
+            lambda module:h['module_base'](memory,module),
+            lambda contract,importer:_target_api_set_host(memory,contract,importer))
+        memory._target_exports=resolver
+    if not hasattr(memory,'remote_api_resolution'):memory.remote_api_resolution={}
+    tag=str(library)+'!'+str(name)
+    try:
+        address=resolver.resolve(library,name)
+        # Validate target bytes, not equality to this process's patched entry.
+        if not remote_entry_valid(p['bytes_at'](memory.handle,address,16)):
+            raise RemoteExportError('Target system API entry is unreadable: '+tag)
+        memory.remote_api_resolution[tag]=dict(method='target_pe_exports',address=hex(address),
+            chain=list(resolver.last_chain),completed=True)
+        return address
+    except Exception as exc:
+        memory.remote_api_resolution[tag]=dict(method='target_pe_exports',
+            chain=list(resolver.last_chain),completed=False,error=repr(exc))
+        raise
 
 
 def fields(handle,address):
@@ -110,7 +140,26 @@ def normalized_path(value):
     return os.path.normcase(text)
 
 
+def never_started_cleanup_complete(completed, state, lifecycle):
+    """A queued message is not a callback; require actual unhook/drain proof."""
+    if not completed or not isinstance(lifecycle,dict):return False
+    return bool(state.get('stage')==2 and state.get('hook')
+        and state.get('detached')==1 and state.get('active')==0
+        and state.get('callback_tid')==0 and state.get('callback_count')==0
+        and state.get('query_stage')==0 and state.get('exception_code')=='0x0'
+        and state.get('bridge_install_trace')=='0x6'
+        and state.get('unwind_registered') in (0,1)
+        and (not state.get('unwind_registered') or state.get('unwind_removed')==1)
+        and all(lifecycle.get(key)==0 for key in
+            ('phase','owned_messages','forwarded_messages','forward_exception',
+             'cleanup_timed_out','callback_exits','reserved'))
+        and isinstance(lifecycle.get('cleanup_wait_ms'),int)
+        and 0<=lifecycle['cleanup_wait_ms']<=500)
+
+
 def can_release(completed, delivered, state):
+    if never_started_cleanup_complete(completed,state,state.get('callback_lifecycle')):
+        return True
     return bool(completed and state.get('active',0)==0 and (not state['hook'] or
         delivered and state['stage'] == 3 and state['detached'] and state['active'] == 0)
         and (not state.get('unwind_registered') or state.get('unwind_removed')))
@@ -314,8 +363,10 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
     query_mode=kind
     if delivery_mode is None:
         delivery_mode = 'send'
-    hook_kind = 3 if delivery_mode == 'posted' else 4
-    hook_name = 'WH_GETMESSAGE' if delivery_mode == 'posted' else 'WH_CALLWNDPROC'
+    thread_posted = delivery_mode == 'thread_posted'
+    hook_kind = 3 if delivery_mode in ('posted','thread_posted') else 4
+    if thread_posted: hook_kind |= 0x20000000
+    hook_name = 'WH_GETMESSAGE' if delivery_mode in ('posted','thread_posted') else 'WH_CALLWNDPROC'
     if hook_api not in ('user32','win32u'):
         raise ValueError('Unsupported hook installer')
     pe=pefile.PE(str(image));exports={s.name:s.address for s in pe.DIRECTORY_ENTRY_EXPORT.symbols}
@@ -343,7 +394,9 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
             'target_window':{'hwnd':hex(hwnd),'pid':pid,'thread_id':tid},
             'process_access':'0x43a','hook_kind':hook_name,
             'message_delivery':delivery_mode,
-            'route_policy':('target_LoadLibraryW+WH_GETMESSAGE+PostMessage'
+            'route_policy':('target_LoadLibraryW+WH_GETMESSAGE+PostThreadMessage'
+                            if thread_posted
+                            else 'target_LoadLibraryW+WH_GETMESSAGE+PostMessage'
                             if delivery_mode == 'posted'
                             else 'target_LoadLibraryW+WH_CALLWNDPROC+SendMessageTimeout'),
             'image':str(image),
@@ -496,7 +549,10 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
             raise RuntimeError('Bridge profile initialization write failed')
         if p['bytes_at'](handle, profile_address, len(profile_payload)) != profile_payload:
             raise RuntimeError('Bridge profile initialization readback differs')
-        report['profile'] = {'id': profile.id, 'digest': profile.digest, 'bridge_version': 1}
+        report['profile'] = {'id': profile.id, 'digest': profile.digest,
+            'bridge_version': profile.data['bridge_profile_version'],
+            'game_version': profile.data['game_version'],
+            'adapter_selection': profile.selection_report()}
         report['loaded_exports' if not manual_mapped else 'mapped_exports']={
             'BridgeInstall':p['bytes_at'](handle,image_base+install_rva,16).hex(),
             'BridgeUninstall':p['bytes_at'](handle,image_base+uninstall_rva,16).hex(),
@@ -558,7 +614,13 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
         delivered=False
         if state['stage']==2 and state['hook']:
             reply=Z();c.set_last_error(0)
-            if delivery_mode == 'posted':
+            if thread_posted:
+                delivered=bool(post_thread_message(tid,message,nonce,0))
+                report['post_thread']={'completed':True,'enqueued':delivered,'error':c.get_last_error()}
+                deadline=time.monotonic()+1.5
+                while delivered and state['stage']!=3 and time.monotonic()<deadline:
+                    time.sleep(.005);state=fields(handle,block)
+            elif delivery_mode == 'posted':
                 post=p['api'](h['u'],'PostMessageW',c.c_int,P,U,Z,c.c_ssize_t)
                 delivered=bool(post(hwnd,message,nonce,0))
                 report['post']={'enqueued':delivered,'error':c.get_last_error()}
@@ -581,6 +643,9 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
             report['callback_lifecycle']=dict(zip(
                 ('phase','owned_messages','forwarded_messages','forward_exception',
                  'cleanup_wait_ms','cleanup_timed_out','callback_exits','reserved'),values))
+            state['callback_lifecycle']=report['callback_lifecycle']
+        report['unstarted_cleanup_verified']=never_started_cleanup_complete(
+            completed,state,report.get('callback_lifecycle'))
         if manual_mapped:
             report['image_unwind'].update(
                 registered_manually=bool(state.get('unwind_registered')),
@@ -699,6 +764,8 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
             elif work or block:
                 report['allocations_retained']=True
             p['close'](handle)
+        if memory is not None:
+            report['remote_api_resolution']=dict(getattr(memory,'remote_api_resolution',{}))
         report['safe_to_release']=bool(
             safe and not remote_thread_active and module_unloaded and
             not load_path and not report.get('allocations_retained'))
@@ -730,6 +797,10 @@ def _retry_summary(report):
         last_error=state.get('last_error'),
         exception_code=state.get('exception_code'),
         fault=report.get('fault'),
+        transport_error=report.get('error'),
+        remote_api_resolution=report.get('remote_api_resolution'),
+        post_thread=report.get('post_thread'),
+        unstarted_cleanup_verified=report.get('unstarted_cleanup_verified'),
         safe_to_release=report.get('safe_to_release'),
     )
 
@@ -754,8 +825,27 @@ def _apphelp_install_read_fault(report):
 def dispatch(pid,hwnd,tid,image,tls_index,work_payload,kind="hero"):
     first=_dispatch_once(
         pid,hwnd,tid,image,tls_index,work_payload,kind=kind,attempt=1,
-        delivery_mode='send',
+        delivery_mode='thread_posted',
     )
+    # A thread can expose a queue only after its first message-pump turn. If
+    # posting fails, the route has already cleaned up or quarantined itself;
+    # a window-send fallback is allowed only after that evidence is complete.
+    if (not first.get('callback_verified') and first.get('safe_to_release')
+            and not first.get('allocations_retained')
+            and first.get('message_delivery')=='thread_posted'
+            and first.get('post_thread') is not None
+            and (first.get('post_thread') or {}).get('completed') is True
+            and (not (first.get('post_thread') or {}).get('enqueued',False)
+                 or first.get('unstarted_cleanup_verified') is True)):
+        fallback=_dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind=kind,
+            attempt=2,delivery_mode='send')
+        fallback['same_route_retry']={'attempted':True,
+            'reason':('thread_message_not_consumed_after_cleanup'
+                if (first.get('post_thread') or {}).get('enqueued')
+                else 'thread_queue_unavailable_after_cleanup'),
+            'fallback_route':fallback.get('route_policy'),
+            'first_attempt':_retry_summary(first)}
+        return fallback
     if not _retryable_hook_install_failure(first):
         first['same_route_retry']={'attempted':False}
         return first

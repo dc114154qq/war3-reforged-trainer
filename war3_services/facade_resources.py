@@ -8,27 +8,8 @@ class ResourcesFacade:
         pm: ProcessMemory,
         tag_addresses: Iterable[int] | None = None,
     ) -> Iterable[ResourceProperty]:
-        if tag_addresses is None:
-            tag = struct.pack("<Q", self.RESOURCE_PROP_TAG)
-            tag_addresses = pm.scan_bytes_private(tag, max_region_size=1024 * 1024)
-        for tag_address in tag_addresses:
-            base = tag_address - 0x28
-            try:
-                value64 = pm.read_u64(base)
-                kind_a = pm.read_i32(base + 0x30)
-                kind_b = pm.read_i32(base + 0x34)
-                owner_key = pm.read_u64(base + 0x60)
-            except OSError:
-                continue
-            if kind_a != kind_b:
-                continue
-            if not 0 <= kind_a <= 0x1000:
-                continue
-            if value64 > 0x7FFFFFFF:
-                continue
-            if not self._sane_heap_ptr(owner_key):
-                owner_key = 0
-            yield ResourceProperty(kind_a, base, int(value64), owner_key)
+        from war3_game_profile import current_profile
+        return current_profile().adapter.legacy._iter_resource_properties(self, pm, tag_addresses)
 
 
     @staticmethod
@@ -408,7 +389,7 @@ class ResourcesFacade:
 
 
     def validate_local_player_resource_cache(self, cache: ResourceCache) -> ResourceCache:
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             with self._process_memory() as memory:
                 current = self._refresh_indexed_resource_cache(memory, cache)
                 local = self._classic_local_resource_cache(memory)
@@ -424,7 +405,7 @@ class ResourcesFacade:
 
 
     def locate_local_player_resource_cache(self, caches: list[ResourceCache] | None = None) -> ResourceCache:
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             with self._process_memory() as memory:
                 return self._classic_local_resource_cache(memory)
         # Local shortcuts target GetLocalPlayer, never the first row of the table.
@@ -543,6 +524,7 @@ class ResourcesFacade:
         self, pm: ProcessMemory, player: int, player_id: int | None = None,
     ) -> ResourceCache:
         from war3_player_resources import SOURCE, read_player_properties
+        from war3_game_profile import current_profile
         registry = self._classic_object_registry
         if player_id is None:
             player_id = registry.players(pm).index(player)
@@ -564,7 +546,7 @@ class ResourcesFacade:
             food_used_address=used_address, food_cap_address=cap_address,
             food_limit_address=limit_address, food_used=food_used,
             food_cap=food_cap, food_limit=food_limit,
-            block_start_kind=1 + 0x28 * player_id, source=SOURCE,
+            block_start_kind=1 + current_profile().section("layouts")["property"]["state_identity_stride"] * player_id, source=SOURCE,
             owner_key=owner, player_value=player_id, score=1000,
             player_handle=handle, process_id=self.pid,
         )
@@ -592,7 +574,7 @@ class ResourcesFacade:
         self, current_gold: int | None = None, current_lumber: int | None = None,
         current_food: int | None = None, current_food_cap: int | None = None,
     ) -> list[ResourceCache]:
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             with self._process_memory() as memory:
                 from war3_object_registry import ObjectRegistry24268
                 registry = self._classic_object_registry or ObjectRegistry24268.attach(memory)
@@ -644,7 +626,7 @@ class ResourcesFacade:
 
 
     def read_resource_cache_addresses(self, cache: ResourceCache) -> ResourceCache:
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             with self._process_memory() as memory:
                 return self._refresh_indexed_resource_cache(memory, cache)
         if cache.source not in ("persistent native player state", "3.0 indexed player properties"):
@@ -659,7 +641,7 @@ class ResourcesFacade:
         sync_local_food_cap: bool = False,
     ) -> ResourceCache:
         del sync_local_food_used, sync_local_food_cap
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             targets = [(field, int(value), scale) for field, value, scale in (
                 ("gold", target_gold, 10), ("lumber", target_lumber, 10),
                 ("food_used", target_food_used, 1), ("food_cap", target_food_cap, 1),
@@ -715,7 +697,7 @@ class ResourcesFacade:
         current_food_cap: int | None = None,
         pm: ProcessMemory | None = None,
     ) -> ResourceCache | None:
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             def matches(cache: ResourceCache) -> bool:
                 return not any(
                     expected is not None and actual != int(expected)
@@ -753,7 +735,7 @@ class ResourcesFacade:
         current_food: int | None = None,
         current_food_cap: int | None = None,
     ) -> ResourceCache:
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             with self._process_memory() as memory:
                 cache = self._classic_local_resource_cache(memory)
             if any(expected is not None and actual != int(expected) for actual, expected in (

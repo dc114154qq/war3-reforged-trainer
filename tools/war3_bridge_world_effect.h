@@ -53,7 +53,7 @@ __declspec(dllexport) const uint32_t world_effect_batch_abi[3] = {0x24268028u,21
 static uint64_t BridgeWorldEffectUnitObject(WorldEffectWork *w, uint64_t unit) {
     uint64_t owner = BridgeEffectResolveObjectTable((uint64_t)(uintptr_t)w->resolve_agent, unit);
     if (!BridgeEffectReadable(owner, 0xe0)) return 0;
-    return *(uint64_t *)(uintptr_t)(owner + 0x90);
+    return *(uint64_t *)(uintptr_t)(owner + bridge_profile.owner_data);
 }
 
 static int BridgeWorldEffectLive(uint32_t bits) {
@@ -411,7 +411,7 @@ __declspec(dllexport) uint64_t BridgeWorldEffectQuery(void) {
                                 if (!BridgeEffectReadable(target_vtable, 0x9a0u)) target_error = 185;
                             }
                             if (!target_error) {
-                                target_callback = *(uint64_t *)(uintptr_t)(target_vtable + 0x998u);
+                                target_callback = *(uint64_t *)(uintptr_t)(target_vtable + bridge_profile.effect_target_callback);
                                 if (!BridgeEffectExecutable(target_callback)) target_error = 186;
                             }
                             if (!target_error)

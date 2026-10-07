@@ -16,7 +16,10 @@ MODULES = {
     "direct_cast": ("direct_effect",),
     "extension": ("talents", "equipment"),
     "equipment": ("equipment",),
+    "equipment_effect": ("equipment",),
+    "item_safety": ("equipment",),
     "equipment_probe": ("equipment",),
+    "legacy_equipment_probe": ("equipment",),
     "talent_order": ("talents",),
     "talent_icon_control": ("talent_icons",),
     "stat_details": ("stat_details",),
@@ -36,6 +39,8 @@ class CapabilitySet:
 
     def check(self, name, signatures=(), request=None):
         missing = list(self.common)
+        if name in ('clone_bound','unit_bindings') and not self.profile.section('addresses')['unit_resolver']:
+            missing.append('Bound clone unit resolver has not been adapted for this build')
         # Internal attack routines need separately located addresses; a generic
         # native handler table cannot make inherited/unknown RVAs executable.
         if name == "attack_speed" and any(self.profile.section("addresses")[key] == 0

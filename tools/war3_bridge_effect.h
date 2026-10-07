@@ -78,31 +78,31 @@ static uint64_t BridgeEffectFindAbilityDataFromOwner(uint64_t owner,
             return 0;
         }
         stage = 3;
-        node = *(uint64_t *)(uintptr_t)(owner + 0xd8);
-        previous = owner + 0xd0;
+        node = *(uint64_t *)(uintptr_t)(owner + bridge_profile.component_head);
+        previous = owner + bridge_profile.component_sentinel;
         for (uint32_t index = 0; node && index < 4096u; ++index) {
             uint64_t wrapper, prior, following, backlink, data;
             stage = 4;
-            if (node < 0x38) {
+            if (node < bridge_profile.component_node) {
                 if (diagnostic) *diagnostic = 0xe0000106u;
                 return 0;
             }
-            wrapper = node - 0x38;
+            wrapper = node - bridge_profile.component_node;
             stage = 5;
             stage = 6;
-            prior = *(uint64_t *)(uintptr_t)(wrapper + 0x38);
-            following = *(uint64_t *)(uintptr_t)(wrapper + 0x40);
-            backlink = *(uint64_t *)(uintptr_t)(wrapper + 0x50);
-            data = *(uint64_t *)(uintptr_t)(wrapper + 0x90);
+            prior = *(uint64_t *)(uintptr_t)(wrapper + bridge_profile.component_previous);
+            following = *(uint64_t *)(uintptr_t)(wrapper + bridge_profile.component_next);
+            backlink = *(uint64_t *)(uintptr_t)(wrapper + bridge_profile.component_owner);
+            data = *(uint64_t *)(uintptr_t)(wrapper + bridge_profile.component_data);
             stage = 7;
             if (prior != previous || backlink != owner) {
                 if (diagnostic) *diagnostic = 0xe0000108u;
                 return 0;
             }
             if (!data) { if (diagnostic) *diagnostic = 0xe0000109u; return 0; }
-            if (*(uint64_t *)(uintptr_t)(data + 0x68) == unit_object &&
-                *(uint32_t *)(uintptr_t)(data + 0x70) == rawcode &&
-                *(uint32_t *)(uintptr_t)(data + 0x78) == rawcode) return data;
+            if (*(uint64_t *)(uintptr_t)(data + bridge_profile.ability_owner) == unit_object &&
+                *(uint32_t *)(uintptr_t)(data + bridge_profile.ability_rawcode) == rawcode &&
+                *(uint32_t *)(uintptr_t)(data + bridge_profile.ability_mirror_rawcode) == rawcode) return data;
             previous = node;
             node = following;
         }
@@ -218,7 +218,7 @@ __declspec(dllexport) uint64_t BridgeEffectQuery(void) {
             if (!error) {
                 stage = 9;
                 if (!ability) error = 163;
-                else target_object = *(uint64_t *)(uintptr_t)(ability + 0x68);
+                else target_object = *(uint64_t *)(uintptr_t)(ability + bridge_profile.ability_owner);
                 stage = 10;
                 if (!error && !target_object) error = 164;
             }

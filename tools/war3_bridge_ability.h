@@ -11,7 +11,7 @@ typedef struct AbilityWork {
 } AbilityWork;
 _Static_assert(sizeof(AbilityWork)==840,"AbilityWork ABI");
 __declspec(dllexport) const uint32_t ability_batch_abi[3]={0x24268012u,216u,840u};
-/* 24268 evidence: SetUnitAbilityLevel+0x4bc faults reading a null address
+/* Profile-bound evidence: 24268+0x4bc / 24323+0x4dc read a null address
    AFTER its level mutation. R15 is not stable at handler entry, so it is not
    part of the gate. Do not patch the game or resume at a guessed RIP. Unwind
    only that exact tail fault, then require native readback == target. */
@@ -19,15 +19,23 @@ static int BridgeKnownAbilityTail(uint64_t handler,uint32_t code,uint32_t flags,
                                  uint32_t parameters,uint64_t instruction,
                                  uint64_t access,uint64_t address,uint64_t r15) {
     (void)r15;
-    return handler>=0x10000 && handler<0x800000000000ULL-0x4bc &&
+    uint32_t tail=bridge_profile.ability_level_tail;
+    return tail>0 && tail<0x10000 && handler>=0x10000 && handler<0x800000000000ULL-tail &&
         code==EXCEPTION_ACCESS_VIOLATION && !(flags&EXCEPTION_NONCONTINUABLE) && parameters>=2 &&
-        instruction==handler+0x4bc && access==0 && address==0;
+        instruction==handler+tail && access==0 && address==0;
+}
+static int BridgeAbilityTailOpcode(uint64_t instruction) {
+    __try {
+        /* Both verified sites: movzx eax, byte ptr [r15]. */
+        return *(volatile uint32_t *)(uintptr_t)instruction==0x07b60f41u;
+    } __except(EXCEPTION_EXECUTE_HANDLER) { return 0; }
 }
 static LONG BridgeAbilityTailFilter(EXCEPTION_POINTERS *info,AbilityWork *w) {
     EXCEPTION_RECORD *e=info->ExceptionRecord;
     if (BridgeKnownAbilityTail((uint64_t)(uintptr_t)w->set_level,e->ExceptionCode,e->ExceptionFlags,
         e->NumberParameters,(uint64_t)(uintptr_t)e->ExceptionAddress,
-        e->ExceptionInformation[0],e->ExceptionInformation[1],info->ContextRecord->R15)) {
+        e->ExceptionInformation[0],e->ExceptionInformation[1],info->ContextRecord->R15) &&
+        BridgeAbilityTailOpcode((uint64_t)(uintptr_t)e->ExceptionAddress)) {
         BridgeExceptionFilter(info);
         return EXCEPTION_EXECUTE_HANDLER;
     }

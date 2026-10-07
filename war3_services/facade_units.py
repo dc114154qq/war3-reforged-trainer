@@ -4,7 +4,7 @@ from contextlib import contextmanager
 
 class UnitsFacade:
     def get_selected_hero_level(self) -> int:
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             result = self.hero_progress_24268()
             rows = tuple(result.get("rows", ()))
             if not rows:
@@ -17,7 +17,7 @@ class UnitsFacade:
         target = int(level)
         if not 1 <= target <= 100000:
             raise ValueError("英雄等级必须在 1 到 100000 之间")
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             self.hero_progress_24268(target)
             return target
         self._run_bound_hero_progress(self.NATIVE_HELPER_OP_SET_BOUND_HERO_LEVEL, target)
@@ -35,7 +35,7 @@ class UnitsFacade:
 
 
     def set_selected_unit_invulnerable(self, enabled: bool) -> None:
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             from war3_unit_action_protocol import ACTION_SET_INVULNERABLE
             return int(self._unit_action_result_24268(ACTION_SET_INVULNERABLE, value=int(bool(enabled)))["count"])
         self._run_elephant_unit_bool("SetUnitInvulnerable", enabled)
@@ -45,7 +45,7 @@ class UnitsFacade:
         target = int(value)
         if not 0 <= target <= 1_000_000_000:
             raise ValueError("英雄属性必须在 0 到 1000000000 之间")
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             result = self.hero_attributes_24268(target)
             if not result.get("rows"):
                 raise RuntimeError("当前选中单位中没有英雄")
@@ -67,7 +67,7 @@ class UnitsFacade:
         target = int(value)
         if not 0 <= target <= 1_000_000_000:
             raise ValueError("英雄属性必须在 0 到 1000000000 之间")
-        if not getattr(self, "_native_selection_unavailable", False):
+        if not uses_indexed_backend(self):
             return int(bool(self.set_selected_hero_attributes(target)))
         result = self.hero_attributes_24268(target)
         return len(result["rows"])
@@ -77,7 +77,7 @@ class UnitsFacade:
         delta = int(amount)
         if not 1 <= delta <= 1_000_000:
             raise ValueError("增加技能点数必须在 1 到 1000000 之间")
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             from war3_unit_action_protocol import ACTION_ADD_SKILL_POINTS
             result = self._unit_action_result_24268(ACTION_ADD_SKILL_POINTS, value=delta)
             return int(result["changed"])
@@ -86,28 +86,28 @@ class UnitsFacade:
 
 
     def is_selected_unit_invulnerable(self) -> bool:
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             from war3_unit_action_protocol import ACTION_QUERY_INVULNERABLE
             return bool(self._unit_action_result_24268(ACTION_QUERY_INVULNERABLE)["rows"][0]["after"])
         return bool(self._query_elephant_unit_int("BlzIsUnitInvulnerable"))
 
 
     def set_selected_unit_pathing(self, enabled: bool) -> None:
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             from war3_unit_action_protocol import ACTION_SET_PATHING
             return int(self._unit_action_result_24268(ACTION_SET_PATHING, value=int(bool(enabled)))["count"])
         self._run_elephant_unit_bool("SetUnitPathing", enabled)
 
 
     def set_selected_unit_paused(self, enabled: bool) -> None:
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             from war3_unit_action_protocol import ACTION_SET_PAUSED
             return int(self._unit_action_result_24268(ACTION_SET_PAUSED, value=int(bool(enabled)))["count"])
         self._run_elephant_unit_bool("PauseUnit", enabled)
 
 
     def is_selected_unit_paused(self) -> bool:
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             from war3_unit_action_protocol import ACTION_QUERY_PAUSED
             return bool(self._unit_action_result_24268(ACTION_QUERY_PAUSED)["rows"][0]["after"])
         return bool(self._query_elephant_unit_int("IsUnitPaused"))
@@ -157,39 +157,41 @@ class UnitsFacade:
 
 
     def reset_selected_unit_cooldown(self) -> None:
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             from war3_unit_action_protocol import ACTION_RESET_COOLDOWN
             return int(self._unit_action_result_24268(ACTION_RESET_COOLDOWN)["count"])
         self._run_elephant_unit_void("UnitResetCooldown")
 
 
     def kill_selected_unit(self) -> None:
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             from war3_unit_action_protocol import ACTION_KILL
             return int(self._unit_action_result_24268(ACTION_KILL)["count"])
         self._run_elephant_unit_void("KillUnit")
 
 
     def remove_selected_unit(self) -> None:
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             from war3_unit_action_protocol import ACTION_REMOVE
             return int(self._unit_action_result_24268(ACTION_REMOVE)["count"])
         self._run_elephant_unit_void("RemoveUnit")
 
 
     def explode_selected_unit(self) -> None:
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             from war3_unit_action_protocol import ACTION_EXPLODE
             return int(self._unit_action_result_24268(ACTION_EXPLODE)["count"])
         self._run_bound_simple_unit_actions((("SetUnitExploded", True), ("KillUnit", None)))
 
 
     def set_selected_unit_scale(self, scale: float) -> float:
+        from war3_game_profile import current_profile
+        _al = current_profile().section("layouts")
         target = float(scale)
         if not 0.01 <= target <= 100.0:
             raise ValueError("单位大小必须在 0.01 到 100 之间")
         target = coerce_finite_float32(target)
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             candidate, _handle = self._direct_selected_context()
             with self._process_memory(write=True) as memory:
                 from war3_object_registry import ObjectRegistry24268
@@ -202,7 +204,7 @@ class UnitsFacade:
                         raise RuntimeError("3.0 scale unit identity changed")
 
                 check_identity()
-                address = candidate.unit_address + 0x290
+                address = candidate.unit_address + _al["unit"]["scale"]
                 current = memory.read_f32(address)
                 if not math.isfinite(current) or current <= 0:
                     raise RuntimeError("3.0 scale field is invalid")
@@ -225,7 +227,7 @@ class UnitsFacade:
         if not 0.01 <= target <= 100.0:
             raise ValueError("单位大小必须在 0.01 到 100 之间")
         target = coerce_finite_float32(target)
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             from war3_unit_action_protocol import ACTION_SET_SCALE
             bits = self._float_bits(target)
             return int(self._unit_action_result_24268(
@@ -254,10 +256,14 @@ class UnitsFacade:
 
 
     def query_mouse_world_position(self) -> tuple[float, float]:
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             snapshot = self.camera_snapshot_24268()
-            client_size = self._client_size_24268()
-            screen_scale = self._screen_scale_24268()
+            if getattr(self,'_game_session',None) is not None:
+                from war3_services.cursor import projection_viewport
+                snapshot,client_size,screen_scale=projection_viewport(self.hwnd,snapshot)
+            else:
+                client_size = self._client_size_24268()
+                screen_scale = self._screen_scale_24268()
             initial = self._mouse_world_from_camera_24268(
                 snapshot, *client_size, screen_scale,
             )
@@ -366,7 +372,7 @@ class UnitsFacade:
 
 
     def move_selected_group_to_mouse(self) -> tuple[int, float, float]:
-        if not getattr(self, "_native_selection_unavailable", False):
+        if not uses_indexed_backend(self):
             # Preserve the 1.0.19 single-callback path for the legacy trainer.
             handler = self._query_native_table_handlers(("SetUnitPosition",))["SetUnitPosition"].handler_address
             result = self._run_native_helper_ops(0, ((

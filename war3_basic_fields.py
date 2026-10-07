@@ -2,51 +2,20 @@
 import math
 import struct
 
-# Key -> (property kind, value offset, UnitCandidate address member)
-FIELDS = {
-    "hp_current": (1, 0xD0, "hp_current_address"),
-    "hp_max": (1, 0xE0, "hp_max_address"),
-    "hp_regen": (1, 0xD4, "hp_regen_address"),
-    "mp_current": (2, 0xD0, "mp_current_address"),
-    "mp_max": (2, 0xE0, "mp_max_address"),
-    "mp_regen": (2, 0xD4, "mp_regen_address"),
-    "x": (-1, 0xD0, "x_address"),
-    "y": (-1, 0xD4, "y_address"),
-}
+from war3_adapter_properties import BasicFieldCatalog
+
+# Compatibility catalog; offsets are resolved from the active profile.
+FIELDS = BasicFieldCatalog()
 REAL_TAG = 0x6072656C5E70726F
 POSITION_TAG = 0x607063755E70726F
 
 
 def property_snapshot(memory, registry, candidate):
-    owner, unit = candidate.owner_address, candidate.unit_address
-    if registry.resolve_unit(memory, unit) != (candidate.handle, owner):
-        raise RuntimeError("Basic field unit identity changed")
-    descriptor = memory.read(owner + 0xA0, 0x30)
-    array, capacity, mirror, mirror_capacity, stride, slots, count = struct.unpack_from("<QQQQIII", descriptor)
-    if (not 0x10000 <= array < 0x800000000000 or array % 8
-            or not 0 < capacity <= 0x4000 or capacity != slots * 8
-            or mirror != array or mirror_capacity != capacity or stride != 8
-            or not 0 < count <= slots):
-        raise RuntimeError("Basic field property list is invalid")
-    pointers = memory.read(array, count * 8)
-    properties = {}
-    for prop in struct.unpack(f"<{count}Q", pointers):
-        if not 0x10000 <= prop < 0x800000000000 or prop % 8:
-            raise RuntimeError("Basic field property pointer is invalid")
-        tag = memory.read_u64(prop + 0x18)
-        if tag not in (REAL_TAG, POSITION_TAG):
-            continue
-        kind = -1 if tag == POSITION_TAG else memory.read_u32(prop + 0x7C)
-        if kind not in (-1, 1, 2):
-            continue
-        if memory.read_u64(prop + 0x50) != owner or kind in properties:
-            raise RuntimeError("Basic field property ownership is inconsistent")
-        properties[kind] = (prop, memory.read_u64(prop + 0x20), tag)
-    if (memory.read(owner + 0xA0, 0x30) != descriptor
-            or memory.read(array, count * 8) != pointers
-            or registry.resolve_unit(memory, unit) != (candidate.handle, owner)):
-        raise RuntimeError("Basic field property list changed while reading")
-    return descriptor, pointers, properties
+    from war3_game_profile import current_profile
+    profile = getattr(registry, "profile", None) or current_profile()
+    return profile.adapter.properties.property_snapshot(
+        memory, registry, candidate, REAL_TAG, POSITION_TAG,
+    )
 
 
 def write_basic_fields(memory, registry, candidate, requested):
@@ -56,6 +25,9 @@ def write_basic_fields(memory, registry, candidate, requested):
         raise ValueError("Invalid basic field request")
     if not values:
         return {}
+    from war3_game_profile import current_profile
+    profile = getattr(registry, "profile", None) or current_profile()
+    adapter = profile.adapter.properties
     snapshot = property_snapshot(memory, registry, candidate)
     properties = snapshot[2]
 
@@ -63,7 +35,7 @@ def write_basic_fields(memory, registry, candidate, requested):
         kind, offset, attribute = FIELDS[key]
         if kind not in properties:
             raise RuntimeError("Unit has no property for field: " + key)
-        result = properties[kind][0] + offset
+        result = adapter.basic_value_address(properties[kind][0], key)
         if result != getattr(candidate, attribute):
             raise RuntimeError("Basic field address changed: " + key)
         return result

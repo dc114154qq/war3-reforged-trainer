@@ -20,23 +20,8 @@ class SelectionFacade:
 
 
     def _iter_owner_property_list(self, pm: ProcessMemory, owner: int) -> Iterable[int]:
-        for list_offset, size_offset in ((0xA0, 0xA8), (0xB0, 0xB8)):
-            try:
-                list_address = pm.read_u64(owner + list_offset)
-                size_bytes = pm.read_u64(owner + size_offset)
-            except OSError:
-                continue
-            if not self._sane_heap_ptr(list_address):
-                continue
-            if not 0 < size_bytes <= 0x400:
-                size_bytes = 0x100
-            for entry_offset in range(0, int(size_bytes), 8):
-                try:
-                    prop = pm.read_u64(list_address + entry_offset)
-                except OSError:
-                    continue
-                if self._sane_heap_ptr(prop):
-                    yield prop
+        from war3_game_profile import current_profile
+        return current_profile().adapter.legacy._iter_owner_property_list(self, pm, owner)
 
 
     def _property_from_owner(self, pm: ProcessMemory, owner: int, kind: int) -> int | None:
@@ -48,42 +33,13 @@ class SelectionFacade:
 
 
     def _owner_properties(self, pm: ProcessMemory, owner: int) -> dict[int, int]:
-        owner = int(owner)
-        # Property membership can change without changing the owner address.
-        # Read its bounded pointer lists; never reuse another read's mapping.
-        properties: dict[int, int] = {}
-        seen: set[int] = set()
-        for prop in self._iter_owner_property_list(pm, owner):
-            if prop in seen:
-                continue
-            seen.add(prop)
-            try:
-                tag = pm.read_u64(prop + 0x18)
-                if pm.read_u64(prop + 0x50) != owner:
-                    continue
-                if tag == self.PROP_TAG:
-                    prop_kind = (pm.read_u64(prop + 0x78) >> 32) & 0xFFFFFFFF
-                    properties.setdefault(int(prop_kind), prop)
-                elif tag == self.POSITION_PROP_TAG:
-                    properties.setdefault(-1, prop)
-            except OSError:
-                continue
-        return properties
+        from war3_game_profile import current_profile
+        return current_profile().adapter.legacy._owner_properties(self, pm, owner)
 
 
     def _unit_object_from_owner(self, pm: ProcessMemory, owner: int, handle: int) -> int:
-        try:
-            unit = pm.read_u64(owner + 0x90)
-        except OSError:
-            return 0
-        if not self._sane_heap_ptr(unit):
-            return 0
-        try:
-            if handle and pm.read_u64(unit + 0x18) != handle:
-                return 0
-        except OSError:
-            return 0
-        return unit
+        from war3_game_profile import current_profile
+        return current_profile().adapter.legacy._unit_object_from_owner(self, pm, owner, handle)
 
 
     @staticmethod
@@ -105,76 +61,8 @@ class SelectionFacade:
         selection_source: str = "",
         selection_slot_address: int = 0,
     ) -> UnitCandidate | None:
-        hp_prop = self._property_from_owner(pm, owner, 1)
-        if hp_prop is None:
-            return None
-        hp_current_address = hp_prop + self.SELECTED_HP_VALUE_OFFSET
-        hp_regen_address = hp_current_address + 0x04
-        hp_max_address = hp_current_address + 0x10
-        try:
-            hp_current = pm.read_f32(hp_current_address)
-            hp_limit = pm.read_f32(hp_max_address)
-        except OSError:
-            return None
-        if not self._valid_current_limit(hp_current, hp_limit):
-            return None
-
-        mp_current_address = 0
-        mp_regen_address = 0
-        mp_max_address = 0
-        mp_prop = self._property_from_owner(pm, owner, 2)
-        if mp_prop is not None:
-            candidate_current = mp_prop + self.SELECTED_HP_VALUE_OFFSET
-            candidate_max = candidate_current + 0x10
-            try:
-                mp_current = pm.read_f32(candidate_current)
-                mp_limit = pm.read_f32(candidate_max)
-            except OSError:
-                mp_current = math.nan
-                mp_limit = math.nan
-            if self._valid_current_limit(mp_current, mp_limit):
-                mp_current_address = candidate_current
-                mp_regen_address = candidate_current + 0x04
-                mp_max_address = candidate_max
-
-        suffix = f" owner=0x{owner:x} hp_kind=1"
-        if mp_current_address:
-            suffix += " mp_kind=2"
-        else:
-            suffix += " mp_kind=missing"
-        position_property = self._position_property_from_owner(pm, owner) or 0
-        x_address = position_property + 0xD0 if position_property else 0
-        y_address = position_property + 0xD4 if position_property else 0
-        if position_property:
-            suffix += " pos=prop^ucp"
-        unit_address = self._unit_object_from_owner(pm, owner, handle)
-        unit_type_id = 0
-        if unit_address:
-            suffix += f" unit=0x{unit_address:x}"
-            try:
-                unit_type_id = pm.read_u32(unit_address + 0x70)
-            except (OSError, AttributeError):
-                unit_type_id = 0
-        return UnitCandidate(
-            base=hp_prop,
-            score=score,
-            hp_current_address=hp_current_address,
-            hp_max_address=hp_max_address,
-            mp_current_address=mp_current_address,
-            mp_max_address=mp_max_address,
-            note=note + suffix,
-            hp_regen_address=hp_regen_address,
-            mp_regen_address=mp_regen_address,
-            owner_address=owner,
-            handle=handle,
-            unit_address=unit_address,
-            unit_type_id=unit_type_id,
-            x_address=x_address,
-            y_address=y_address,
-            position_property_address=position_property,
-            selection_source=selection_source,
-            selection_slot_address=selection_slot_address,
-        )
+        from war3_game_profile import current_profile
+        return current_profile().adapter.legacy._candidate_from_owner(self, pm, owner, score, note, handle, selection_source, selection_slot_address)
 
 
     def _unit_owner_index_from_tag_addresses(
@@ -182,25 +70,8 @@ class SelectionFacade:
         pm: ProcessMemory,
         tag_addresses: Iterable[int],
     ) -> dict[int, int]:
-        index: dict[int, int] = {}
-        for tag_address in tag_addresses:
-            owner = tag_address - 0x18
-            try:
-                vtable = pm.read_u64(owner)
-                handle = pm.read_u64(owner + 0x20)
-                list_address = pm.read_u64(owner + 0xA0)
-            except OSError:
-                continue
-            if not self._looks_like_vtable(vtable):
-                continue
-            if not self._looks_like_unit_handle(handle):
-                continue
-            if not self._sane_heap_ptr(list_address):
-                continue
-            if self._property_from_owner(pm, owner, 1) is None:
-                continue
-            index[handle] = owner
-        return index
+        from war3_game_profile import current_profile
+        return current_profile().adapter.legacy._unit_owner_index_from_tag_addresses(self, pm, tag_addresses)
 
 
     def _build_unit_owner_index(self, pm: ProcessMemory) -> dict[int, int]:
@@ -219,62 +90,13 @@ class SelectionFacade:
 
 
     def _owner_for_handle(self, pm: ProcessMemory, handle: int) -> int | None:
-        index = self._unit_owner_index
-        owner = index.get(handle)
-        if owner is not None:
-            try:
-                if pm.read_u64(owner + 0x20) == handle and self._property_from_owner(pm, owner, 1):
-                    return owner
-            except OSError:
-                pass
-        index = self._build_unit_owner_index(pm)
-        return index.get(handle)
+        from war3_game_profile import current_profile
+        return current_profile().adapter.legacy._owner_for_handle(self, pm, handle)
 
 
     def _owner_for_unit_pointer(self, pm: ProcessMemory, unit: int, handle: int) -> int | None:
-        if not self._sane_heap_ptr(unit) or not self._looks_like_unit_handle(handle):
-            return None
-
-        indexed = self._unit_owner_index.get(handle)
-        if indexed is not None:
-            try:
-                if pm.read_u64(indexed + 0x20) == handle and pm.read_u64(indexed + 0x90) == unit:
-                    return indexed
-            except OSError:
-                pass
-
-        pattern = struct.pack("<Q", unit)
-        start_address = unit - self.UNIT_OWNER_POINTER_SEARCH_RADIUS
-        end_address = unit + self.UNIT_OWNER_POINTER_SEARCH_RADIUS
-        for region in pm.regions():
-            if region.typ != MEM_PRIVATE or region.size > 1024 * 1024:
-                continue
-            if region.base + region.size < start_address or region.base > end_address:
-                continue
-            try:
-                data = pm.read(region.base, region.size)
-            except OSError:
-                continue
-            start = 0
-            while True:
-                hit = data.find(pattern, start)
-                if hit < 0:
-                    break
-                owner = region.base + hit - 0x90
-                try:
-                    if (
-                        self._looks_like_vtable(pm.read_u64(owner))
-                        and pm.read_u64(owner + 0x18) == self.UNIT_OWNER_TAG
-                        and pm.read_u64(owner + 0x20) == handle
-                        and pm.read_u64(owner + 0x90) == unit
-                        and self._property_from_owner(pm, owner, 1) is not None
-                    ):
-                        self._unit_owner_index[handle] = owner
-                        return owner
-                except OSError:
-                    pass
-                start = hit + 1
-        return None
+        from war3_game_profile import current_profile
+        return current_profile().adapter.legacy._owner_for_unit_pointer(self, pm, unit, handle)
 
 
     def _owner_for_unit_pointer_win10(
@@ -283,58 +105,8 @@ class SelectionFacade:
         unit: int,
         handle: int,
     ) -> int | None:
-        owner = self._owner_for_unit_pointer(pm, unit, handle)
-        if owner is not None:
-            return owner
-
-        pattern = struct.pack("<Q", unit)
-        start_address = unit - self.UNIT_OWNER_POINTER_SEARCH_RADIUS
-        end_address = unit + self.UNIT_OWNER_POINTER_SEARCH_RADIUS
-        for region in pm.regions():
-            if region.typ != MEM_PRIVATE or region.size > 64 * 1024 * 1024:
-                continue
-            if region.base + region.size < start_address or region.base > end_address:
-                continue
-            for block_address, data in self._iter_readable_blocks_win10(
-                pm,
-                region.base,
-                region.size,
-            ):
-                start = 0
-                while True:
-                    hit = data.find(pattern, start)
-                    if hit < 0:
-                        break
-                    candidate_owner = block_address + hit - 0x90
-                    try:
-                        if (
-                            self._looks_like_vtable(pm.read_u64(candidate_owner))
-                            and pm.read_u64(candidate_owner + 0x18) == self.UNIT_OWNER_TAG
-                            and pm.read_u64(candidate_owner + 0x20) == handle
-                            and pm.read_u64(candidate_owner + 0x90) == unit
-                            and self._property_from_owner(pm, candidate_owner, 1) is not None
-                        ):
-                            self._unit_owner_index[handle] = candidate_owner
-                            return candidate_owner
-                    except OSError:
-                        pass
-                    start = hit + 1
-
-        tag_addresses = self._scan_bytes_private_win10(
-            pm,
-            struct.pack("<Q", self.UNIT_OWNER_TAG),
-        )
-        broad_index = self._unit_owner_index_from_tag_addresses(pm, tag_addresses)
-        self._unit_owner_index.update(broad_index)
-        owner = broad_index.get(handle)
-        if owner is None:
-            return None
-        try:
-            if pm.read_u64(owner + 0x90) != unit:
-                return None
-        except OSError:
-            return None
-        return owner
+        from war3_game_profile import current_profile
+        return current_profile().adapter.legacy._owner_for_unit_pointer_win10(self, pm, unit, handle)
 
 
     def _build_unit_object_index(self, pm: ProcessMemory, force_refresh: bool = False) -> dict[int, tuple[int, int]]:
@@ -358,21 +130,8 @@ class SelectionFacade:
 
 
     def _score_selected_handle_address(self, pm: ProcessMemory, address: int, handle: int, owner: int) -> int:
-        if owner <= address < owner + 0x200:
-            return -1000
-        score = 0
-        if 0x8000000000 <= address <= 0xFFFFFFFFFF:
-            score += 120
-        try:
-            if pm.read_u64(address + 0x5F) == handle:
-                score += 35
-            if pm.read_u64(address + 0x6D) == handle:
-                score += 35
-        except OSError:
-            pass
-        if address % 4 == 0:
-            score += 5
-        return score
+        from war3_game_profile import current_profile
+        return current_profile().adapter.legacy._score_selected_handle_address(self, pm, address, handle, owner)
 
 
     def _remember_selected_handle_addresses(self, pm: ProcessMemory, handle: int, owner: int) -> None:
@@ -739,32 +498,8 @@ class SelectionFacade:
         pm: ProcessMemory,
         list_base: int,
     ) -> list[tuple[int, int]]:
-        try:
-            root = pm.read_u64(list_base + 0x18)
-            count = pm.read_u32(list_base + 0x20)
-        except OSError:
-            return []
-        if not 0 < count <= self.SELECTION_MANAGER_MAX_UNITS:
-            return []
-        if (root & 1) or not self._sane_heap_ptr(root):
-            return []
-
-        out: list[tuple[int, int]] = []
-        node = root
-        seen: set[int] = set()
-        for _index in range(int(count)):
-            if (node & 1) or not self._sane_heap_ptr(node) or node in seen:
-                break
-            seen.add(node)
-            try:
-                next_node = pm.read_u64(node + 0x08)
-                unit = pm.read_u64(node + 0x10)
-            except OSError:
-                break
-            if self._sane_heap_ptr(unit):
-                out.append((unit, node + 0x10))
-            node = next_node
-        return out
+        from war3_game_profile import current_profile
+        return current_profile().adapter.legacy._selection_manager_unit_slots(self, pm, list_base)
 
 
     def _remember_selection_player_from_resource_owner(
@@ -773,6 +508,8 @@ class SelectionFacade:
         resource_owner: int,
         resource_caches: Iterable[ResourceCache],
     ) -> None:
+        from war3_game_profile import current_profile
+        _al = current_profile().section("layouts")
         if not self._sane_heap_ptr(resource_owner):
             return
         players_by_owner: dict[int, int] = {}
@@ -781,7 +518,7 @@ class SelectionFacade:
             if not self._sane_heap_ptr(owner) or owner in players_by_owner:
                 continue
             try:
-                player = pm.read_u64(owner + 0x90)
+                player = pm.read_u64(owner + _al["component_list"]["data"])
                 vtable = pm.read_u64(player)
                 selection_manager = pm.read_u64(player + self._selection_manager_offset)
             except OSError:
@@ -800,6 +537,8 @@ class SelectionFacade:
 
 
     def _selection_player_pointer_candidates(self, pm: ProcessMemory, discover: bool = True) -> list[int]:
+        from war3_game_profile import current_profile
+        _al = current_profile().section("layouts")
         candidates: list[int] = []
         seen: set[int] = set()
 
@@ -817,7 +556,7 @@ class SelectionFacade:
         discovered_from_player_components = False
         tag = struct.pack("<Q", self.PLAYER_COMPONENT_TAG)
         for tag_address in pm.scan_bytes_private(tag, max_region_size=1024 * 1024):
-            owner = tag_address - 0x18
+            owner = tag_address - _al["component_list"]["tag"]
             for offset in (0x90, 0x88):
                 try:
                     value = pm.read_u64(owner + offset)
@@ -864,6 +603,8 @@ class SelectionFacade:
         discover: bool,
         scan_components: bool,
     ) -> list[int]:
+        from war3_game_profile import current_profile
+        _al = current_profile().section("layouts")
         candidates: list[int] = []
         seen: set[int] = set()
         stats = {
@@ -911,7 +652,7 @@ class SelectionFacade:
                 stats["rejected_manager"] += 1
                 return
             if not any(
-                pm.is_readable_range(selection_manager + list_offset + 0x18, 0x0C)
+                pm.is_readable_range(selection_manager + list_offset + _al["component_list"]["tag"], 0x0C)
                 for list_offset in self._selection_list_offsets
             ):
                 stats["rejected_unreadable"] += 1
@@ -963,7 +704,7 @@ class SelectionFacade:
             )
             stats["component_tags"] = len(tag_addresses)
             for tag_address in tag_addresses:
-                owner = tag_address - 0x18
+                owner = tag_address - _al["component_list"]["tag"]
                 if not self._sane_heap_ptr(owner) or not pm.is_readable_range(owner, 8):
                     stats["rejected_unreadable"] += 1
                     continue
@@ -1005,10 +746,12 @@ class SelectionFacade:
         score: int,
         selection_slot_address: int,
     ) -> UnitCandidate | None:
-        if not self._sane_heap_ptr(unit) or not pm.is_readable_range(unit + 0x18, 8):
+        from war3_game_profile import current_profile
+        _al = current_profile().section("layouts")
+        if not self._sane_heap_ptr(unit) or not pm.is_readable_range(unit + _al["unit"]["full_handle"], 8):
             return None
         try:
-            handle = pm.read_u64(unit + 0x18)
+            handle = pm.read_u64(unit + _al["unit"]["full_handle"])
         except OSError:
             return None
         if not self._looks_like_unit_handle(handle):
@@ -1034,6 +777,8 @@ class SelectionFacade:
         pm: Win10ProcessMemory,
         player: int,
     ) -> UnitCandidate | None:
+        from war3_game_profile import current_profile
+        _al = current_profile().section("layouts")
         manager_field = player + self._selection_manager_offset
         if not pm.is_readable_range(manager_field, 8):
             return None
@@ -1046,7 +791,7 @@ class SelectionFacade:
 
         for list_offset in self._selection_list_offsets:
             list_base = selection_manager + list_offset
-            if not pm.is_readable_range(list_base + 0x18, 0x0C):
+            if not pm.is_readable_range(list_base + _al["selection"]["manager_list"], _al["selection"]["header_span"]):
                 continue
             for unit, slot_address in self._selection_manager_unit_slots(pm, list_base):
                 candidate = self._candidate_from_selected_unit_pointer_win10(
@@ -1126,10 +871,12 @@ class SelectionFacade:
         score: int,
         selection_slot_address: int,
     ) -> UnitCandidate | None:
+        from war3_game_profile import current_profile
+        _al = current_profile().section("layouts")
         if not self._sane_heap_ptr(unit):
             return None
         try:
-            handle = pm.read_u64(unit + 0x18)
+            handle = pm.read_u64(unit + _al["unit"]["full_handle"])
         except OSError:
             return None
         if not self._looks_like_unit_handle(handle):
@@ -1177,70 +924,19 @@ class SelectionFacade:
 
     @staticmethod
     def _selection_manager_offsets_from_code(code: bytes) -> list[int]:
-        offsets: list[int] = []
-        for index in range(0, max(0, len(code) - 6)):
-            if code[index : index + 2] != b"\x48\x8b":
-                continue
-            # mov r64, qword ptr [rax + disp32], used after player-handle resolver.
-            if code[index + 2] not in {0x88, 0x98}:
-                continue
-            disp = struct.unpack_from("<I", code, index + 3)[0]
-            if 0x40 <= disp <= 0x800 and disp not in offsets:
-                offsets.append(disp)
-        return offsets
+        from war3_game_profile import current_profile
+        return current_profile().adapter.legacy._selection_manager_offsets_from_code(code)
 
 
     @staticmethod
     def _selection_list_offsets_from_code(code: bytes) -> list[int]:
-        offsets: list[int] = [0]
-        for index in range(0, max(0, len(code) - 6)):
-            # add rcx, disp32
-            if code[index : index + 3] != b"\x48\x81\xc1":
-                continue
-            disp = struct.unpack_from("<I", code, index + 3)[0]
-            if 0 < disp <= 0x1000 and disp not in offsets:
-                offsets.append(disp)
-        return offsets
+        from war3_game_profile import current_profile
+        return current_profile().adapter.legacy._selection_list_offsets_from_code(code)
 
 
     def _discover_native_selection_layout(self, pm: ProcessMemory) -> tuple[int, int, int, dict[str, NativeHandler]]:
-        handlers = self._discover_native_handlers(pm, self.NATIVE_SELECTION_HANDLER_NAMES)
-        manager_votes: dict[int, int] = {}
-        for handler in handlers.values():
-            try:
-                code = pm.read(handler.handler_address, 0x240)
-            except OSError:
-                continue
-            for offset in self._selection_manager_offsets_from_code(code):
-                manager_votes[offset] = manager_votes.get(offset, 0) + 1
-        if not manager_votes:
-            raise RuntimeError("native selection handler 中没有找到 CPlayer selection manager 偏移")
-        selection_manager_offset = max(
-            manager_votes,
-            key=lambda offset: (manager_votes[offset], offset == self.CPLAYER_SELECTION_MANAGER_OFFSET),
-        )
-
-        list_offsets: list[int] = [0]
-        for call in self._rel32_calls_in_function(pm, handlers["IsUnitSelected"].handler_address, max_bytes=0x120):
-            try:
-                code = pm.read(call, 0x80)
-            except OSError:
-                continue
-            for offset in self._selection_list_offsets_from_code(code):
-                if offset not in list_offsets:
-                    list_offsets.append(offset)
-            for jump in self._rel32_jumps_in_function(pm, call, max_bytes=0x80):
-                try:
-                    jump_code = pm.read(jump, 0x80)
-                except OSError:
-                    continue
-                for offset in self._selection_list_offsets_from_code(jump_code):
-                    if offset not in list_offsets:
-                        list_offsets.append(offset)
-        alternate = self.SELECTION_MANAGER_ALT_LIST_OFFSET
-        if alternate not in list_offsets:
-            alternate = next((offset for offset in list_offsets if offset), self.SELECTION_MANAGER_ALT_LIST_OFFSET)
-        return selection_manager_offset, 0, alternate, handlers
+        from war3_game_profile import current_profile
+        return current_profile().adapter.legacy._discover_native_selection_layout(self, pm)
 
 
     def _prepare_win10_selection_layout(
@@ -1448,16 +1144,8 @@ class SelectionFacade:
 
 
     def _read_selected_unit_type_id(self, pm: ProcessMemory, candidate: UnitCandidate) -> int:
-        native = self._native_snapshot_for_candidate(candidate)
-        if native is not None:
-            return native.type_id
-        if not candidate.unit_address:
-            return 0
-        primary = pm.read_u32(candidate.unit_address + 0x70)
-        mirror = pm.read_u32(candidate.unit_address + 0x178)
-        if primary != mirror or not self._looks_like_item_rawcode(primary):
-            return 0
-        return primary
+        from war3_game_profile import current_profile
+        return current_profile().adapter.legacy._read_selected_unit_type_id(self, pm, candidate)
 
 
     def _candidate_with_selected_unit_type_id(
@@ -1482,6 +1170,8 @@ class SelectionFacade:
         player_handle: int,
         unit_index: dict[int, tuple[int, int]] | None = None,
     ) -> UnitCandidate | None:
+        from war3_game_profile import current_profile
+        _al = current_profile().section("layouts")
         note = f"jass_selected unit=0x{unit_value:x} handle_id=0x{handle_id:x} player=0x{player_handle:x}"
         if unit_index is None:
             unit_index = self._build_unit_object_index(pm, force_refresh=True)
@@ -1501,7 +1191,7 @@ class SelectionFacade:
 
         if self._sane_heap_ptr(unit_value):
             try:
-                nested_handle = pm.read_u64(unit_value + 0x18)
+                nested_handle = pm.read_u64(unit_value + _al["unit"]["full_handle"])
             except OSError:
                 nested_handle = 0
             if self._looks_like_unit_handle(nested_handle):
@@ -1551,6 +1241,8 @@ class SelectionFacade:
         player_handle: int,
         unit_index: dict[int, tuple[int, int]] | None = None,
     ) -> UnitCandidate | None:
+        from war3_game_profile import current_profile
+        _al = current_profile().section("layouts")
         note = (
             f"win10_jass_selected unit=0x{unit_value:x} "
             f"handle_id=0x{handle_id:x} player=0x{player_handle:x}"
@@ -1587,7 +1279,7 @@ class SelectionFacade:
 
         if self._sane_heap_ptr(unit_value):
             try:
-                nested_handle = pm.read_u64(unit_value + 0x18)
+                nested_handle = pm.read_u64(unit_value + _al["unit"]["full_handle"])
             except OSError:
                 nested_handle = 0
             owner = self._unit_owner_index.get(nested_handle)
@@ -2014,17 +1706,34 @@ class SelectionFacade:
         score: int = 0,
         selection_slot_address: int = 0,
     ) -> UnitCandidate | None:
+        self._last_selection_candidate_failure = {}
         try:
-            if pm.read_u64(owner + 0x20) != handle:
-                return None
-            if pm.read_u64(owner + 0x90) != unit:
-                return None
-            if pm.read_u64(unit + 0x18) != handle:
-                return None
-        except OSError:
+            from war3_game_profile import current_profile
+            layout = current_profile().section("registry")
+            for address, expected, stage in (
+                (owner + layout["owner_handle"], handle, "owner_handle"),
+                (owner + layout["owner_data"], unit, "owner_unit"),
+                (unit + layout["object_handle"], handle, "unit_handle"),
+            ):
+                actual = pm.read_u64(address)
+                if actual != expected:
+                    self._last_selection_candidate_failure = {
+                        "stage": stage, "address": address, "expected": expected, "actual": actual,
+                    }
+                    return None
+        except OSError as exc:
+            self._last_selection_candidate_failure = {
+                "stage": "identity_unreadable", "owner": owner, "unit": unit,
+                "winerror": getattr(exc, "winerror", None),
+            }
             return None
         candidate = self._candidate_from_owner(pm, owner, score, note, handle, "memory", selection_slot_address)
-        if candidate is None or candidate.unit_address != unit:
+        if candidate is None:
+            return None
+        if candidate.unit_address != unit:
+            self._last_selection_candidate_failure = {
+                "stage": "unit_changed", "expected": unit, "actual": candidate.unit_address,
+            }
             return None
         return candidate
 
@@ -2037,7 +1746,7 @@ class SelectionFacade:
         # JASS handle. This also works after the selection cache was replaced.
         if not handle or not owner or not unit:
             return None
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             from war3_object_registry import ObjectRegistry24268
             close_pm = pm is None
             memory = pm or self._process_memory()
@@ -2178,7 +1887,7 @@ class SelectionFacade:
     ) -> list[UnitSelectionSummary]:
         # Remembered identities need their own bound snapshot after selection
         # changes; resolving them from external addresses loses that binding.
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             with self._process_memory() as memory:
                 selected = self._classic_selection_candidates(memory)
                 summaries = list(self._selected_summaries_from_snapshot(memory, selected))
@@ -2315,45 +2024,8 @@ class SelectionFacade:
         pm: ProcessMemory,
         owner: int,
     ) -> Iterable[tuple[str, int, int]]:
-        start = owner - self.COMPONENT_WRAPPER_SCAN_BACK
-        end = owner + self.COMPONENT_WRAPPER_SCAN_FORWARD
-        for region in pm.regions():
-            region_start = max(start, region.base)
-            region_end = min(end, region.base + region.size)
-            if region_end <= region_start:
-                continue
-            try:
-                block = pm.read(region_start, region_end - region_start)
-            except OSError:
-                continue
-            for tag, name in self.COMPONENT_NAMES.items():
-                pattern = struct.pack("<Q", tag)
-                search = 0
-                while True:
-                    index = block.find(pattern, search)
-                    if index < 0:
-                        break
-                    search = index + 1
-                    wrapper = region_start + index - 0x18
-                    if wrapper < start or wrapper >= end:
-                        continue
-                    try:
-                        vtable = pm.read_u64(wrapper)
-                        wrapper_owner = pm.read_u64(wrapper + 0x50)
-                        data = pm.read_u64(wrapper + 0x90)
-                    except OSError:
-                        continue
-                    if wrapper_owner != owner:
-                        continue
-                    if not self._looks_like_vtable(vtable) or not self._sane_heap_ptr(data):
-                        continue
-                    try:
-                        data_vtable = pm.read_u64(data)
-                    except OSError:
-                        continue
-                    if not self._looks_like_vtable(data_vtable):
-                        continue
-                    yield name, wrapper, data
+        from war3_game_profile import current_profile
+        return current_profile().adapter.legacy._iter_owner_component_wrappers(self, pm, owner)
 
 
     def _iter_indexed_owner_component_wrappers(
@@ -2361,14 +2033,8 @@ class SelectionFacade:
         pm: ProcessMemory,
         owner: int,
     ) -> Iterable[tuple[str, int, int]]:
-        from war3_object_registry import ObjectRegistry24268
-        from war3_unit_components import read_unit_components
-        if not owner:
-            return
-        registry = self._classic_object_registry or ObjectRegistry24268.attach(pm)
-        self._classic_object_registry = registry
-        for name, (wrapper, data) in read_unit_components(pm, registry, owner, self.COMPONENT_NAMES).items():
-            yield name, wrapper, data
+        from war3_game_profile import current_profile
+        return current_profile().adapter.legacy._iter_indexed_owner_component_wrappers(self, pm, owner)
 
 
     def _components_from_unit_object(
@@ -2376,42 +2042,13 @@ class SelectionFacade:
         pm: ProcessMemory,
         owner: int,
     ) -> dict[str, tuple[int, int]]:
-        identity = self._owner_component_identity(pm, owner)
-        if identity is None:
-            return {}
-        _owner, _handle, unit = identity
-
-        components: dict[str, tuple[int, int]] = {}
-        for name, offset in self.UNIT_COMPONENT_DATA_OFFSETS.items():
-            try:
-                data = pm.read_u64(unit + offset)
-                data_vtable = pm.read_u64(data) if self._sane_heap_ptr(data) else 0
-            except OSError:
-                continue
-            if self._looks_like_vtable(data_vtable):
-                components[name] = (0, data)
-        return components
+        from war3_game_profile import current_profile
+        return current_profile().adapter.legacy._components_from_unit_object(self, pm, owner)
 
 
     def _unit_component_layout_matches_process(self, pm: ProcessMemory) -> bool:
-        if self._unit_component_layout_confirmed:
-            return True
-        found_names: set[str] = set()
-        for owner in self._unit_owner_index.values():
-            direct = self._components_from_unit_object(pm, owner)
-            if not direct:
-                continue
-            wrappers = {
-                name: (wrapper, data)
-                for name, wrapper, data in self._iter_owner_component_wrappers(pm, owner)
-            }
-            for name, (_wrapper, data) in direct.items():
-                if wrappers.get(name, (0, 0))[1] == data:
-                    found_names.add(name)
-            if len(found_names) >= 2:
-                self._unit_component_layout_confirmed = True
-                return True
-        return False
+        from war3_game_profile import current_profile
+        return current_profile().adapter.legacy._unit_component_layout_matches_process(self, pm)
 
 
     def _owner_component_identity(
@@ -2419,13 +2056,5 @@ class SelectionFacade:
         pm: ProcessMemory,
         owner: int,
     ) -> tuple[int, int, int] | None:
-        try:
-            if pm.read_u64(owner + 0x18) != self.UNIT_OWNER_TAG:
-                return None
-            handle = pm.read_u64(owner + 0x20)
-            unit = pm.read_u64(owner + 0x90)
-            if not self._sane_heap_ptr(unit) or pm.read_u64(unit + 0x18) != handle:
-                return None
-        except OSError:
-            return None
-        return owner, handle, unit
+        from war3_game_profile import current_profile
+        return current_profile().adapter.legacy._owner_component_identity(self, pm, owner)

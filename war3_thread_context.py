@@ -63,7 +63,13 @@ def verify_context_code(memory, game_base):
     for attempt in range(3):
         try:
             for rva, code in current_profile().checks("context"):
-                if _read(memory, game_base + rva, len(code)) != code:
+                try:
+                    observed = _read(memory, game_base + rva, len(code))
+                except OSError as exc:
+                    if current_profile().adapter.components.allows_unreadable_code_check("context", exc):
+                        continue
+                    raise
+                if observed != code:
                     raise ObjectIdentityError("Game context accessor differs from verified profile")
             return
         except OSError as exc:
@@ -169,7 +175,10 @@ class GameThreadContext24268:
             return None
         return value, index, tls, context, mode_object
 
-    def read_mode(self, memory, timeout_ms=250):
+    def read_mode(self, memory, timeout_ms=None):
+        if timeout_ms is None:
+            profile = getattr(self, "profile", current_profile())
+            timeout_ms = profile.adapter.components.frame_context_timeout_ms()
         if self._window_thread() != self.tid:
             raise ObjectIdentityError("Game window thread changed; reconnect required")
         start = time.perf_counter()

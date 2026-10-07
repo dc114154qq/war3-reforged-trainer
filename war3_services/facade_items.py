@@ -12,7 +12,7 @@ class ItemsFacade:
         item_limit = int(limit)
         if not 0 <= item_limit <= 100000:
             raise ValueError("创建物品测试上限必须在 0 到 100000 之间")
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             from war3_casc_catalog_24268 import ITEM_RAWCODES
             from war3_item_catalog_protocol import ACTION_CREATE_LIST
             rawcodes = tuple(int.from_bytes(rawcode.encode("ascii"), "big") for rawcode in ITEM_RAWCODES)
@@ -78,7 +78,7 @@ class ItemsFacade:
         handles = tuple(int(handle) for handle in item_handles if int(handle))
         if not handles:
             return 0
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             from war3_item_catalog_protocol import ACTION_REMOVE
             removed = 0
             for start in range(0, len(handles), 100000):
@@ -119,7 +119,7 @@ class ItemsFacade:
         item_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
         if not item_rawcode:
             raise ValueError("物品 ID 无效")
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             result = self.item_batch_24268(1, item_rawcode)
             rows = tuple(result.get("rows", ()))
             if not rows:
@@ -160,7 +160,7 @@ class ItemsFacade:
 
 
     def clear_selected_unit_inventory(self) -> int:
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             return int(self.item_batch_24268(4, 0, -1)["changed"])
         return self._run_bound_inventory_batch(0)
 
@@ -169,20 +169,20 @@ class ItemsFacade:
         target = int(charges)
         if not 1 <= target <= 1_000_000_000:
             raise ValueError("物品数量必须在 1 到 1000000000 之间")
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             result = self.item_batch_24268(2, 0, target)
             return sum(bool(item['handle']) for row in result['rows'] for item in row['after'])
         return self._run_bound_inventory_batch(1, target)
 
 
     def duplicate_selected_inventory_items(self) -> int:
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             return int(self.item_batch_24268(5, 0, -1)["changed"])
         return int(self._run_bound_item_create(0).result)
 
 
     def drop_selected_inventory_items(self) -> int:
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             return int(self.item_batch_24268(6, 0, -1)["changed"])
         return self._run_bound_inventory_batch(2)
 
@@ -204,7 +204,7 @@ class ItemsFacade:
             raise ValueError("物品槽位或物品 ID 无效")
         if len({slot for slot, _rawcode in replacements}) != len(replacements):
             raise ValueError("物品组合包含重复槽位")
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             for slot, rawcode in replacements:
                 result = self.item_batch_24268(7, rawcode, slot)
                 if not result.get("rows") or int(result.get("completed", result.get("count", 0))) != int(result.get("count", 0)):
@@ -511,7 +511,7 @@ class ItemsFacade:
         unit_identity: tuple[int, int, int],
         win10_compat: bool = False,
     ) -> ItemFieldSnapshot:
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             return self._read_selected_item_fields_24268(
                 slot,
                 unit_identity=unit_identity,
@@ -597,7 +597,7 @@ class ItemsFacade:
         unit_identity: tuple[int, int, int],
         win10_compat: bool = False,
     ) -> ItemFieldValue:
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             return self._set_selected_item_field_24268(
                 slot,
                 spec,
@@ -681,16 +681,8 @@ class ItemsFacade:
         if not item.item_address:
             raise RuntimeError(f"物品槽{item.slot}缺少 item 对象地址，不能调用物品数量 native handler")
         handlers = self._discover_native_handlers(pm, ("SetItemCharges",))
-        set_charges_handler = handlers["SetItemCharges"].handler_address
-        jumps = self._rel32_jumps_in_function(pm, set_charges_handler)
-        notify_candidates = {
-            target
-            for target in jumps
-            if jumps.count(target) >= 2
-        }
-        if len(notify_candidates) != 1:
-            raise RuntimeError("未能从 SetItemCharges handler 中唯一定位物品数量通知函数")
-        notify_handler = next(iter(notify_candidates))
+        from war3_game_profile import current_profile
+        notify_handler = current_profile().adapter.legacy._item_charge_notifier(self, pm, handlers)
         self._run_native_helper_ops(
             candidate.unit_address,
             (
@@ -739,43 +731,10 @@ class ItemsFacade:
                 "UnitRemoveItem",
             ),
         )
-        item_in_slot_calls = self._rel32_calls_in_function(
-            pm,
-            handlers["UnitItemInSlot"].handler_address,
-            max_bytes=0x80,
-        )
-        add_item_calls = self._rel32_calls_in_function(
-            pm,
-            handlers["UnitAddItemToSlotById"].handler_address,
-            max_bytes=0x180,
-        )
-        add_by_id_calls = self._rel32_calls_in_function(
-            pm,
-            handlers["UnitAddItemById"].handler_address,
-            max_bytes=0x120,
-        )
-        remove_item_calls = self._rel32_calls_in_function(
-            pm,
-            handlers["UnitRemoveItem"].handler_address,
-            max_bytes=0x80,
-        )
-        if len(item_in_slot_calls) < 3 or len(add_item_calls) != 8 or len(add_by_id_calls) < 8 or len(remove_item_calls) < 4:
-            raise RuntimeError("未能从物品 native handler 中定位内部物品栏函数")
-        item_in_slot_internal = item_in_slot_calls[2]
-        add_exact_slot_internal = add_item_calls[-1]
-        create_item_internal = add_by_id_calls[2]
-        if add_item_calls[2] != create_item_internal:
-            raise RuntimeError("物品创建函数交叉校验失败")
-        remove_item_internal = remove_item_calls[3]
-        regions = pm.regions()
-        for name, address in (
-            ("item_in_slot", item_in_slot_internal),
-            ("create_item", create_item_internal),
-            ("add_exact_slot", add_exact_slot_internal),
-            ("remove_item", remove_item_internal),
-        ):
-            if not self._is_executable_image_address(regions, address):
-                raise RuntimeError(f"内部物品栏函数 {name} 地址不可执行：0x{address:x}")
+        from war3_game_profile import current_profile
+        (item_in_slot_internal, create_item_internal,
+         add_exact_slot_internal, remove_item_internal) = (
+            current_profile().adapter.legacy._inventory_native_internals(self, pm, handlers))
         item_ops = (
                 (
                     self.NATIVE_HELPER_OP_REMOVE_ITEM_SLOT,

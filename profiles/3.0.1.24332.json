@@ -1,0 +1,403 @@
+{
+  "schema_version": 5,
+  "bridge_profile_version": 3,
+  "id": "war3-3.0.1.24332-r2",
+  "game_version": "3.0.1.24332",
+  "adapter_version": 7,
+  "status": "validated",
+  "fingerprint": {
+    "machine": 34404,
+    "timestamp": 1791134929,
+    "image_size": 236732416
+  },
+  "addresses": {
+    "registry_root": 50260968,
+    "object_resolver": 1668864,
+    "game_state": 49319216,
+    "tls_index": 50107320,
+    "speed_factor": 5313344,
+    "effective_interval": 5314448,
+    "unit_resolver": 9500608
+  },
+  "module_addresses": {
+    "talent_icon_site": 16904871,
+    "talent_icon_resolver": 1838144
+  },
+  "fog_recovery": {
+    "enable_gate": 1257,
+    "mask_gate": 969,
+    "enabled_gate": 949,
+    "masked_gate": 949,
+    "enable_tail": 3000,
+    "mask_tail": 2264
+  },
+  "stat_runtime": {
+    "cooldown_vtable": 37765528,
+    "amplification_vtable": 37768008,
+    "spell_vamp_vtable": 37770488,
+    "resolve_vtable": 37772936,
+    "flat_flag": 296
+  },
+  "checks": {
+    "resolver": [
+      {
+        "rva": 1668864,
+        "bytes": "8bc1448bcac1e81f84c0752a488b05d574e5023b48307357488b40188bc94803c9833cc8fe7548488b4cc80833c0395124480f44c1c3488b15ab74e5028bc10fbaf01f3b426873274c8b42504803c041833cc0fe75198bc10fbaf01f4803c0498b4cc00833c044394924480f44c1c333c0c3"
+      }
+    ],
+    "game_state": [
+      {
+        "rva": 13502681,
+        "bytes": "488b1d5084220248b9204534ae31c458864803d90f1f00"
+      },
+      {
+        "rva": 13502770,
+        "bytes": "48c1c31e48b8db5c4bbc6ccf762a4833d848c1cb14"
+      },
+      {
+        "rva": 9297200,
+        "bytes": "4883ec2883fa1b761683faff740ab957000000e858ec87ff33c04883c428c33b91c826000073f14863c2488b84c1d02600004883c428c3"
+      }
+    ],
+    "context": [
+      {
+        "rva": 1597045,
+        "bytes": "8b0d3d35e402e8d0a0d301"
+      },
+      {
+        "rva": 1597124,
+        "bytes": "4885c9740b488b44d9204883c4205bc333c04883c4205bc3"
+      },
+      {
+        "rva": 22478112,
+        "bytes": "4883ec28b90d000000e8e260c1fe488b4020488b88b800000083b9e8300000010f94c04883c428c3"
+      }
+    ]
+  },
+  "registry": {
+    "primary": 24,
+    "alternate": 80,
+    "count": 24,
+    "stride": 16,
+    "slot_owner": 8,
+    "owner_handle": 32,
+    "owner_tag": 24,
+    "owner_data": 144,
+    "object_handle": 24,
+    "object_rawcode": 112,
+    "unit_tag": 3132028644191463276,
+    "player_tag": 3130121008697141100,
+    "item_tag": 7598809990834513772,
+    "item_rawcode_mirror": 376
+  },
+  "players": {
+    "count": 9928,
+    "array": 9936,
+    "normal_index": 9804,
+    "alternate_index": 9806,
+    "max_count": 28
+  },
+  "decoder": {
+    "add1": 9680703116687983904,
+    "rol": 30,
+    "xor": 3059861062767303899,
+    "ror": 20,
+    "add2": 0
+  },
+  "context": {
+    "native_slot": 72,
+    "mode_context": 136,
+    "mode_bridge": 32,
+    "mode_object": 184,
+    "mode_value": 12520
+  },
+  "native_table": {
+    "table": 40,
+    "head": 24,
+    "terminal": 16,
+    "next": 32,
+    "name": 40,
+    "handler": 48,
+    "signature": 64
+  },
+  "selection": {
+    "manager": 352,
+    "header": 16,
+    "node_next": 8,
+    "node_unit": 16,
+    "max_count": 24
+  },
+  "bridge_layout": {
+    "registry_root_rva": 50260968,
+    "primary": 24,
+    "alternate": 80,
+    "table_count": 24,
+    "stride": 16,
+    "slot_owner": 8,
+    "owner_handle": 32,
+    "owner_data": 144,
+    "object_handle": 24,
+    "object_rawcode": 112,
+    "unit_attack": 1880,
+    "ability_level_tail": 1294
+  },
+  "native_abi": {
+    "machine": "win64",
+    "real_argument": "float_pointer",
+    "real_return": "uint32_bits",
+    "boolean_return": "uint8",
+    "handle": "uint64"
+  },
+  "modules": {
+    "legacy_layout": {
+      "implementation": "legacy_layout_24332_v1",
+      "enabled": true,
+      "fingerprint": [
+        34404,
+        1791134929,
+        236732416
+      ]
+    },
+    "talents": {
+      "implementation": "talents_24323_v1",
+      "enabled": true,
+      "fingerprint": [
+        34404,
+        1791134929,
+        236732416
+      ]
+    },
+    "talent_icons": {
+      "implementation": "talent_icons_24323_v1",
+      "enabled": false,
+      "fingerprint": [
+        34404,
+        1791134929,
+        236732416
+      ]
+    },
+    "equipment": {
+      "implementation": "equipment_24323_v1",
+      "enabled": true,
+      "fingerprint": [
+        34404,
+        1791134929,
+        236732416
+      ]
+    },
+    "stat_details": {
+      "implementation": "stat_details_24323_v1",
+      "enabled": true,
+      "fingerprint": [
+        34404,
+        1791134929,
+        236732416
+      ]
+    },
+    "direct_effect": {
+      "implementation": "direct_effect_24323_v1",
+      "enabled": true,
+      "fingerprint": [
+        34404,
+        1791134929,
+        236732416
+      ]
+    }
+  },
+  "equipment_runtime": {
+    "item_flags": 56,
+    "item_class": 448,
+    "item_equipment_type": 2376,
+    "equipment_count": 208,
+    "equipment_records": 216,
+    "equipment_capacity": 224,
+    "ability_owner": 104,
+    "item_rawcode_mirror": 376
+  },
+  "layouts": {
+    "component_list": {
+      "head": 216,
+      "sentinel": 208,
+      "node": 56,
+      "snapshot_start": 24,
+      "snapshot_size": 128,
+      "tag": 24,
+      "handle": 32,
+      "previous": 56,
+      "next": 64,
+      "owner": 80,
+      "data": 144
+    },
+    "ability": {
+      "unit_owner": 104,
+      "rawcode": 112,
+      "mirror_rawcode": 120,
+      "data_cache": 160,
+      "flags": 56,
+      "full_handle": 24,
+      "live_mask": 328,
+      "live_value": 256,
+      "excluded_flags": 72,
+      "retired_mask": 8,
+      "vtable": 0,
+      "template_extra": 328
+    },
+    "equipment_record": {
+      "stride": 12,
+      "state": 8
+    },
+    "attack": {
+      "multiplier": 248,
+      "multiplier_cache": 252,
+      "dice": 256,
+      "base1": 260,
+      "base2": 264,
+      "dice_cache": 268,
+      "internal_bonus1": 272,
+      "internal_bonus2": 276,
+      "sound": 280,
+      "damage_loss_factor": 284,
+      "type": 364,
+      "max_targets": 376,
+      "cooldown": 552,
+      "speed_factor": 696,
+      "negative_modifier": 720,
+      "kind": 860,
+      "legacy_interval": 512,
+      "legacy_first_delay": 552,
+      "acquire_range": 880,
+      "projectile_speed": 920,
+      "range": 936,
+      "range_buffer": 960,
+      "second_component": 1592,
+      "identity_kind": 8
+    },
+    "effect": {
+      "target_callback": 2456,
+      "target_vtable": 2672,
+      "immediate_vtable": 2456,
+      "point_vtable": 2648,
+      "noarg_vtable": 2680,
+      "buff_vtable": 2560
+    },
+    "talent": {
+      "initialize_callback": 288,
+      "snapshot_start": 212,
+      "snapshot_size": 76,
+      "point_counter": 284,
+      "record_stride": 12,
+      "record_flags": 8,
+      "order_base": 852753,
+      "choices_per_tier": 3
+    },
+    "property": {
+      "owner_descriptor": 160,
+      "descriptor_size": 48,
+      "array": 0,
+      "capacity": 8,
+      "mirror": 16,
+      "mirror_capacity": 24,
+      "stride": 32,
+      "slots": 36,
+      "count": 40,
+      "tag": 24,
+      "handle": 32,
+      "owner": 80,
+      "kind": 124,
+      "value": 208,
+      "maximum": 224,
+      "regen": 212,
+      "position_x": 208,
+      "position_y": 212,
+      "resource_snapshot_start": 24,
+      "resource_snapshot_size": 188,
+      "state_identity_stride": 40,
+      "primary_list": 160,
+      "primary_size": 168,
+      "alternate_list": 176,
+      "alternate_size": 184,
+      "kind_container": 120
+    },
+    "item": {
+      "owner_tag": 7598809990834513772,
+      "full_handle": 24,
+      "rawcode": 112,
+      "rawcode_mirror": 376,
+      "ability_rawcode": 440,
+      "charges": 2256,
+      "owner_scan_radius": 32768,
+      "owner_scan_stride": 8,
+      "equipment_mask": 16384
+    },
+    "inventory": {
+      "owner": 104,
+      "capacity": 208,
+      "count": 224,
+      "rawcode": 112,
+      "slot_array": 216,
+      "slot_stride": 12,
+      "slot_count": 6,
+      "scan_limit": 16384,
+      "scan_stride": 528
+    },
+    "hero": {
+      "skill_points": 260,
+      "strength_growth": 392,
+      "intelligence_growth": 408,
+      "agility_growth": 424,
+      "xp": 256,
+      "base_strength": 264,
+      "base_agility": 304,
+      "intelligence_total": 280,
+      "skill_name_legacy": 516,
+      "skill_cache_legacy": 444,
+      "skill_level_legacy": 468,
+      "skill_requirement_legacy": 492,
+      "skill_name_native": 444,
+      "skill_cache_native": 468,
+      "skill_level_native": 492,
+      "skill_requirement_native": 516,
+      "skill_stride": 4
+    },
+    "unit": {
+      "move_speed": 216,
+      "armor": 744,
+      "armor_type": 752,
+      "scale": 656,
+      "full_handle": 24,
+      "rawcode": 112,
+      "rawcode_mirror": 376
+    },
+    "selection": {
+      "manager_list": 24,
+      "manager_count": 32,
+      "manager_node_next": 8,
+      "manager_node_unit": 16,
+      "owner_unit_data": 144,
+      "owner_handle": 32,
+      "owner_tag": 24,
+      "owner_component_data": 144,
+      "owner_component_tag": 24,
+      "owner_component_handle": 32,
+      "unit_rawcode": 112,
+      "unit_rawcode_mirror": 376,
+      "owner_span": 512,
+      "score_handle_a": 95,
+      "score_handle_b": 109,
+      "header_span": 12,
+      "alternate_list": 976
+    },
+    "legacy_resource": {
+      "tag": 40,
+      "kind_a": 48,
+      "kind_b": 52,
+      "owner_key": 96
+    },
+    "legacy_component_slots": {
+      "inventory": 1440,
+      "hero": 1448,
+      "move": 1456,
+      "attack": 1472
+    }
+  }
+}

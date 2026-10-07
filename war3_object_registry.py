@@ -22,12 +22,7 @@ GAME_STATE_CHECKS = _BASE.checks('game_state')
 
 
 def decode_game_state(encoded, profile=None):
-    d = (profile or current_profile()).section("decoder")
-    mask = 0xFFFFFFFFFFFFFFFF
-    value = ((encoded >> d["ror"]) | (encoded << (64-d["ror"]))) & mask
-    value = ((value << d["rol"]) | (value >> (64-d["rol"]))) & mask
-    value = ((value + d["add1"]) & mask) ^ d["xor"]
-    return (value + d["add2"]) & mask
+    return (profile or current_profile()).adapter.components.decode_game_state(encoded)
 
 
 class ObjectIdentityError(RuntimeError):
@@ -194,14 +189,12 @@ class ObjectRegistry24268:
             struct.unpack_from("<I", nt, 8)[0], struct.unpack_from("<I", nt, 0x50)[0]) != (
                 b"PE\0\0", *fingerprint):
             raise ObjectIdentityError("Game build has no verified object registry profile")
+        self.resolver_code_unreadable = False
+        self.state_code_unreadable = False
         try:
             resolver_code = _read(memory, module_base + self.addresses["object_resolver"], len(resolver_bytes))
         except OSError as exc:
-            # 3.0 may map this resolver as execute-only. The exact PE
-            # fingerprint above and the readable player accessor below still
-            # bind the profile; do not confuse execute-only protection with a
-            # stale RVA or silently fall back to a process scan.
-            if getattr(exc, "winerror", None) != 299:
+            if not self.profile.adapter.components.allows_unreadable_code_check("resolver", exc):
                 raise
             resolver_code = None
             self.resolver_code_unreadable = True
@@ -214,7 +207,14 @@ class ObjectRegistry24268:
         # Verify the readable player accessor in addition to PE + agent code;
         # players() independently validates every resulting object identity.
         rva, code = state_check
-        if _read(memory, module_base + rva, len(code)) != code:
+        try:
+            state_code = _read(memory, module_base + rva, len(code))
+        except OSError as exc:
+            if not self.profile.adapter.components.allows_unreadable_code_check("game_state", exc):
+                raise
+            state_code = None
+            self.state_code_unreadable = True
+        if state_code is not None and state_code != code:
             raise ObjectIdentityError("Game player-array code differs from verified profile")
 
     @classmethod

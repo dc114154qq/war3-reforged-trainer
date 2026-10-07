@@ -68,3 +68,7 @@ tools/*.new.lib
 /War3ReforgedTrainer-*.spec
 !/War3ReforgedTrainer-2.1.0-beta.spec
 /third_party/MINHOOK.md
+
+# Current production release metadata is part of the source build.
+!/War3ReforgedTrainer-2.1.04.spec
+!/RELEASE_NOTES_v2.1.04.md

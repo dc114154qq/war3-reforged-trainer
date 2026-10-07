@@ -33,6 +33,12 @@ static ULONGLONG (WINAPI *real_tick64)(void);
 static DWORD (WINAPI *real_tick32)(void), (WINAPI *real_time)(void);
 static Clock qpc,tick64,tick32,mm_time;
 static void *targets[4];
+/* QPC is a public RIP-relative forwarding thunk. Redirect its data cell, not
+   its code: changing framed ntdll code breaks unwind, and a replaced entry
+   patch can silently send the game back to real time. */
+static void *volatile *qpc_forward_slot;
+static uint32_t qpc_forward_protect;
+static uint32_t guard_started;
 static HANDLE registry_handle;
 static uint64_t *registry_view;
 static uint32_t table_registered;
@@ -85,22 +91,58 @@ static void ChangeRate(uint32_t next){
 static FARPROC ExistingExport(const wchar_t *module,const char *name){
     HMODULE handle=GetModuleHandleW(module);return handle?GetProcAddress(handle,name):NULL;
 }
+static void *volatile *QpcForwardSlot(void *entry){
+    uint8_t *code=(uint8_t *)entry;
+    SIZE_T prefix=code && code[0]==0x48?1:0;
+    if(!code || code[prefix]!=0xff || code[prefix+1]!=0x25)return NULL;
+    void *volatile *slot=(void *volatile *)(code+prefix+6+*(int32_t *)(code+prefix+2));
+    MEMORY_BASIC_INFORMATION info;
+    if((uintptr_t)slot%sizeof(void *) || !VirtualQuery((void *)slot,&info,sizeof(info)) ||
+       info.State!=MEM_COMMIT || info.Protect&(PAGE_GUARD|PAGE_NOACCESS) || !*slot)return NULL;
+    return slot;
+}
+static uint32_t EnableQpcForward(void){
+    DWORD ignored;
+    if(*qpc_forward_slot==(void *)ScaledQpc)return 0;
+    if(*qpc_forward_slot!=(void *)real_qpc)return ERROR_INVALID_STATE;
+    if(!VirtualProtect((void *)qpc_forward_slot,sizeof(void *),PAGE_READWRITE,&qpc_forward_protect))
+        return GetLastError();
+    void *previous=InterlockedCompareExchangePointer(qpc_forward_slot,(void *)ScaledQpc,(void *)real_qpc);
+    uint32_t error=previous==(void *)real_qpc?0:ERROR_INVALID_STATE;
+    if(!VirtualProtect((void *)qpc_forward_slot,sizeof(void *),qpc_forward_protect,&ignored))
+        return GetLastError();
+    return error;
+}
+static DWORD WINAPI MaintainQpcForward(void *ignored){
+    (void)ignored;
+    for(;;){
+        /* No game callback, thread suspension or periodic rate reset. Repair
+           only our proven original forwarding value, never another hook. */
+        if(*qpc_forward_slot==(void *)real_qpc &&
+           InterlockedCompareExchange(&control_busy,1,0)==0){
+            EnableQpcForward();
+            InterlockedExchange(&control_busy,0);
+        }
+        WaitForSingleObject(GetCurrentProcess(),100);
+    }
+}
 static uint32_t CreateClockHooks(void){
     MH_STATUS status=MH_Initialize();
     if(status!=MH_OK)return status;
     /* Keep ntdll's framed QPC prologue and its unwind metadata untouched.
        The public kernel32 forwarding thunk has no stolen stack operations. */
     targets[0]=(void *)ExistingExport(L"kernel32.dll","QueryPerformanceCounter");
-    if(!targets[0] || !(((uint8_t *)targets[0])[0]==0xff && ((uint8_t *)targets[0])[1]==0x25) &&
-       !(((uint8_t *)targets[0])[0]==0x48 && ((uint8_t *)targets[0])[1]==0xff && ((uint8_t *)targets[0])[2]==0x25)){
+    qpc_forward_slot=QpcForwardSlot(targets[0]);
+    if(!qpc_forward_slot){
         MH_Uninitialize();return MH_ERROR_UNSUPPORTED_FUNCTION;
     }
+    real_qpc=(BOOL (WINAPI *)(LARGE_INTEGER *))*qpc_forward_slot;
     targets[1]=(void *)ExistingExport(L"kernel32.dll","GetTickCount64");
     targets[2]=(void *)ExistingExport(L"kernel32.dll","GetTickCount");
     targets[3]=(void *)ExistingExport(L"winmm.dll","timeGetTime");
     void *detours[4]={ScaledQpc,ScaledTick64,ScaledTick32,ScaledTime};
     void **originals[4]={(void **)&real_qpc,(void **)&real_tick64,(void **)&real_tick32,(void **)&real_time};
-    for(uint32_t i=0;i<4;++i){
+    for(uint32_t i=1;i<4;++i){
         if(!targets[i]){if(i<3){status=MH_ERROR_FUNCTION_NOT_FOUND;goto failed;}continue;}
         status=MH_CreateHook(targets[i],detours[i],originals[i]);
         if(status!=MH_OK)goto failed;
@@ -111,7 +153,7 @@ static uint32_t CreateClockHooks(void){
     tick64.real_anchor=tick64.virtual_anchor=ms;
     tick32.real_anchor=mm_time.real_anchor=ms;
     tick32.virtual_anchor=real_tick32();mm_time.virtual_anchor=real_time?real_time():tick32.virtual_anchor;
-    initialized=1;return MH_OK;
+    hook_mask|=1u;initialized=1;return MH_OK;
 failed:
     MH_Uninitialize();hook_mask=0;return status;
 }
@@ -140,7 +182,13 @@ __declspec(dllexport) DWORD WINAPI SpeedControl(void *payload){
     SpeedWork *w=payload;
     if(!w || w->magic!=0x57435331u || w->size!=sizeof(*w) || w->action>1 ||
        w->rate<1000 || w->reserved)return ERROR_INVALID_PARAMETER;
-    if(InterlockedCompareExchange(&control_busy,1,0)!=0){w->error=ERROR_BUSY;return ERROR_BUSY;}
+    if(InterlockedCompareExchange(&control_busy,1,0)!=0){
+        /* No control action ran. In particular a short maintenance collision
+           must not be mistaken for an indeterminate remote worker. */
+        w->error=ERROR_BUSY;w->completed=1;w->initialized=initialized;
+        w->installed=installed;w->current_rate=rate;w->pinned=pinned;w->hook_mask=hook_mask;
+        return ERROR_BUSY;
+    }
     if(w->action==1 && !initialized){
         typedef BOOLEAN (WINAPI *AddTable)(PRUNTIME_FUNCTION,DWORD,DWORD64);
         AddTable add=(AddTable)ExistingExport(L"ntdll.dll","RtlAddFunctionTable");
@@ -163,6 +211,18 @@ __declspec(dllexport) DWORD WINAPI SpeedControl(void *payload){
             if(w->hook_status!=MH_OK){ChangeRate(1000);w->error=ERROR_NOT_SUPPORTED;goto done;}
             installed=1;
         }
+        w->error=EnableQpcForward();
+        if(w->error){ChangeRate(1000);w->completed=1;goto done;}
+        if(!guard_started){
+            HANDLE guard=CreateThread(NULL,0,MaintainQpcForward,NULL,0,NULL);
+            if(!guard){ChangeRate(1000);w->error=ERROR_INVALID_STATE;w->completed=1;goto done;}
+            guard_started=1;CloseHandle(guard);
+        }
+    }
+    /* A query is evidence of the current forwarding cell, not the old install.
+       A proven, exited health failure is distinct from an unknown worker. */
+    if(installed && *qpc_forward_slot!=(void *)ScaledQpc){
+        w->error=ERROR_INVALID_STATE;w->completed=1;goto done;
     }
     w->completed=1;
 done:

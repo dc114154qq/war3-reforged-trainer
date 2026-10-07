@@ -20,9 +20,12 @@ class AbilitiesFacade:
             self.NATIVE_HELPER_OP_DIRECT_ABILITY_NOARG_DERIVED: 4,
             self.NATIVE_HELPER_OP_DIRECT_ABILITY_BUFF: 5,
         }.get(op_kind)
-        if effect_kind is None or int(vtable_offset) != {1: 0xA70, 2: 0x998, 3: 0xA58, 4: 0xA78, 5: 0xA00}[effect_kind]:
+        if effect_kind is None:
             raise ValueError("Unsupported direct ability effect type")
-        if getattr(self, "_native_selection_unavailable", False):
+        from war3_game_profile import current_profile
+        if int(vtable_offset) != current_profile().adapter.effects.vtable_for(effect_kind):
+            raise ValueError("Unsupported direct ability effect type")
+        if uses_indexed_backend(self):
             if effect_kind == 5:
                 raise RuntimeError("当前引擎批处理暂未开放需要 buff 构造器的直接效果")
             point_x = int(arg1) & 0xFFFFFFFF if effect_kind == 3 else 0
@@ -53,46 +56,38 @@ class AbilitiesFacade:
 
 
     def apply_direct_ability_to_selected_unit(self, rawcode: int | str) -> int:
+        from war3_game_profile import current_profile
         return self._run_direct_selected_ability(
             rawcode,
             self.NATIVE_HELPER_OP_DIRECT_ABILITY_TARGET,
-            0xA70,
+            current_profile().adapter.effects.vtable_for(1),
             0,
         )
 
 
     def apply_direct_immediate_ability(self, rawcode: int | str) -> int:
+        from war3_game_profile import current_profile
         return self._run_direct_selected_ability(
             rawcode,
             self.NATIVE_HELPER_OP_DIRECT_ABILITY_IMMEDIATE,
-            0x998,
+            current_profile().adapter.effects.vtable_for(2),
             0,
         )
 
 
     def apply_direct_noarg_derived_ability(self, rawcode: int | str) -> int:
+        from war3_game_profile import current_profile
         return self._run_direct_selected_ability(
             rawcode,
             self.NATIVE_HELPER_OP_DIRECT_ABILITY_NOARG_DERIVED,
-            0xA78,
+            current_profile().adapter.effects.vtable_for(4),
             0,
         )
 
 
     def _discover_jass_unit_resolver(self, pm: ProcessMemory) -> int:
-        if self._jass_unit_resolver_address:
-            if self._is_executable_image_address(pm.regions(), self._jass_unit_resolver_address):
-                return self._jass_unit_resolver_address
-            self._jass_unit_resolver_address = 0
-        add_handler = self._elephant_handlers(pm, ("UnitAddAbility",))["UnitAddAbility"].handler_address
-        calls = self._rel32_calls_in_function(pm, add_handler)
-        if len(calls) < 2:
-            raise RuntimeError("UnitAddAbility 未暴露可验证的单位句柄解析函数")
-        resolver = calls[0]
-        if not self._is_executable_image_address(pm.regions(), resolver):
-            raise RuntimeError("单位句柄解析函数不在游戏可执行代码段")
-        self._jass_unit_resolver_address = resolver
-        return resolver
+        from war3_game_profile import current_profile
+        return current_profile().adapter.legacy._discover_jass_unit_resolver(self, pm)
 
 
     def apply_direct_roar_buff_to_selected_unit(self, rawcode: int | str) -> int:
@@ -101,8 +96,9 @@ class AbilitiesFacade:
 
 
     def _apply_direct_roar_buff_to_selected_unit_locked(self, rawcode: int | str) -> int:
+        from war3_game_profile import current_profile
         return self._run_direct_selected_ability_locked(
-            rawcode, self.NATIVE_HELPER_OP_DIRECT_ABILITY_BUFF, 0xA00, 0,
+            rawcode, self.NATIVE_HELPER_OP_DIRECT_ABILITY_BUFF, current_profile().adapter.effects.vtable_for(5), 0,
         )
 
 
@@ -129,7 +125,7 @@ class AbilitiesFacade:
         limit = int(success_limit)
         if not ability_rawcode or effect_mode is None or not 0 <= limit <= 65535:
             raise ValueError("Invalid world ability effect parameters")
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             result = self.world_effect_batch_24268(ability_rawcode, effect_mode, limit)
             return int(result["attempts"]), int(result["successes"])
         candidate, handle = self._direct_selected_context()
@@ -163,6 +159,7 @@ class AbilitiesFacade:
         x: float | None = None,
         y: float | None = None,
     ) -> int:
+        from war3_game_profile import current_profile
         if x is None or y is None:
             x, y = self.get_selected_unit_position()
         target_x = float(x)
@@ -173,7 +170,7 @@ class AbilitiesFacade:
         return self._run_direct_selected_ability(
             rawcode,
             self.NATIVE_HELPER_OP_DIRECT_ABILITY_POINT,
-            0xA58,
+            current_profile().adapter.effects.vtable_for(3),
             packed,
         )
 
@@ -194,7 +191,7 @@ class AbilitiesFacade:
         order = int(order_id)
         if not ability_rawcode or not 0 < order <= 0x7FFFFFFF:
             raise ValueError("Invalid ability or toggle order")
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             # The current build has the ability lifecycle callbacks but the
             # legacy order helper is unavailable. Keep the toggle ability on
             # the unit and invoke its immediate effect in the same bridge
@@ -279,7 +276,7 @@ class AbilitiesFacade:
                 packed_point = self._float_bits(x) | (self._float_bits(y) << 32)
         elif point is not None:
             raise ValueError("Only point effects accept coordinates")
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             if duration:
                 from war3_services.effect_lifetime import run_held_effect
                 run_held_effect(self._engine_instance_24268(), ability_rawcode,
@@ -411,6 +408,13 @@ class AbilitiesFacade:
 
 
     def cast_fullscreen_clap(self, *, success_limit: int = 0) -> tuple[int, int]:
+        if uses_indexed_backend(self):
+            from war3_services.effect_lifetime import full_map_area
+            area=full_map_area(self._engine_instance_24268())
+            # The witnessed successful native AHtc chain, not an unverified
+            # second spell or the obsolete effect getter slot.
+            return self._run_selected_ability_effect(
+                'AHtc','noarg',area=area,hold_seconds=2.0)
         entries = ("AHtc", "AOws")
         attempted = succeeded = 0
         for ability in entries:
@@ -455,7 +459,7 @@ class AbilitiesFacade:
 
 
     def take_selected_unit_control(self) -> int:
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             from war3_unit_action_protocol import ACTION_TAKE_CONTROL
             result = self._unit_action_result_24268(ACTION_TAKE_CONTROL)
             return int(result["count"])
@@ -478,7 +482,7 @@ class AbilitiesFacade:
         preserve_owner: bool = False,
     ) -> tuple[int, int]:
         x, y = self.query_mouse_world_position() if position is None else position
-        if rawcode is None and getattr(self, "_native_selection_unavailable", False):
+        if rawcode is None and uses_indexed_backend(self):
             result = self.clone_batch_24268(
                 keep=True,
                 preserve_owner=preserve_owner,
@@ -502,7 +506,7 @@ class AbilitiesFacade:
             unit_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
         if not unit_rawcode:
             raise ValueError("没有可用于创建单位的有效 ID")
-        if getattr(self, "_native_selection_unavailable", False) and rawcode is not None:
+        if uses_indexed_backend(self) and rawcode is not None:
             result = self.spawn_unit_24268(unit_rawcode, x, y)
             return unit_rawcode, int(result["created"])
         handler_names = ["GetLocalPlayer", "CreateUnit"]
@@ -713,7 +717,7 @@ class AbilitiesFacade:
 
 
     def heal_local_player_units(self) -> int:
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             from war3_bulk_protocol import BULK_HEAL_LOCAL
             return int(self.bulk_batch_24268(BULK_HEAL_LOCAL)["changed"])
         handlers = self._elephant_handlers(
@@ -760,7 +764,7 @@ class AbilitiesFacade:
 
 
     def reset_local_player_unit_cooldowns(self) -> int:
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             from war3_bulk_protocol import BULK_RESET_LOCAL_COOLDOWNS
             return int(self.bulk_batch_24268(BULK_RESET_LOCAL_COOLDOWNS)["changed"])
         handlers = self._elephant_handlers(
@@ -805,7 +809,7 @@ class AbilitiesFacade:
 
 
     def complete_local_player_structures(self) -> int:
-        if not getattr(self, "_native_selection_unavailable", False):
+        if not uses_indexed_backend(self):
             raise RuntimeError("持续快速建造当前仅适用于 Warcraft III 3.0")
         from war3_bulk_protocol import BULK_COMPLETE_LOCAL_STRUCTURES
         return int(self.bulk_batch_24268(BULK_COMPLETE_LOCAL_STRUCTURES)["changed"])
@@ -821,26 +825,62 @@ class AbilitiesFacade:
         total = int(count)
         if not 1 <= total <= 100:
             raise ValueError("批量复制数量必须在 1 到 100 之间")
-        if getattr(self, "_native_selection_unavailable", False) and rawcode is None:
-            unit_rawcode = 0
+        if uses_indexed_backend(self) and rawcode is None:
+            expected_sources = self._capture_clone_sources_24268()
+            unit_rawcode = expected_sources[0][1].rawcode
             created = 0
+            completed = 0
+            committed_handles = []
             position = self.query_mouse_world_position()
             spawn_x_bits = self._float_bits(float(position[0]))
             spawn_y_bits = self._float_bits(float(position[1]))
-            for _ in range(total):
-                result = self.clone_batch_24268(
-                    keep=True,
-                    copy_abilities=True,
-                    copy_items=True,
-                    spawn=True,
-                    spawn_x_bits=spawn_x_bits,
-                    spawn_y_bits=spawn_y_bits,
+            try:
+                for _ in range(total):
+                    result = self.clone_batch_24268(
+                        keep=True,
+                        copy_abilities=True,
+                        copy_items=True,
+                        spawn=True,
+                        spawn_x_bits=spawn_x_bits,
+                        spawn_y_bits=spawn_y_bits,
+                        expected_sources=expected_sources,
+                    )
+                    rows = tuple(result.get("rows", ()))
+                    handles = tuple(row['clone'] for row in rows)
+                    if (len(rows) != len(expected_sources)
+                            or int(result.get("changed", 0)) != len(rows)
+                            or any(type(handle) is not int or not 0 < handle <= 0xFFFFFFFFFFFFFFFF
+                                   for handle in handles)
+                            or len(set(handles)) != len(handles)
+                            or set(handles).intersection(committed_handles)):
+                        error = RuntimeError("3.0 批量复制的副本读回不完整，已停止后续轮次")
+                        error.report = dict(operation='clone_bound', ok=False,
+                                            unverified_iteration_result=result)
+                        raise error
+                    committed_handles.extend(handles)
+                    created += len(rows)
+                    completed += 1
+            except Exception as exc:
+                from war3_error_messages import describe_error
+                cause = describe_error(exc)
+                reason = (f"批量复制已停止：前 {completed} 轮已完成，保留 {created} 个有效副本；"
+                          f"第 {completed + 1} 轮未确认成功，后续轮次未执行，"
+                          "不会自动重放或删除已完成副本。")
+                report = getattr(exc, 'report', None)
+                if not isinstance(report, dict):
+                    report = dict(operation='clone_bound', ok=False)
+                    exc.report = report
+                report['clone_partial'] = dict(
+                    committed_clone_handles=tuple(committed_handles),
+                    committed_count=created, completed_iterations=completed,
+                    requested_iterations=total, failed_iteration=completed + 1,
+                    reason=reason,
                 )
-                rows = tuple(result.get("rows", ()))
-                if not rows or int(result.get("changed", 0)) != len(rows):
-                    raise RuntimeError("3.0 当前引擎批量复制返回不完整")
-                unit_rawcode = int(rows[0]["rawcode"])
-                created += len(rows)
+                report['batch_failures'] = tuple(report.get('batch_failures', ())) + (
+                    dict(cause, reason=reason + ' 原因：' + cause['reason']),
+                )
+                exc.args = (reason + '；失败详情：' + str(exc),) + exc.args[1:]
+                raise
             return unit_rawcode, created
         position = self.query_mouse_world_position()
         created = 0
@@ -896,7 +936,7 @@ class AbilitiesFacade:
         if not ability_rawcode:
             raise ValueError("技能 ID 无效")
         action = {"UnitAddAbility": 1, "UnitRemoveAbility": 2}[native_name]
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             return int(self.ability_batch_24268(ability_rawcode, action)["changed"])
         return int(self._run_bound_ability_actions(((action, ability_rawcode, 0, 0),))[0].result)
 
@@ -915,7 +955,7 @@ class AbilitiesFacade:
         ability_ids = tuple(int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF for rawcode in rawcodes)
         if not ability_ids or any(not rawcode for rawcode in ability_ids):
             raise ValueError("技能 ID 列表无效")
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             return sum(
                 int(self.ability_batch_24268(rawcode, 1, 0)["changed"])
                 for rawcode in ability_ids
@@ -934,7 +974,7 @@ class AbilitiesFacade:
             raise ValueError("技能组合无效")
         if any(level is not None and not 1 <= level <= 100000 for _, level in bundle):
             raise ValueError("技能组合等级必须在 1 到 100000 之间")
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             # The classic route used 112 as an internal "add at default level"
             # sentinel for aura/passive bundles. Warcraft III 3.0 treats 112 as
             # an actual SetUnitAbilityLevel request and rejects it.
@@ -953,7 +993,7 @@ class AbilitiesFacade:
         ability_rawcode = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
         if not ability_rawcode:
             raise ValueError("技能 ID 无效")
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             result = self.ability_batch_24268(ability_rawcode, 5, 0)
             if result["changed"] != result["count"]:
                 raise RuntimeError("游戏拒绝重置该技能")
@@ -963,7 +1003,7 @@ class AbilitiesFacade:
 
 
     def remove_all_selected_unit_abilities(self) -> int:
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             selected = self._selected_candidates_snapshot(None)
             if not selected:
                 return 0
@@ -994,7 +1034,7 @@ class AbilitiesFacade:
         target_level = int(level)
         if not ability_rawcode or not 1 <= target_level <= 100000:
             raise ValueError("请提供有效技能 ID，等级必须在 1 到 100000 之间")
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             # Action 1 sets the level for existing instances and creates the
             # skill for selected units that do not already have it. This keeps
             # mixed hero/non-hero selections in one batch.
@@ -1020,6 +1060,8 @@ class AbilitiesFacade:
         self, candidate: UnitCandidate, rawcode: int,
         handlers: dict[str, NativeHandler] | None = None,
     ) -> tuple[AbilityInstance, int, int]:
+        from war3_game_profile import current_profile
+        _al = current_profile().section("layouts")
         native = self._native_snapshot_for_candidate(candidate)
         if native is None:
             raise RuntimeError("技能查询缺少绑定单位快照")
@@ -1047,9 +1089,9 @@ class AbilitiesFacade:
         instance = AbilityInstance(
             slot=0, wrapper_address=wrapper, data_address=data,
             wrapper_vtable=wrapper_vtable, data_vtable=data_vtable,
-            wrapper_tag_address=wrapper + 0x18, wrapper_tag=tag, handle=full,
-            class_rawcode=tag >> 32, rawcode=rawcode, rawcode_address=data + 0x70,
-            mirror_rawcode_address=data + 0x78, data_cache_address=data + 0xa0,
+            wrapper_tag_address=wrapper + _al["component_list"]["tag"], wrapper_tag=tag, handle=full,
+            class_rawcode=tag >> 32, rawcode=rawcode, rawcode_address=data + _al["ability"]["rawcode"],
+            mirror_rawcode_address=data + _al["ability"]["mirror_rawcode"], data_cache_address=data + _al["ability"]["data_cache"],
             data_cache_pointer=cache if 0x10000 <= cache < 0x0000800000000000 else 0,
         )
         return instance, ability, int(level)
@@ -1549,7 +1591,7 @@ class AbilitiesFacade:
         unit_identity: tuple[int, int, int] | None = None,
         win10_compat: bool = False,
     ) -> AbilityFieldSnapshot:
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             return self._read_selected_ability_fields_24268(
                 rawcode,
                 level,
@@ -1727,7 +1769,7 @@ class AbilitiesFacade:
         unit_identity: tuple[int, int, int] | None = None,
         win10_compat: bool = False,
     ) -> AbilityFieldValue:
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             return self._set_selected_ability_field_24268(
                 rawcode,
                 level,
@@ -1854,7 +1896,7 @@ class AbilitiesFacade:
         target_level = int(level)
         if not tech_rawcode or not 0 <= target_level <= 100000:
             raise ValueError("请提供有效科技 ID，等级必须在 0 到 100000 之间")
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             result = self.world_batch_24268(1, tech_rawcode, target_level)
             return int(result["after0"])
         handlers = self._elephant_handlers(
@@ -1887,7 +1929,7 @@ class AbilitiesFacade:
         target = float(rate)
         if not 0.0 <= target <= 10000.0:
             raise ValueError("经验倍率必须在 0 到 10000 之间")
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             result = self.world_batch_24268(2, 0, self._float_bits(target))
             return self._float_from_bits(result["after0"])
         handlers = self._elephant_handlers(None, ("GetLocalPlayer", "SetPlayerHandicapXP"))
@@ -1905,7 +1947,7 @@ class AbilitiesFacade:
 
 
     def get_map_fog_state(self) -> tuple[bool, bool]:
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             result = self.world_batch_24268(3, 0, 0)
             return bool(result["after0"]), bool(result["after1"])
         handlers = self._elephant_handlers(None, ("IsFogEnabled", "IsFogMaskEnabled"))
@@ -1932,7 +1974,7 @@ class AbilitiesFacade:
 
 
     def set_map_revealed(self, revealed: bool) -> None:
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             self.world_batch_24268(4, 0, int(bool(revealed)))
             return
         handlers = self._elephant_handlers(None, ("FogEnable", "FogMaskEnable"))
@@ -1959,7 +2001,7 @@ class AbilitiesFacade:
 
 
     def set_game_paused(self, paused: bool) -> None:
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             self.world_batch_24268(5, 0, int(bool(paused)))
             return
         handlers = self._elephant_handlers(None, ("PauseGame",))
@@ -1976,7 +2018,7 @@ class AbilitiesFacade:
 
 
     def end_current_game(self, show_score_screen: bool = True) -> None:
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             self.world_batch_24268(6, 0, int(bool(show_score_screen)))
             return
         handlers = self._elephant_handlers(None, ("EndGame",))
@@ -1993,7 +2035,7 @@ class AbilitiesFacade:
 
 
     def set_peace_mode(self, enabled: bool) -> int:
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             from war3_bulk_protocol import BULK_PEACE_MODE
             return int(self.bulk_batch_24268(BULK_PEACE_MODE, int(bool(enabled)))["changed"])
         handlers = self._elephant_handlers(None, ("Player", "SetPlayerAlliance"))
@@ -2010,7 +2052,7 @@ class AbilitiesFacade:
 
 
     def kill_selected_owner_units(self) -> int:
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             from war3_bulk_protocol import BULK_KILL_SELECTED_OWNER
             return int(self.bulk_batch_24268(BULK_KILL_SELECTED_OWNER)["changed"])
         candidate, unit_handle = self._direct_selected_context()
@@ -2077,52 +2119,8 @@ class AbilitiesFacade:
         data_address: int,
         rawcode: int,
     ) -> AbilityInstance | None:
-        if self._native_snapshot_for_candidate(candidate) is not None:
-            instance, _, _ = self._native_ability_metadata(candidate, rawcode)
-            return instance if instance.data_address == data_address else None
-        if self._ability_data_instance_for_candidate(
-            pm,
-            candidate,
-            data_address,
-            rawcode,
-        ) is None:
-            return None
-        component_rawcodes = {tag >> 32 for tag in self.COMPONENT_TAGS.values()}
-        cache_key = (candidate.handle, data_address, rawcode)
-        cached = self._ability_instance_by_data.get(cache_key)
-        if cached is not None:
-            refreshed = self._ability_instance_from_wrapper(
-                pm,
-                candidate,
-                cached.wrapper_address,
-                component_rawcodes,
-            )
-            if (
-                refreshed is not None
-                and refreshed.data_address == data_address
-                and refreshed.rawcode == rawcode
-            ):
-                return replace(refreshed, slot=cached.slot)
-            self._ability_instance_by_data.pop(cache_key, None)
-
-        data_pattern = struct.pack("<Q", data_address)
-        near_start = max(0, candidate.owner_address - 0x05000000)
-        near_end = candidate.owner_address + 0x00800000
-        near_refs = self._scan_bytes_private_between(pm, data_pattern, near_start, near_end)
-        if not near_refs and self._persistent_native_initialized:
-            # A persistent native unit must never widen an instance lookup
-            # after the bounded owner-local search fails.
-            return None
-        all_refs = near_refs or pm.scan_bytes_private(data_pattern, max_region_size=8 * 1024 * 1024)
-        for data_ref in all_refs:
-            wrapper = data_ref - 0x90
-            instance = self._ability_instance_from_wrapper(pm, candidate, wrapper, component_rawcodes)
-            if instance is None:
-                continue
-            if instance.data_address == data_address and instance.rawcode == rawcode:
-                self._ability_instance_by_data[cache_key] = instance
-                return instance
-        return None
+        from war3_game_profile import current_profile
+        return current_profile().adapter.legacy._ability_instance_from_data_for_candidate(self, pm, candidate, data_address, rawcode)
 
 
     def _ability_data_instance_for_candidate(
@@ -2132,14 +2130,17 @@ class AbilitiesFacade:
         data_address: int,
         rawcode: int,
     ) -> AbilityInstance | None:
+        from war3_game_profile import current_profile
+        ability_layout = current_profile().section("layouts")["ability"]
+        component_layout = current_profile().section("layouts")["component_list"]
         if not self._sane_heap_ptr(data_address):
             return None
         try:
             data_vtable = pm.read_u64(data_address)
-            unit_address = pm.read_u64(data_address + 0x68)
-            data_rawcode = pm.read_u32(data_address + 0x70)
-            mirror_rawcode = pm.read_u32(data_address + 0x78)
-            data_cache_pointer = pm.read_u64(data_address + 0xA0)
+            unit_address = pm.read_u64(data_address + ability_layout["unit_owner"])
+            data_rawcode = pm.read_u32(data_address + ability_layout["rawcode"])
+            mirror_rawcode = pm.read_u32(data_address + ability_layout["mirror_rawcode"])
+            data_cache_pointer = pm.read_u64(data_address + ability_layout["data_cache"])
         except OSError:
             return None
         if not self._looks_like_vtable(data_vtable):
@@ -2159,9 +2160,9 @@ class AbilitiesFacade:
             handle=0,
             class_rawcode=rawcode,
             rawcode=rawcode,
-            rawcode_address=data_address + 0x70,
-            mirror_rawcode_address=data_address + 0x78,
-            data_cache_address=data_address + 0xA0,
+            rawcode_address=data_address + ability_layout["rawcode"],
+            mirror_rawcode_address=data_address + ability_layout["mirror_rawcode"],
+            data_cache_address=data_address + ability_layout["data_cache"],
             data_cache_pointer=(
                 data_cache_pointer if self._sane_heap_ptr(data_cache_pointer) else 0
             ),
@@ -2408,10 +2409,12 @@ class AbilitiesFacade:
         candidate: UnitCandidate,
         data_address: int,
     ) -> None:
+        from war3_game_profile import current_profile
+        _al = current_profile().section("layouts")
         if not data_address:
             return
         try:
-            rawcode = pm.read_u32(data_address + 0x70)
+            rawcode = pm.read_u32(data_address + _al["ability"]["rawcode"])
         except OSError as exc:
             raise RuntimeError(
                 f"临时 ability 实例已不可读，停止内部删除：0x{data_address:x}"
@@ -2445,69 +2448,8 @@ class AbilitiesFacade:
 
 
     def _discover_native_hero_int_internals(self, pm: ProcessMemory) -> tuple[int, int]:
-        if self._native_hero_int_set_address and self._native_hero_int_get_address:
-            regions = pm.regions()
-            if (
-                self._is_executable_image_address(regions, self._native_hero_int_set_address)
-                and self._is_executable_image_address(regions, self._native_hero_int_get_address)
-            ):
-                return self._native_hero_int_set_address, self._native_hero_int_get_address
-
-        wanted = {"SetHeroInt", "GetHeroInt"}
-        handlers = {
-            name: self._native_handlers[name]
-            for name in wanted
-            if name in self._native_handlers
-        }
-        if set(handlers) != wanted:
-            regions = pm.regions()
-            table_region = self._find_native_table_region(pm, regions)
-            nearby_regions = [
-                region
-                for region in regions
-                if region.typ == MEM_PRIVATE
-                and region.size <= 0x40000
-                and region.base < 0x700000000000
-                and abs(region.base - table_region.base) <= 0x200000
-            ]
-            nearby_regions.sort(key=lambda region: (abs(region.base - table_region.base), -region.base))
-            for region in nearby_regions:
-                missing = wanted.difference(handlers)
-                if not missing:
-                    break
-                try:
-                    blob = self._native_table_blob_for_region(pm, region)
-                except OSError:
-                    continue
-                handlers.update(
-                    self._find_native_handlers_in_table_blob(
-                        pm,
-                        regions,
-                        blob,
-                        region.base,
-                        missing,
-                    )
-                )
-            self._native_handlers.update(handlers)
-        if set(handlers) != wanted:
-            handlers = self._discover_native_handlers(pm, wanted)
-        set_calls = self._rel32_calls_in_function(pm, handlers["SetHeroInt"].handler_address, max_bytes=0x80)
-        get_jumps = self._rel32_jumps_in_function(pm, handlers["GetHeroInt"].handler_address, max_bytes=0x80)
-        if len(set_calls) < 3:
-            raise RuntimeError("未能从 SetHeroInt handler 定位内部智力写入函数")
-        if not get_jumps:
-            raise RuntimeError("未能从 GetHeroInt handler 定位内部智力读取函数")
-
-        set_address = set_calls[-1]
-        get_address = get_jumps[-1]
-        regions = pm.regions()
-        if not self._is_executable_image_address(regions, set_address):
-            raise RuntimeError(f"内部智力写入函数地址不可执行：0x{set_address:x}")
-        if not self._is_executable_image_address(regions, get_address):
-            raise RuntimeError(f"内部智力读取函数地址不可执行：0x{get_address:x}")
-        self._native_hero_int_set_address = set_address
-        self._native_hero_int_get_address = get_address
-        return set_address, get_address
+        from war3_game_profile import current_profile
+        return current_profile().adapter.legacy._discover_native_hero_int_internals(self, pm)
 
 
     @staticmethod
@@ -2557,19 +2499,8 @@ class AbilitiesFacade:
 
 
     def _discover_jass_unit_resolver_win10(self, pm: ProcessMemory) -> int:
-        if self._jass_unit_resolver_address:
-            if self._is_executable_image_address(pm.regions(), self._jass_unit_resolver_address):
-                return self._jass_unit_resolver_address
-            self._jass_unit_resolver_address = 0
-        handler = self._discover_native_handlers(pm, ("UnitAddAbility",))["UnitAddAbility"]
-        calls = self._rel32_calls_in_function(pm, handler.handler_address)
-        if len(calls) < 2:
-            raise RuntimeError("备用读取未能从 UnitAddAbility 定位单位句柄解析函数")
-        resolver = calls[0]
-        if not self._is_executable_image_address(pm.regions(), resolver):
-            raise RuntimeError("备用读取的单位句柄解析函数不在游戏可执行代码段")
-        self._jass_unit_resolver_address = resolver
-        return resolver
+        from war3_game_profile import current_profile
+        return current_profile().adapter.legacy._discover_jass_unit_resolver_win10(self, pm)
 
 
     def _resolve_jass_unit_handle_win10(
@@ -2782,6 +2713,8 @@ class AbilitiesFacade:
         field: UnitMemoryField,
         value: int | float | str,
     ) -> UnitMemoryField:
+        from war3_game_profile import current_profile
+        _al = current_profile().section("layouts")
         native = self._native_snapshot_for_candidate(candidate)
         if native is not None:
             target_total = self._coerce_hero_intelligence_target(value)
@@ -2799,13 +2732,13 @@ class AbilitiesFacade:
             return replace(field, value_type="i32", value=target_total, native_write=True,
                            write_address=0, write_type="",
                            note=field.note + "；本次总智力写入已由游戏接口读回确认")
-        if getattr(self, "_native_selection_unavailable", False):
+        if uses_indexed_backend(self):
             components = self._selected_components(pm, candidate.owner_address)
             hero = components.get("hero")
             if hero is None:
                 raise RuntimeError("当前选中单位没有英雄组件，不能写入智力")
             target_total = self._coerce_hero_intelligence_target(value)
-            address = hero[1] + 0x118
+            address = hero[1] + _al["hero"]["intelligence_total"]
             pm.write_f32(address, float(target_total))
             actual = int(round(pm.read_f32(address)))
             if actual != target_total:

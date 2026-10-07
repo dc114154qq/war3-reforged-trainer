@@ -77,7 +77,12 @@ static int ExtensionSnapshot(ExtensionWork *w) {
 __declspec(dllexport) uint64_t BridgeExtensionQuery(void) {
     ExtensionWork *w=(ExtensionWork *)g_dispatch->work;
     uint32_t count,matches=0,i;
-    if(!w || w->expected_tls!=g_dispatch->tls_value || w->action>12 ||
+    if(!w || w->expected_tls!=g_dispatch->tls_value ||
+#ifdef BRIDGE_DIAGNOSTIC
+       w->action>16 ||
+#else
+       w->action>12 ||
+#endif
        w->ability_count>24 || (w->action==1 && !w->item_rawcode) ||
        (w->action==2 && w->slot>=9)){if(w)w->error=220;return 0;}
     count=(uint32_t)BridgeSelect();
@@ -89,6 +94,12 @@ __declspec(dllexport) uint64_t BridgeExtensionQuery(void) {
         if(w->action==1){
             uint64_t item=w->add_item_by_id(w->target_unit,w->item_rawcode);
             if(!item){w->error=223;return count;}
+            /* Keep the exact native instance returned by UnitAddItemById.
+               A unit with a classic inventory slot available may receive the
+               new item there first; the Python transaction can then pass this
+               same instance through UnitAddItem and verify its final
+               extended-bag location without guessing from rawcodes. */
+            w->item_handle=item;
             w->changed=1;
         }else if(w->action==2){
             uint32_t occupied=0;
@@ -180,6 +191,30 @@ __declspec(dllexport) uint64_t BridgeExtensionQuery(void) {
             } __except(EXCEPTION_EXECUTE_HANDLER) {w->error=GetExceptionCode();return count;}
             w->changed=1;
 #ifdef BRIDGE_DIAGNOSTIC
+        }else if(w->action==16){
+            /* Read-only inspection of a previously verified item and a
+               bounded code range. Never enters the product build. */
+            uint64_t *probe=(uint64_t *)((uint8_t *)w+sizeof(*w));
+            uint32_t *out=(uint32_t *)(probe+8);
+            uint32_t (__fastcall *boolean)(uint64_t,uint32_t)=
+                (uint32_t (__fastcall *)(uint64_t,uint32_t))(uintptr_t)probe[0];
+            uint32_t (__fastcall *owned)(uint64_t)=
+                (uint32_t (__fastcall *)(uint64_t))(uintptr_t)probe[1];
+            uint32_t (__fastcall *has)(uint64_t,uint64_t)=
+                (uint32_t (__fastcall *)(uint64_t,uint64_t))(uintptr_t)probe[2];
+            uint32_t (__fastcall *x)(uint64_t)=(uint32_t (__fastcall *)(uint64_t))(uintptr_t)probe[3];
+            uint32_t (__fastcall *y)(uint64_t)=(uint32_t (__fastcall *)(uint64_t))(uintptr_t)probe[4];
+            if(!boolean || !owned || !has || !x || !y || !w->item_handle ||
+               w->item_type(w->item_handle)!=w->item_rawcode || probe[7]>1024u ||
+               (probe[7] && (probe[6]<w->resolver_base+0x1000u ||
+               probe[6]+probe[7]>w->resolver_base+0x2300000u))){w->error=290;return count;}
+            out[0]=boolean(w->item_handle,0x69706f77u); /* ipow */
+            out[1]=boolean(w->item_handle,0x6964726fu); /* idro */
+            out[2]=boolean(w->item_handle,0x69706572u); /* iper */
+            out[3]=boolean(w->item_handle,0x69757361u); /* iusa */
+            out[4]=owned(w->item_handle);out[5]=has(w->target_unit,w->item_handle);
+            out[6]=x(w->item_handle);out[7]=y(w->item_handle);
+            if(probe[7])ExtensionProbeCopy((uint8_t *)(out+8),(uint8_t *)(uintptr_t)probe[6],(uint32_t)probe[7]);
         }else if(w->action==11){
             uint32_t found=0,old_type=0,equipped=0,bag_found=0;int32_t slot=-1;
             uint64_t before_bag[30],before_eq[9];
@@ -237,6 +272,66 @@ __declspec(dllexport) uint64_t BridgeExtensionQuery(void) {
             probe_result[5]=field_before;probe_result[6]=setter_result;
             probe_result[7]=field_after;
             w->changed=1;
+#endif
+#ifdef BRIDGE_DIAGNOSTIC
+        }else if(w->action==15){
+            uint64_t convert=(uint64_t)w->ability_rawcodes[0]|((uint64_t)w->ability_rawcodes[1]<<32);
+            uint64_t get=(uint64_t)w->ability_rawcodes[2]|((uint64_t)w->ability_rawcodes[3]<<32);
+            if(!convert || !get || w->ability_count){w->error=289;return count;}
+            uint64_t hp=((uint64_t (*)(uint32_t))(uintptr_t)convert)(0x75687072u);
+            uint64_t mp=((uint64_t (*)(uint32_t))(uintptr_t)convert)(0x756d7072u);
+            w->ability_levels[0]=(int32_t)((uint32_t (*)(uint64_t,uint64_t))(uintptr_t)get)(w->target_unit,hp);
+            w->ability_levels[1]=(int32_t)((uint32_t (*)(uint64_t,uint64_t))(uintptr_t)get)(w->target_unit,mp);
+        }else if(w->action==13 || w->action==14){
+            /* Diagnostic: classifier changes exist only inside this game-thread
+               callback, including the exception path. No campaign data changes. */
+            uint8_t *node=(uint8_t *)(uintptr_t)w->resolver_base;
+            uint64_t item_object=(uint64_t)w->ability_rawcodes[0]|
+                ((uint64_t)w->ability_rawcodes[1]<<32);
+            uint32_t prior_class,prior_type,prior_flags,prior_cached_type;
+            if(!node || !w->item_handle || !w->item_rawcode || w->slot>=9 ||
+               *(uint32_t *)(node+0x28u)!=w->item_rawcode ||
+               !item_object || *(uint32_t *)(uintptr_t)(item_object+0x70u)!=w->item_rawcode ||
+               *(uint32_t *)(uintptr_t)(item_object+0x178u)!=w->item_rawcode ||
+               w->item_type(w->item_handle)!=w->item_rawcode || !ExtensionSnapshot(w))
+                {w->error=282;return count;}
+            prior_class=*(uint32_t *)(node+0x54u);
+            prior_type=*(uint32_t *)(node+0xbcu);
+            if(prior_type || (prior_class!=0u && prior_class!=8u))
+                {w->error=283;return count;}
+            prior_flags=*(uint32_t *)(uintptr_t)(item_object+0x38u);
+            prior_cached_type=*(uint32_t *)(uintptr_t)(item_object+0x948u);
+            __try {
+                static const uint32_t kinds[9]={1u,2u,3u,4u,5u,5u,6u,7u,8u};
+                *(uint32_t *)(uintptr_t)(item_object+0x38u)=prior_flags|0x4000u;
+                *(uint32_t *)(uintptr_t)(item_object+0x948u)=kinds[w->slot];
+                *(uint32_t *)(uintptr_t)(item_object+0x1c0u)=7u;
+                w->removed_rawcode=(uint32_t)w->item_equipment_type(w->item_handle);
+                if(w->action==13){
+                    if(!w->equip_item(w->target_unit,w->item_handle))w->error=285;
+                    else w->changed=1;
+                }else{
+                    if(w->equipment_item(w->target_unit,w->slot_enum((int32_t)w->slot))!=w->item_handle)
+                        w->error=286;
+                    else if(w->unequip_slot(w->target_unit,w->slot_enum((int32_t)w->slot))!=w->item_handle)
+                        w->error=287;
+                    else w->changed=1;
+                }
+            } __finally {
+                *(uint32_t *)(node+0x54u)=prior_class;
+                *(uint32_t *)(node+0xbcu)=prior_type;
+                if(w->action==14 && !w->error){
+                    *(uint32_t *)(uintptr_t)(item_object+0x38u)&=~0x4000u;
+                    *(uint32_t *)(uintptr_t)(item_object+0x948u)=0u;
+                    *(uint32_t *)(uintptr_t)(item_object+0x1c0u)=prior_class;
+                }else if(w->error){
+                    *(uint32_t *)(uintptr_t)(item_object+0x38u)=
+                        (*(uint32_t *)(uintptr_t)(item_object+0x38u)&~0x4000u)|(prior_flags&0x4000u);
+                    *(uint32_t *)(uintptr_t)(item_object+0x948u)=prior_cached_type;
+                    *(uint32_t *)(uintptr_t)(item_object+0x1c0u)=prior_class;
+                }
+            }
+            if(w->error)return count;
 #endif
         }else if(w->action==12){
             /* Diagnostic only: move one bag item through the native equip

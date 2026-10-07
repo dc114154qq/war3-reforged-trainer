@@ -33,7 +33,7 @@ def main() -> None:
 
     profile=json.loads((Path(__file__).resolve().parents[1]/'profiles/3.0.0.24268.json').read_text(encoding='utf8'))
     values=profile['bridge_layout']
-    expected=struct.pack('<'+'I'*(2+len(values)),1,8+4*len(values),*values.values())
+    expected=struct.pack('<'+'I'*(2+len(values)),profile['bridge_profile_version'],8+4*len(values),*values.values())
     if pe.get_data(exports[b'bridge_profile_abi'],8)!=expected[:8]:raise AssertionError('Bridge profile ABI mismatch')
     if pe.get_data(exports[b'bridge_profile'],len(expected))!=expected:raise AssertionError('Bridge profile defaults differ')
     required = (
@@ -66,6 +66,7 @@ def main() -> None:
         b"BridgeTerrainQuery",
         b"BridgeMapBoundsQuery",
         b"BridgeEquipmentQuery",
+        b"BridgeEquipmentEffectQuery",
         b"BridgeExtensionQuery",
         b"BridgeStatDetailsQuery",
     )
@@ -88,11 +89,15 @@ def main() -> None:
     marker(b"ability_batch_abi", (0x24268012, 216, 840))
     marker(b"ability_field_batch_abi", (0x24268021, 216, 7688))
     marker(b"item_batch_abi", (0x2426802D, 216, 6008))
+    marker(b"equipment_effect_abi", (0x2426805b, 216, 1672))
+    marker(b"item_safety_abi", (0x24268056, 216, 600))
     marker(b"item_catalog_batch_abi", (0x2426802B, 216, 0))
     marker(b"item_field_batch_abi", (0x24268022, 216, 5136))
-    marker(b"clone_batch_abi", (0x24268015, 216, 1872))
+    marker(b"clone_batch_abi", (0x24268063, 216, 1888))
+    marker(b"clone_bound_abi", (0x24268064, 216, 2680))
+    marker(b"unit_bindings_abi", (0x24268065, 216, 1280))
     marker(b"unit_action_batch_abi", (0x24268016, 216, 1432))
-    marker(b"world_batch_abi", (0x24268017, 216, 128))
+    marker(b"world_batch_abi", (0x2426805c, 216, 160))
     marker(b"bulk_batch_abi", (0x2426803A, 216, 656))
     marker(b"effect_batch_abi", (0x24268027, 216, 1168))
     marker(b"world_effect_batch_abi", (0x24268028, 216, 656))
@@ -108,7 +113,7 @@ def main() -> None:
     marker(b"map_bounds_batch_abi", (0x2426802C, 216, 128))
     marker(b"equipment_batch_abi", (0x2426802E, 216, 872))
     marker(b"extension_batch_abi", (0x2426803A, 216, 1848))
-    marker(b"stat_details_batch_abi", (0x2426803E, 216, 1032))
+    marker(b"stat_details_batch_abi", (0x24268058, 216, 1056))
     marker(b"talent_order_abi", (0x24268041, 216, 544))
     if b"equipment_probe_abi" in exports:
         if b"BridgeEquipmentProbeQuery" not in exports:

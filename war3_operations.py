@@ -22,6 +22,13 @@ class OperationSpec:
 
 
 OPERATIONS = {
+    "item_safety": OperationSpec("item_safety", "war3_item_safety_protocol",
+        b"item_safety_abi", b"BridgeItemSafetyQuery", False, True),
+    "equipment_effect": OperationSpec("equipment_effect", "war3_equipment_effect_protocol",
+        b"equipment_effect_abi", b"BridgeEquipmentEffectQuery", False, True),
+    "legacy_equipment_probe": OperationSpec("legacy_equipment_probe",
+        "war3_legacy_equipment_probe_protocol", b"extension_batch_abi",
+        b"BridgeExtensionQuery", True, False),
     "game_speed": OperationSpec("game_speed", "war3_game_speed_protocol",
         b"game_speed_abi", b"BridgeGameSpeedQuery", False, True),
     "direct_cast": OperationSpec("direct_cast", "war3_direct_cast_protocol",
@@ -140,6 +147,14 @@ OPERATIONS = {
         b"BridgeUnitActionQuery",
         False,
         False,
+    ),
+    "clone_bound": OperationSpec(
+        "clone_bound", "war3_clone_bound_protocol",
+        b"clone_bound_abi", b"BridgeCloneBoundQuery", False, False,
+    ),
+    "unit_bindings": OperationSpec(
+        "unit_bindings", "war3_unit_bindings_protocol",
+        b"unit_bindings_abi", b"BridgeUnitBindingsQuery", False, True,
     ),
     "world": OperationSpec(
         "world",
@@ -303,3 +318,15 @@ def prepare_operation(kind, payload):
             raise ValueError("Invalid diagnostic payload size")
         abi = struct.pack("<3I", magic, 216, size)
     return abi, spec.marker, spec.query
+
+
+def is_read_query(kind, request):
+    """Classify only fixed production queries, never trust a caller's label."""
+    if kind in ('camera','terrain','map_bounds','mouse','screen_mouse','unit_bindings'):
+        return True
+    if kind=='hero':return request.get('target')==0
+    if kind=='hero_attributes':return request.get('target') is None
+    if kind=='attack_speed':return request.get('target_aps')==0
+    if kind in ('unit_stats','stat_details','ability','ability_field','item','item_field','extension','game_speed'):
+        return request.get('action')==0
+    return False

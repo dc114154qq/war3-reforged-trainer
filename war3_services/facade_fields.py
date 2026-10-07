@@ -1075,10 +1075,9 @@ class FieldsFacade:
         self._unit_field_warnings = []
 
         def note_optional_query_failure(key: str, label: str, exc: Exception) -> None:
-            report = getattr(exc, "report", None)
-            dispatch = report.get("dispatch", {}) if isinstance(report, dict) else {}
-            if dispatch.get("allocations_retained") or getattr(getattr(self, "_engine24268", None), "quarantined", False):
-                raise exc
+            # A failed game-thread query does not invalidate fields already
+            # read through the external backend. Keep the panel readable even
+            # while unresolved native resources still guard later writes.
             try:
                 log_path = record_operation_failure(
                     self.pid, key, exc, requested_pid=self.pid, target_hwnd=self.hwnd,

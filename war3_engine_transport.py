@@ -32,6 +32,7 @@ unmap_section=api(nt,'NtUnmapViewOfSection',c.c_long,P,P)
 register_message=api(u,'RegisterWindowMessageW',U,c.c_wchar_p)
 window_thread=api(u,'GetWindowThreadProcessId',U,P,c.POINTER(U))
 send_message_timeout=api(u,'SendMessageTimeoutW',Z,P,U,Z,c.c_ssize_t,U,U,c.POINTER(Z))
+post_thread_message=api(u,'PostThreadMessageW',c.c_int,U,U,Z,c.c_size_t)
 
 def bytes_at(handle,address,size):
     data=c.create_string_buffer(size);actual=Z()
@@ -314,8 +315,10 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
     query_mode=kind
     if delivery_mode is None:
         delivery_mode = 'send'
-    hook_kind = 3 if delivery_mode == 'posted' else 4
-    hook_name = 'WH_GETMESSAGE' if delivery_mode == 'posted' else 'WH_CALLWNDPROC'
+    thread_posted = delivery_mode == 'thread_posted'
+    hook_kind = 3 if delivery_mode in ('posted','thread_posted') else 4
+    if thread_posted: hook_kind |= 0x20000000
+    hook_name = 'WH_GETMESSAGE' if delivery_mode in ('posted','thread_posted') else 'WH_CALLWNDPROC'
     if hook_api not in ('user32','win32u'):
         raise ValueError('Unsupported hook installer')
     pe=pefile.PE(str(image));exports={s.name:s.address for s in pe.DIRECTORY_ENTRY_EXPORT.symbols}
@@ -343,7 +346,9 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
             'target_window':{'hwnd':hex(hwnd),'pid':pid,'thread_id':tid},
             'process_access':'0x43a','hook_kind':hook_name,
             'message_delivery':delivery_mode,
-            'route_policy':('target_LoadLibraryW+WH_GETMESSAGE+PostMessage'
+            'route_policy':('target_LoadLibraryW+WH_GETMESSAGE+PostThreadMessage'
+                            if thread_posted
+                            else 'target_LoadLibraryW+WH_GETMESSAGE+PostMessage'
                             if delivery_mode == 'posted'
                             else 'target_LoadLibraryW+WH_CALLWNDPROC+SendMessageTimeout'),
             'image':str(image),
@@ -558,7 +563,13 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
         delivered=False
         if state['stage']==2 and state['hook']:
             reply=Z();c.set_last_error(0)
-            if delivery_mode == 'posted':
+            if thread_posted:
+                delivered=bool(post_thread_message(tid,message,nonce,0))
+                report['post_thread']={'enqueued':delivered,'error':c.get_last_error()}
+                deadline=time.monotonic()+1.5
+                while delivered and state['stage']!=3 and time.monotonic()<deadline:
+                    time.sleep(.005);state=fields(handle,block)
+            elif delivery_mode == 'posted':
                 post=p['api'](h['u'],'PostMessageW',c.c_int,P,U,Z,c.c_ssize_t)
                 delivered=bool(post(hwnd,message,nonce,0))
                 report['post']={'enqueued':delivered,'error':c.get_last_error()}
@@ -754,8 +765,22 @@ def _apphelp_install_read_fault(report):
 def dispatch(pid,hwnd,tid,image,tls_index,work_payload,kind="hero"):
     first=_dispatch_once(
         pid,hwnd,tid,image,tls_index,work_payload,kind=kind,attempt=1,
-        delivery_mode='send',
+        delivery_mode='thread_posted',
     )
+    # A thread can expose a queue only after its first message-pump turn. If
+    # posting fails, the route has already cleaned up or quarantined itself;
+    # a window-send fallback is allowed only after that evidence is complete.
+    if (not first.get('callback_verified') and first.get('safe_to_release')
+            and not first.get('allocations_retained')
+            and first.get('message_delivery')=='thread_posted'
+            and not (first.get('post_thread') or {}).get('enqueued',False)):
+        fallback=_dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind=kind,
+            attempt=2,delivery_mode='send')
+        fallback['same_route_retry']={'attempted':True,
+            'reason':'thread_queue_unavailable_after_cleanup',
+            'fallback_route':fallback.get('route_policy'),
+            'first_attempt':_retry_summary(first)}
+        return fallback
     if not _retryable_hook_install_failure(first):
         first['same_route_retry']={'attempted':False}
         return first

@@ -41,7 +41,8 @@ typedef struct BridgeCommand {
 _Static_assert(sizeof(BridgeCommand) == 216, "BridgeCommand ABI");
 #define BRIDGE_PERSISTENT_HOOK 0x80000000u
 #define BRIDGE_NATIVE_HOOK 0x40000000u
-#define BRIDGE_HOOK_FLAGS (BRIDGE_PERSISTENT_HOOK | BRIDGE_NATIVE_HOOK)
+#define BRIDGE_THREAD_MESSAGE 0x20000000u
+#define BRIDGE_HOOK_FLAGS (BRIDGE_PERSISTENT_HOOK | BRIDGE_NATIVE_HOOK | BRIDGE_THREAD_MESSAGE)
 __declspec(dllexport) const uint32_t bridge_native_hook_abi[3]={0x24268049u,216u,6u};
 static BridgeCommand *g_dispatch;
 typedef EXCEPTION_DISPOSITION (*BridgeHandler)(PEXCEPTION_RECORD,void *,PCONTEXT,PDISPATCHER_CONTEXT);
@@ -116,7 +117,8 @@ static LRESULT CALLBACK BridgeCallback(int code, WPARAM w, LPARAM l) {
                     const CWPSTRUCT *msg=(const CWPSTRUCT *)l;
                     hwnd=msg->hwnd;message=msg->message;nonce=msg->wParam;
                 }
-                owned = hwnd==cmd->window && message==cmd->message && nonce==cmd->nonce;
+                owned = message==cmd->message && nonce==cmd->nonce &&
+                    ((cmd->hook_kind & BRIDGE_THREAD_MESSAGE) ? !hwnd : hwnd==cmd->window);
                 if (owned && cmd->stage==2 &&
                     (hook_kind!=WH_GETMESSAGE || w==PM_REMOVE)) {
                     cmd->callback_tid=cmd->current_tid();
@@ -139,8 +141,9 @@ static LRESULT CALLBACK BridgeCallback(int code, WPARAM w, LPARAM l) {
                     completed=1;
                 }
             }
-            /* Consume only our registered private message with matching HWND
-               and nonce. Its query has completed; forwarding it after detach
+            /* Consume only our registered private message with matching nonce.
+               Thread-posted dispatches have no HWND and do not depend on a
+               visible window. Its query has completed; forwarding it after detach
                needlessly re-enters foreign hooks/SHIM code. Negative hook
                codes and all unrelated messages still traverse the hook chain. */
             if (!owned) {
@@ -478,6 +481,7 @@ BOOL WINAPI DllMain(HINSTANCE module,DWORD reason,LPVOID reserved) {
 #include "war3_bridge_item.h"
 #include "war3_bridge_item_catalog.h"
 #include "war3_bridge_clone.h"
+#include "war3_bridge_unit_bindings.h"
 #include "war3_bridge_unit_action.h"
 #include "war3_bridge_unit_stats.h"
 #include "war3_bridge_world.h"
@@ -490,6 +494,8 @@ BOOL WINAPI DllMain(HINSTANCE module,DWORD reason,LPVOID reserved) {
 #include "war3_bridge_terrain.h"
 #include "war3_bridge_map_bounds.h"
 #include "war3_bridge_equipment.h"
+#include "war3_bridge_equipment_effect.h"
+#include "war3_bridge_item_safety.h"
 #include "war3_bridge_extension.h"
 #include "war3_bridge_stat_details.h"
 #include "war3_bridge_talent_icon_control.h"
@@ -498,10 +504,17 @@ BOOL WINAPI DllMain(HINSTANCE module,DWORD reason,LPVOID reserved) {
 #endif
 #ifdef BRIDGE_DIAGNOSTIC
 #include "war3_bridge_talent_probe.h"
+#include "war3_bridge_inherited_probe.h"
+#include "war3_equipment_attribute_probe.h"
 #endif
 #include "war3_bridge_talent_order.h"
 #ifdef BRIDGE_TEST
 #include "war3_bridge_test_fixture.h"
+#include "war3_equipment_effect_fixture.h"
+#include "war3_item_safety_fixture.h"
+#include "war3_stat_flat_fixture.h"
+#include "war3_unit_bindings_fixture.h"
+#include "war3_camera_fixture.h"
 #endif
 
 #ifdef BRIDGE_TEST

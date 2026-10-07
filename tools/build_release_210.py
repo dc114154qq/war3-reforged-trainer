@@ -1,4 +1,4 @@
-"""Build and verify the 2.1.0-beta package from this worktree only."""
+"""Build and verify the 2.1.03 package from this worktree only."""
 
 from __future__ import annotations
 
@@ -24,9 +24,9 @@ ALLOWED_BRANCHES = {
     "master",
     "codex/war3-modular-adapters-20260926",
 }
-VERSION = (2, 1, 0, 0)
-EXE_NAME = "War3ReforgedTrainer-v2.1.0-beta.exe"
-OUTPUT = ROOT / "dist-2.1.0-beta-verified"
+VERSION = (2, 1, 3, 0)
+EXE_NAME = "War3ReforgedTrainer-v2.1.03.exe"
+OUTPUT = ROOT / "dist-2.1.03-verified"
 PACKAGE_BINARIES = (
     "tools\\war3_bridge_24268.dll",
     "tools\\war3_talent_icon_display.dll",
@@ -50,7 +50,7 @@ def sha256(path: Path) -> str:
 
 
 def source_paths() -> tuple[Path, ...]:
-    # Keep this list aligned with the actual 2.1.0 build closure.  In
+    # Keep this list aligned with the actual 2.1.03 build closure.  In
     # particular, the separate hotkey product and diagnostics probes must not
     # silently become part of the trainer source hash or package inputs.
     excluded_runtime = {
@@ -91,6 +91,7 @@ def source_paths() -> tuple[Path, ...]:
         "war3_bridge_cooldown_probe.h",
         "war3_bridge_talent_probe.h",
         "war3_bridge_test_fixture.h",
+        "war3_bridge_equipment_effect_fixture.h",
     }
     files.update(
         path for path in ROOT.glob("tools/war3_bridge_*.h")
@@ -98,7 +99,7 @@ def source_paths() -> tuple[Path, ...]:
     )
     files.update(
         ROOT / name for name in (
-            "War3ReforgedTrainer-2.1.0-beta.spec",
+            "War3ReforgedTrainer-2.1.03.spec",
             "tools/war3_bridge_24268.c",
             "tools/build_engine_bridge.ps1",
             "tools/build_talent_icon_display.ps1",
@@ -109,7 +110,8 @@ def source_paths() -> tuple[Path, ...]:
             "tools/verify_speed_clock.py",
             "third_party/minhook/LICENSE.txt",
             "tools/build_release_210.py",
-            "tools/war3-2.1.0-beta-version-info.txt",
+        "RELEASE_NOTES_v2.1.03.md",
+            "tools/war3-2.1.03-version-info.txt",
             "assets/app_icon.ico",
             "assets/app_icon.png",
         )
@@ -138,14 +140,14 @@ def assert_workspace() -> tuple[str, str]:
                     isinstance(target, ast.Name) and target.id == "APP_VERSION"
                     for target in node.targets
                 ) and isinstance(node.value, ast.Constant)]
-    if versions != ["2.1.0"]:
+    if versions != ["2.1.03"]:
         raise RuntimeError(f"Source version mismatch: {versions}")
     channels = [node.value.value for node in tree.body
                 if isinstance(node, ast.Assign) and any(
                     isinstance(target, ast.Name) and target.id == "APP_RELEASE_CHANNEL"
                     for target in node.targets) and isinstance(node.value, ast.Constant)]
-    if channels != ["beta"]:
-        raise RuntimeError(f"Expected explicit beta channel: {channels}")
+    if channels != ["stable"]:
+        raise RuntimeError(f"Expected stable release channel: {channels}")
     return branch, run("git", "rev-parse", "HEAD")
 
 
@@ -158,8 +160,8 @@ def inspect_exe(exe: Path, expected: dict[str, str] | None = None) -> dict[str, 
     )
     if version != VERSION:
         raise RuntimeError(f"EXE version differs: {version}")
-    if not fixed.FileFlags & 0x2:
-        raise RuntimeError("EXE must carry the prerelease flag")
+    if fixed.FileFlags & 0x2:
+        raise RuntimeError("EXE must not carry the prerelease flag")
     archive = CArchiveReader(str(exe))
     if "PYZ-00.pyz" not in archive.toc:
         raise RuntimeError("Packaged Python modules are missing")
@@ -179,7 +181,8 @@ def inspect_exe(exe: Path, expected: dict[str, str] | None = None) -> dict[str, 
     required = {spec.protocol for spec in OPERATIONS.values() if spec.protocol}
     required.update("war3_services." + path.stem for path in (ROOT / "war3_services").glob("*.py") if path.stem != "__init__")
     required.update({"war3_game_session", "war3_game_profile", "war3_capabilities", "war3_external_backend"})
-    required.add("war3_speed_clock_backend")
+    required.update({"war3_speed_clock_backend", "war3_loadout_restore", "war3_loadout_storage"})
+    required.update({"war3_error_messages", "war3_item_safety_protocol"})
     if required - set(pyz.toc):
         raise RuntimeError(f"Packaged architecture modules missing: {sorted(required - set(pyz.toc))}")
     bridge = pefile.PE(data=archive.extract(PACKAGE_BINARIES[0]))
@@ -196,6 +199,12 @@ def inspect_exe(exe: Path, expected: dict[str, str] | None = None) -> dict[str, 
             raise RuntimeError(f"Packaged architecture profile differs: {name!r}")
     if not {b"BridgeDiagnoseLoadSafe", b"bridge_callback_lifecycle"}.issubset(exported):
         raise RuntimeError("Packaged bridge lacks the 2.0.8/2.0.9 repairs")
+    for name, expected_bytes in (
+        (b'equipment_effect_abi',struct.pack('<3I',0x2426805b,216,1672)),
+        (b'item_safety_abi',struct.pack('<3I',0x24268056,216,600)),
+    ):
+        if name not in exported or bridge.get_data(exported[name],12)!=expected_bytes:
+            raise RuntimeError('Packaged equipment safety ABI differs: '+name.decode('ascii'))
     clock=pefile.PE(data=archive.extract(PACKAGE_BINARIES[2]))
     exports={entry.name:entry.address for entry in clock.DIRECTORY_ENTRY_EXPORT.symbols}
     if (clock.FILE_HEADER.Machine!=0x8664 or b"SpeedControl" not in exports
@@ -229,7 +238,7 @@ def build() -> None:
     before = source_hashes()
     staging_root = ROOT / "build"
     staging_root.mkdir(exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="release-210-beta-", dir=staging_root,
+    with tempfile.TemporaryDirectory(prefix="release-2103-", dir=staging_root,
                                      ignore_cleanup_errors=True) as temporary:
         stage = Path(temporary)
         native = stage / "native"
@@ -250,7 +259,7 @@ def build() -> None:
         environment["RELEASE_210_SPEED_DLL"] = str(native / "war3_speed_clock.dll")
         run(sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean",
             "--distpath", str(stage / "dist"), "--workpath", str(stage / "build"),
-            "War3ReforgedTrainer-2.1.0-beta.spec", env=environment)
+            "War3ReforgedTrainer-2.1.03.spec", env=environment)
         exe = stage / "dist" / EXE_NAME
         bundled = inspect_exe(exe, compiled)
         if before != source_hashes():
@@ -269,7 +278,7 @@ def build() -> None:
                 raise RuntimeError("Copied release artifact differs")
             os.replace(pending_exe, final_exe)
         manifest = {
-            "version": "2.1.0", "release_channel": "beta", "prerelease": True,
+            "version": "2.1.03", "release_channel": "stable", "prerelease": False,
             "release_status": "built_not_published", "branch": branch, "head": head,
             "source_sha256": before, "bundled_sha256": bundled,
             "exe_sha256": exe_hash, "artifact": artifact.as_posix(),

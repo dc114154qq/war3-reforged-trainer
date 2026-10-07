@@ -822,25 +822,61 @@ class AbilitiesFacade:
         if not 1 <= total <= 100:
             raise ValueError("批量复制数量必须在 1 到 100 之间")
         if getattr(self, "_native_selection_unavailable", False) and rawcode is None:
-            unit_rawcode = 0
+            expected_sources = self._capture_clone_sources_24268()
+            unit_rawcode = expected_sources[0][1].rawcode
             created = 0
+            completed = 0
+            committed_handles = []
             position = self.query_mouse_world_position()
             spawn_x_bits = self._float_bits(float(position[0]))
             spawn_y_bits = self._float_bits(float(position[1]))
-            for _ in range(total):
-                result = self.clone_batch_24268(
-                    keep=True,
-                    copy_abilities=True,
-                    copy_items=True,
-                    spawn=True,
-                    spawn_x_bits=spawn_x_bits,
-                    spawn_y_bits=spawn_y_bits,
+            try:
+                for _ in range(total):
+                    result = self.clone_batch_24268(
+                        keep=True,
+                        copy_abilities=True,
+                        copy_items=True,
+                        spawn=True,
+                        spawn_x_bits=spawn_x_bits,
+                        spawn_y_bits=spawn_y_bits,
+                        expected_sources=expected_sources,
+                    )
+                    rows = tuple(result.get("rows", ()))
+                    handles = tuple(row['clone'] for row in rows)
+                    if (len(rows) != len(expected_sources)
+                            or int(result.get("changed", 0)) != len(rows)
+                            or any(type(handle) is not int or not 0 < handle <= 0xFFFFFFFFFFFFFFFF
+                                   for handle in handles)
+                            or len(set(handles)) != len(handles)
+                            or set(handles).intersection(committed_handles)):
+                        error = RuntimeError("3.0 批量复制的副本读回不完整，已停止后续轮次")
+                        error.report = dict(operation='clone_bound', ok=False,
+                                            unverified_iteration_result=result)
+                        raise error
+                    committed_handles.extend(handles)
+                    created += len(rows)
+                    completed += 1
+            except Exception as exc:
+                from war3_error_messages import describe_error
+                cause = describe_error(exc)
+                reason = (f"批量复制已停止：前 {completed} 轮已完成，保留 {created} 个有效副本；"
+                          f"第 {completed + 1} 轮未确认成功，后续轮次未执行，"
+                          "不会自动重放或删除已完成副本。")
+                report = getattr(exc, 'report', None)
+                if not isinstance(report, dict):
+                    report = dict(operation='clone_bound', ok=False)
+                    exc.report = report
+                report['clone_partial'] = dict(
+                    committed_clone_handles=tuple(committed_handles),
+                    committed_count=created, completed_iterations=completed,
+                    requested_iterations=total, failed_iteration=completed + 1,
+                    reason=reason,
                 )
-                rows = tuple(result.get("rows", ()))
-                if not rows or int(result.get("changed", 0)) != len(rows):
-                    raise RuntimeError("3.0 当前引擎批量复制返回不完整")
-                unit_rawcode = int(rows[0]["rawcode"])
-                created += len(rows)
+                report['batch_failures'] = tuple(report.get('batch_failures', ())) + (
+                    dict(cause, reason=reason + ' 原因：' + cause['reason']),
+                )
+                exc.args = (reason + '；失败详情：' + str(exc),) + exc.args[1:]
+                raise
             return unit_rawcode, created
         position = self.query_mouse_world_position()
         created = 0

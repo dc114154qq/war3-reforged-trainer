@@ -26,7 +26,9 @@ class SelectionFacade:
                 size_bytes = pm.read_u64(owner + size_offset)
             except OSError:
                 continue
-            if not self._sane_heap_ptr(list_address):
+            # These pointers come from a known owner, not a heap scan. Windows
+            # may place valid 64-bit allocations below 4 GiB on another PC.
+            if not (0x10000 <= list_address < 0x800000000000 and list_address % 8 == 0):
                 continue
             if not 0 < size_bytes <= 0x400:
                 size_bytes = 0x100
@@ -35,7 +37,7 @@ class SelectionFacade:
                     prop = pm.read_u64(list_address + entry_offset)
                 except OSError:
                     continue
-                if self._sane_heap_ptr(prop):
+                if 0x10000 <= prop < 0x800000000000 and prop % 8 == 0:
                     yield prop
 
 
@@ -72,14 +74,16 @@ class SelectionFacade:
 
 
     def _unit_object_from_owner(self, pm: ProcessMemory, owner: int, handle: int) -> int:
+        from war3_game_profile import current_profile
+        layout = current_profile().section("registry")
         try:
-            unit = pm.read_u64(owner + 0x90)
+            unit = pm.read_u64(owner + layout["owner_data"])
         except OSError:
             return 0
-        if not self._sane_heap_ptr(unit):
+        if not (0x10000 <= unit < 0x800000000000 and unit % 8 == 0):
             return 0
         try:
-            if handle and pm.read_u64(unit + 0x18) != handle:
+            if handle and pm.read_u64(unit + layout["object_handle"]) != handle:
                 return 0
         except OSError:
             return 0
@@ -107,6 +111,7 @@ class SelectionFacade:
     ) -> UnitCandidate | None:
         hp_prop = self._property_from_owner(pm, owner, 1)
         if hp_prop is None:
+            self._last_selection_candidate_failure = {"stage": "hp_missing", "owner": owner}
             return None
         hp_current_address = hp_prop + self.SELECTED_HP_VALUE_OFFSET
         hp_regen_address = hp_current_address + 0x04
@@ -114,9 +119,17 @@ class SelectionFacade:
         try:
             hp_current = pm.read_f32(hp_current_address)
             hp_limit = pm.read_f32(hp_max_address)
-        except OSError:
+        except OSError as exc:
+            self._last_selection_candidate_failure = {
+                "stage": "hp_unreadable", "owner": owner, "property": hp_prop,
+                "winerror": getattr(exc, "winerror", None),
+            }
             return None
         if not self._valid_current_limit(hp_current, hp_limit):
+            self._last_selection_candidate_failure = {
+                "stage": "hp_invalid", "owner": owner, "property": hp_prop,
+                "current": hp_current, "maximum": hp_limit,
+            }
             return None
 
         mp_current_address = 0
@@ -2014,17 +2027,34 @@ class SelectionFacade:
         score: int = 0,
         selection_slot_address: int = 0,
     ) -> UnitCandidate | None:
+        self._last_selection_candidate_failure = {}
         try:
-            if pm.read_u64(owner + 0x20) != handle:
-                return None
-            if pm.read_u64(owner + 0x90) != unit:
-                return None
-            if pm.read_u64(unit + 0x18) != handle:
-                return None
-        except OSError:
+            from war3_game_profile import current_profile
+            layout = current_profile().section("registry")
+            for address, expected, stage in (
+                (owner + layout["owner_handle"], handle, "owner_handle"),
+                (owner + layout["owner_data"], unit, "owner_unit"),
+                (unit + layout["object_handle"], handle, "unit_handle"),
+            ):
+                actual = pm.read_u64(address)
+                if actual != expected:
+                    self._last_selection_candidate_failure = {
+                        "stage": stage, "address": address, "expected": expected, "actual": actual,
+                    }
+                    return None
+        except OSError as exc:
+            self._last_selection_candidate_failure = {
+                "stage": "identity_unreadable", "owner": owner, "unit": unit,
+                "winerror": getattr(exc, "winerror", None),
+            }
             return None
         candidate = self._candidate_from_owner(pm, owner, score, note, handle, "memory", selection_slot_address)
-        if candidate is None or candidate.unit_address != unit:
+        if candidate is None:
+            return None
+        if candidate.unit_address != unit:
+            self._last_selection_candidate_failure = {
+                "stage": "unit_changed", "expected": unit, "actual": candidate.unit_address,
+            }
             return None
         return candidate
 
@@ -2383,6 +2413,10 @@ class SelectionFacade:
 
         components: dict[str, tuple[int, int]] = {}
         for name, offset in self.UNIT_COMPONENT_DATA_OFFSETS.items():
+            if name=='attack' and getattr(self,'_game_session',None) is not None:
+                # The shared method consumes the already verified, per-build
+                # native attack-component offset rather than the legacy layout.
+                offset=self._game_session.profile.section('bridge_layout')['unit_attack']
             try:
                 data = pm.read_u64(unit + offset)
                 data_vtable = pm.read_u64(data) if self._sane_heap_ptr(data) else 0

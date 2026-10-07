@@ -20,10 +20,10 @@ def generate():
     lines += [
         "} BridgeProfile;",
         "__declspec(dllexport) volatile BridgeProfile bridge_profile = {",
-        "    1u, sizeof(BridgeProfile),",
+        "    " + str(data["bridge_profile_version"]) + "u, sizeof(BridgeProfile),",
         "    " + ", ".join(hex(v) + "u" for v in fields.values()),
         "};",
-        "__declspec(dllexport) const uint32_t bridge_profile_abi[2] = {1u, sizeof(BridgeProfile)};",
+        "__declspec(dllexport) const uint32_t bridge_profile_abi[2] = {" + str(data["bridge_profile_version"]) + "u, sizeof(BridgeProfile)};",
         "#endif",
         "",
     ]

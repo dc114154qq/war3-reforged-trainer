@@ -145,6 +145,24 @@ class NativeFacade:
 
 
     def _stat_target_24268(self, candidate: UnitCandidate | None = None) -> tuple:
+        from war3_game_session import GameSession, NativeHandle, UnitRef
+
+        engine = self._engine_instance_24268()
+        session = getattr(engine, 'session', None)
+        if isinstance(session, GameSession):
+            with session.lock:
+                if candidate is None:
+                    candidate, _full_handle = self._direct_selected_context()
+                refs = self._capture_unit_refs_24268((candidate,))
+                bindings = engine.bind_unit_refs(refs, strict_selection=False)
+                if (type(bindings) is not tuple or len(bindings) != 1
+                        or type(bindings[0]) is not tuple or len(bindings[0]) != 2
+                        or type(bindings[0][0]) is not NativeHandle
+                        or type(bindings[0][1]) is not UnitRef
+                        or bindings[0][1] != refs[0]):
+                    raise RuntimeError("属性目标的原生绑定与完整单位身份不一致")
+                return candidate, bindings[0][0].value
+        # Preserve the compatibility path used by hosts without GameSession.
         if candidate is None:
             candidate, unit_handle = self._direct_selected_context()
         else:
@@ -158,9 +176,7 @@ class NativeFacade:
             candidate, unit_handle = matches[0]
         if not candidate.handle or not candidate.unit_type_id:
             raise RuntimeError("3.0 属性读取缺少完整单位身份")
-        # Selection candidates use persistent identities, not the native
-        # JASS handle namespace. Bind through a read-only native selection.
-        native = self._engine_instance_24268().ability_batch(int.from_bytes(b"AIxr", "big"))
+        native = engine.ability_batch(int.from_bytes(b"AIxr", "big"))
         rows = [row for row in native["rows"] if int(row["rawcode"]) == int(candidate.unit_type_id)]
         if len(rows) != 1:
             raise RuntimeError("属性目标的原生身份不唯一，请单选该单位后重试")
@@ -330,12 +346,10 @@ class NativeFacade:
         eye = tuple(float(value) for value in snapshot["eye"])
         screen_x, screen_y = (int(value) for value in snapshot["screen"])
         fields = tuple(float(value) for value in snapshot.get("fields", ()))
-        # Warcraft III's CAMERA_FIELD_FIELD_OF_VIEW is index 2. Index 3 is
-        # near-Z on the JASS camera-field enum; retain it only for old
-        # synthetic snapshots that used the wrong field slot.
-        if len(fields) > 2 and 0.1 < fields[2] < math.pi - 0.1:
-            fov = fields[2]
-        elif len(fields) > 3 and 0.1 < fields[3] < math.pi - 0.1:
+        # Camera field 2 is angle of attack; field 3 is field of view.
+        # The angle can also look like a valid FOV, so never infer the field
+        # from its numeric range.
+        if len(fields) > 3 and 0.1 < fields[3] < math.pi - 0.1:
             fov = fields[3]
         else:
             fov = math.radians(70.0)
@@ -357,7 +371,7 @@ class NativeFacade:
             forward[0] * up[1] - forward[1] * up[0],
         )
         aspect = float(client_width) / float(client_height)
-        if screen_x > client_width * 2 or screen_y > client_height * 2:
+        if snapshot.get('screen_space')!='client_pixels' and (screen_x > client_width * 2 or screen_y > client_height * 2):
             screen_width = screen_height = 65535.0
         else:
             if not math.isfinite(screen_scale) or not 0.5 <= screen_scale <= 4.0:
@@ -442,8 +456,9 @@ class NativeFacade:
                           copy_items: bool = True,
                           spawn: bool = False,
                           spawn_x_bits: int = 0,
-                          spawn_y_bits: int = 0) -> dict:
-        return self._engine_instance_24268().clone_batch(
+                          spawn_y_bits: int = 0,
+                          expected_sources=None) -> dict:
+        options = dict(
             keep=keep,
             preserve_owner=preserve_owner,
             copy_abilities=copy_abilities,
@@ -452,6 +467,47 @@ class NativeFacade:
             spawn_x_bits=spawn_x_bits,
             spawn_y_bits=spawn_y_bits,
         )
+        if expected_sources is not None:
+            options['expected_sources'] = expected_sources
+        return self._engine_instance_24268().clone_batch(**options)
+
+
+    def _capture_unit_refs_24268(self, candidates=None) -> tuple:
+        """Capture classic identities once; Native binding is a separate query."""
+        from war3_game_session import ObjectAddress, session_scope
+
+        engine = self._engine_instance_24268()
+        session = engine.session
+        with session.lock:
+            with engine.memory_factory(engine.pid) as memory:
+                registry, _, _ = session.prepare(memory)
+                with session_scope(session):
+                    if candidates is None:
+                        candidates = tuple(candidate for candidate, _full_handle
+                                           in self._selected_candidates_snapshot(memory))
+                    else:
+                        candidates = tuple(candidates)
+                    if not 1 <= len(candidates) <= 24:
+                        raise RuntimeError("原生绑定需要 1 到 24 个稳定的单位身份")
+                    refs = tuple(session.bind_unit(memory, registry, ObjectAddress(candidate.unit_address))
+                                 for candidate in candidates)
+                    if any((ref.handle.value, ref.rawcode) != (candidate.handle, candidate.unit_type_id)
+                           for ref, candidate in zip(refs, candidates)):
+                        raise RuntimeError("原生绑定源单位的完整身份已变化，未执行后续操作")
+                    return refs
+
+
+    def _capture_clone_sources_24268(self) -> tuple:
+        from war3_clone_bound_protocol import validate_expected_sources
+
+        engine = self._engine_instance_24268()
+        with engine.session.lock:
+            refs = self._capture_unit_refs_24268()
+            bindings = engine.bind_unit_refs(refs, strict_selection=True)
+            validate_expected_sources(bindings)
+            if tuple(ref for _native, ref in bindings) != refs:
+                raise RuntimeError("复制源单位的原生绑定与捕获身份不一致，未开始复制")
+            return bindings
 
 
     def unit_action_batch_24268(self, action: int, *, value: int = 0,

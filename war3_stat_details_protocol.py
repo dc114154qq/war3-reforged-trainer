@@ -15,8 +15,8 @@ from war3_3_stats import STAT_DETAIL_SPECS
 
 STAT_COUNT = len(STAT_DETAIL_SPECS)
 MAX_PRESENT = 64
-WORK_SIZE = 1032
-ABI = struct.pack("<3I", 0x2426803E, 216, WORK_SIZE)
+WORK_SIZE = 1056
+ABI = struct.pack("<3I", 0x24268058, 216, WORK_SIZE)
 SIGNATURES = (
     ("BlzGetUnitAbilityByIndex", "(Hunit;I)Hability;"),
     ("BlzGetAbilityId", "(Hability;)I"),
@@ -59,6 +59,8 @@ def build_work(entries, tls: int, action: int = 0, stat_index: int = 0,
             raise ValueError("Stat-details signature differs: " + name)
         handlers.append(int(entry.handler))
     target_bits = struct.unpack("<I", struct.pack("<f", float(target)))[0]
+    from war3_game_profile import current_profile
+    layout=current_profile().section('stat_runtime')
     payload = (
         selection_work(entries)
         + struct.pack("<12Q", *handlers, int(tls))
@@ -66,6 +68,8 @@ def build_work(entries, tls: int, action: int = 0, stat_index: int = 0,
                       controller_rawcode, 0, 0, 0, 0)
         + bytes(STAT_COUNT * 8 + MAX_PRESENT * 4 + 32)
         + struct.pack("<2Q", int(target_full_handle), int(resolver_base))
+        + struct.pack('<6I', *(layout[key] for key in (
+            'cooldown_vtable','amplification_vtable','spell_vamp_vtable','resolve_vtable','flat_flag')),0)
     )
     validate_work(payload)
     return payload
@@ -95,6 +99,10 @@ def validate_work(payload: bytes) -> None:
         raise ValueError("Invalid stat-details runtime binding")
     if any(payload[616:1016]):
         raise ValueError("Stat-details output must start empty")
+    tables=struct.unpack_from('<6I',payload,1032)
+    if (any(not 0 < rva < 0x40000000 or rva%8 for rva in tables[:4])
+            or not 0 < tables[4] < 0x1000 or tables[5]):
+        raise ValueError('Invalid stat-details version layout')
 
 
 def decode_work(payload: bytes, expected_count: int) -> dict:
@@ -147,3 +155,18 @@ def decode_work(payload: bytes, expected_count: int) -> dict:
         "after": after,
         "present": tuple(present[:count]),
     }
+
+
+def failure_status(payload):
+    """Only a structurally rejected read is continuable; no write inference."""
+    if len(payload)!=WORK_SIZE:
+        return None
+    _,action,_,_,_,changed,error,completed,_=struct.unpack_from('<Q8I',payload,576)
+    if not error or completed:
+        return None
+    # The production action=0 branch only enumerates/reads. These errors are
+    # explicit validation exits, not unknown native faults or write rollback.
+    group_destroyed=struct.unpack_from('<I',payload,88)[0]
+    safe=action==0 and changed==0 and group_destroyed==1 and error in (263,264,274)
+    return dict(error=error,completed=completed,changed=changed,
+        session_continuable=safe,read_only_rejection=safe)

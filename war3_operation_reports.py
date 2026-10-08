@@ -101,7 +101,7 @@ def record_status(kind,evidence,report):
             report['position_status']=dict(changed=changed,error=error,completed=completed)
     if kind=='world' and evidence.get('work_result_hex'):
         raw=bytes.fromhex(evidence['work_result_hex'])
-        if len(raw)==152:
+        if len(raw) in (152,160):
             (action,diagnostic_phase,value,changed,error,completed,
              after0,after1,fault_low,fault_high)=struct.unpack_from('<10I',raw,88)
             report['world_status']=dict(

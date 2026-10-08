@@ -47,12 +47,12 @@ from war3_3_stats import STAT_DETAIL_BY_KEY, STAT_DETAIL_SPECS
 from war3_ui_i18n import detect_ui_language, translate_ui_text
 
 
-APP_VERSION = "2.1.04"
+APP_VERSION = "2.1.05"
 APP_RELEASE_CHANNEL = "stable"
 GAME_BUILD = "3.0.0.24268"
 PRODUCT_READ_MODE = "normal"
 PRODUCT_EDITION_LABEL = "普通读取版"
-WIN10_COMPAT_REVISION = "2.1.04-process-identity-item-lifecycle"
+WIN10_COMPAT_REVISION = "2.1.05-fog-continuity-24342-20261008"
 
 
 if sys.platform == "win32":
@@ -9485,6 +9485,7 @@ def run_gui(
         ):
             variable.refresh()
         refresh_language_dependent_rows()
+        save_extraction_tab.refresh_language()
 
     def on_language_changed(_event: object | None = None) -> None:
         ui_language["code"] = "zh" if language_choice.get() == "中文" else "en"
@@ -10517,6 +10518,13 @@ def run_gui(
     from war3_new_equipment_ui import NewEquipmentTab
     NewEquipmentTab(notebook)
 
+    from war3_save_extraction_ui import SaveExtractionTab
+    save_extraction_tab = SaveExtractionTab(
+        notebook, get_trainer=trainer, start_thread=start_operation_thread,
+        operation_lock=operation_lock, get_language=lambda: ui_language["code"],
+        is_closing=lambda: bool(state.get("closing")),
+    )
+
     ttk.Label(outer, textvariable=status, anchor="w", wraplength=1000).pack(fill="x", pady=(0, 2))
 
     apply_ui_theme(root, ui_style, bool(dark_mode.get()))
@@ -10570,6 +10578,9 @@ def run_gui(
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Warcraft III Reforged trainer")
+    parser.add_argument("--extract-save-codes", metavar="FILE_OR_DIRECTORY", help="Extract RPG save-code candidates without connecting to a game")
+    parser.add_argument("--save-code-prefix", default="-load", help="Map load command, for example --save-code-prefix=-load")
+    parser.add_argument("--save-code-output", metavar="TXT_OR_JSON", help="Export extracted codes to a new file")
     parser.add_argument("--pid", type=int, help="Warcraft III.exe PID")
     parser.add_argument("--status", action="store_true", help="Print process/resource status")
     parser.add_argument("--list-resources", action="store_true", help="Print all detected player/resource groups")
@@ -10958,6 +10969,28 @@ def main(argv: Iterable[str] | None = None) -> int:
         return run(arguments[1])
     parser = build_arg_parser()
     args = parser.parse_args(arguments)
+    if args.extract_save_codes:
+        import json
+        from war3_services.save_extraction import read_code_file, scan_code_directory, export_codes
+        source = Path(args.extract_save_codes)
+        try:
+            if source.is_dir():
+                report = scan_code_directory(source, args.save_code_prefix)
+            else:
+                report = {"codes": read_code_file(source, args.save_code_prefix), "complete": True}
+            if args.save_code_output:
+                export_codes(args.save_code_output, report["codes"])
+            print(json.dumps({**report, "codes": [row.to_dict() for row in report["codes"]]}, ensure_ascii=False))
+            return 0 if report.get("complete") else 1
+        except Exception as exc:
+            from war3_services.save_extraction import log_extraction_failure
+            from war3_error_messages import format_error
+            try:
+                log_extraction_failure(exc)
+            except OSError as log_error:
+                exc.log_write_error = repr(log_error)
+            print(format_error(exc), file=sys.stderr)
+            return 1
     if args.import_game_profile or args.inspect_game_profile:
         import json
         from war3_game_profile import import_profile, load_profile, installed_profile_directory

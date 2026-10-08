@@ -68,6 +68,9 @@ a = Analysis(
         'war3_3_extension_catalog',
         'war3_new_equipment_catalog',
         'war3_new_equipment_ui',
+        'war3_save_codes',
+        'war3_save_extraction_ui',
+        'war3_services.save_extraction',
         'war3_3_stats',
         'war3_stat_details_protocol',
         'war3_integrity',
@@ -81,10 +84,10 @@ a = Analysis(
 pyz = PYZ(a.pure)
 exe = EXE(
     pyz, a.scripts, a.binaries, a.datas, [],
-    name='War3ReforgedTrainer-v2.1.04',
+    name='War3ReforgedTrainer-v2.1.05',
     debug=False, bootloader_ignore_signals=False, strip=False, upx=True,
     upx_exclude=[], runtime_tmpdir=None, console=False,
     disable_windowed_traceback=False, uac_admin=False, argv_emulation=False,
     target_arch=None, codesign_identity=None, entitlements_file=None,
-    icon='assets/app_icon.ico', version='tools/war3-2.1.04-version-info.txt',
+    icon='assets/app_icon.ico', version='tools/war3-2.1.05-version-info.txt',
 )

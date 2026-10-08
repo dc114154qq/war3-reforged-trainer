@@ -113,7 +113,7 @@ class Engine24268(UnitsService, AbilitiesService, ItemsService, ExtensionsServic
 
     def _invalidate_context(self,reason):
         self._native_context_cache = None
-        self.quarantined = bool(self.session.uncertain or self.session.retained)
+        self.quarantined = bool(self.session.retained)
 
     def close(self):
         if self._owns_session:return self.session.close()
@@ -131,8 +131,8 @@ class Engine24268(UnitsService, AbilitiesService, ItemsService, ExtensionsServic
         with self.lock:
             try:
                 read_query=is_read_query(kind,request)
-                if not read_query and (self.quarantined or self.session.closed or self.session.uncertain or self.session.retained):
-                    raise RuntimeError('Previous dispatch retained resources or execution unresolved; no automatic replay')
+                if not read_query and (self.session.closed or self.session.retained):
+                    raise RuntimeError('Execution channel still owns active dispatch resources')
                 if not self.image.is_file():raise RuntimeError('Missing current 24268 bridge module: '+str(self.image))
                 with self.memory_factory(self.pid) as memory:
                     self.session.prepare(memory)
@@ -152,7 +152,7 @@ class Engine24268(UnitsService, AbilitiesService, ItemsService, ExtensionsServic
     def _execute_prepared(self,kind,names,builder,decoder,request):
         with self.lock:
             from war3_operations import is_read_query
-            if self.quarantined:
+            if self.session.retained:
                 if is_read_query(kind,request):self.session.require_native_query()
                 else:raise EngineExecutionError('Previous dispatch retained resources; inspect before reconnecting',self.last_report)
             start=time.perf_counter();report={
@@ -246,6 +246,8 @@ class Engine24268(UnitsService, AbilitiesService, ItemsService, ExtensionsServic
                     )
                     report['dispatch']=evidence;self.quarantined=bool(evidence.get('allocations_retained'))
                     report['verification']=vars(self.session.finish(evidence))
+                    report['independent_operations_allowed'] = bool(
+                        not self.session.closed and not self.session.retained)
                     report['adapter']={'id':self.session.profile.id,'digest':self.session.profile.digest,'epoch':self.session.epoch}
                     from war3_operation_reports import record_status
                     record_status(kind,evidence,report)

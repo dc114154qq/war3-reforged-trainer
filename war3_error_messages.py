@@ -76,6 +76,15 @@ def _chain(exc):
 def describe_error(exc, language='zh'):
     """Use recorded evidence, never treat a generic WinError as a root cause."""
     chain=list(_chain(exc))
+    from war3_save_codes import SaveExtractionError
+    save_error = next((entry for entry in chain if isinstance(entry, SaveExtractionError)), None)
+    if save_error is not None:
+        from war3_ui_i18n import translate_ui_text
+        return dict(category='save_extraction', operation='save_extraction',
+                    reason=translate_ui_text(str(save_error), language), reason_confirmed=True,
+                    recovery=('文件原件及游戏状态未改动，可继续其他操作。' if language=='zh' else
+                              'Source files and game state were not changed. Other operations can continue.'),
+                    business_error=None)
     report=next((getattr(e,'report') for e in chain if isinstance(getattr(e,'report',None),dict)),{})
     dispatch=report.get('dispatch') or {}
     text='\n'.join(str(e) for e in chain)
@@ -83,6 +92,11 @@ def describe_error(exc, language='zh'):
     reason=None;category='unknown';confirmed=False
     business=report.get('business_status') or report.get(operation+'_status') or {}
     code=business.get('error')
+    world=report.get('world_status') or {}
+    if operation=='world' and world.get('action') in (3,4) and world.get('error'):
+        reason=('游戏迷雾接口调用失败，开图状态未确认。具体失败位置已记录在日志中。',
+                'The game fog interface failed; reveal state was not confirmed. The failing native location is recorded in the log.')
+        category='fog_native';confirmed=True
     selection=report.get('selection_failure') or {}
     stage=selection.get('stage')
     if operation=='selection':
@@ -157,6 +171,9 @@ def describe_error(exc, language='zh'):
         suffix=('该查询未写入游戏，可继续其他操作；此属性暂未读出。','This query did not write to the game. Other operations can continue; this statistic is unavailable.')
     elif recovered:
         suffix=('已验证回滚，可继续其他操作。','Rollback was verified; other operations can continue.')
+    elif report.get('independent_operations_allowed') is True:
+        suffix=('本次操作未确认成功，执行通道已清理，可继续其他操作。',
+                'This operation was not confirmed; the channel was cleaned up and other operations remain available.')
     elif report.get('session',{}).get('uncertain') or report.get('verification',{}).get('uncertain'):
         suffix=('执行状态未确认，请勿重复此操作；重新启动游戏后连接。','Execution remains uncertain. Do not repeat the operation; restart the game and reconnect.')
     elif report.get('ok') or not report:

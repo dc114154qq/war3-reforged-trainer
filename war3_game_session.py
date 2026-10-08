@@ -316,9 +316,12 @@ class GameSession:
             raise SessionError(
                 "Map context changed during the operation; stale request was not dispatched"
             )
-        if self.closed or self.uncertain or self.retained:
+        # A prior business failure is diagnostic evidence, not a global write
+        # embargo. Each new user request resolves its own identities/readback.
+        # Actual outstanding callback allocations still belong to the channel.
+        if self.closed or self.retained:
             raise SessionError(
-                "Session has unresolved execution/resources; write blocked, no automatic replay"
+                "Session is closed or still owns active dispatch resources"
             )
         if self.identity is None:
             raise SessionError("Game session has not been verified")
@@ -355,7 +358,7 @@ class GameSession:
         )
         if self.last_evidence.uncertain:
             self.uncertain = True
-        if dispatch.get("allocations_retained"):
+        if dispatch.get("allocations_retained") or not cleanup or (began and not exited):
             self.retained["dispatch"] = dispatch
         return self.last_evidence
 
@@ -365,12 +368,9 @@ class GameSession:
             raise SessionError('Map context changed; stale query was not dispatched')
         if self.closed or self.identity is None:
             raise SessionError('Game session has not been verified')
-        if self.retained or self.uncertain and not (
-                self.last_evidence.callback_exited and self.last_evidence.cleanup_complete):
+        if self.retained:
             raise SessionError('Previous callback or execution channel is still unresolved; native query deferred')
-        # A business write remains uncertain, but the execution channel is
-        # independently known to have exited and released its resources.
-        # Queries do not clear that uncertainty or permit write replay.
+        # Business uncertainty remains in logs; it does not veto a new query.
 
     def bind_unit(self, memory, registry, address):
         if self.identity is None or self.closed:

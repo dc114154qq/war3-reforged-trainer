@@ -1711,6 +1711,46 @@ _EN_TRANSLATIONS.update({
     "批量复制已停止：前 ": "Batch copying stopped: the first ",
 })
 
+_EN_TRANSLATIONS.update({
+    "存档提取": "Save-code extraction",
+    "存档码目录": "Save-code directory",
+    "选择目录": "Choose directory",
+    "扫描目录": "Scan directory",
+    "读取文件": "Read file",
+    "地图载入指令": "Map load command",
+    "读取游戏内存档码": "Read save codes from game",
+    "停止提取": "Stop extraction",
+    "也可粘贴聊天文字或存档文件内容": "Or paste chat text or save-code file contents",
+    "提取粘贴内容": "Extract pasted text",
+    "清空输入": "Clear input",
+    "提取类型": "Result type",
+    "存档码 / 载入指令": "Save code / load command",
+    "来源文件": "Source file",
+    "复制载入指令": "Copy load command",
+    "复制原始码": "Copy raw code",
+    "导出提取结果": "Export results",
+    "提取 RPG 地图生成的存档码，方便复制后下次载入。码是否有效由原地图判断；整局 W3Z 存档不能通用转换成 RPG 存档码。": "Extract map-generated RPG save codes for copying and later loading. The original map validates each code; a full W3Z saved game cannot be generically converted to an RPG save code.",
+    "载入指令格式不正确，请填写 -load 或地图实际使用的指令。": "Invalid load-command format. Enter -load or the command used by this map.",
+    "文件含有二进制数据，不是可提取存档码的文本文件。": "The file contains binary data, not save-code text.",
+    "文件文字编码未能识别，请粘贴游戏显示的存档码后再提取。": "The text encoding could not be recognized. Paste the code displayed by the game instead.",
+    "未找到所选文件，请重新选择存档码文件。": "The selected file was not found. Select the save-code file again.",
+    "文本文件超过 8 MB，请选择地图生成的存档码文件，或粘贴需要提取的文字。": "The text file exceeds 8 MB. Select the map-generated save-code file or paste the text to extract.",
+    "文件在读取过程中变大，未完成提取，请稍后重试。": "The file grew during reading. Extraction did not complete; retry later.",
+    "这是整局游戏存档或战役缓存，不是 RPG 存档码文件。请选择地图生成的 TXT/PLD 文件，或先在游戏里生成存档码。": "This is a full saved game or campaign cache, not an RPG save-code file. Select the map-generated TXT/PLD file or generate a save code in the game first.",
+    "未找到存档码目录，请选择 Warcraft III 的 CustomMapData，或地图实际保存文件的目录。": "The save-code directory was not found. Select Warcraft III CustomMapData or the directory actually used by the map.",
+    "游戏进程或窗口已变化，请先重新连接后再读取存档码。": "The game process or window changed. Reconnect before reading save codes.",
+    "所选导出文件已经存在，请换一个文件名；原文件未改动。": "The export file already exists. Choose another name; the original file was not changed.",
+    "导出文件读回不一致，请保留日志。": "Export readback did not match. Keep the diagnostic log.",
+    "尚未提取到存档码，请先读取文件、粘贴文本或扫描游戏。": "No code has been extracted. Read a file, paste text or scan the game first.",
+    "扫描范围和扫描时间必须大于零。": "The scan range and duration must be positive.",
+    "存档码文件或导出目录访问失败，请检查路径、文件占用和目录权限。": "The save-code file or export directory could not be accessed. Check the path, open files and directory permissions.",
+    "请先连接正确的 Warcraft III 游戏进程。": "Connect to the intended Warcraft III game process first.",
+    "请先在提取结果中选择一条存档码。": "Select a code from the extraction results first.",
+    "这条是原始片段，没有完整载入指令；可使用“复制原始码”。": "This is a raw fragment without a complete load command. Use Copy raw code.",
+    "部分存档码文件未能读取；已提取的结果仍可复制，其余游戏操作可继续。": "Some save-code files could not be read. Extracted results remain available and other game operations can continue.",
+    "游戏或地图在扫描期间发生变化，本次候选已丢弃，请重新读取。": "The game or map changed during scanning. These candidates were discarded; read again.",
+})
+
 _EN_REPLACEMENTS = tuple(
     sorted(_EN_TRANSLATIONS.items(), key=lambda item: len(item[0]), reverse=True)
 )

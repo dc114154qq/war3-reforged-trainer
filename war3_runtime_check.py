@@ -45,6 +45,14 @@ def run(output_path):
         if retired.exists():
             raise RuntimeError("Retired 2.0 native helper is present in the 3.0 bundle")
         report["retired_helper_present"] = False
+        from war3_save_codes import extract_text
+        from war3_save_extraction_ui import SaveExtractionTab
+        from war3_services.save_extraction import export_codes
+        sample = extract_text("-load |c00FEBA0EAaBb012345|r")
+        if len(sample) != 1 or sample[0].command != "-load AaBb012345":
+            raise RuntimeError("Save-code parsing check failed")
+        report["save_extraction_modules"] = bool(SaveExtractionTab and export_codes)
+        report["save_code_parser_verified"] = True
         report["ok"] = True
     except Exception:
         report["error"] = traceback.format_exc()

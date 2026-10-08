@@ -456,6 +456,14 @@ class UnitAdapter(LayoutProvider):
     def hero_layout(self):
         return self.profile.section("layouts")["hero"]
 
+    def candidate_position_addresses(self, unit, position_property):
+        x, y = self.layout['position_x'], self.layout['position_y']
+        if x and y:
+            return (unit + x, unit + y) if unit else (0, 0)
+        prop = self.profile.section('layouts')['property']
+        return ((position_property + prop['position_x'], position_property + prop['position_y'])
+                if position_property else (0, 0))
+
     def populate_field_snapshot(self, target, candidate, values):
         layout = self.profile.section("layouts")
         if (len(values) != 293 or values[:3] != (

@@ -587,6 +587,8 @@ class LegacyAdapterMethods:
         if position_property:
             suffix += " pos=prop^ucp"
         unit_address = self._unit_object_from_owner(pm, owner, handle)
+        x_address, y_address = current_profile().adapter.units.candidate_position_addresses(
+            unit_address, position_property)
         unit_type_id = 0
         if unit_address:
             suffix += f" unit=0x{unit_address:x}"

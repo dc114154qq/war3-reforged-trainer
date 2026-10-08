@@ -366,7 +366,9 @@
       "scale": 656,
       "full_handle": 24,
       "rawcode": 112,
-      "rawcode_mirror": 376
+      "rawcode_mirror": 376,
+      "position_x": 0,
+      "position_y": 0
     },
     "selection": {
       "manager_list": 24,

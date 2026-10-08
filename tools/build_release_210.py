@@ -1,4 +1,4 @@
-"""Build and verify the 2.1.04 package from this worktree only."""
+"""Build and verify the 2.1.05 package from this worktree only."""
 
 from __future__ import annotations
 
@@ -24,9 +24,9 @@ ALLOWED_BRANCHES = {
     "master",
     "codex/war3-modular-adapters-20260926",
 }
-VERSION = (2, 1, 4, 0)
-EXE_NAME = "War3ReforgedTrainer-v2.1.04.exe"
-OUTPUT = ROOT / "dist-2.1.04-verified"
+VERSION = (2, 1, 5, 0)
+EXE_NAME = "War3ReforgedTrainer-v2.1.05.exe"
+OUTPUT = ROOT / "dist-2.1.05-verified"
 PACKAGE_BINARIES = (
     "tools\\war3_bridge_24268.dll",
     "tools\\war3_talent_icon_display.dll",
@@ -50,7 +50,7 @@ def sha256(path: Path) -> str:
 
 
 def source_paths() -> tuple[Path, ...]:
-    # Keep this list aligned with the actual 2.1.04 build closure.  In
+    # Keep this list aligned with the actual 2.1.05 build closure.  In
     # particular, the separate hotkey product and diagnostics probes must not
     # silently become part of the trainer source hash or package inputs.
     excluded_runtime = {
@@ -99,7 +99,7 @@ def source_paths() -> tuple[Path, ...]:
     )
     files.update(
         ROOT / name for name in (
-            "War3ReforgedTrainer-2.1.04.spec",
+            "War3ReforgedTrainer-2.1.05.spec",
             "tools/war3_bridge_24268.c",
             "tools/build_engine_bridge.ps1",
             "tools/build_talent_icon_display.ps1",
@@ -110,8 +110,8 @@ def source_paths() -> tuple[Path, ...]:
             "tools/verify_speed_clock.py",
             "third_party/minhook/LICENSE.txt",
             "tools/build_release_210.py",
-            "RELEASE_NOTES_v2.1.04.md",
-            "tools/war3-2.1.04-version-info.txt",
+            "RELEASE_NOTES_v2.1.05.md",
+            "tools/war3-2.1.05-version-info.txt",
             "assets/app_icon.ico",
             "assets/app_icon.png",
         )
@@ -140,7 +140,7 @@ def assert_workspace() -> tuple[str, str]:
                     isinstance(target, ast.Name) and target.id == "APP_VERSION"
                     for target in node.targets
                 ) and isinstance(node.value, ast.Constant)]
-    if versions != ["2.1.04"]:
+    if versions != ["2.1.05"]:
         raise RuntimeError(f"Source version mismatch: {versions}")
     channels = [node.value.value for node in tree.body
                 if isinstance(node, ast.Assign) and any(
@@ -185,6 +185,7 @@ def inspect_exe(exe: Path, expected: dict[str, str] | None = None) -> dict[str, 
     required.update({"war3_speed_clock_backend", "war3_loadout_restore", "war3_loadout_storage"})
     required.update({"war3_error_messages", "war3_item_safety_protocol"})
     required.update({"war3_remote_exports", "war3_engine_continuation"})
+    required.update({"war3_save_codes", "war3_save_extraction_ui", "war3_services.save_extraction"})
     if required - set(pyz.toc):
         raise RuntimeError(f"Packaged architecture modules missing: {sorted(required - set(pyz.toc))}")
     bridge = pefile.PE(data=archive.extract(PACKAGE_BINARIES[0]))
@@ -240,7 +241,7 @@ def build() -> None:
     before = source_hashes()
     staging_root = ROOT / "build"
     staging_root.mkdir(exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="release-2104-", dir=staging_root,
+    with tempfile.TemporaryDirectory(prefix="release-2105-", dir=staging_root,
                                      ignore_cleanup_errors=True) as temporary:
         stage = Path(temporary)
         native = stage / "native"
@@ -261,7 +262,7 @@ def build() -> None:
         environment["RELEASE_210_SPEED_DLL"] = str(native / "war3_speed_clock.dll")
         run(sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean",
             "--distpath", str(stage / "dist"), "--workpath", str(stage / "build"),
-            "War3ReforgedTrainer-2.1.04.spec", env=environment)
+            "War3ReforgedTrainer-2.1.05.spec", env=environment)
         exe = stage / "dist" / EXE_NAME
         bundled = inspect_exe(exe, compiled)
         if before != source_hashes():
@@ -280,7 +281,7 @@ def build() -> None:
                 raise RuntimeError("Copied release artifact differs")
             os.replace(pending_exe, final_exe)
         manifest = {
-            "version": "2.1.04", "release_channel": "stable", "prerelease": False,
+            "version": "2.1.05", "release_channel": "stable", "prerelease": False,
             "release_status": "built_not_published", "branch": branch, "head": head,
             "source_sha256": before, "bundled_sha256": bundled,
             "exe_sha256": exe_hash, "artifact": artifact.as_posix(),

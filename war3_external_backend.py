@@ -9,6 +9,21 @@ class ExternalMemoryBackend:
     def __init__(self, session):
         self.session = session
 
+    def read_save_codes(self, memory, *, prefix="-load", cancel=None, progress=None):
+        """Bounded read-only string scan; no object offsets, native calls or replay state."""
+        from war3_save_codes import scan_memory_codes
+
+        self.session.prepare(memory)
+        identity, epoch = self.session.identity, self.session.epoch
+        result = scan_memory_codes(memory, prefix=prefix, cancel=cancel, progress=progress)
+        self.session.prepare(memory)
+        if self.session.identity != identity or self.session.epoch != epoch:
+            raise RuntimeError("游戏或地图在扫描期间发生变化，本次候选已丢弃，请重新读取。")
+        self.session.cache["save_code_scan_diagnostics"] = {
+            key: value for key, value in result.items() if key != "codes"
+        }
+        return result
+
     def read_player_properties(self, memory, registry, player, player_id):
         from war3_player_resources import read_player_properties
 

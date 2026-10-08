@@ -221,6 +221,13 @@ def load_profile(path) -> GameProfile:
         data["layouts"]["ability"]["unit_owner"] = data["equipment_runtime"]["ability_owner"]
         data["schema_version"] = SCHEMA_VERSION
         data["bridge_profile_version"] = BRIDGE_PROFILE_VERSION
+    # Additive data fields: older schema-5 packs retain their property-based
+    # coordinates. Only a pack that explicitly supplies both unit offsets
+    # opts into the direct unit-coordinate projection.
+    if data.get('schema_version') == 5 and data.get('bridge_profile_version') == 3:
+        unit = data.get('layouts', {}).get('unit', {})
+        unit.setdefault('position_x', 0)
+        unit.setdefault('position_y', 0)
     _validate_shape(data, template)
     if (
         data["schema_version"] != SCHEMA_VERSION
@@ -282,6 +289,11 @@ def load_profile(path) -> GameProfile:
     if data["equipment_runtime"]["ability_owner"] != data["layouts"]["ability"]["unit_owner"]:
         raise ProfileError("Equipment and ability layouts disagree")
     item = data["layouts"]["item"]
+    unit = data['layouts']['unit']
+    if bool(unit['position_x']) != bool(unit['position_y']) or (
+        unit['position_x'] and (unit['position_x'] % 4 or unit['position_y'] % 4
+                                or abs(unit['position_x'] - unit['position_y']) < 4)):
+        raise ProfileError('Invalid unit coordinate projection')
     inventory = data["layouts"]["inventory"]
     if item["owner_scan_radius"] <= 0 or item["owner_scan_stride"] % 8:
         raise ProfileError("Invalid item owner scan layout")

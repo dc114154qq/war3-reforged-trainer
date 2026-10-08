@@ -117,3 +117,7 @@ The current branch contains the game adapter data in `profiles/`, including the 
 发布新版本前，先提交该版本的生产构建输入，确认 `main` 与 `master` 指向同一源码提交，再建立 `release/v版本号` 源码分支并发布 EXE。不能只上传 EXE、把未提交工作树的修改留在本机。源码提交仅包含运行模块、实际适配数据、生产 native 源码、构建脚本、版本资源、依赖许可和这份构建说明；不要使用无筛选的 `git add .`。
 
 Commit the production build inputs before publishing an executable, keep `main` and `master` aligned, and create a matching `release/vVERSION` source branch. Do not publish binaries from uncommitted source without supplying the corresponding source snapshot. Keep generated binaries, fixtures, logs, standalone probes, website and unrelated tools out of source commits. Published tags remain immutable; a corrected source snapshot must use its own source branch/archive rather than retargeting an existing release tag.
+
+## 战役存档／英雄提取
+
+进入“存档提取 → 战役存档／英雄”，扫描“文档/Warcraft III”或选择 `.w3v` / `.w3z` 文件后读取。可以查看保存的单位属性、物品、技能与原始章节进度字段，并导出完整 JSON 或表格 CSV。`.w3z` 提取的是嵌入的战役继承缓存；要查看英雄的当前状态，请载入存档、选中英雄，再点击“读取当前选中英雄”。导出报告不会自动导入游戏，原存档不会修改，格式未识别时明确报错，下一次独立读取仍可进行。原 RPG 存档码入口在同栏的“RPG 存档码”子页。

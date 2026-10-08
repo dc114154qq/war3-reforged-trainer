@@ -1751,6 +1751,51 @@ _EN_TRANSLATIONS.update({
     "游戏或地图在扫描期间发生变化，本次候选已丢弃，请重新读取。": "The game or map changed during scanning. These candidates were discarded; read again.",
 })
 
+_EN_TRANSLATIONS.update({
+    "未找到战役存档目录，请选择保存 .w3v 或 .w3z 文件的目录。": "Campaign save folder not found; choose a folder containing .w3v or .w3z files.",
+    "请选择魔兽争霸战役缓存 .w3v 或游戏存档 .w3z 文件。": "Choose a Warcraft III campaign cache (.w3v) or saved game (.w3z).",
+    "所选存档超过 64 MB，请先载入该存档，再读取当前选中英雄。": "This save exceeds 64 MB; load it in the game and read the selected heroes instead.",
+    "游戏正在更新这个存档文件，请等保存结束后重新读取。": "The game is updating this save; wait until saving finishes and read it again.",
+    "存档文件未能读取，请检查文件路径和占用情况。": "Could not read the save; check its path and whether it is in use.",
+    "尚未提取到存档字段或英雄，请先读取文件或当前英雄。": "No cache fields or heroes extracted yet; read a file or the current heroes first.",
+    "导出文件请使用 .json 或 .csv 后缀。": "Use .json or .csv for the export file.",
+    "游戏进程或窗口已变化，请先重新连接后再读取英雄。": "The game process or window changed; reconnect before reading heroes.",
+    "请先载入游戏存档，并选中要提取的英雄。": "Load the save in the game and select the heroes to extract.",
+    "一次最多读取 24 个选中单位，请减少选择数量。": "Select at most 24 units per extraction.",
+    "选中单位在提取期间发生变化，请重新读取。": "The selected unit changed during extraction; read again.",
+    "经典物品栏的单位身份不一致，请重新读取。": "The ordinary inventory belongs to a different unit identity; read again.",
+    "扩展背包的单位身份已变化。": "The extended inventory unit identity changed.",
+    "选中单位中没有英雄，请选择英雄后重新读取。": "No heroes among the selected units; select a hero and read again.",
+    "部分目录未能读取；已找到的文件仍可使用。": "Some folders could not be read; files already found remain available.",
+    "请先选择一个 .w3v 或 .w3z 文件。": "Choose a .w3v or .w3z file first.",
+    "请先连接游戏，再读取当前选中英雄。": "Connect to the game before reading selected heroes.",
+    "英雄基础数据已读出，但部分扩展背包／装备／天赋未能读取。": "Basic hero data was read, but some extended inventory, equipment or talents were unavailable.",
+    "请先读取存档或当前英雄，再导出。": "Read a save or the current heroes before exporting.",
+    "存档文件大小无效或超过 64 MB。": "The save size is invalid or exceeds 64 MB.",
+    "这个文件不是魔兽争霸存档／缓存文件。": "This is not a Warcraft III save/cache file.",
+    "存档文件头不完整、版本不受支持或长度不一致。": "The save header is incomplete, its format is unsupported, or lengths differ.",
+    "存档文件头校验信息不完整。": "The save header checksum information is incomplete.",
+    "存档文件头校验失败，文件可能损坏。": "The save header checksum failed; the file may be damaged.",
+    "存档压缩块校验失败或格式不能唯一识别，未提取数据。": "Compressed save blocks failed validation or the format is ambiguous; no data extracted.",
+    "缓存记录不完整，未把残缺记录当作有效字段。": "A cache record is incomplete; partial records were not accepted as valid fields.",
+    "缓存记录数量超过读取范围。": "The cache record count exceeds the supported read limit.",
+    "缓存文字没有完整结束标记，未猜测字段名称。": "A cache string has no complete terminator; field names were not guessed.",
+    "缓存文字编码未识别，未替换或丢失原字节。": "The cache text encoding is unknown; original bytes were not replaced or discarded.",
+    "保存的技能等级不符合结构，未套用错误的英雄布局。": "A stored skill rank does not fit this structure; an incorrect unit layout was not used.",
+    "英雄缓存中的实数字段异常，未显示猜测数值。": "A stored unit real-valued field is invalid; guessed values were not shown.",
+    "缓存名称不符合实际存档结构，未继续套用布局。": "The cache name does not match a valid save structure; parsing stopped.",
+    "缓存实数不是有限数值，未作为正常字段显示。": "A cache real value is not finite; it was not shown as a normal field.",
+    "缓存布尔值不符合格式，未把错位数据当作字段。": "A cache boolean does not fit the format; misaligned data was not accepted.",
+    "缓存存在尚未识别的额外字段，未宣称完整解析。": "The cache has unrecognized extra fields; complete parsing was not claimed.",
+    "英雄缓存结构不能唯一确定，未把候选结果当作已识别数据。": "The stored unit layout is ambiguous; candidates were not accepted as decoded data.",
+    "存档包含超过 64 段战役缓存，请载入后读取当前英雄，未把部分记录当作全部结果。": "The save contains more than 64 campaign-cache blocks; load it to read heroes. Partial records were not reported as a complete result.",
+    "存档中的战役缓存已定位，但英雄记录格式尚未识别；未显示猜测数据。": "The campaign cache was found, but its unit records are not recognized; guessed data was not shown.",
+    "存档中的英雄缓存布局有歧义，未提取候选结果。": "Stored unit cache layouts are ambiguous; candidate results were not extracted.",
+    "这个整局存档中没有找到可确认的战役继承缓存。可载入存档后读取当前选中英雄。": "No verified campaign inheritance cache found in this saved game. Load it to read the selected heroes."
+})
+
+_EN_TRANSLATIONS.update({"部分英雄属性／背包／装备／天赋未能读取，已读出的字段仍可导出。": "Some hero stats, inventory, equipment or talents were unavailable; fields already read can still be exported."})
+
 _EN_REPLACEMENTS = tuple(
     sorted(_EN_TRANSLATIONS.items(), key=lambda item: len(item[0]), reverse=True)
 )

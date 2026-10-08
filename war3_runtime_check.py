@@ -53,6 +53,18 @@ def run(output_path):
             raise RuntimeError("Save-code parsing check failed")
         report["save_extraction_modules"] = bool(SaveExtractionTab and export_codes)
         report["save_code_parser_verified"] = True
+        from war3_gamecache_fields import parse_cache
+        from war3_archive_fields_ui import ArchiveFieldsTab
+        from war3_services.archive_fields import display_rows
+        import struct
+        raw = (struct.pack("<II", 0, 1) + b"Campaigns.w3v\0" + struct.pack("<II", 0, 1)
+               + b"Chapter1\0" + bytes(20) + struct.pack("<I", 1) + b"progress\0"
+               + struct.pack("<i", 7) + bytes(16))
+        cache = parse_cache(raw)
+        if len(cache["fields"]) != 1 or cache["fields"][0]["value"] != 7 or len(display_rows(cache)) != 1:
+            raise RuntimeError("Campaign cache field parsing check failed")
+        report["archive_fields_modules"] = bool(ArchiveFieldsTab)
+        report["archive_parser_verified"] = True
         report["ok"] = True
     except Exception:
         report["error"] = traceback.format_exc()

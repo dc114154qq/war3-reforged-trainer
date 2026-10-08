@@ -185,7 +185,8 @@ def inspect_exe(exe: Path, expected: dict[str, str] | None = None) -> dict[str, 
     required.update({"war3_speed_clock_backend", "war3_loadout_restore", "war3_loadout_storage"})
     required.update({"war3_error_messages", "war3_item_safety_protocol"})
     required.update({"war3_remote_exports", "war3_engine_continuation"})
-    required.update({"war3_save_codes", "war3_save_extraction_ui", "war3_services.save_extraction"})
+    required.update({"war3_save_codes", "war3_save_extraction_ui", "war3_services.save_extraction",
+                     "war3_gamecache_fields", "war3_archive_fields_ui", "war3_services.archive_fields"})
     if required - set(pyz.toc):
         raise RuntimeError(f"Packaged architecture modules missing: {sorted(required - set(pyz.toc))}")
     bridge = pefile.PE(data=archive.extract(PACKAGE_BINARIES[0]))

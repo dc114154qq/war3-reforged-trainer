@@ -52,7 +52,7 @@ APP_RELEASE_CHANNEL = "stable"
 GAME_BUILD = "3.0.0.24268"
 PRODUCT_READ_MODE = "normal"
 PRODUCT_EDITION_LABEL = "普通读取版"
-WIN10_COMPAT_REVISION = "2.1.05-fog-continuity-24342-20261008"
+WIN10_COMPAT_REVISION = "2.1.05-campaign-archive-fields-20261008"
 
 
 if sys.platform == "win32":
@@ -10518,8 +10518,8 @@ def run_gui(
     from war3_new_equipment_ui import NewEquipmentTab
     NewEquipmentTab(notebook)
 
-    from war3_save_extraction_ui import SaveExtractionTab
-    save_extraction_tab = SaveExtractionTab(
+    from war3_archive_fields_ui import ArchiveFieldsTab
+    save_extraction_tab = ArchiveFieldsTab(
         notebook, get_trainer=trainer, start_thread=start_operation_thread,
         operation_lock=operation_lock, get_language=lambda: ui_language["code"],
         is_closing=lambda: bool(state.get("closing")),
@@ -10578,6 +10578,8 @@ def run_gui(
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Warcraft III Reforged trainer")
+    parser.add_argument("--extract-archive-fields", metavar="W3V_OR_W3Z", help="Read official campaign cache fields without modifying the file")
+    parser.add_argument("--archive-fields-output", metavar="JSON_OR_CSV", help="Export campaign fields to a new file")
     parser.add_argument("--extract-save-codes", metavar="FILE_OR_DIRECTORY", help="Extract RPG save-code candidates without connecting to a game")
     parser.add_argument("--save-code-prefix", default="-load", help="Map load command, for example --save-code-prefix=-load")
     parser.add_argument("--save-code-output", metavar="TXT_OR_JSON", help="Export extracted codes to a new file")
@@ -10969,6 +10971,24 @@ def main(argv: Iterable[str] | None = None) -> int:
         return run(arguments[1])
     parser = build_arg_parser()
     args = parser.parse_args(arguments)
+    if args.extract_archive_fields:
+        import json
+        from war3_services.archive_fields import read_archive_file, export_archive_result
+        try:
+            report = read_archive_file(args.extract_archive_fields)
+            if args.archive_fields_output:
+                export_archive_result(args.archive_fields_output, report)
+            print(json.dumps(report, ensure_ascii=False, allow_nan=False))
+            return 0 if report.get("complete") else 1
+        except Exception as exc:
+            from war3_services.save_extraction import log_extraction_failure
+            from war3_error_messages import format_error
+            try:
+                log_extraction_failure(exc)
+            except OSError as log_error:
+                exc.log_write_error = repr(log_error)
+            print(format_error(exc), file=sys.stderr)
+            return 1
     if args.extract_save_codes:
         import json
         from war3_services.save_extraction import read_code_file, scan_code_directory, export_codes

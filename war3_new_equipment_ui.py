@@ -1,7 +1,7 @@
 """Offline equipment reference tab; no connection or game mutations."""
 from tkinter import StringVar, ttk
 
-from war3_new_equipment_catalog import EQUIPMENT
+from war3_new_equipment_catalog import EQUIPMENT, SOURCE_GAME_BUILD
 
 
 def search_equipment(query, entries=EQUIPMENT):
@@ -43,8 +43,8 @@ class NewEquipmentTab(ttk.Frame):
         label = ttk.Label(details, textvariable=self.detail, justify='left', anchor='nw', wraplength=950)
         label.pack(fill='both', expand=True)
         details.bind('<Configure>', lambda e: label.configure(wraplength=max(120, e.width - 24)))
-        ttk.Label(self, text='来源：文档中的《被遗忘的王国》战役与 3.0.0.24268 中文物品数据。'
-                  '仅列入战役明确引用的新装备；目录不保证其他地图支持生成。', wraplength=1000).grid(row=3, column=0, sticky='ew', pady=8)
+        ttk.Label(self, text=f'来源：Warcraft III {SOURCE_GAME_BUILD} 官方中文装备数据，共 {len(EQUIPMENT)} 件。'
+                  '可搜索名称、代码或效果；各地图实际支持的物品可能不同。', wraplength=1000).grid(row=3, column=0, sticky='ew', pady=8)
         self.rowconfigure(1, weight=1)
         self.columnconfigure(0, weight=1)
         self.tree.bind('<<TreeviewSelect>>', self.show_detail)
@@ -69,7 +69,10 @@ class NewEquipmentTab(ttk.Frame):
     def show_detail(self, _event=None):
         row = self.selected()
         if row:
-            self.detail.set(f"{row['name']}  [{row['code']}]\n{row['description']}\n来源章节：{'、'.join(row['chapters'])}")
+            source = '官方 3.0 装备'
+            if row.get('chapters'):
+                source += '；《被遗忘的王国》引用章节：' + '、'.join(row['chapters'])
+            self.detail.set(f"{row['name']}  [{row['code']}]\n{row['description']}\n来源：{source}")
 
     def copy_code(self):
         row = self.selected()

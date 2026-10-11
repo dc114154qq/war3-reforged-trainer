@@ -116,63 +116,86 @@ class ExtensionsFacade:
         return actual
 
     def add_official_backpack_24268(self, rawcode: str) -> dict:
-        if rawcode not in OFFICIAL_BACKPACKS:
-            raise ValueError("未知的 3.0 官方背包装备")
-        _hero_name, controller_rawcode = OFFICIAL_BACKPACKS[rawcode]
-        before = self.extension_snapshot_24268()
-        target = int(before["target_unit"])
-        code = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
-        controller = int(self._coerce_memory_value("rawcode", controller_rawcode)) & 0xFFFFFFFF
-        active_controllers = {
-            name for name in TALENT_CONTROLLERS
-            if int(before["abilities"].get(
-                int(self._coerce_memory_value("rawcode", name)) & 0xFFFFFFFF, 0,
-            )) > 0
-        }
-        if active_controllers and active_controllers != {controller_rawcode}:
-            raise RuntimeError("当前单位已有其他官方天赋控制器，拒绝叠加第二套专属天赋")
-        inventory = self.item_batch_24268()
-        rows = [row for row in inventory.get("rows", ())
-                if int(row.get("handle", 0)) == target]
-        if len(rows) != 1:
-            raise RuntimeError("当前选中英雄的经典物品栏身份不唯一，请重新选择目标")
-        row = rows[0]
-        if int(row.get("inventory_size", 0)) < 1:
-            raise RuntimeError("当前选中单位没有经典物品栏，无法放入背包装备")
-        first = row["before"][0]
-        if int(first.get("rawcode", 0)) != code:
-            if int(first.get("handle", 0)):
-                raise RuntimeError("经典物品栏第 1 格已有物品；请先腾空该格，避免覆盖原装备")
-            try:
-                result = self.item_batch_24268(
-                    7, code, 0, target_unit=target,
-                    expected_item=int(first.get("handle", 0)),
-                )
-            except Exception as exc:
-                # Old campaigns may not load the 3.0 item definition table.
-                # Keep the original exception for the diagnostic log, but do
-                # not expose its English bridge payload as the user message.
-                report = getattr(self._engine_instance_24268(), "last_report", {})
-                status = report.get("item_catalog_status") or report.get("item_status") or {}
-                error_code = int(status.get("error", 0) or 0) if isinstance(status, dict) else 0
-                if error_code in (31, 62, 63):
-                    raise RuntimeError(
-                        "当前战役未加载 3.0 背包装备定义，无法添加该背包。"
-                        "请在包含 3.0 背包数据的战役中使用；当前物品栏未被修改。"
-                    ) from exc
-                raise
-            written = [item for item in result.get("rows", ())
-                       if int(item.get("handle", 0)) == target]
-            if (len(written) != 1
-                    or int(written[0]["after"][0].get("rawcode", 0)) != code
-                    or not int(written[0]["after"][0].get("handle", 0))):
-                raise RuntimeError("背包装备写入经典物品栏第 1 格后读回不一致")
-        after = self.extension_snapshot_24268()
-        if int(after["target_unit"]) != target or int(after["bag_size"]) != 30:
-            raise RuntimeError("背包装备已放入第 1 格，但未读回 30 格扩展背包")
-        if int(after["abilities"].get(controller, 0)) <= 0:
-            raise RuntimeError(f"背包装备已放入第 1 格，但未读回其 {controller_rawcode} 天赋控制器")
-        return after
+        from war3_services.operation_trace import BackpackTrace
+        request=dict(item_rawcode=rawcode, operation='add_official_backpack')
+        with BackpackTrace(self,Win10ReadLogger,request) as trace:
+            if rawcode not in OFFICIAL_BACKPACKS:
+                raise ValueError("未知的 3.0 官方背包装备")
+            _hero_name, controller_rawcode = OFFICIAL_BACKPACKS[rawcode]
+            trace.record('extension_before', controller=controller_rawcode, item_rawcode=rawcode, expected_hero=_hero_name)
+            before = self.extension_snapshot_24268()
+            trace.record('extension_before_result', snapshot=before)
+            target = int(before["target_unit"])
+            code = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF
+            controller = int(self._coerce_memory_value("rawcode", controller_rawcode)) & 0xFFFFFFFF
+            active_controllers = {
+                name for name in TALENT_CONTROLLERS
+                if int(before["abilities"].get(
+                    int(self._coerce_memory_value("rawcode", name)) & 0xFFFFFFFF, 0,
+                )) > 0
+            }
+            if active_controllers and active_controllers != {controller_rawcode}:
+                raise RuntimeError("当前单位已有其他官方天赋控制器，拒绝叠加第二套专属天赋")
+            trace.bind_engine(self._engine_instance_24268())
+            trace.record('classic_inventory_before', target_unit=target)
+            inventory = self.item_batch_24268()
+            trace.record('classic_inventory_before_result', inventory=inventory)
+            rows = [row for row in inventory.get("rows", ())
+                    if int(row.get("handle", 0)) == target]
+            if len(rows) != 1:
+                raise RuntimeError("当前选中英雄的经典物品栏身份不唯一，请重新选择目标")
+            row = rows[0]
+            if int(row.get("inventory_size", 0)) < 1:
+                raise RuntimeError("当前选中单位没有经典物品栏，无法放入背包装备")
+            first = row["before"][0]
+            classic_expected = row["before"]
+            if int(first.get("rawcode", 0)) != code:
+                if int(first.get("handle", 0)):
+                    raise RuntimeError("经典物品栏第 1 格已有物品；请先腾空该格，避免覆盖原装备")
+                try:
+                    trace.record('item_create', target_unit=target, slot=0, item_rawcode=code)
+                    result = self.item_batch_24268(
+                        7, code, 0, target_unit=target,
+                        expected_item=int(first.get("handle", 0)),
+                    )
+                except Exception as exc:
+                    # Old campaigns may not load the 3.0 item definition table.
+                    # Keep the original exception for the diagnostic log, but do
+                    # not expose its English bridge payload as the user message.
+                    report = getattr(self._engine_instance_24268(), "last_report", {})
+                    status = report.get("item_catalog_status") or report.get("item_status") or {}
+                    error_code = int(status.get("error", 0) or 0) if isinstance(status, dict) else 0
+                    if error_code in (31, 62, 63):
+                        raise RuntimeError(
+                            "当前战役未加载 3.0 背包装备定义，无法添加该背包。"
+                            "请在包含 3.0 背包数据的战役中使用；当前物品栏未被修改。"
+                        ) from exc
+                    raise
+                trace.record('item_create_result', result=result)
+                written = [item for item in result.get("rows", ())
+                           if int(item.get("handle", 0)) == target]
+                if (len(written) != 1
+                        or int(written[0]["after"][0].get("rawcode", 0)) != code
+                        or not int(written[0]["after"][0].get("handle", 0))):
+                    raise RuntimeError("背包装备写入经典物品栏第 1 格后读回不一致")
+                classic_expected = written[0]["after"]
+            trace.record('extension_after_item', target_unit=target)
+            after = self.extension_snapshot_24268(target)
+            trace.record('extension_after_item_result', snapshot=after)
+            from war3_services.backpack_interface import ensure_backpack_interface
+            result = ensure_backpack_interface(self,target,controller,code,after,trace=trace)
+            if result['backpack_interface']['added_components']:
+                trace.record('classic_inventory_after_components', target_unit=target)
+                checked = self.item_batch_24268()
+                trace.record('classic_inventory_after_components_result', inventory=checked)
+                matches = [entry for entry in checked.get('rows', ()) if int(entry.get('handle',0))==target]
+                if len(matches)!=1 or tuple(matches[0]['before'])!=tuple(classic_expected):
+                    error = RuntimeError('补齐背包能力后，经典物品栏读回发生变化；已停止后续操作，请保留诊断日志。')
+                    result['backpack_interface']['status']='classic_inventory_changed'
+                    error.report=dict(operation='backpack_interface',backpack_interface=result['backpack_interface'])
+                    raise error
+            result['backpack_interface']['classic_inventory_verified']=True
+            return trace.finish(result)
 
 
     def add_forsaken_kingdom_backpack_24268(self) -> dict:

@@ -15,7 +15,8 @@ def uses_indexed_backend(host, default=False):
     if getattr(host, "_game_session", None) is not None:
         return True
     return bool(getattr(host, "_native_selection_unavailable", default))
-# These wrappers only construct a native protocol. Their own OperationSpec gates dependencies.
+# These entries use native snapshots or local records. OperationSpec checks each
+# game command; the outer wrapper need not require unrelated external fields.
 NATIVE_ONLY = frozenset(
     {
         "toggle_game_speed",
@@ -40,6 +41,14 @@ NATIVE_ONLY = frozenset(
         "clone_batch_24268",
         "unit_action_batch_24268",
         "position_batch_24268",
+        "extension_snapshot_24268",
+        "equip_extension_bag_slot_24268",
+        "set_extension_bag_charges_24268",
+        "add_official_backpack_24268",
+        "add_forsaken_kingdom_backpack_24268",
+        "save_extension_loadout_24268",
+        "extension_loadout_names_24268",
+        "save_extension_loadouts_for_selected_24268",
     }
 )
 WINDOW_ONLY = frozenset({"close", "refresh_window", "focus", "send_cheat"})
@@ -127,7 +136,12 @@ def rebind_process(self, session):
     old = getattr(self, "_retired_game_sessions", [])
     old.append(session)
     self._retired_game_sessions = old
+    previous_session = session
     session = GameSession(self.pid, self.hwnd, catalog=session.catalog)
+    if hasattr(previous_session, "discovery_progress"):
+        import threading
+        session.discovery_progress = previous_session.discovery_progress
+        session.discovery_cancel = threading.Event()
     session.on_invalidate(lambda reason: invalidate_trainer(self, reason))
     self._game_session = session
     attach_adapter_cache(self, session, CACHE_DEFAULTS)

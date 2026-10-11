@@ -1,8 +1,8 @@
-# Warcraft III Reforged Trainer 2.1.05 / 魔兽争霸 III 重制版修改器 2.1.05
+# Warcraft III Reforged Trainer 2.1.06 / 魔兽争霸 III 重制版修改器 2.1.06
 
-本仓库包含 Warcraft III Reforged 修改器 2.1.05 的源码和版本适配数据。仓库不提交生成的 EXE、DLL、`dist` 目录、测试夹具、逆向分析证据或独立的改键软件源码。
+本仓库包含 Warcraft III Reforged 修改器 2.1.06 的源码和版本适配数据。仓库不提交生成的 EXE、DLL、`dist` 目录、测试夹具、逆向分析证据或独立的改键软件源码。
 
-This repository contains the source code and version adapter data for the Warcraft III Reforged Trainer 2.1.05. Generated EXE/DLL files, `dist` directories, test fixtures, reverse-engineering evidence, and the separate hotkey product are intentionally excluded.
+This repository contains the source code and version adapter data for the Warcraft III Reforged Trainer 2.1.06. Generated EXE/DLL files, `dist` directories, test fixtures, reverse-engineering evidence, and the separate hotkey product are intentionally excluded.
 
 适配游戏版本：3.0.0.24268、3.0.1.24323、3.0.1.24332、3.0.1.24342。连接时自动选择对应版本适配层。
 
@@ -50,7 +50,7 @@ The build script automatically performs all of these steps:
 2. 编译并校验 engine bridge。 / Compile and validate the engine bridge.
 3. 编译并校验天赋图标显示模块。 / Compile and validate the talent-display module.
 4. 编译并校验游戏速度模块。 / Compile and validate the speed-clock module.
-5. 使用 `War3ReforgedTrainer-2.1.05.spec` 调用 PyInstaller。 / Invoke PyInstaller with `War3ReforgedTrainer-2.1.05.spec`.
+5. 使用 `War3ReforgedTrainer-2.1.06.spec` 调用 PyInstaller。 / Invoke PyInstaller with `War3ReforgedTrainer-2.1.06.spec`.
 6. 检查 Python 模块、游戏 profile、native ABI、版本资源和 MinHook 许可证。 / Check Python modules, game profiles, native ABIs, version resources, and the MinHook license.
 
 不需要把预编译 DLL 或 EXE 放进源码目录。/ No prebuilt DLL or EXE needs to be placed in the source checkout.
@@ -60,7 +60,7 @@ The build script automatically performs all of these steps:
 The verified executable is written below this Git-ignored directory:
 
 ```text
-dist-2.1.05-verified/<sha256-prefix>/War3ReforgedTrainer-v2.1.05.exe
+dist-2.1.06-verified/<sha256-prefix>/War3ReforgedTrainer-v2.1.06.exe
 ```
 
 构建命令会打印实际输出路径。/ The build command prints the exact output path.
@@ -81,7 +81,7 @@ Verification succeeds only when the current source inputs, Git revision, recorde
 
 ## 构建输入 / Build Inputs
 
-- `War3ReforgedTrainer-2.1.05.spec`：本版本实际使用的 PyInstaller 规格文件。 / The PyInstaller specification used by this release.
+- `War3ReforgedTrainer-2.1.06.spec`：本版本实际使用的 PyInstaller 规格文件。 / The PyInstaller specification used by this release.
 - `war3_*.py`、`war3_services/` 和 `diagnostics/` 中的运行时文件：修改器运行模块及显式 hidden-import。 / Runtime modules and explicit hidden imports used by the trainer.
 - `profiles/`：严格匹配游戏构建的适配数据。 / Strict game-build adapter data.
 - `tools/`：native 源码、构建脚本、profile 生成检查和 ABI 验证器。 / Native source, build scripts, profile checks, and ABI validators.
@@ -98,9 +98,9 @@ The builder hashes these inputs before and after compilation. The `war3_hotkey_*
 
 ## 版本适配范围 / Version Adapter Scope
 
-当前分支包含 `profiles/` 中的游戏适配数据，包括已验证的 `3.0.0.24268` profile 和本分支提供的 `3.0.1` profile 数据。已识别为 Warcraft III、但没有精确适配包的同系列构建，会借用最近的已知适配层，并保留逐操作身份、读回与清理检查。这不等于该构建已经完成实机适配；只更换模块基址不代表完整兼容。
+当前分支包含 `profiles/` 中的游戏适配数据，包括已验证的 `3.0.0.24268` profile 和本分支提供的 `3.0.1` profile 数据。已识别为 Warcraft III、但没有精确适配包的同系列构建，会以最近适配层为线索自动定位，确认对应功能所需数据后开放该功能，并保留逐操作身份、读回与清理检查。这不等于该构建已经完成实机适配；只更换模块基址不代表完整兼容。
 
-The current branch contains the game adapter data in `profiles/`, including the verified `3.0.0.24268` profile and the supported `3.0.1` profile data included in this branch. A recognized Warcraft III build without an exact profile borrows the nearest adapter in its version series while retaining per-operation identity, readback and cleanup checks. Borrowing is not proof of real-game compatibility; changing only a module base address is not a complete port.
+The current branch contains the game adapter data in `profiles/`, including the verified `3.0.0.24268` profile and the supported `3.0.1` profile data included in this branch. A recognized Warcraft III build without an exact profile uses the nearest adapter as a discovery reference, enables functions after confirming their dependencies, and retains per-operation identity, readback and cleanup checks. Borrowing is not proof of real-game compatibility; changing only a module base address is not a complete port.
 
 ## 仓库结构 / Repository Layout
 
@@ -121,3 +121,8 @@ Commit the production build inputs before publishing an executable, keep `main` 
 ## 战役存档／英雄提取
 
 进入“存档提取 → 战役存档／英雄”，扫描“文档/Warcraft III”或选择 `.w3v` / `.w3z` 文件后读取。可以查看保存的单位属性、物品、技能与原始章节进度字段，并导出完整 JSON 或表格 CSV。`.w3z` 提取的是嵌入的战役继承缓存；要查看英雄的当前状态，请载入存档、选中英雄，再点击“读取当前选中英雄”。导出报告不会自动导入游戏，原存档不会修改，格式未识别时明确报错，下一次独立读取仍可进行。原 RPG 存档码入口在同栏的“RPG 存档码”子页。
+
+
+## 2.1.06 更新说明
+
+用户版更新说明：[中文](docs/RELEASE_NOTES_v2.1.06.zh.md) / [English](docs/RELEASE_NOTES_v2.1.06.en.md)。验证范围及自动兼容限制见 [验证记录](docs/VALIDATION_v2.1.06.json)。

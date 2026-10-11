@@ -47,12 +47,12 @@ from war3_3_stats import STAT_DETAIL_BY_KEY, STAT_DETAIL_SPECS
 from war3_ui_i18n import detect_ui_language, translate_ui_text
 
 
-APP_VERSION = "2.1.05"
+APP_VERSION = "2.1.06"
 APP_RELEASE_CHANNEL = "stable"
 GAME_BUILD = "3.0.0.24268"
 PRODUCT_READ_MODE = "normal"
 PRODUCT_EDITION_LABEL = "普通读取版"
-WIN10_COMPAT_REVISION = "2.1.05-campaign-archive-fields-20261008"
+WIN10_COMPAT_REVISION = "2.1.06-backpack-discovery-rule25-20261011"
 
 
 if sys.platform == "win32":
@@ -6617,6 +6617,10 @@ def run_gui(
         if state.get("closing"):
             return
         state["closing"] = True
+        for key in ("trainer", "elephant_batch_trainer"):
+            pending_session = getattr(state.get(key), "_game_session", None)
+            if pending_session is not None and hasattr(pending_session, "discovery_cancel"):
+                pending_session.discovery_cancel.set()
         hotkey_manager.stop()
         set_status("正在等待后台操作安全结束...")
 
@@ -6644,6 +6648,29 @@ def run_gui(
 
     def set_status(text: str) -> None:
         status.set(text)
+
+    def configure_discovery(obj) -> None:
+        session = obj._game_session
+        if hasattr(session, "discovery_cancel"):
+            return
+        session.discovery_cancel = threading.Event()
+
+        def progress(stage, fraction):
+            def show():
+                if state.get("closing"):
+                    return
+                set_status(stage + (f" {fraction:.0%}" if fraction is not None else ""))
+                discovery_cancel_button.state(["disabled"] if fraction == 1 else ["!disabled"])
+            root.after(0, show)
+        session.discovery_progress = progress
+
+    def cancel_discovery() -> None:
+        for key in ("trainer", "elephant_batch_trainer"):
+            session = getattr(state.get(key), "_game_session", None)
+            if session is not None and hasattr(session, "discovery_cancel"):
+                session.discovery_cancel.set()
+        discovery_cancel_button.state(["disabled"])
+        set_status("已请求取消自动定位，可重新连接后重试。")
 
     def call_async(
         fn: Callable[[], str | None],
@@ -6673,6 +6700,7 @@ def run_gui(
                 active_operations.discard(operation_key)
             if state.get("closing"):
                 return
+            discovery_cancel_button.state(["disabled"])
             if busy_widget is not None:
                 busy_widget.state(["!disabled"])
             if exc is not None:
@@ -6717,11 +6745,13 @@ def run_gui(
             assert isinstance(obj, War3Trainer)
             obj.refresh_window(allow_pid_change=True)
         root.after(0, pid_var.set, str(obj.pid))
+        configure_discovery(obj)
         return obj
 
     def connect() -> str:
         requested_pid = int(pid_var.get()) if pid_var.get().strip() else None
         replacement = War3Trainer(pid=resolve_requested_war3_pid(requested_pid))
+        configure_discovery(replacement)
         previous = state.get("trainer")
         batch_trainer = state.get("elephant_batch_trainer")
         if isinstance(previous, War3Trainer):
@@ -8789,6 +8819,9 @@ def run_gui(
         hero_name, controller = OFFICIAL_BACKPACKS[rawcode]
         snapshot = trainer().add_official_backpack_24268(rawcode)
         root.after(0, populate_extension_snapshot, snapshot)
+        diagnostic = snapshot.get('backpack_interface', {})
+        if diagnostic.get('operation_trace', {}).get('log_errors'):
+            return ui_text("背包能力已读回，但诊断日志写入未完成；请检查日志目录。")
         return f"已将{hero_name}官方背包装备（{rawcode}/{controller}）放入经典物品栏第 1 格"
 
     def extension_selected_equipment_slot() -> int:
@@ -9496,6 +9529,8 @@ def run_gui(
     top = ttk.Frame(outer)
     top.pack(fill="x")
     ttk.Button(top, text="连接/刷新进程", command=lambda: call_async(connect)).pack(side="left")
+    discovery_cancel_button = ttk.Button(top, text="取消自动定位", command=cancel_discovery, state="disabled")
+    discovery_cancel_button.pack(side="left", padx=(4, 0))
     read_unit_button = ttk.Button(top, text="读取所有选中单位 (Ctrl+F11)")
     read_unit_button.configure(
         command=lambda: call_async(read_unit_with_sound, "read_unit", read_unit_button)
@@ -10517,6 +10552,9 @@ def run_gui(
 
     from war3_new_equipment_ui import NewEquipmentTab
     NewEquipmentTab(notebook)
+
+    from war3_hero_skill_ui import HeroSkillTab
+    HeroSkillTab(notebook)
 
     from war3_archive_fields_ui import ArchiveFieldsTab
     save_extraction_tab = ArchiveFieldsTab(

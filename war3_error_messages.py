@@ -2,9 +2,14 @@
 import re
 
 BUSINESS_REASONS = {
+    ('ability',25): ('游戏拒绝添加本次能力组件，具体原因未确认；已停止本次补齐，请保留诊断日志。','The game rejected adding this ability component. The cause is unconfirmed; this addition stopped. Keep the diagnostic log.'),
+    ('ability',29): ('能力调用后的等级读回与请求不一致，本次补齐未确认成功；请保留诊断日志。','The ability level readback differs from the request. This addition is unconfirmed; keep the diagnostic log.'),
     ('unit_bindings',3): ('校验期间选中单位数量发生变化，未执行后续修改；请重新选择后重试。','Selection count changed; no subsequent write was performed. Reselect and retry.'),
-    ('unit_bindings',4): ('游戏执行句柄与读取到的单位对象不一致，未执行后续修改；请重新读取目标。','The native handle does not match the read object; no subsequent write was performed. Refresh the target.'),
+    ('unit_bindings',4): ('单位对象与原生选中列表的对应校验未通过，未执行后续修改；旧日志未区分具体校验步骤，请重新读取并选择目标。','The object-to-native-selection check failed before subsequent writes. This legacy status does not distinguish the validation step; refresh and select the target.'),
     ('unit_bindings',5): ('单位身份查询发生异常，具体原因尚未确认；请保留诊断日志。','Unit identity querying raised an exception; the exact cause is unconfirmed. Keep the diagnostic log.'),
+    ('unit_bindings',6): ('读取到的单位对象已失效或与对象表不一致，未执行后续修改；请刷新单位列表。','The read unit is stale or differs from the object registry. No subsequent write was performed; refresh the unit list.'),
+    ('unit_bindings',7): ('目标单位未在当前原生选中列表中匹配，未执行后续修改；请在游戏中选中该单位后重新读取。','The target did not match the current native selection. No subsequent write was performed; select it in the game and refresh.'),
+    ('unit_bindings',8): ('目标单位的原生句柄对应关系不唯一，未执行后续修改；请重新选择目标并保留日志。','The target-to-native-handle mapping is ambiguous. No subsequent write was performed; reselect the target and keep the log.'),
     ('clone',60): ('复制单位所需的游戏接口未通过校验，未开始复制。','The required clone interfaces failed validation; no copy began.'),
     ('clone',61): ('没有读到完整的选中单位列表，未开始复制；请重新选择单位后重试。','The selection could not be fully read; reselect the units and retry.'),
     ('clone',62): ('选中单位的身份、归属或位置已失效，未开始复制；请重新选择单位后重试。','The selected unit identity, owner or position is invalid; no copy began.'),
@@ -32,6 +37,8 @@ BUSINESS_REASONS = {
     ('equipment_effect',403): ('销毁后的背包或装备状态读取失败，结果未确认；请保留日志。','Inventory readback after destruction failed; the result remains unconfirmed. Keep the log.'),
     ('equipment_effect',404): ('游戏执行删除后仍存在物品或槽位引用，销毁未通过验证；请保留日志并重启游戏。','The game still retains the item or a slot reference; destruction verification failed. Keep the log and restart the game.'),
     ('stat_details',274): ('3.0 属性能力的运行时分类或对象身份校验失败，未确认属性修改成功。','The runtime stat classification or object identity check failed; the write was not confirmed.'),
+    ('stat_details',266): ('游戏拒绝添加本次属性所需的技能组件，未开始属性值写入；具体地图限制尚未确认。','The game rejected adding the skill component required for this statistic before any stat value write. The specific map restriction is unconfirmed.'),
+    ('stat_details',267): ('游戏接受了技能添加请求，但未读回所需属性组件；本次修改未确认成功，请保留日志。','The game accepted adding the skill, but the required stat component was not read back. Success is unconfirmed; keep the log.'),
     ('stat_details',268): ('游戏未接受当前属性的模式转换，未确认修改成功。','The game rejected the stat mode conversion; the write was not confirmed.'),
     ('stat_details',269): ('游戏拒绝写入当前属性值，未确认修改成功。','The game rejected the stat value write; success was not confirmed.'),
     ('stat_details',271): ('游戏读回的属性值与目标不一致，本次修改未确认成功。','The stat readback differs from the requested value; the write was not confirmed.'),
@@ -76,6 +83,16 @@ def _chain(exc):
 def describe_error(exc, language='zh'):
     """Use recorded evidence, never treat a generic WinError as a root cause."""
     chain=list(_chain(exc))
+    discovery = next((getattr(e, 'discovery_report', None) for e in chain
+                      if isinstance(getattr(e, 'discovery_report', None), dict)), None)
+    if discovery is not None:
+        return dict(category='automatic_discovery', operation='adapter',
+                    reason=(discovery['reason'] if language == 'zh' else
+                            'Automatic version discovery did not confirm the required data. See the diagnostic log.'),
+                    reason_confirmed=True,
+                    recovery=('本次未执行游戏修改；可继续已确认功能，或重新连接后重试。' if language == 'zh' else
+                              'No game modification was performed. Confirmed features remain available; reconnect to retry.'),
+                    business_error=None)
     from war3_save_codes import SaveExtractionError
     save_error = next((entry for entry in chain if isinstance(entry, SaveExtractionError)), None)
     if save_error is not None:

@@ -97,6 +97,7 @@ from war3_services.abilities import AbilitiesService
 from war3_services.items import ItemsService
 from war3_services.extensions import ExtensionsService
 from war3_services.world import WorldService
+from war3_services.operation_trace import record_engine_execution
 
 class Engine24268(UnitsService, AbilitiesService, ItemsService, ExtensionsService, WorldService):
     def __init__(self,pid,hwnd,memory_factory,image=None,report_sink=None,session=None,diagnostic=False):
@@ -148,6 +149,8 @@ class Engine24268(UnitsService, AbilitiesService, ItemsService, ExtensionsServic
                 report={'pid':self.pid,'operation':kind,'ok':False,'error':str(exc),'dispatch':{},'session':self.session.snapshot()}
                 self.last_report=report
                 raise EngineExecutionError(str(exc),report) from exc
+            finally:
+                record_engine_execution(self, self.last_report)
 
     def _execute_prepared(self,kind,names,builder,decoder,request):
         with self.lock:

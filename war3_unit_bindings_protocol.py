@@ -61,7 +61,19 @@ def failure_status(payload):
     if len(payload)!=WORK_SIZE:return None
     count,strict,error,completed=struct.unpack_from('<4I',payload,496)
     if not error:return None
-    group_error,destroyed=struct.unpack_from('<2I',payload,84)
-    clean=error in (1,3,4) and group_error==0 and destroyed==1
-    return dict(error=error,completed=completed,changed=0,cleanup=int(not clean),
+    selected_count,group_error,destroyed=struct.unpack_from('<3I',payload,80)
+    clean=error in (1,3,4,6,7,8) and group_error==0 and destroyed==1
+    status=dict(error=error,completed=completed,changed=0,cleanup=int(not clean),
                 session_continuable=clean,read_only_rejection=True)
+    # Keep the bounded readback in the technical log. A legacy error=4
+    # does not identify which C validation branch rejected the target.
+    status['binding_diagnostic']=dict(expected_count=count,strict_selection=bool(strict),
+                                      selected_count=selected_count,failed_source_index=completed)
+    if group_error==0 and destroyed==1 and selected_count<=24:
+        try:
+            selection=selection_result(payload[:480],selected_count)
+        except ValueError:
+            pass
+        else:
+            status['binding_diagnostic']['selected_rows']=selection['rows']
+    return status

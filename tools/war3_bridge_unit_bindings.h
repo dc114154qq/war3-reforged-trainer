@@ -24,15 +24,15 @@ __declspec(dllexport) uint64_t BridgeUnitBindingsQuery(void){
             uint64_t owner=BridgeEffectResolveObjectTable(w->base,ref->full);
             if(!owner || *(uint64_t *)(uintptr_t)(owner+bridge_profile.owner_data)!=ref->object ||
                *(uint64_t *)(uintptr_t)(ref->object+bridge_profile.object_handle)!=ref->full ||
-               *(uint32_t *)(uintptr_t)(ref->object+bridge_profile.object_rawcode)!=ref->rawcode){w->error=4;return count;}
+               *(uint32_t *)(uintptr_t)(ref->object+bridge_profile.object_rawcode)!=ref->rawcode){w->error=6;return count;}
             for(uint32_t j=0;j<count;++j){
                 SelectionRow *row=&w->selection.rows[j];
                 if(row->rawcode==ref->rawcode && w->resolve_unit(row->unit)==ref->object){
                     w->native_handles[i]=row->unit;++found;
                 }
             }
-            if(found!=1){w->error=4;return count;}
-            for(uint32_t prior=0;prior<i;++prior)if(w->native_handles[prior]==w->native_handles[i]){w->error=4;return count;}
+            if(found!=1){w->error=found ? 8 : 7;return count;}
+            for(uint32_t prior=0;prior<i;++prior)if(w->native_handles[prior]==w->native_handles[i]){w->error=8;return count;}
             ++w->completed;
         }
     } __except(BridgeExceptionFilter(GetExceptionInformation())) {w->error=5;}

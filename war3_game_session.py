@@ -241,7 +241,7 @@ class GameSession:
                         except ProfileError:
                             profile = self.catalog.select_for_image(fingerprint, name, path)
                     if profile.fingerprint == fingerprint:
-                        matches.append((base, profile))
+                        matches.append((base, profile, name, path))
                 except (OSError, ValueError, SessionError) as exc:
                     if self.build_diagnostics and self.build_diagnostics[-1]["base"] == hex(base):
                         self.build_diagnostics[-1]["adapter_selection_error"] = str(exc)
@@ -250,7 +250,25 @@ class GameSession:
                 raise SessionError(
                     "Unknown or ambiguous game build; read-only diagnostics required"
                 )
-            base, profile = matches[0]
+            base, profile, module_name, module_path = matches[0]
+            if isinstance(profile, BorrowedGameProfile) and profile.data['status'] != 'discovered':
+                # Unknown-build-only import: exact builds retain the original binding path.
+                from war3_profile_resolver import ProfileResolver
+                discovery_key = (self.pid, created, base, profile.fingerprint)
+                import time
+                if (getattr(self, "_discovery_failed_key", None) == discovery_key
+                        and time.monotonic() < self._discovery_retry_after):
+                    raise self._discovery_failed_error
+                try:
+                    profile = ProfileResolver(self.catalog).resolve(
+                        profile.fingerprint, module_name, module_path, memory, base,
+                        selected=profile, cancel=getattr(self, "discovery_cancel", None),
+                        progress=getattr(self, "discovery_progress", None), hwnd=self.hwnd, pid=self.pid)
+                except Exception as exc:
+                    self.discovery_report = getattr(exc, "discovery_report", None)
+                    self._discovery_failed_key, self._discovery_failed_error = discovery_key, exc
+                    self._discovery_retry_after = time.monotonic() + 2.0
+                    raise
             self.profile = profile
         else:
             base = self.identity.module_base
@@ -471,6 +489,7 @@ class GameSession:
             "native_registry_error": getattr(self, "native_registry_error", None),
             "adapter_import_errors": self.catalog.errors,
             "build_diagnostics": getattr(self, "build_diagnostics", []),
+            "automatic_discovery": getattr(self, "discovery_report", None),
         }
 
     def close(self):

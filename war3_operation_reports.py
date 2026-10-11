@@ -45,7 +45,14 @@ def record_status(kind,evidence,report):
         if len(raw)==ABILITY_WORK_SIZE:
             changed,error,completed=struct.unpack_from('<3I',raw,532)
             target_unit=struct.unpack_from('<Q',raw,832)[0]
-            report['ability_status']=dict(changed=changed,error=error,completed=completed,target_unit=target_unit)
+            selected_count=struct.unpack_from('<I',raw,80)[0]
+            rawcode,action,target_level=struct.unpack_from('<3I',raw,520)
+            report['ability_status']=dict(changed=changed,error=error,completed=completed,target_unit=target_unit,
+                rawcode=rawcode,action=action,target_level=target_level,selected_count=selected_count,
+                rows=[dict(index=i,before=struct.unpack_from('<i',raw,544+8*i)[0],
+                           after=struct.unpack_from('<i',raw,548+8*i)[0],
+                           intermediate=struct.unpack_from('<i',raw,736+4*i)[0])
+                      for i in range(min(24,selected_count))])
     if kind=='ability_field' and evidence.get('work_result_hex'):
         raw=bytes.fromhex(evidence['work_result_hex'])
         if len(raw)==7688:

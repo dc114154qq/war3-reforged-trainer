@@ -34,6 +34,8 @@ class ExternalMemoryBackend:
         from war3_classic_selection import read_player_selection
 
         registry, context, mode = self.session.prepare(memory)
+        if self.session.profile.data['status'] == 'discovered':
+            CapabilitySet(self.session.profile).require('selected_units', request={'mode': mode.value})
         with profile_scope(self.session.profile):
             player = registry.local_player_for_mode(memory, mode.value)
             snapshot = read_player_selection(memory, player)
@@ -49,7 +51,10 @@ class ExternalMemoryBackend:
         from war3_basic_fields import write_basic_fields
 
         self.session.require_write()
-        CapabilitySet(self.session.profile).require("basic_fields")
+        if self.session.profile.data['status'] == 'discovered':
+            CapabilitySet(self.session.profile).require('property_write', request=requested)
+        else:
+            CapabilitySet(self.session.profile).require("basic_fields")
         ref = self.session.bind_unit(
             memory, registry, ObjectAddress(candidate.unit_address)
         )

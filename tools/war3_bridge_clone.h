@@ -96,12 +96,7 @@ static int clone_set_level(CloneWork *w, uint64_t unit, int32_t level) {
 }
 
 static int clone_set_ability_level(CloneWork *w, uint64_t unit, uint32_t rawcode, int32_t level) {
-    AbilityWork ability = {0};
-    ability.set_level = w->set_ability_level;
-    ability.get_level = w->ability_level;
-    ability.expected_tls = w->expected_tls;
-    ability.rawcode = rawcode;
-    return BridgeSetAbilityLevelChecked(&ability, unit, level) == level;
+    return BridgeNativeSetAbilityLevelChecked(w->set_ability_level,w->ability_level,unit,rawcode,level)==level;
 }
 
 static int clone_is_essential_ability(uint32_t rawcode) {

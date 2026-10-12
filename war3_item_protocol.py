@@ -1,37 +1,42 @@
 """Current item-batch protocol; complete six-slot before/after snapshots."""
 import struct
 from war3_selection_protocol import build_work as select_work,validate_work as validate_selection,decode_work as decode_selection
-WORK_SIZE=6008
-ABI=struct.pack('<3I',0x2426802D,216,WORK_SIZE)
+WORK_SIZE=6016
+ABI=struct.pack('<3I',0x24268069,216,WORK_SIZE)
 SIGNATURES=(('UnitAddItemById','(Hunit;I)Hitem;'),('UnitAddItemToSlotById','(Hunit;II)B'),('UnitItemInSlot','(Hunit;I)Hitem;'),
  ('UnitInventorySize','(Hunit;)I'),('GetItemTypeId','(Hitem;)I'),('GetItemCharges','(Hitem;)I'),
  ('SetItemCharges','(Hitem;I)V'),('RemoveItem','(Hitem;)V'),('UnitRemoveItem','(Hunit;Hitem;)V'),
  ('CreateItem','(IRR)Hitem;'),('UnitAddItem','(Hunit;Hitem;)B'),('UnitDropItemSlot','(Hunit;Hitem;I)B'))
 OPTIONAL_SIGNATURES=('UnitAddItemToSlotById','CreateItem','UnitAddItem','UnitDropItemSlot')
 
-def required_signatures(action):
-    return SIGNATURES if action==7 else tuple(item for item in SIGNATURES if item[0] not in OPTIONAL_SIGNATURES)
+def required_signatures(action,creation_route=0):
+    return (tuple(item for item in SIGNATURES if not (creation_route==1 and item[0]=='UnitAddItemToSlotById'))
+            if action==7 else tuple(item for item in SIGNATURES if item[0] not in OPTIONAL_SIGNATURES))
 
-def build_work(entries,tls,action=0,rawcode=0,charges=-1,target_unit_rawcode=0,target_unit=0,expected_item=0):
+def build_work(entries,tls,action=0,rawcode=0,charges=-1,target_unit_rawcode=0,target_unit=0,expected_item=0,creation_route=0):
     pointers=[]
     for name,sig in SIGNATURES:
         e=entries.get(name)
         if e is None or e.name!=name or e.signature!=sig:
-            if name in OPTIONAL_SIGNATURES and action!=7:
+            if name in OPTIONAL_SIGNATURES and (action!=7 or creation_route==1 and name=='UnitAddItemToSlotById'):
                 pointers.append(0)
                 continue
             raise ValueError('Item native signature differs: '+name)
         pointers.append(e.handler)
     payload=select_work(entries)+struct.pack('<10Q2Ii5I',*pointers[:9],tls,rawcode,action,charges,0,0,0,0,target_unit_rawcode)+bytes(5376)
     payload+=struct.pack('<5Q',*pointers[9:],target_unit,expected_item)
+    payload+=struct.pack('<2I',creation_route,0)
     validate_work(payload);return payload
 
 def validate_work(payload):
     if len(payload)!=WORK_SIZE:raise ValueError(f'Item batch work must contain {WORK_SIZE} bytes')
     validate_selection(payload[:480]);v=struct.unpack_from('<10Q2Ii5I',payload,480)
     handlers=v[:9]
-    action=v[12]
-    required_indexes=range(9) if action==7 else (index for index in range(9) if index!=1)
+    action=v[11]
+    creation_route,reserved=struct.unpack_from('<2I',payload,6008)
+    if reserved or creation_route not in (0,1) or creation_route and action!=7:
+        raise ValueError('Invalid item creation route')
+    required_indexes=range(9) if action==7 and not creation_route else (index for index in range(9) if index!=1)
     if any(not 0x10000<=handlers[index]<0x800000000000 for index in required_indexes):
         raise ValueError('Invalid item native pointers or TLS')
     present=[pointer for pointer in handlers if pointer]
@@ -57,6 +62,7 @@ def decode_work(payload,count):
     selection=decode_selection(payload[:480],count)
     rawcode,action,target,changed,error,completed,skipped,target_unit_rawcode=struct.unpack_from('<2Ii5I',payload,560)
     _,_,_,target_unit,expected_item=struct.unpack_from('<5Q',payload,5968)
+    creation_route=struct.unpack_from('<I',payload,6008)[0]
     rows=[];valid=bool(not error and count and completed==count and skipped<=count)
     for i,unit in enumerate(selection['rows']):
         offset=592+224*i
@@ -124,5 +130,7 @@ def decode_work(payload,count):
     if sum(r['status'] in (6,12) for r in rows)!=skipped:valid=False
     if action==7 and (target_unit or target_unit_rawcode) and sum(r['status'] in (10,11) for r in rows)!=1:valid=False
     if not valid:raise ValueError(f'Item batch incomplete: error={error}, completed={completed}/{count}, changed={changed}')
-    return dict(rows=rows,count=count,changed=changed,skipped=skipped,target_unit_rawcode=target_unit_rawcode,
+    result=dict(rows=rows,count=count,changed=changed,skipped=skipped,target_unit_rawcode=target_unit_rawcode,
                 stored=sum(r['status']==2 for r in rows),ground=sum(r['status']==3 for r in rows))
+    if creation_route:result['creation_route']=creation_route
+    return result

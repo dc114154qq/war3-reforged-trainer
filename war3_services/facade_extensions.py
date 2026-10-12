@@ -153,10 +153,11 @@ class ExtensionsFacade:
                 if int(first.get("handle", 0)):
                     raise RuntimeError("经典物品栏第 1 格已有物品；请先腾空该格，避免覆盖原装备")
                 try:
-                    trace.record('item_create', target_unit=target, slot=0, item_rawcode=code)
+                    trace.record('item_create', target_unit=target, slot=0, item_rawcode=code,
+                                 creation_route='CreateItem/UnitAddItem/UnitDropItemSlot')
                     result = self.item_batch_24268(
                         7, code, 0, target_unit=target,
-                        expected_item=int(first.get("handle", 0)),
+                        expected_item=int(first.get("handle", 0)),creation_route=1,
                     )
                 except Exception as exc:
                     # Old campaigns may not load the 3.0 item definition table.
@@ -182,6 +183,9 @@ class ExtensionsFacade:
             trace.record('extension_after_item', target_unit=target)
             after = self.extension_snapshot_24268(target)
             trace.record('extension_after_item_result', snapshot=after)
+            from war3_services.backpack_carrier import inspect_backpack_carrier
+            carrier=inspect_backpack_carrier(self,target,classic_expected[0],controller,after,trace)
+            if carrier is not None:after['backpack_carrier']=carrier
             from war3_services.backpack_interface import ensure_backpack_interface
             result = ensure_backpack_interface(self,target,controller,code,after,trace=trace)
             if result['backpack_interface']['added_components']:

@@ -136,12 +136,14 @@ class NativeFacade:
 
     def item_batch_24268(self, action: int = 0, rawcode: int | str = 0, charges: int = -1,
                          target_unit_rawcode: int = 0, target_unit: int = 0,
-                         expected_item: int = 0) -> dict:
+                         expected_item: int = 0, *, creation_route: int = 0) -> dict:
         code = int(self._coerce_memory_value("rawcode", rawcode)) & 0xFFFFFFFF if rawcode else 0
-        return self._engine_instance_24268().item_batch(
+        args=(
             action, code, charges, int(target_unit_rawcode) & 0xFFFFFFFF,
             int(target_unit), int(expected_item),
         )
+        engine=self._engine_instance_24268()
+        return engine.item_batch(*args,creation_route=int(creation_route)) if creation_route else engine.item_batch(*args)
 
 
     def _stat_target_24268(self, candidate: UnitCandidate | None = None) -> tuple:

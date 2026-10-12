@@ -26,9 +26,10 @@ typedef struct ItemWork {
     uint8_t (*add_existing)(uint64_t,uint64_t);
     uint8_t (*move_slot)(uint64_t,uint64_t,int32_t);
     uint64_t target_unit,expected_item;
+    uint32_t creation_route,route_reserved;
 } ItemWork;
-_Static_assert(sizeof(ItemWork)==6008,"ItemWork ABI");
-__declspec(dllexport) const uint32_t item_batch_abi[3]={0x2426802Du,216u,6008u};
+_Static_assert(sizeof(ItemWork)==6016,"ItemWork ABI");
+__declspec(dllexport) const uint32_t item_batch_abi[3]={0x24268069u,216u,6016u};
 static int BridgeItemSnapshot(ItemWork *w,uint64_t unit,uint32_t size,ItemSlot *out) {
     uint32_t i;
     for (i=0;i<6;++i) {
@@ -87,7 +88,8 @@ __declspec(dllexport) uint64_t BridgeItemQuery(void) {
     ItemWork *w=(ItemWork *)g_dispatch->work;
     uint32_t i,j,count;
     if (!w) return 0;
-    if (w->expected_tls!=g_dispatch->tls_value || w->action>7 ||
+    if (w->expected_tls!=g_dispatch->tls_value || w->action>7 || w->creation_route>1 || w->route_reserved ||
+        (w->creation_route && w->action!=7) ||
         ((w->action==1 || w->action==3) && !w->rawcode) || w->target>1000000000 ||
         w->target< -1 ||
         ((w->action==0 || w->action==2 || w->action==4 || w->action==5 || w->action==6) && w->rawcode) ||
@@ -159,7 +161,7 @@ __declspec(dllexport) uint64_t BridgeItemQuery(void) {
                 __try {
                     float x=0,y=0;
                     w->error=100+i;
-                    if (!old) {
+                    if (!old && !w->creation_route) {
                         w->add_slot(unit,w->rawcode,(int32_t)slot);
                         created=w->in_slot(unit,(int32_t)slot);
                         r->created=created;r->created_type=created ? w->type(created) : 0;

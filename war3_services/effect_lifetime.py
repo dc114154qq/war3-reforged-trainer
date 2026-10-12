@@ -3,7 +3,7 @@ import time
 import math
 import sys
 from war3_engine_continuation import run_continuation, unstarted_continuation_proven
-from war3_game_session import ObjectAddress
+from war3_game_session import ObjectAddress,session_scope
 from war3_object_registry import ObjectRegistry24268
 
 
@@ -33,7 +33,7 @@ class HeldEffect:
     def __init__(self, engine, rawcode, state):
         self.engine, self.rawcode, self.state = engine, rawcode, state
         self.closed = False
-        with engine.memory_factory(engine.pid) as memory:
+        with session_scope(engine.session),engine.memory_factory(engine.pid) as memory:
             registry = ObjectRegistry24268.attach(memory)
             owner = registry.resolve_handle(memory, state['unit_full'])
             self.ref = engine.session.bind_unit(memory, registry,

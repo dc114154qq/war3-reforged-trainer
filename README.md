@@ -1,8 +1,8 @@
-# Warcraft III Reforged Trainer 2.1.06 / 魔兽争霸 III 重制版修改器 2.1.06
+# Warcraft III Reforged Trainer 2.1.07 / 魔兽争霸 III 重制版修改器 2.1.07
 
-本仓库包含 Warcraft III Reforged 修改器 2.1.06 的源码和版本适配数据。仓库不提交生成的 EXE、DLL、`dist` 目录、测试夹具、逆向分析证据或独立的改键软件源码。
+本仓库包含 Warcraft III Reforged 修改器 2.1.07 的源码和版本适配数据。仓库不提交生成的 EXE、DLL、`dist` 目录、测试夹具、逆向分析证据或独立的改键软件源码。
 
-This repository contains the source code and version adapter data for the Warcraft III Reforged Trainer 2.1.06. Generated EXE/DLL files, `dist` directories, test fixtures, reverse-engineering evidence, and the separate hotkey product are intentionally excluded.
+This repository contains the source code and version adapter data for the Warcraft III Reforged Trainer 2.1.07. Generated EXE/DLL files, `dist` directories, test fixtures, reverse-engineering evidence, and the separate hotkey product are intentionally excluded.
 
 适配游戏版本：3.0.0.24268、3.0.1.24323、3.0.1.24332、3.0.1.24342。连接时自动选择对应版本适配层。
 
@@ -50,7 +50,7 @@ The build script automatically performs all of these steps:
 2. 编译并校验 engine bridge。 / Compile and validate the engine bridge.
 3. 编译并校验天赋图标显示模块。 / Compile and validate the talent-display module.
 4. 编译并校验游戏速度模块。 / Compile and validate the speed-clock module.
-5. 使用 `War3ReforgedTrainer-2.1.06.spec` 调用 PyInstaller。 / Invoke PyInstaller with `War3ReforgedTrainer-2.1.06.spec`.
+5. 使用 `War3ReforgedTrainer-2.1.07.spec` 调用 PyInstaller。 / Invoke PyInstaller with `War3ReforgedTrainer-2.1.07.spec`.
 6. 检查 Python 模块、游戏 profile、native ABI、版本资源和 MinHook 许可证。 / Check Python modules, game profiles, native ABIs, version resources, and the MinHook license.
 
 不需要把预编译 DLL 或 EXE 放进源码目录。/ No prebuilt DLL or EXE needs to be placed in the source checkout.
@@ -60,7 +60,7 @@ The build script automatically performs all of these steps:
 The verified executable is written below this Git-ignored directory:
 
 ```text
-dist-2.1.06-verified/<sha256-prefix>/War3ReforgedTrainer-v2.1.06.exe
+dist-2.1.07-verified/<sha256-prefix>/War3ReforgedTrainer-v2.1.07.exe
 ```
 
 构建命令会打印实际输出路径。/ The build command prints the exact output path.
@@ -81,7 +81,7 @@ Verification succeeds only when the current source inputs, Git revision, recorde
 
 ## 构建输入 / Build Inputs
 
-- `War3ReforgedTrainer-2.1.06.spec`：本版本实际使用的 PyInstaller 规格文件。 / The PyInstaller specification used by this release.
+- `War3ReforgedTrainer-2.1.07.spec`：本版本实际使用的 PyInstaller 规格文件。 / The PyInstaller specification used by this release.
 - `war3_*.py`、`war3_services/` 和 `diagnostics/` 中的运行时文件：修改器运行模块及显式 hidden-import。 / Runtime modules and explicit hidden imports used by the trainer.
 - `profiles/`：严格匹配游戏构建的适配数据。 / Strict game-build adapter data.
 - `tools/`：native 源码、构建脚本、profile 生成检查和 ABI 验证器。 / Native source, build scripts, profile checks, and ABI validators.
@@ -126,3 +126,8 @@ Commit the production build inputs before publishing an executable, keep `main` 
 ## 2.1.06 更新说明
 
 用户版更新说明：[中文](docs/RELEASE_NOTES_v2.1.06.zh.md) / [English](docs/RELEASE_NOTES_v2.1.06.en.md)。验证范围及自动兼容限制见 [验证记录](docs/VALIDATION_v2.1.06.json)。
+
+
+## 2.1.07 更新说明
+
+更新说明：[中文](docs/RELEASE_NOTES_v2.1.07.zh.md) / [English](docs/RELEASE_NOTES_v2.1.07.en.md)。验证范围与外机效果尚未确认的事项见 [验证记录](docs/VALIDATION_v2.1.07.json)。

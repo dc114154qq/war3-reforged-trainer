@@ -20,7 +20,8 @@ _CURRENT_BRIDGE_FILENAMES = (
 
 def classify_direct_cast_failure(kind, evidence, raw_result):
     """Classify a finished direct-cast callback without hiding unsafe states."""
-    if kind != 'direct_cast' or len(raw_result) != 824:
+    from war3_direct_cast_protocol import WORK_SIZE
+    if kind != 'direct_cast' or len(raw_result) != WORK_SIZE:
         return None
     direct_error = struct.unpack_from('<I', raw_result, 728)[0]
     direct_completed = struct.unpack_from('<I', raw_result, 732)[0]

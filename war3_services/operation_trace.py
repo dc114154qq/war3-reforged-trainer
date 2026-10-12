@@ -10,7 +10,7 @@ import traceback
 import uuid
 
 _ACTIVE_TRACE = ContextVar('war3_operation_trace', default=None)
-DIAGNOSTIC_REVISION = 'backpack-components-v2-20261010'
+DIAGNOSTIC_REVISION = 'ability-instances-item-carrier-v3-20261012'
 
 
 def _plain(value):
@@ -36,6 +36,8 @@ def _artifact(path):
 
 
 class BackpackTrace:
+    prefix='backpack'
+    source_inputs=('operation_trace.py','backpack_interface.py','facade_extensions.py')
     def __init__(self, host, logger_factory, request):
         self.host, self.logger_factory, self.request = host, logger_factory, request
         self.operation_id = uuid.uuid4().hex
@@ -71,7 +73,7 @@ class BackpackTrace:
         self.token = _ACTIVE_TRACE.set(self)
         try:
             self.logger = self.logger_factory(
-                getattr(self.host, 'pid', None), prefix='backpack',
+                getattr(self.host, 'pid', None), prefix=self.prefix,
                 target_hwnd=getattr(self.host, 'hwnd', 0))
             self.log_path = str(self.logger.archive_path)
         except Exception as exc:
@@ -87,8 +89,7 @@ class BackpackTrace:
         if getattr(sys, 'frozen', False):
             artifacts['executable'] = _artifact(sys.executable)
         else:
-            artifacts['inputs'] = [_artifact(Path(__file__).with_name(name)) for name in
-                                   ('operation_trace.py', 'backpack_interface.py', 'facade_extensions.py')]
+            artifacts['inputs'] = [_artifact(Path(__file__).with_name(name)) for name in self.source_inputs]
         self.record('start', request=self.request, session_identity=identity,
                     session_epoch=getattr(session, 'epoch', None), adapter=adapter,
                     trainer_artifact=artifacts, diagnostic_revision=DIAGNOSTIC_REVISION,
@@ -136,6 +137,23 @@ class BackpackTrace:
             _ACTIVE_TRACE.reset(self.token)
         # Logging failure preserves the original outcome; it never retries a write.
         return False
+
+
+class SkillTrace(BackpackTrace):
+    prefix='skill'
+    source_inputs=('operation_trace.py','facade_abilities.py','effect_lifetime.py')
+
+    def summary(self):
+        result=super().summary()
+        result.pop('click_evidence',None);result.pop('actual_open_effect_verified',None)
+        result['actual_effect_verified']=False
+        return result
+
+    def finish(self,result):
+        self.record('complete',readback=result,actual_effect_verified=False)
+        self.result_summary=self.summary()
+        result['operation_trace']=self.result_summary
+        return result
 
 
 def record_engine_execution(engine, report):

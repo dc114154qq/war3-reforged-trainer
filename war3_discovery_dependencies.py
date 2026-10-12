@@ -27,7 +27,7 @@ SELECTED_READ = COMMON | {"players.count", "players.array", "players.max_count",
 DEPENDENCIES = {
     "item_safety": NATIVE, "equipment_effect": EQUIPMENT_RUNTIME,
     "legacy_equipment_probe": EQUIPMENT_RUNTIME, "game_speed": NATIVE,
-    "direct_cast": EFFECT, "talent_icon_control": TALENTS | {"modules.talent_icons", "module_addresses"},
+    "direct_cast": EFFECT | {"bridge_layout.ability_level_tail"}, "talent_icon_control": TALENTS | {"modules.talent_icons", "module_addresses"},
     "hero": NATIVE, "hero_attributes": NATIVE,
     "attack_speed": ATTACK, "unit_stats": NATIVE,
     "talent_order": NATIVE, "talent_probe": NATIVE,
@@ -35,7 +35,8 @@ DEPENDENCIES = {
     "ability": NATIVE | {"layouts.ability", "bridge_layout.ability_level_tail"},
     "ability_field": NATIVE,
     "item": NATIVE, "item_catalog": NATIVE | {"equipment_runtime"},
-    "item_field": NATIVE, "clone": NATIVE | {"bridge_layout.ability_level_tail"},
+    "item_field": NATIVE, "item_ability": NATIVE | {"layouts.item","equipment_runtime.item_rawcode_mirror"},
+    "clone": NATIVE | {"bridge_layout.ability_level_tail"},
     "unit_action": NATIVE, "clone_bound": NATIVE | {"addresses.unit_resolver", "bridge_layout.ability_level_tail"},
     "unit_bindings": NATIVE | {"addresses.unit_resolver"},
     "world": NATIVE | {"fog_recovery"}, "bulk": NATIVE,
@@ -66,9 +67,9 @@ def dependencies_for(name, request=None):
         return required
     if name == 'ability' and request is not None:
         action = request.get('action')
-        if action in (0, 2, 5) or action == 1 and not request.get('level'):
+        if action in (0, 2):
             return NATIVE
-        if action in (1, 3, 4):
+        if action in (1, 3, 4, 5):
             return NATIVE | {'bridge_layout.ability_level_tail'}
         raise ValueError('Invalid ability action')
     if name == 'world' and request is not None:

@@ -279,8 +279,14 @@ class AbilitiesFacade:
         if uses_indexed_backend(self):
             if duration:
                 from war3_services.effect_lifetime import run_held_effect
-                run_held_effect(self._engine_instance_24268(), ability_rawcode,
-                    mode, count, area or 100000.0, duration)
+                from war3_services.operation_trace import SkillTrace
+                from war3_reforged_trainer import Win10ReadLogger
+                engine=self._engine_instance_24268()
+                with SkillTrace(self,Win10ReadLogger,dict(rawcode=ability_rawcode,mode=mode,
+                        passes=count,area=area or 100000.0,duration=duration)) as trace:
+                    trace.bind_engine(engine)
+                    result=run_held_effect(engine, ability_rawcode,mode,count,area or 100000.0,duration)
+                    trace.finish(result)
                 return count, count
             # The current bridge owns temporary ability creation, area
             # restoration, and all passes inside one game-thread callback.
@@ -433,16 +439,8 @@ class AbilitiesFacade:
 
 
     def cast_fullscreen_starfall(self, *, success_limit: int = 0) -> tuple[int, int]:
-        # Starfall's native immediate-order path can return a business-level
-        # rejection after creating the temporary ability.  Keep this ability
-        # on the older staged world-cast transaction, which records the exact
-        # order id and owns cleanup inside the game-thread callback.
-        self.cast_native_area_24268(
-            "AEsb", 852183, cast_kind=1, area=100000.0, hold_seconds=12.0,
-        )
-        # cast_native_area_24268 already validates either mana or cooldown
-        # change and always performs the matching cleanup transaction.
-        return 1, 1
+        return self._run_selected_ability_effect(
+            "AEsb","immediate",area=100000.0,hold_seconds=12.0)
 
 
     def cast_fullscreen_forked_lightning(self, *, success_limit: int = 0) -> tuple[int, int]:

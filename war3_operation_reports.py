@@ -2,6 +2,22 @@
 import struct
 
 def record_status(kind,evidence,report):
+    if kind=='direct_cast' and evidence.get('work_result_hex'):
+        raw=bytes.fromhex(evidence['work_result_hex'])
+        from war3_direct_cast_protocol import WORK_SIZE
+        if len(raw)==WORK_SIZE:
+            action,rawcode=struct.unpack_from('<2I',raw,696)
+            issued,error,completed=struct.unpack_from('<3I',raw,724)
+            prior_cost,prior_cd,remaining,original_level,touched,activation,cast_order,expected_level=struct.unpack_from('<8I',raw,912)
+            report['direct_cast_status']=dict(action=action,rawcode=rawcode,issued=issued,error=error,
+                completed=completed,cleanup=struct.unpack_from('<I',raw,820)[0],
+                prior_cost=prior_cost,prior_cooldown_field=prior_cd,prior_cooldown_remaining=remaining,
+                original_level=original_level,touched=touched,activation=activation,
+                cast_order=cast_order,expected_level=expected_level,
+                source=struct.unpack_from('<Q',raw,672)[0],ability_handle=struct.unpack_from('<Q',raw,680)[0])
+    if kind=='item_ability' and evidence.get('work_result_hex'):
+        from war3_item_ability_protocol import status
+        report['item_ability_status']=status(bytes.fromhex(evidence['work_result_hex']))
     if kind=='stat_details' and evidence.get('work_result_hex'):
         raw=bytes.fromhex(evidence['work_result_hex'])
         if len(raw)==1056:
@@ -51,7 +67,11 @@ def record_status(kind,evidence,report):
                 rawcode=rawcode,action=action,target_level=target_level,selected_count=selected_count,
                 rows=[dict(index=i,before=struct.unpack_from('<i',raw,544+8*i)[0],
                            after=struct.unpack_from('<i',raw,548+8*i)[0],
-                           intermediate=struct.unpack_from('<i',raw,736+4*i)[0])
+                           intermediate=struct.unpack_from('<i',raw,736+4*i)[0],
+                           before_handle=struct.unpack_from('<Q',raw,864+24*i)[0],
+                           after_handle=struct.unpack_from('<Q',raw,872+24*i)[0],
+                           add_return=struct.unpack_from('<I',raw,880+24*i)[0],
+                           activation=struct.unpack_from('<I',raw,884+24*i)[0])
                       for i in range(min(24,selected_count))])
     if kind=='ability_field' and evidence.get('work_result_hex'):
         raw=bytes.fromhex(evidence['work_result_hex'])
@@ -60,9 +80,11 @@ def record_status(kind,evidence,report):
             report['ability_field_status']=dict(changed=changed,error=error,completed=completed)
     if kind=='item' and evidence.get('work_result_hex'):
         raw=bytes.fromhex(evidence['work_result_hex'])
-        if len(raw)==6008:
+        from war3_item_protocol import WORK_SIZE as ITEM_WORK_SIZE
+        if len(raw)==ITEM_WORK_SIZE:
             changed,error,completed,skipped=struct.unpack_from('<4I',raw,572)
-            report['item_status']=dict(changed=changed,error=error,completed=completed,skipped=skipped)
+            report['item_status']=dict(changed=changed,error=error,completed=completed,skipped=skipped,
+                creation_route=struct.unpack_from('<I',raw,6008)[0])
             report['item_rows']=[dict(index=i,created=struct.unpack_from('<Q',raw,592+224*i+192)[0],
                 status=struct.unpack_from('<I',raw,592+224*i+212)[0],
                 trace=struct.unpack_from('<I',raw,592+224*i+220)[0])

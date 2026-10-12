@@ -5,7 +5,7 @@ from war3_selection_protocol import build_work as selection_work, validate_work 
 from war3_native_journal import WORK_SIZE as JOURNAL_SIZE,build_work as journal_work,validate_work as validate_journal
 JOURNAL_OFFSET=1216
 WORK_SIZE=JOURNAL_OFFSET+JOURNAL_SIZE
-ABI=struct.pack('<3I',0x2426806e,216,WORK_SIZE)
+ABI=struct.pack('<3I',0x24268070,216,WORK_SIZE)
 SIGNATURES=(
     ('UnitItemInSlot','(Hunit;I)Hitem;'),('GetItemTypeId','(Hitem;)I'),
     ('GetItemCharges','(Hitem;)I'),('BlzGetItemAbility','(Hitem;I)Hability;'),
@@ -47,6 +47,8 @@ def status(payload):
         (struct.unpack_from('<QIi',payload,offset+16*i) for i in range(6))]
     return dict(rawcode=rawcode,action=action,slot=slot,ability_rawcode=ability_rawcode,
         error=error,completed=completed,changed=changed,add_return=add_return,
+        lookup_evidence=dict(before=dict(direct=bool(reserved&1),indexed=bool(reserved&2)),
+                             after=dict(direct=bool(reserved&4),indexed=bool(reserved&8))),
         before_handle=before,after_handle=after,ability_count=count,
         abilities=[dict(handle=handles[i],rawcode=codes[i]) for i in range(min(count,32))],
         classic_before=slots(1024),classic_after=slots(1120))
@@ -56,7 +58,8 @@ def decode_work(payload,count):
     if not row:raise ValueError('Incomplete item ability response')
     selection=selection_decode(payload[:480],count)
     target,item,base,unit_full,item_full=struct.unpack_from('<5Q',payload,544)
-    if (row['error'] or row['completed']!=1 or row['ability_count']>32 or row['changed'] not in (0,1) or
+    flags=struct.unpack_from('<I',payload,620)[0]
+    if (row['error'] or row['completed']!=1 or row['ability_count']>32 or row['changed'] not in (0,1) or flags&~15 or
         row['classic_before']!=row['classic_after'] or
         sum(r['handle']==target for r in selection['rows'])!=1 or
         row['classic_after'][row['slot']]['handle']!=item or

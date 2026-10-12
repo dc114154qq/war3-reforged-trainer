@@ -16,7 +16,7 @@ typedef struct ItemAbilityWork {
     BridgeNativeJournal journal;
 } ItemAbilityWork;
 _Static_assert(sizeof(ItemAbilityWork)==58632,"Item ability ABI");
-__declspec(dllexport) const uint32_t item_ability_abi[3]={0x2426806eu,216u,58632u};
+__declspec(dllexport) const uint32_t item_ability_abi[3]={0x24268070u,216u,58632u};
 static int ItemAbilityIdentity(ItemAbilityWork*w,uint32_t unit_rawcode) {
     uint64_t owner=BridgeProfileResolveOwner(w->base,w->unit_full,1);
     uint64_t item_owner=BridgeProfileResolveOwner(w->base,w->item_full,1);
@@ -48,9 +48,26 @@ static int ItemAbilityEnumerate(ItemAbilityWork*w) {
         if(!handle)break;
         uint32_t code=BridgeObservedAbilityId(w->ability_id,handle);
         if(!code)return 0;
+        for(uint32_t j=0;j<w->ability_count;++j)if(w->abilities[j]==handle)return 0;
         w->abilities[i]=handle;w->ability_ids[i]=code;++w->ability_count;
     }
     return w->ability_count<32 || !BridgeObservedItemAbilityIndex(w->ability_index,w->item,32);
+}
+static int ItemAbilityLookup(ItemAbilityWork*w,uint64_t *handle,uint32_t shift) {
+    *handle=0;
+    if(!w->ability_rawcode)return 1;
+    uint64_t direct=BridgeObservedItemAbility(w->ability,w->item,w->ability_rawcode),indexed=0;
+    if(direct && BridgeObservedAbilityId(w->ability_id,direct)!=w->ability_rawcode)return 0;
+    for(uint32_t i=0;i<w->ability_count;++i)
+        if(!BridgeMatchEnumeratedAbility(w->abilities[i],w->ability_ids[i],w->ability_rawcode,&indexed))return 0;
+    if(direct && indexed && direct!=indexed)return 0;
+    /* Reuse the legacy bound-list compatibility rule: an empty direct query
+       does not justify adding an ability already on this exact item. The
+       list was captured in this callback, under the full item/unit identity. */
+    if(direct)w->reserved|=1u<<shift;
+    if(indexed)w->reserved|=2u<<shift;
+    *handle=direct?direct:indexed;
+    return 1;
 }
 static uint64_t BridgeItemAbilityQueryBody(void) {
     ItemAbilityWork*w=(ItemAbilityWork*)g_dispatch->work;
@@ -68,21 +85,20 @@ static uint64_t BridgeItemAbilityQueryBody(void) {
         if(!ItemAbilityIdentity(w,unit_rawcode) || !ItemAbilitySnapshot(w,w->before)){w->error=442;return count;}
         BridgeJournalPhase(11);
         if(!ItemAbilityEnumerate(w)){w->error=443;return count;}
-        w->before_handle=w->ability_rawcode?BridgeObservedItemAbility(w->ability,w->item,w->ability_rawcode):0;
-        if(w->before_handle && BridgeObservedAbilityId(w->ability_id,w->before_handle)!=w->ability_rawcode){w->error=444;return count;}
+        if(!ItemAbilityLookup(w,&w->before_handle,0)){w->error=444;return count;}
         uint64_t prior[32];uint32_t prior_ids[32],prior_count=w->ability_count;
         for(uint32_t i=0;i<prior_count;++i){prior[i]=w->abilities[i];prior_ids[i]=w->ability_ids[i];}
         if(w->action==1 && !w->before_handle){
             BridgeJournalPhase(12);
             w->add_return=BridgeObservedAddItemAbility(w->add,w->item,w->ability_rawcode)?1u:0u;
         }
-        w->after_handle=w->ability_rawcode?BridgeObservedItemAbility(w->ability,w->item,w->ability_rawcode):0;
-        w->changed=w->after_handle!=w->before_handle;
         BridgeJournalPhase(13);
         if(!ItemAbilityIdentity(w,unit_rawcode) || !ItemAbilitySnapshot(w,w->after) ||
            !BridgeItemSame(w->before,w->after)){w->error=446;return count;}
         if(!ItemAbilityEnumerate(w)){w->error=443;return count;}
         BridgeJournalPhase(14);
+        if(!ItemAbilityLookup(w,&w->after_handle,2)){w->error=444;return count;}
+        w->changed=w->after_handle!=w->before_handle;
         for(uint32_t i=0;i<prior_count;++i){
             uint32_t found=0;
             for(uint32_t j=0;j<w->ability_count;++j)if(w->abilities[j]==prior[i] && w->ability_ids[j]==prior_ids[i])++found;

@@ -87,6 +87,15 @@ typedef uint64_t (*BridgeAbilityLookupFn)(uint64_t,uint32_t);
 typedef uint32_t (*BridgeAbilityIdFn)(uint64_t);
 typedef uint8_t (*BridgeAbilityAddFn)(uint64_t,uint32_t);
 typedef uint64_t (*BridgeAbilityIndexFn)(uint64_t,int32_t);
+/* Both unit and item lookup must distinguish a missing direct-query result
+   from a missing instance. Only one matching instance is accepted. */
+static int BridgeMatchEnumeratedAbility(uint64_t candidate,uint32_t code,
+        uint32_t rawcode,uint64_t *found) {
+    if(!candidate || !code)return 0;
+    if(code!=rawcode)return 1;
+    if(*found)return 0;
+    *found=candidate;return 1;
+}
 static uint64_t BridgeFindUnitAbility(BridgeAbilityLookupFn lookup,BridgeAbilityIndexFn indexed,BridgeAbilityIdFn id,
         uint64_t unit,uint32_t rawcode,int *error) {
     uint64_t handle=BridgeObservedUnitAbility(lookup,unit,rawcode),found=0;
@@ -97,7 +106,7 @@ static uint64_t BridgeFindUnitAbility(BridgeAbilityLookupFn lookup,BridgeAbility
         if(!candidate)return found;
         uint32_t code=BridgeObservedAbilityId(id,candidate);
         if(!code){*error=34;return 0;}
-        if(code==rawcode){if(found){*error=37;return 0;}found=candidate;}
+        if(!BridgeMatchEnumeratedAbility(candidate,code,rawcode,&found)){*error=37;return 0;}
     }
     *error=37;return 0;
 }

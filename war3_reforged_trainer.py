@@ -52,7 +52,7 @@ APP_RELEASE_CHANNEL = "stable"
 GAME_BUILD = "3.0.0.24268"
 PRODUCT_READ_MODE = "normal"
 PRODUCT_EDITION_LABEL = "普通读取版"
-WIN10_COMPAT_REVISION = "2.1.07-r1-native-call-journal-v4-rule25-20261012"
+WIN10_COMPAT_REVISION = "2.1.07-r2-bound-item-ability-v1-journal-v4-rule25-20261012"
 
 
 if sys.platform == "win32":

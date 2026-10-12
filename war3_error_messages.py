@@ -8,6 +8,8 @@ BUSINESS_REASONS = {
     ('ability',35): ('已找到技能实例，但游戏未按要求激活或设置等级；本次添加未确认成功。','An ability instance exists, but its activation or level readback did not match.'),
     ('ability',36): ('游戏返回已添加，但没有读回对应技能实例；本次添加未确认成功。','The game accepted the addition but no matching ability instance was found.'),
     ('ability',37): ('当前技能列表超过检查范围，或存在多个同编号实例；已停止添加，避免修改错误对象。','The ability list exceeds the inspection bound or has multiple matching instances; addition stopped.'),
+    ('item_ability',443): ('背包物品的能力列表不完整或含重复对象，已停止本次挂载，避免重复添加。','The item ability list is incomplete or contains duplicate objects; attachment stopped.'),
+    ('item_ability',444): ('背包物品的能力查询与列表不一致，或同编号实例不唯一；已停止本次挂载。','The item ability lookup disagrees with its list, or multiple instances match; attachment stopped.'),
     ('item_ability',445): ('背包物品未读回所需能力，物品能力挂载未确认成功；已停止本次修复。','The required ability was not found on the backpack item; attachment remains unconfirmed.'),
     ('item_ability',446): ('挂载能力期间，背包物品的身份或经典栏发生变化；已停止后续修复。','The backpack item identity or classic inventory changed during attachment.'),
     ('item_ability',447): ('挂载能力后，背包物品原有的能力读回变化；已停止后续修复。','An existing item ability changed after attachment.'),

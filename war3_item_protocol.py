@@ -1,8 +1,10 @@
 """Current item-batch protocol; complete six-slot before/after snapshots."""
 import struct
 from war3_selection_protocol import build_work as select_work,validate_work as validate_selection,decode_work as decode_selection
-WORK_SIZE=6016
-ABI=struct.pack('<3I',0x24268069,216,WORK_SIZE)
+from war3_native_journal import WORK_SIZE as JOURNAL_SIZE,build_work as journal_work,validate_work as validate_journal
+JOURNAL_OFFSET=6016
+WORK_SIZE=JOURNAL_OFFSET+JOURNAL_SIZE
+ABI=struct.pack('<3I',0x2426806f,216,WORK_SIZE)
 SIGNATURES=(('UnitAddItemById','(Hunit;I)Hitem;'),('UnitAddItemToSlotById','(Hunit;II)B'),('UnitItemInSlot','(Hunit;I)Hitem;'),
  ('UnitInventorySize','(Hunit;)I'),('GetItemTypeId','(Hitem;)I'),('GetItemCharges','(Hitem;)I'),
  ('SetItemCharges','(Hitem;I)V'),('RemoveItem','(Hitem;)V'),('UnitRemoveItem','(Hunit;Hitem;)V'),
@@ -26,11 +28,13 @@ def build_work(entries,tls,action=0,rawcode=0,charges=-1,target_unit_rawcode=0,t
     payload=select_work(entries)+struct.pack('<10Q2Ii5I',*pointers[:9],tls,rawcode,action,charges,0,0,0,0,target_unit_rawcode)+bytes(5376)
     payload+=struct.pack('<5Q',*pointers[9:],target_unit,expected_item)
     payload+=struct.pack('<2I',creation_route,0)
+    payload+=journal_work()
     validate_work(payload);return payload
 
 def validate_work(payload):
     if len(payload)!=WORK_SIZE:raise ValueError(f'Item batch work must contain {WORK_SIZE} bytes')
-    validate_selection(payload[:480]);v=struct.unpack_from('<10Q2Ii5I',payload,480)
+    validate_selection(payload[:480]);validate_journal(payload[JOURNAL_OFFSET:])
+    v=struct.unpack_from('<10Q2Ii5I',payload,480)
     handlers=v[:9]
     action=v[11]
     creation_route,reserved=struct.unpack_from('<2I',payload,6008)

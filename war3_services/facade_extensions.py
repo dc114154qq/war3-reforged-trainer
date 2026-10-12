@@ -145,6 +145,9 @@ class ExtensionsFacade:
             if len(rows) != 1:
                 raise RuntimeError("当前选中英雄的经典物品栏身份不唯一，请重新选择目标")
             row = rows[0]
+            trace.record('backpack_target_identity',target_unit=target,
+                selected_row=row,expected_hero=_hero_name,expected_backpack=rawcode,
+                expected_controller=controller_rawcode,selection=before.get('selection'))
             if int(row.get("inventory_size", 0)) < 1:
                 raise RuntimeError("当前选中单位没有经典物品栏，无法放入背包装备")
             first = row["before"][0]
@@ -180,6 +183,9 @@ class ExtensionsFacade:
                         or not int(written[0]["after"][0].get("handle", 0))):
                     raise RuntimeError("背包装备写入经典物品栏第 1 格后读回不一致")
                 classic_expected = written[0]["after"]
+            else:
+                trace.record('backpack_creation_skip',reason='requested_backpack_already_in_slot',
+                    same_item=first,classic_inventory=classic_expected)
             trace.record('extension_after_item', target_unit=target)
             after = self.extension_snapshot_24268(target)
             trace.record('extension_after_item_result', snapshot=after)

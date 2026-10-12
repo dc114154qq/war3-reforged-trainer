@@ -14,9 +14,13 @@ def _preserve(previous,current):
 
 def inspect_backpack_carrier(host,target,classic,controller,snapshot,trace):
     engine=host._engine_instance_24268()
-    if not isinstance(getattr(engine,'session',None),GameSession):return None
+    if not isinstance(getattr(engine,'session',None),GameSession):
+        trace.record('backpack_carrier_check_skipped',reason='typed_session_unavailable',target_unit=target)
+        return None
     session=engine.session
     candidates=host._selected_candidates_snapshot(None)
+    trace.record('backpack_identity_candidates',target_unit=target,
+        candidates=[dict(native_handle=native,candidate=candidate) for candidate,native in candidates])
     matches=[candidate for candidate,native in candidates if int(native)==int(target)]
     if len(matches)!=1:raise RuntimeError('背包持有者与当前选中单位未匹配，已停止本次修复')
     candidate=matches[0]
@@ -29,6 +33,9 @@ def inspect_backpack_carrier(host,target,classic,controller,snapshot,trace):
         items=[item for item in inventory if item.slot==1 and item.rawcode==int(classic['rawcode'])]
         if len(items)!=1:raise RuntimeError('经典栏中的背包实例未通过身份检查，已停止本次修复')
         item=session.bind_item(memory,registry,FullHandle(items[0].handle))
+        trace.record('backpack_bound_identity',unit_ref=unit,item_ref=item,
+            candidate=candidate,classic_item=classic,classic_inventory=inventory,
+            matching_classic_items=len(items),session_epoch=session.epoch)
     names=('AIni','AEqu',int(controller).to_bytes(4,'big').decode('ascii'),'ASde')
     codes=[int.from_bytes(name.encode('ascii'),'big') for name in names]
     from war3_3_extension_catalog import TALENT_CONTROLLERS
@@ -47,13 +54,22 @@ def inspect_backpack_carrier(host,target,classic,controller,snapshot,trace):
     present={row['rawcode'] for row in before['abilities']}
     result=dict(before=deepcopy(before),expected_components=names,added=[],skipped=[],readbacks=[])
     for name,code in zip(names,codes):
-        if code in present:continue
+        trace.record('backpack_item_component_decision',component=name,rawcode=code,
+            item_ability_present=code in present,
+            unit_level=int(snapshot.get('abilities',{}).get(code,0)),
+            bag_size=int(snapshot.get('bag_size',0)),
+            same_item_full=item.handle.value,same_unit_full=unit.handle.value)
+        if code in present:
+            trace.record('backpack_item_component_skip',component=name,reason='already_on_same_item')
+            continue
         # Do not attach another storage/controller instance over live unit
         # storage, equipment or talents; their existing records own the data.
         active=int(snapshot.get('abilities',{}).get(code,0))>0
         if name=='AIni':active|=int(snapshot.get('bag_size',0))==30
         if active:
             result['skipped'].append(dict(component=name,reason='existing_unit_component'))
+            trace.record('backpack_item_component_skip',component=name,reason='existing_unit_component',
+                preserved_level=int(snapshot.get('abilities',{}).get(code,0)))
             continue
         trace.record('backpack_item_ability_add',component=name,ability_rawcode=code,item_full=item.handle.value,unit_full=unit.handle.value)
         try:

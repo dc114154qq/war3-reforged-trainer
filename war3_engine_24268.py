@@ -126,6 +126,15 @@ class Engine24268(UnitsService, AbilitiesService, ItemsService, ExtensionsServic
 
 
     def _execute(self,kind,names,builder,decoder,request):
+        from war3_services.operation_trace import active_trace,SkillTrace
+        if (active_trace() is None and
+                (kind=='direct_cast' or kind in ('ability','item_ability') and request.get('action',0)!=0)):
+            from war3_reforged_trainer import Win10ReadLogger
+            with SkillTrace(self,Win10ReadLogger,dict(operation=kind,**request)) as trace:
+                trace.bind_engine(self)
+                result=self._execute(kind,names,builder,decoder,request)
+                trace.finish(dict(result))
+                return result
         from war3_operations import OPERATIONS,is_read_query
         operation=OPERATIONS.get(kind)
         if operation is None or operation.diagnostic and not self.diagnostic:
@@ -147,7 +156,9 @@ class Engine24268(UnitsService, AbilitiesService, ItemsService, ExtensionsServic
                     return self._execute_prepared(kind,names,builder,decoder,request)
             except EngineExecutionError:raise
             except Exception as exc:
-                report={'pid':self.pid,'operation':kind,'ok':False,'error':str(exc),'dispatch':{},'session':self.session.snapshot()}
+                report={'pid':self.pid,'operation':kind,'request':request,'required_native_names':names,
+                        'ok':False,'error':str(exc),'dispatch':{},'session':self.session.snapshot(),
+                        'dispatch_attempted':False,'failure_scope':'preflight'}
                 self.last_report=report
                 raise EngineExecutionError(str(exc),report) from exc
             finally:
@@ -163,6 +174,7 @@ class Engine24268(UnitsService, AbilitiesService, ItemsService, ExtensionsServic
                 'pid':self.pid, 'game_pid':self.pid,
                 'target_game_pid':self.pid, 'trainer_pid':os.getpid(),
                 'hwnd':self.hwnd, 'operation':kind, 'request':request, 'ok':False,
+                'required_native_names':names,'dispatch_attempted':False,
             };self.last_report=report
             try:
                 from war3_integrity import require_matching_integrity
@@ -200,6 +212,21 @@ class Engine24268(UnitsService, AbilitiesService, ItemsService, ExtensionsServic
                     registry.local_player_for_mode(memory,mode.value)
                     all_entries=cache['entries']
                     missing=[name for name in names if name not in all_entries]
+                    from war3_services.operation_trace import active_trace
+                    trace=active_trace()
+                    if trace is not None:
+                        report['native_registrations']=[
+                            dict(name=name,registered=name in all_entries,
+                                signature=getattr(all_entries.get(name),'signature',None),
+                                registration_node=getattr(all_entries.get(name),'node',None),
+                                handler=getattr(all_entries.get(name),'handler',None),
+                                handler_rva=(getattr(all_entries[name],'handler',0)-registry.base) if name in all_entries else None)
+                            for name in names]
+                        report['native_context']=dict(module_base=registry.base,
+                            tls=mode.tls,tls_index=mode.tls_index,thread_id=mode.thread_id,
+                            mode=mode.value,native_context=context5,cache_hit=cache_hit,
+                            missing_names=missing,
+                            object_ability_definition_registration='not_observed')
                     if missing:
                         raise RuntimeError('Missing native registrations: '+', '.join(missing))
                     entries={name: all_entries[name] for name in names}
@@ -240,6 +267,14 @@ class Engine24268(UnitsService, AbilitiesService, ItemsService, ExtensionsServic
                         or (not cache_hit and NativeTable24268(memory,context5).require(*names)!=entries)):
                         raise RuntimeError('Current native context changed; no hero batch dispatched')
                     report['preflight_ms']=(time.perf_counter()-start)*1000
+                    if trace is not None:
+                        trace.emit('native_dispatch_begin',operation=kind,request=request,
+                            native_context=report.get('native_context'),
+                            native_registrations=report.get('native_registrations'),
+                            payload_bytes=len(payload),session=self.session.snapshot(),
+                            expected_outcome='delivery, callback exit, readback and cleanup are checked separately')
+                        trace.checkpoint()
+                    report['dispatch_attempted']=True
                     # A single callback still processes the entire selected-unit
                     # batch. The hook itself is deliberately one-shot: a reused
                     # thread hook can remain installed after the game rebuilds

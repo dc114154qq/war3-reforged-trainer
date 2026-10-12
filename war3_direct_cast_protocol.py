@@ -14,8 +14,10 @@ EXTRA_SIGNATURES=(
     ("BlzGetUnitAbilityByIndex","(Hunit;I)Hability;"),
 )
 SIGNATURES = WORLD + (("GetUnitAbilityLevel", "(Hunit;I)I"),)+EXTRA_SIGNATURES
-WORK_SIZE = 944
-ABI = struct.pack('<3I', 0x2426806b, 216, WORK_SIZE)
+from war3_native_journal import WORK_SIZE as JOURNAL_SIZE,build_work as journal_work,validate_work as validate_journal
+JOURNAL_OFFSET = 944
+WORK_SIZE = JOURNAL_OFFSET+JOURNAL_SIZE
+ABI = struct.pack('<3I', 0x2426806d, 216, WORK_SIZE)
 
 
 def build_work(entries, tls, *, module_base, unit_resolver, action, rawcode,
@@ -40,6 +42,7 @@ def build_work(entries, tls, *, module_base, unit_resolver, action, rawcode,
     payload+=struct.pack('<11Q8I',*pointers,state.get('cooldown_timer',0),
         *(state.get(k,0) for k in ('prior_cost','prior_cooldown_field','prior_cooldown_remaining',
             'original_level','touched','activation','cast_order','expected_level')))
+    payload+=journal_work()
     validate_work(payload)
     return payload
 
@@ -49,6 +52,7 @@ def validate_work(payload):
         raise ValueError('Direct cast work size differs')
     from war3_world_cast_protocol import validate_work as validate_world
     validate_world(payload[:760])
+    validate_journal(payload[JOURNAL_OFFSET:])
     base, resolver, level_fn, unit_full, ability_full, data, mode, passes, level, cleanup = struct.unpack_from('<6Q4I', payload, 760)
     action = struct.unpack_from('<I', payload, 696)[0]
     if (any(not 0x10000 <= p < 0x800000000000 for p in (base, resolver, level_fn))

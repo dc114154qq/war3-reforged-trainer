@@ -13,9 +13,10 @@ typedef struct ItemAbilityWork {
     uint64_t before_handle,after_handle,abilities[32];
     uint32_t ability_ids[32];
     ItemSlot before[6],after[6];
+    BridgeNativeJournal journal;
 } ItemAbilityWork;
-_Static_assert(sizeof(ItemAbilityWork)==1216,"Item ability ABI");
-__declspec(dllexport) const uint32_t item_ability_abi[3]={0x24268067u,216u,1216u};
+_Static_assert(sizeof(ItemAbilityWork)==58632,"Item ability ABI");
+__declspec(dllexport) const uint32_t item_ability_abi[3]={0x2426806eu,216u,58632u};
 static int ItemAbilityIdentity(ItemAbilityWork*w,uint32_t unit_rawcode) {
     uint64_t owner=BridgeProfileResolveOwner(w->base,w->unit_full,1);
     uint64_t item_owner=BridgeProfileResolveOwner(w->base,w->item_full,1);
@@ -29,13 +30,13 @@ static int ItemAbilityIdentity(ItemAbilityWork*w,uint32_t unit_rawcode) {
         *(uint64_t*)(uintptr_t)(item+bridge_profile.object_handle)==w->item_full &&
         *(uint32_t*)(uintptr_t)(item+bridge_profile.object_rawcode)==w->rawcode &&
         *(uint32_t*)(uintptr_t)(item+bridge_profile.item_rawcode_mirror)==w->rawcode &&
-        w->in_slot(w->target,(int32_t)w->slot)==w->item && w->item_type(w->item)==w->rawcode;
+        BridgeObservedItemSlot(w->in_slot,w->target,(int32_t)w->slot)==w->item && BridgeObservedItemType(w->item_type,w->item)==w->rawcode;
 }
 static int ItemAbilitySnapshot(ItemAbilityWork*w,ItemSlot*rows) {
     for(int32_t i=0;i<6;++i){
-        rows[i].handle=w->in_slot(w->target,i);
-        rows[i].rawcode=rows[i].handle?w->item_type(rows[i].handle):0;
-        rows[i].charges=rows[i].handle?w->charges(rows[i].handle):0;
+        rows[i].handle=BridgeObservedItemSlot(w->in_slot,w->target,i);
+        rows[i].rawcode=rows[i].handle?BridgeObservedItemType(w->item_type,rows[i].handle):0;
+        rows[i].charges=rows[i].handle?BridgeObservedCharges(w->charges,rows[i].handle):0;
         if(rows[i].handle && (!rows[i].rawcode || rows[i].charges<0))return 0;
     }
     return 1;
@@ -43,15 +44,15 @@ static int ItemAbilitySnapshot(ItemAbilityWork*w,ItemSlot*rows) {
 static int ItemAbilityEnumerate(ItemAbilityWork*w) {
     w->ability_count=0;
     for(int32_t i=0;i<32;++i){
-        uint64_t handle=w->ability_index(w->item,i);
+        uint64_t handle=BridgeObservedItemAbilityIndex(w->ability_index,w->item,i);
         if(!handle)break;
-        uint32_t code=w->ability_id(handle);
+        uint32_t code=BridgeObservedAbilityId(w->ability_id,handle);
         if(!code)return 0;
         w->abilities[i]=handle;w->ability_ids[i]=code;++w->ability_count;
     }
-    return w->ability_count<32 || !w->ability_index(w->item,32);
+    return w->ability_count<32 || !BridgeObservedItemAbilityIndex(w->ability_index,w->item,32);
 }
-__declspec(dllexport) uint64_t BridgeItemAbilityQuery(void) {
+static uint64_t BridgeItemAbilityQueryBody(void) {
     ItemAbilityWork*w=(ItemAbilityWork*)g_dispatch->work;
     if(!w || w->expected_tls!=g_dispatch->tls_value || !w->target || !w->item || !w->base ||
         !w->unit_full || !w->item_full || w->action>1 || w->slot>=6 || !w->rawcode || w->reserved ||
@@ -63,29 +64,42 @@ __declspec(dllexport) uint64_t BridgeItemAbilityQuery(void) {
     for(uint32_t i=0;i<count;++i)if(w->selection.rows[i].unit==w->target){++matches;unit_rawcode=w->selection.rows[i].rawcode;}
     if(w->selection.error || !w->selection.destroyed || matches!=1){w->error=441;return count;}
     __try {
+        BridgeJournalPhase(10);
         if(!ItemAbilityIdentity(w,unit_rawcode) || !ItemAbilitySnapshot(w,w->before)){w->error=442;return count;}
+        BridgeJournalPhase(11);
         if(!ItemAbilityEnumerate(w)){w->error=443;return count;}
-        w->before_handle=w->ability_rawcode?w->ability(w->item,w->ability_rawcode):0;
-        if(w->before_handle && w->ability_id(w->before_handle)!=w->ability_rawcode){w->error=444;return count;}
+        w->before_handle=w->ability_rawcode?BridgeObservedItemAbility(w->ability,w->item,w->ability_rawcode):0;
+        if(w->before_handle && BridgeObservedAbilityId(w->ability_id,w->before_handle)!=w->ability_rawcode){w->error=444;return count;}
         uint64_t prior[32];uint32_t prior_ids[32],prior_count=w->ability_count;
         for(uint32_t i=0;i<prior_count;++i){prior[i]=w->abilities[i];prior_ids[i]=w->ability_ids[i];}
         if(w->action==1 && !w->before_handle){
-            w->add_return=w->add(w->item,w->ability_rawcode)?1u:0u;
+            BridgeJournalPhase(12);
+            w->add_return=BridgeObservedAddItemAbility(w->add,w->item,w->ability_rawcode)?1u:0u;
         }
-        w->after_handle=w->ability_rawcode?w->ability(w->item,w->ability_rawcode):0;
+        w->after_handle=w->ability_rawcode?BridgeObservedItemAbility(w->ability,w->item,w->ability_rawcode):0;
         w->changed=w->after_handle!=w->before_handle;
+        BridgeJournalPhase(13);
         if(!ItemAbilityIdentity(w,unit_rawcode) || !ItemAbilitySnapshot(w,w->after) ||
            !BridgeItemSame(w->before,w->after)){w->error=446;return count;}
         if(!ItemAbilityEnumerate(w)){w->error=443;return count;}
+        BridgeJournalPhase(14);
         for(uint32_t i=0;i<prior_count;++i){
             uint32_t found=0;
             for(uint32_t j=0;j<w->ability_count;++j)if(w->abilities[j]==prior[i] && w->ability_ids[j]==prior_ids[i])++found;
             if(found!=1){w->error=447;return count;}
         }
-        if(w->action==1 && (!w->after_handle || w->ability_id(w->after_handle)!=w->ability_rawcode)){
+        if(w->action==1 && (!w->after_handle || BridgeObservedAbilityId(w->ability_id,w->after_handle)!=w->ability_rawcode)){
             w->error=445;return count;
         }
         w->completed=1;
     } __except(EXCEPTION_EXECUTE_HANDLER){w->error=GetExceptionCode();}
     return count;
+}
+
+__declspec(dllexport) uint64_t BridgeItemAbilityQuery(void) {
+    ItemAbilityWork*w=(ItemAbilityWork*)g_dispatch->work;
+    BridgeNativeJournal*previous=bridge_native_journal;
+    bridge_native_journal=w?&w->journal:0;
+    __try {return BridgeItemAbilityQueryBody();}
+    __finally {bridge_native_journal=previous;}
 }

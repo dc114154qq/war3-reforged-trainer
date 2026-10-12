@@ -5,6 +5,7 @@ import sys
 from war3_engine_continuation import run_continuation, unstarted_continuation_proven
 from war3_game_session import ObjectAddress,session_scope
 from war3_object_registry import ObjectRegistry24268
+from war3_services.operation_trace import record_operation_phase
 
 
 class HeldEffectCleanupError(RuntimeError):
@@ -81,7 +82,9 @@ def run_held_effect(engine, rawcode, mode, passes, area, duration):
         raise ValueError('全屏技能次数必须为 1 到 255 的整数')
     results = []
     with engine.session.lock:
-        for _ in range(passes):
+        for index in range(passes):
+            record_operation_phase(engine,'skill_pass_begin',pass_index=index+1,total_passes=passes,
+                rawcode=rawcode,mode=mode,area=area,duration=duration,session_epoch=engine.session.epoch)
             results.append(_run_one_held_effect(engine, rawcode, mode, area, duration))
     return dict(passes=results, completed=len(results))
 
@@ -92,6 +95,8 @@ def _run_one_held_effect(engine, rawcode, mode, area, duration):
     with session.lock:
         if key in session.resources:
             prior = session.resources[key]
+            record_operation_phase(engine,'skill_prior_resource',state=getattr(prior,'state',None),
+                reference=getattr(prior,'ref',None),deferred_cleanup=getattr(prior,'deferred_cleanup',False))
             if not getattr(prior, 'deferred_cleanup', False):
                 raise RuntimeError('A fullscreen effect still owns its source instance')
             # Exact-instance cleanup only. A new cast is not sent unless the
@@ -99,24 +104,33 @@ def _run_one_held_effect(engine, rawcode, mode, area, duration):
             prior.close()
             session.resources.pop(key, None)
         state = engine.direct_cast(rawcode, 1, mode=mode, passes=1, area=area)
+        record_operation_phase(engine,'skill_start_readback',state=state)
         resource = None
         try:
             resource = HeldEffect(engine, rawcode, state)
             session.resources[key] = resource
+            record_operation_phase(engine,'skill_hold_begin',duration=duration,state=state,unit_ref=resource.ref)
             time.sleep(duration)
+            record_operation_phase(engine,'skill_hold_end',duration=duration,session_epoch=session.epoch)
             observed = run_continuation(engine, 3,
                 lambda: engine.direct_cast(rawcode, 3, mode=mode, passes=1, state=state),
                 epoch=resource.ref.epoch)
             verification = verify_cast_started(state, observed)
+            record_operation_phase(engine,'skill_observed',state=observed,verification=verification)
             return dict(start=state, state=observed, verification=verification)
         finally:
             primary_error=sys.exc_info()[1]
+            record_operation_phase(engine,'skill_cleanup_begin',state=state,
+                primary_error=repr(primary_error) if primary_error is not None else None,
+                resource_owned=resource is not None)
             try:
                 if resource is not None:
                     resource.close()
                 else:
                     engine.direct_cast(rawcode, 2, mode=mode, passes=1, state=state)
             except BaseException as cleanup_error:
+                record_operation_phase(engine,'skill_cleanup_failed',exception=repr(cleanup_error),
+                    cleanup_report=getattr(cleanup_error,'report',None),state=state)
                 deferred = resource is not None and unstarted_continuation_proven(
                     engine, cleanup_error, resource.ref.epoch)
                 if deferred:
@@ -127,3 +141,5 @@ def _run_one_held_effect(engine, rawcode, mode, area, duration):
                     deferred=deferred) from cleanup_error
             else:
                 session.resources.pop(key, None)
+                record_operation_phase(engine,'skill_cleanup_complete',state=state,
+                    cleanup_verified=True,actual_damage_verified=False)

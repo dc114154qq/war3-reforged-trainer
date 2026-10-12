@@ -131,3 +131,8 @@ Commit the production build inputs before publishing an executable, keep `main` 
 ## 2.1.07 更新说明
 
 更新说明：[中文](docs/RELEASE_NOTES_v2.1.07.zh.md) / [English](docs/RELEASE_NOTES_v2.1.07.en.md)。验证范围与外机效果尚未确认的事项见 [验证记录](docs/VALIDATION_v2.1.07.json)。
+
+
+## 2.1.07 日志增强构建
+
+更新说明：[中文](docs/RELEASE_NOTES_v2.1.07-r1.zh.md) / [English](docs/RELEASE_NOTES_v2.1.07-r1.en.md)。验证范围与外机效果尚未确认的事项见 [验证记录](docs/VALIDATION_v2.1.07-r1.json)。

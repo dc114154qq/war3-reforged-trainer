@@ -2,8 +2,10 @@
 import struct
 from war3_selection_protocol import build_work as selection_work, validate_work as selection_validate, decode_work as selection_decode
 
-WORK_SIZE=1216
-ABI=struct.pack('<3I',0x24268067,216,WORK_SIZE)
+from war3_native_journal import WORK_SIZE as JOURNAL_SIZE,build_work as journal_work,validate_work as validate_journal
+JOURNAL_OFFSET=1216
+WORK_SIZE=JOURNAL_OFFSET+JOURNAL_SIZE
+ABI=struct.pack('<3I',0x2426806e,216,WORK_SIZE)
 SIGNATURES=(
     ('UnitItemInSlot','(Hunit;I)Hitem;'),('GetItemTypeId','(Hitem;)I'),
     ('GetItemCharges','(Hitem;)I'),('BlzGetItemAbility','(Hitem;I)Hability;'),
@@ -19,20 +21,21 @@ def build_work(entries,tls,*,target,item,base,unit_full,item_full,rawcode,slot=0
             raise ValueError('Item ability native signature differs: '+name)
         handlers.append(entry.handler)
     payload=(selection_work(entries)+struct.pack('<13Q10I',*handlers,tls,target,item,base,unit_full,item_full,
-        rawcode,action,slot,ability_rawcode,0,0,0,0,0,0)+bytes(WORK_SIZE-624))
+        rawcode,action,slot,ability_rawcode,0,0,0,0,0,0)+bytes(JOURNAL_OFFSET-624)+journal_work())
     validate_work(payload)
     return payload
 
 def validate_work(payload):
     if len(payload)!=WORK_SIZE:raise ValueError('Item ability work size differs')
     selection_validate(payload[:480])
+    validate_journal(payload[JOURNAL_OFFSET:])
     pointers=struct.unpack_from('<13Q',payload,480)
     if (any(not 0x10000<=v<0x800000000000 for v in pointers[:11]) or pointers[7]%8
             or not pointers[11] or not pointers[12]):
         raise ValueError('Item ability identity invalid')
     rawcode,action,slot,ability_rawcode,*output=struct.unpack_from('<10I',payload,584)
     if (not rawcode or action not in (0,1) or slot>=6 or
-            (action==1 and not ability_rawcode) or any(output) or any(payload[624:])):
+            (action==1 and not ability_rawcode) or any(output) or any(payload[624:JOURNAL_OFFSET])):
         raise ValueError('Item ability request invalid')
 
 def status(payload):

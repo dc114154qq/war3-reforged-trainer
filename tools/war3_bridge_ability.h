@@ -13,9 +13,10 @@ typedef struct AbilityWork {
     uint32_t (*ability_id)(uint64_t);
     uint64_t (*ability_index)(uint64_t,int32_t);
     BridgeAbilityWitness witness[24];
+    BridgeNativeJournal journal;
 } AbilityWork;
-_Static_assert(sizeof(AbilityWork)==1440,"AbilityWork ABI");
-__declspec(dllexport) const uint32_t ability_batch_abi[3]={0x2426806au,216u,1440u};
+_Static_assert(sizeof(AbilityWork)==58856,"AbilityWork ABI");
+__declspec(dllexport) const uint32_t ability_batch_abi[3]={0x2426806cu,216u,58856u};
 /* Profile-bound evidence: 24268+0x4bc / 24323+0x4dc read a null address
    AFTER its level mutation. R15 is not stable at handler entry, so it is not
    part of the gate. Do not patch the game or resume at a guessed RIP. Unwind
@@ -54,10 +55,24 @@ typedef int32_t (*BridgeAbilityLevelSetFn)(uint64_t,uint32_t,int32_t);
 typedef int32_t (*BridgeAbilityLevelGetFn)(uint64_t,uint32_t);
 static int32_t BridgeNativeSetAbilityLevelChecked(BridgeAbilityLevelSetFn setter,
         BridgeAbilityLevelGetFn getter,uint64_t unit,uint32_t rawcode,int32_t level) {
-    __try {return setter(unit,rawcode,level);}
+    uint32_t index=BridgeJournalBegin(6,unit,rawcode,(uint64_t)(int64_t)level,0);
+    __try {
+        int32_t value=setter(unit,rawcode,level);
+        BridgeJournalEnd(index,(uint64_t)(int64_t)value);return value;
+    }
     __except(BridgeAbilityNativeTailFilter(GetExceptionInformation(),(uint64_t)(uintptr_t)setter)) {
         int32_t actual=getter(unit,rawcode);
-        return BridgeAcceptAbilityTailReadback(actual,level);
+        int32_t value=BridgeAcceptAbilityTailReadback(actual,level);
+        /* Mark the setter observation before logging the recovery getter. */
+        BridgeNativeJournal*j=bridge_native_journal;
+        if(j && j->enabled && index<BRIDGE_JOURNAL_CAPACITY){
+            j->events[index].flags|=4u;
+            j->events[index].result=(uint64_t)(int64_t)value;
+            j->events[index].flags|=2u;
+        }
+        BridgeJournalEnd(index,(uint64_t)(int64_t)value);
+        if(j && j->enabled)j->last.flags|=4u;
+        return value;
     }
 }
 static int32_t BridgeSetAbilityLevelChecked(AbilityWork *w,uint64_t unit,int32_t level) {
@@ -74,13 +89,13 @@ typedef uint8_t (*BridgeAbilityAddFn)(uint64_t,uint32_t);
 typedef uint64_t (*BridgeAbilityIndexFn)(uint64_t,int32_t);
 static uint64_t BridgeFindUnitAbility(BridgeAbilityLookupFn lookup,BridgeAbilityIndexFn indexed,BridgeAbilityIdFn id,
         uint64_t unit,uint32_t rawcode,int *error) {
-    uint64_t handle=lookup(unit,rawcode),found=0;
+    uint64_t handle=BridgeObservedUnitAbility(lookup,unit,rawcode),found=0;
     *error=0;
-    if(handle){if(id(handle)!=rawcode)*error=34;return *error?0:handle;}
+    if(handle){if(BridgeObservedAbilityId(id,handle)!=rawcode)*error=34;return *error?0:handle;}
     for(int32_t i=0;i<256;++i){
-        uint64_t candidate=indexed(unit,i);
+        uint64_t candidate=BridgeObservedUnitAbilityIndex(indexed,unit,i);
         if(!candidate)return found;
-        uint32_t code=id(candidate);
+        uint32_t code=BridgeObservedAbilityId(id,candidate);
         if(!code){*error=34;return 0;}
         if(code==rawcode){if(found){*error=37;return 0;}found=candidate;}
     }
@@ -92,27 +107,27 @@ static int BridgeEnsureUnitAbilityNative(BridgeAbilityLookupFn lookup,BridgeAbil
     int lookup_error=0;
     uint64_t handle=BridgeFindUnitAbility(lookup,indexed,id,unit,rawcode,&lookup_error);
     if(lookup_error)return lookup_error;
-    int32_t level=getter(unit,rawcode);
-    if(handle && id(handle)!=rawcode)return 34;
+    int32_t level=BridgeObservedLevel(getter,unit,rawcode);
+    if(handle && BridgeObservedAbilityId(id,handle)!=rawcode)return 34;
     if(!handle && level>0){
         /* Retain the published positive-level behaviour for an engine that
            omits this active ability from both reflection natives. */
         witness->activation|=32u;
         if(desired>0 && desired!=level){
             if(BridgeNativeSetAbilityLevelChecked(setter,getter,unit,rawcode,desired)!=desired ||
-               getter(unit,rawcode)!=desired)return 35;
+               BridgeObservedLevel(getter,unit,rawcode)!=desired)return 35;
             witness->activation|=8u;
         }
         return 0;
     }
     if(!handle){
         witness->activation|=1u;
-        witness->add_return=add(unit,rawcode)?1u:0u;
+        witness->add_return=BridgeObservedAddAbility(add,unit,rawcode)?1u:0u;
         if(witness->add_return)witness->activation|=2u;
-        handle=BridgeFindUnitAbility(lookup,indexed,id,unit,rawcode,&lookup_error);level=getter(unit,rawcode);
+        handle=BridgeFindUnitAbility(lookup,indexed,id,unit,rawcode,&lookup_error);level=BridgeObservedLevel(getter,unit,rawcode);
         if(lookup_error)return lookup_error;
         if(!handle)return witness->add_return?36:25;
-        if(id(handle)!=rawcode)return 34;
+        if(BridgeObservedAbilityId(id,handle)!=rawcode)return 34;
         if(!witness->add_return && level>0)witness->activation|=16u;
     }else if(!level)witness->activation|=4u;
     witness->after_handle=handle;
@@ -120,9 +135,9 @@ static int BridgeEnsureUnitAbilityNative(BridgeAbilityLookupFn lookup,BridgeAbil
     if(!level || (desired>0 && level!=desired)){
         int32_t requested=desired>0?desired:1;
         if(BridgeNativeSetAbilityLevelChecked(setter,getter,unit,rawcode,requested)!=requested ||
-           getter(unit,rawcode)!=requested)return 35;
+           BridgeObservedLevel(getter,unit,rawcode)!=requested)return 35;
         if(BridgeFindUnitAbility(lookup,indexed,id,unit,rawcode,&lookup_error)!=handle ||
-           lookup_error || id(handle)!=rawcode)return 34;
+           lookup_error || BridgeObservedAbilityId(id,handle)!=rawcode)return 34;
         witness->activation|=8u;
     }
     witness->after_handle=handle;
@@ -132,7 +147,7 @@ static int BridgeEnsureUnitAbility(AbilityWork*w,uint64_t unit,uint32_t index,in
     return BridgeEnsureUnitAbilityNative(w->get_ability,w->ability_index,w->ability_id,w->add,w->get_level,w->set_level,
         unit,w->rawcode,desired,&w->witness[index]);
 }
-__declspec(dllexport) uint64_t BridgeAbilityQuery(void) {
+static uint64_t BridgeAbilityQueryBody(void) {
     AbilityWork *w=(AbilityWork *)g_dispatch->work;
     uint64_t count,unit;
     uint32_t i;
@@ -151,32 +166,35 @@ __declspec(dllexport) uint64_t BridgeAbilityQuery(void) {
         if(matches!=1){w->error=32;return count;}
     }
     for (i=0;i<count;++i) {
+        BridgeJournalPhase(1);
         unit=w->selection.rows[i].unit;
-        if (w->selection.unit_type_id(unit)!=w->selection.rows[i].rawcode) {w->error=22;return count;}
-        w->rows[i].before=w->get_level(unit,w->rawcode);
+        if (BridgeObservedUnitType(w->selection.unit_type_id,unit)!=w->selection.rows[i].rawcode) {w->error=22;return count;}
+        w->rows[i].before=BridgeObservedLevel(w->get_level,unit,w->rawcode);
         int lookup_error=0;
         w->witness[i].before_handle=BridgeFindUnitAbility(w->get_ability,w->ability_index,w->ability_id,unit,w->rawcode,&lookup_error);
         if(lookup_error){w->error=(uint32_t)lookup_error;return count;}
-        if (w->rows[i].before<0 || (w->witness[i].before_handle && w->ability_id(w->witness[i].before_handle)!=w->rawcode) ||
+        if (w->rows[i].before<0 || (w->witness[i].before_handle && BridgeObservedAbilityId(w->ability_id,w->witness[i].before_handle)!=w->rawcode) ||
             (w->action==3 && !w->witness[i].before_handle && !w->rows[i].before &&
              (!w->target_unit || unit==w->target_unit))) {w->error=23;return count;}
     }
     for (i=0;i<count;++i) {
+        BridgeJournalPhase(2);
         int32_t before=w->rows[i].before;
         int lookup_error=0;
         uint64_t captured=0;
         unit=w->selection.rows[i].unit;
         if(w->target_unit && unit!=w->target_unit){
-            w->rows[i].after=w->get_level(unit,w->rawcode);w->intermediate[i]=w->rows[i].after;
+            w->rows[i].after=BridgeObservedLevel(w->get_level,unit,w->rawcode);w->intermediate[i]=w->rows[i].after;
             w->witness[i].after_handle=BridgeFindUnitAbility(w->get_ability,w->ability_index,w->ability_id,unit,w->rawcode,&lookup_error);
             if(w->rows[i].after!=before){w->error=33;return count;}
             ++w->completed;continue;
         }
-        if (w->selection.unit_type_id(unit)!=w->selection.rows[i].rawcode || w->get_level(unit,w->rawcode)!=before ||
+        if (BridgeObservedUnitType(w->selection.unit_type_id,unit)!=w->selection.rows[i].rawcode || BridgeObservedLevel(w->get_level,unit,w->rawcode)!=before ||
             BridgeFindUnitAbility(w->get_ability,w->ability_index,w->ability_id,unit,w->rawcode,&lookup_error)!=w->witness[i].before_handle ||
             lookup_error) {w->error=24;return count;}
         __try {
             if (w->action==1 || w->action==4) {
+                BridgeJournalPhase(3);
                 w->error=100+i;
                 int error=BridgeEnsureUnitAbility(w,unit,i,w->action==4 && before>0 ? before : (int32_t)w->target);
                 captured=w->witness[i].after_handle;
@@ -185,8 +203,9 @@ __declspec(dllexport) uint64_t BridgeAbilityQuery(void) {
                 if(!before || (w->target && before!=(int32_t)w->target && w->action==1))++w->changed;
             }
             if (w->action==3) {
+                BridgeJournalPhase(3);
                 int32_t current;
-                w->error=200+i;current=w->get_level(unit,w->rawcode);w->error=0;
+                w->error=200+i;current=BridgeObservedLevel(w->get_level,unit,w->rawcode);w->error=0;
                 if (current!=(int32_t)w->target) {
                     w->error=300+i;
                     if (BridgeSetAbilityLevelChecked(w,unit,(int32_t)w->target)!=(int32_t)w->target) {w->error=26;return count;}
@@ -195,13 +214,15 @@ __declspec(dllexport) uint64_t BridgeAbilityQuery(void) {
                 }
             }
             if (w->action==2 && (w->witness[i].before_handle || before>0)) {
-                if (!w->remove(unit,w->rawcode)) {w->error=27;return count;}
+                BridgeJournalPhase(4);
+                if (!BridgeObservedRemoveAbility(w->remove,unit,w->rawcode)) {w->error=27;return count;}
                 ++w->changed;
             }
             if (w->action==5) {
+                BridgeJournalPhase(4);
                 if (w->witness[i].before_handle || before>0) {
                     w->error=400+i;
-                    if (!w->remove(unit,w->rawcode) || w->get_level(unit,w->rawcode)!=0) {w->error=30;return count;}
+                    if (!BridgeObservedRemoveAbility(w->remove,unit,w->rawcode) || BridgeObservedLevel(w->get_level,unit,w->rawcode)!=0) {w->error=30;return count;}
                     w->error=0;
                 }
                 w->error=500+i;
@@ -209,21 +230,22 @@ __declspec(dllexport) uint64_t BridgeAbilityQuery(void) {
                 if(error){w->error=(uint32_t)error;return count;}
                 w->error=0;++w->changed;
             }
-            w->intermediate[i]=w->get_level(unit,w->rawcode);
+            w->intermediate[i]=BridgeObservedLevel(w->get_level,unit,w->rawcode);
         } __finally {
+            BridgeJournalPhase(5);
             /* Preserve the actual post-call level even when the setter faults. */
-            if (w->error>=300 && w->error<324) w->intermediate[i]=w->get_level(unit,w->rawcode);
+            if (w->error>=300 && w->error<324) w->intermediate[i]=BridgeObservedLevel(w->get_level,unit,w->rawcode);
             /* Diagnostic action restores only an ability that was absent. */
             uint64_t current=BridgeFindUnitAbility(w->get_ability,w->ability_index,w->ability_id,unit,w->rawcode,&lookup_error);
             if (w->action==4 && !before && current) {
                 if(w->witness[i].before_handle){
                     if(lookup_error || current!=w->witness[i].before_handle ||
-                       (BridgeSetAbilityLevelChecked(w,unit,0),w->get_level(unit,w->rawcode)!=0))w->error=28;
+                       (BridgeSetAbilityLevelChecked(w,unit,0),BridgeObservedLevel(w->get_level,unit,w->rawcode)!=0))w->error=28;
                 }else if(lookup_error || !captured || current!=captured ||
-                        w->selection.unit_type_id(unit)!=w->selection.rows[i].rawcode ||
-                        !w->remove(unit,w->rawcode))w->error=28;
+                         BridgeObservedUnitType(w->selection.unit_type_id,unit)!=w->selection.rows[i].rawcode ||
+                        !BridgeObservedRemoveAbility(w->remove,unit,w->rawcode))w->error=28;
             }
-            w->rows[i].after=w->get_level(unit,w->rawcode);
+            w->rows[i].after=BridgeObservedLevel(w->get_level,unit,w->rawcode);
             w->witness[i].after_handle=BridgeFindUnitAbility(w->get_ability,w->ability_index,w->ability_id,unit,w->rawcode,&lookup_error);
             if(lookup_error && !w->error)w->error=(uint32_t)lookup_error;
         }
@@ -239,4 +261,12 @@ __declspec(dllexport) uint64_t BridgeAbilityQuery(void) {
         ++w->completed;
     }
     return count;
+}
+
+__declspec(dllexport) uint64_t BridgeAbilityQuery(void) {
+    AbilityWork*w=(AbilityWork*)g_dispatch->work;
+    BridgeNativeJournal*previous=bridge_native_journal;
+    bridge_native_journal=w?&w->journal:0;
+    __try {return BridgeAbilityQueryBody();}
+    __finally {bridge_native_journal=previous;}
 }

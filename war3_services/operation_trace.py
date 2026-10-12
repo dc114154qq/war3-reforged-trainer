@@ -5,12 +5,26 @@ from dataclasses import asdict, is_dataclass
 from collections.abc import Mapping
 from pathlib import Path
 import hashlib
+import json
+import math
+import os
 import sys
+import time
 import traceback
 import uuid
 
 _ACTIVE_TRACE = ContextVar('war3_operation_trace', default=None)
-DIAGNOSTIC_REVISION = 'ability-instances-item-carrier-v3-20261012'
+DIAGNOSTIC_REVISION = 'native-call-journal-v4-20261012'
+
+
+def active_trace():
+    return _ACTIVE_TRACE.get()
+
+
+def record_operation_phase(engine, phase, **values):
+    trace = active_trace()
+    if trace is not None and (trace.engine is None or trace.engine is engine):
+        trace.record(phase, **values)
 
 
 def _plain(value):
@@ -20,6 +34,8 @@ def _plain(value):
         return {str(key): _plain(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
         return [_plain(item) for item in value]
+    if isinstance(value, float) and not math.isfinite(value):
+        return dict(nonfinite_float=repr(value))
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
     return repr(value)
@@ -37,7 +53,7 @@ def _artifact(path):
 
 class BackpackTrace:
     prefix='backpack'
-    source_inputs=('operation_trace.py','backpack_interface.py','facade_extensions.py')
+    source_inputs=('operation_trace.py','backpack_interface.py','backpack_carrier.py','facade_extensions.py')
     def __init__(self, host, logger_factory, request):
         self.host, self.logger_factory, self.request = host, logger_factory, request
         self.operation_id = uuid.uuid4().hex
@@ -48,26 +64,60 @@ class BackpackTrace:
         self.log_errors = []
         self.execution_count = 0
         self.result_summary = None
+        self.structured_file = None
+        self.structured_path = None
+        self.event_sequence = 0
+        self.started = time.perf_counter()
+        self.last_native_execution = None
 
     def summary(self):
         return dict(operation_id=self.operation_id, diagnostic_revision=DIAGNOSTIC_REVISION,
                     log_path=self.log_path, log_errors=list(self.log_errors),
                     phase=self.phase, native_execution_reports=self.execution_count,
+                    structured_log_path=self.structured_path, event_count=self.event_sequence,
+                    last_native_execution=self.last_native_execution,
                     click_evidence='not_collected', actual_open_effect_verified=False)
 
     def record(self, phase, **values):
         self.phase = phase
         if self.logger is None:
             return
+        self.event_sequence += 1
+        try:
+            plain = _plain(values)
+        except Exception as exc:
+            if len(self.log_errors)<8:self.log_errors.append('serialization: '+repr(exc))
+            return
         try:
             self.logger.log('backpack_phase', operation_id=self.operation_id,
-                            phase=phase, payload=_plain(values))
-            # The legacy logger can lose its file after an I/O error.
+                            phase=phase, sequence=self.event_sequence,
+                            payload=plain)
             if getattr(self.logger, '_files', None) == []:
                 raise OSError('No diagnostic file remains writable')
         except Exception as exc:
+            if len(self.log_errors)<8:self.log_errors.append('text_log: '+repr(exc))
+        try:
+            if self.structured_file is not None:
+                row=dict(schema=4,operation_id=self.operation_id,sequence=self.event_sequence,
+                         elapsed_ms=(time.perf_counter()-self.started)*1000,
+                         phase=phase,payload=plain)
+                self.structured_file.write(json.dumps(row,ensure_ascii=False,allow_nan=False)+'\n')
+                self.structured_file.flush()
+        except Exception as exc:
             if len(self.log_errors) < 8:
-                self.log_errors.append(repr(exc))
+                self.log_errors.append('structured_log: '+repr(exc))
+
+    def emit(self, phase, **values):
+        previous=self.phase
+        try:self.record(phase,**values)
+        finally:self.phase=previous
+
+    def checkpoint(self):
+        """Persist the dispatch boundary before a game mutation can start."""
+        if self.structured_file is not None:
+            try:os.fsync(self.structured_file.fileno())
+            except OSError as exc:
+                if len(self.log_errors)<8:self.log_errors.append(repr(exc))
 
     def __enter__(self):
         self.token = _ACTIVE_TRACE.set(self)
@@ -76,9 +126,14 @@ class BackpackTrace:
                 getattr(self.host, 'pid', None), prefix=self.prefix,
                 target_hwnd=getattr(self.host, 'hwnd', 0))
             self.log_path = str(self.logger.archive_path)
+            path=Path(self.log_path).with_suffix('.jsonl')
+            try:
+                self.structured_file=path.open('x',encoding='utf-8',buffering=1)
+                self.structured_path=str(path)
+            except OSError as exc:self.log_errors.append('structured_log: '+repr(exc))
         except Exception as exc:
             self.log_errors.append(repr(exc))
-        session = getattr(self.host, '_game_session', None)
+        session = getattr(self.host, '_game_session', None) or getattr(self.host,'session',None)
         identity = getattr(session, 'identity', None)
         profile = getattr(session, 'profile', None)
         data = getattr(profile, 'data', {})
@@ -93,6 +148,10 @@ class BackpackTrace:
         self.record('start', request=self.request, session_identity=identity,
                     session_epoch=getattr(session, 'epoch', None), adapter=adapter,
                     trainer_artifact=artifacts, diagnostic_revision=DIAGNOSTIC_REVISION,
+                    observation_contract=dict(native_calls='original calls observed once; no diagnostic game writes',
+                        native_journal='copied after callback returns; interrupted dispatch may have no call records',
+                        object_definition_registration='not inferred from native registration or level zero',
+                        native_call_capacity=1024,overflow='explicit count and final call retained'),
                     click_evidence='not_collected', actual_open_effect_verified=False)
         return self
 
@@ -118,7 +177,11 @@ class BackpackTrace:
                 self.record('failed', failed_phase=failed_phase, exception_type=type(exc).__name__,
                             exception=str(exc), traceback=''.join(traceback.format_exception(kind, exc, tb)),
                             execution_report=getattr(exc, 'report', None),
-                            session_report=getattr(exc, 'session_report', None))
+                            session_report=getattr(exc, 'session_report', None),
+                            exception_chain=self._exception_chain(exc),
+                            diagnostic_conclusion=dict(failure_location=failed_phase,
+                                game_internal_rejection_cause_confirmed=False,
+                                automatic_replay_performed=False))
                 report = dict(getattr(exc, 'report', {}) or {})
                 report['operation_trace'] = self.summary()
                 exc.report = report
@@ -129,6 +192,17 @@ class BackpackTrace:
                     self.logger.close()
                 except Exception as error:
                     self.log_errors.append(repr(error))
+            if self.structured_file is not None:
+                try:
+                    self.structured_file.write(json.dumps(dict(schema=4,event='trace_closed',
+                        operation_id=self.operation_id,events=self.event_sequence,
+                        outcome='failed' if exc is not None else 'returned',
+                        log_errors=self.log_errors),ensure_ascii=False)+'\n')
+                    self.structured_file.flush();os.fsync(self.structured_file.fileno())
+                except OSError as error:self.log_errors.append(repr(error))
+                finally:
+                    try:self.structured_file.close()
+                    except OSError as error:self.log_errors.append(repr(error))
             if self.result_summary is not None:
                 self.result_summary.update(self.summary())
             if exc is not None:
@@ -137,6 +211,16 @@ class BackpackTrace:
             _ACTIVE_TRACE.reset(self.token)
         # Logging failure preserves the original outcome; it never retries a write.
         return False
+
+    @staticmethod
+    def _exception_chain(exc):
+        rows=[];seen=set()
+        while exc is not None and id(exc) not in seen and len(rows)<16:
+            seen.add(id(exc))
+            rows.append(dict(type=type(exc).__name__,message=str(exc),
+                             report=_plain(getattr(exc,'report',None))))
+            exc=exc.__cause__ or (None if exc.__suppress_context__ else exc.__context__)
+        return dict(rows=rows,truncated=exc is not None)
 
 
 class SkillTrace(BackpackTrace):
@@ -164,8 +248,21 @@ def record_engine_execution(engine, report):
         trace.execution_count += 1
         report['operation_id'] = trace.operation_id
         report['parent_phase'] = trace.phase
+        copied=deepcopy(report)
+        journal=copied.get('native_call_journal')
+        if journal is not None:
+            calls=journal.pop('calls',[])
+            copied['native_call_journal']=journal
+            for call in calls:
+                trace.emit('native_call',native_execution_index=trace.execution_count,call=call)
+        trace.last_native_execution=dict(index=trace.execution_count,operation=report.get('operation'),
+            ok=report.get('ok'),request=_plain(report.get('request')),
+            verification=_plain(report.get('verification')),
+            business_status=_plain(report.get('business_status')),
+            native_call_journal=_plain(journal))
         trace.record(trace.phase, native_execution_index=trace.execution_count,
-                     execution_report=deepcopy(report))
+                     execution_report=copied)
+        trace.checkpoint()
     except Exception as exc:
         if len(trace.log_errors) < 8:
             trace.log_errors.append(repr(exc))

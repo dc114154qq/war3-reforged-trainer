@@ -52,7 +52,7 @@ APP_RELEASE_CHANNEL = "stable"
 GAME_BUILD = "3.0.0.24268"
 PRODUCT_READ_MODE = "normal"
 PRODUCT_EDITION_LABEL = "普通读取版"
-WIN10_COMPAT_REVISION = "2.1.07-ability-carrier-rule25-20261012"
+WIN10_COMPAT_REVISION = "2.1.07-r1-native-call-journal-v4-rule25-20261012"
 
 
 if sys.platform == "win32":
@@ -2138,6 +2138,7 @@ class Win10ReadLogger:
         for path in expired:
             try:
                 path.unlink()
+                path.with_suffix('.jsonl').unlink(missing_ok=True)
             except OSError:
                 pass
 

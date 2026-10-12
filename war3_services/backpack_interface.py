@@ -73,6 +73,11 @@ def ensure_backpack_interface(host,target_unit,controller,item_rawcode,snapshot,
     from war3_3_extension_catalog import TALENT_CONTROLLERS
     conflicts=[name for name in TALENT_CONTROLLERS
                if _code(name)!=int(controller) and int(snapshot.get('abilities',{}).get(_code(name),0))>0]
+    event('backpack_component_plan',target_unit=target,item_rawcode=item_rawcode,
+        ordered_components=[dict(name=name,rawcode=code,level=levels.get(code,0)) for name,code in components],
+        controller_conflicts=conflicts,baseline=current,
+        capacity_requirement=30,level_zero_interpretation='instance existence requires native lookup',
+        native_function_registration_does_not_prove_object_definition=True)
     if conflicts:
         diagnostic.update(status='controller_conflict',conflicting_controllers=conflicts)
         _failure('当前单位已有其他官方天赋控制器，已停止补齐背包能力。请保留诊断日志。',diagnostic,engine)
@@ -83,12 +88,21 @@ def ensure_backpack_interface(host,target_unit,controller,item_rawcode,snapshot,
         diagnostic.update(status='storage_not_initialized',failed_component='AIni')
         _failure('AIni 能力已存在，但 30 格扩展背包未生效；请保留诊断日志。',diagnostic,engine)
     for name,code in components:
-        if levels.get(code,0)>0:continue
+        event('component_decision',component=name,rawcode=code,current_level=levels.get(code,0),
+            bag_size=diagnostic['bag_size'],decision='preserve_existing' if levels.get(code,0)>0 else 'lookup_then_add_or_activate',
+            attempted_so_far=diagnostic['attempted_components'],completed_so_far=diagnostic['added_components'])
+        if levels.get(code,0)>0:
+            event('component_skip',component=name,reason='positive_level_preserved',level=levels[code])
+            continue
         diagnostic.update(add_attempted=True,failed_component=name)
         diagnostic['attempted_components'].append(name)
         event('component_add',target_unit=target,component=name,rawcode=code,action=1,level=0)
         try:call_result=host.ability_batch_24268(code,1,0,target_unit=target)
         except Exception as exc:
+            event('component_add_failure',component=name,target_unit=target,
+                previous_readback=current,last_report=deepcopy(getattr(engine,'last_report',{})),
+                exception_report=getattr(exc,'report',None),automatic_replay_performed=False,
+                later_components_not_attempted=[label for label,_ in components if label not in diagnostic['attempted_components']])
             diagnostic.update(status='entry_add_failed' if name=='ASpc' else 'component_add_failed',
                               cause=str(exc),execution_report=getattr(exc,'report',None))
             message=('游戏未确认补齐入口' if name=='ASpc' else f'游戏未确认补齐组件 {name}')
@@ -115,6 +129,9 @@ def ensure_backpack_interface(host,target_unit,controller,item_rawcode,snapshot,
     added=diagnostic['added_components']
     diagnostic['status']=('native_entry_present' if not added else
                           'missing_native_entry_added' if added==['ASpc'] else 'missing_components_added')
+    event('backpack_component_acceptance',status=diagnostic['status'],added_components=added,
+        attempted_components=diagnostic['attempted_components'],initial=baseline,final=current,
+        component_readback_verified=True,actual_panel_open_verified=False)
     snapshot.update({key:current[key] for key in ('bag_size','bag','equipment') if key in current})
     abilities=dict(snapshot.get('abilities',{}));abilities.update(levels)
     snapshot['abilities']=abilities;snapshot['backpack_interface']=diagnostic

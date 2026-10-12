@@ -2,6 +2,15 @@
 import struct
 
 def record_status(kind,evidence,report):
+    if kind in ('ability','item','item_ability','direct_cast') and evidence.get('work_result_hex'):
+        from importlib import import_module
+        from war3_native_journal import decode_work as decode_journal,rawcode as code_text
+        protocol=import_module('war3_'+kind+'_protocol')
+        observed=bytes.fromhex(evidence['work_result_hex'])
+        if len(observed)==protocol.WORK_SIZE:
+            try:report['native_call_journal']=decode_journal(observed[protocol.JOURNAL_OFFSET:])
+            except ValueError as exc:
+                report['native_journal_decode_error']=str(exc)
     if kind=='direct_cast' and evidence.get('work_result_hex'):
         raw=bytes.fromhex(evidence['work_result_hex'])
         from war3_direct_cast_protocol import WORK_SIZE
@@ -15,6 +24,17 @@ def record_status(kind,evidence,report):
                 original_level=original_level,touched=touched,activation=activation,
                 cast_order=cast_order,expected_level=expected_level,
                 source=struct.unpack_from('<Q',raw,672)[0],ability_handle=struct.unpack_from('<Q',raw,680)[0])
+            report['direct_cast_status'].update(rawcode_text=code_text(rawcode),
+                unit_full=struct.unpack_from('<Q',raw,784)[0],
+                ability_full=struct.unpack_from('<Q',raw,792)[0],
+                ability_data=struct.unpack_from('<Q',raw,800)[0],
+                requested_area_bits=struct.unpack_from('<I',raw,712)[0],
+                prior_area_bits=struct.unpack_from('<I',raw,716)[0],
+                added=struct.unpack_from('<I',raw,720)[0],
+                mana_before_bits=struct.unpack_from('<I',raw,736)[0],
+                mana_after_bits=struct.unpack_from('<I',raw,740)[0],
+                cooldown_after_bits=struct.unpack_from('<I',raw,744)[0],
+                order_after=struct.unpack_from('<I',raw,748)[0])
     if kind=='item_ability' and evidence.get('work_result_hex'):
         from war3_item_ability_protocol import status
         report['item_ability_status']=status(bytes.fromhex(evidence['work_result_hex']))

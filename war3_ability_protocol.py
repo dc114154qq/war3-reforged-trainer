@@ -1,8 +1,10 @@
 """Current-engine ability batch ABI: query/add/remove/level and reversible diagnostic."""
 import struct
 from war3_selection_protocol import build_work as selection_work,validate_work as selection_validate,decode_work as selection_result
-WORK_SIZE=1440
-ABI=struct.pack('<3I',0x2426806a,216,WORK_SIZE)
+from war3_native_journal import WORK_SIZE as JOURNAL_SIZE,build_work as journal_work,validate_work as validate_journal
+JOURNAL_OFFSET=1440
+WORK_SIZE=JOURNAL_OFFSET+JOURNAL_SIZE
+ABI=struct.pack('<3I',0x2426806c,216,WORK_SIZE)
 SIGNATURES=(('UnitAddAbility','(Hunit;I)B'),('UnitRemoveAbility','(Hunit;I)B'),
  ('SetUnitAbilityLevel','(Hunit;II)I'),('GetUnitAbilityLevel','(Hunit;I)I'),
  ('BlzGetUnitAbility','(Hunit;I)Hability;'),('BlzGetAbilityId','(Hability;)I'),
@@ -17,19 +19,20 @@ def build_work(entries,tls,rawcode,action=0,level=0,target_unit=0):
     if isinstance(target_unit,bool) or not isinstance(target_unit,int) or not 0<=target_unit<=0xffffffffffffffff:
         raise ValueError('Invalid ability target')
     payload=(selection_work(entries)+struct.pack('<5Q6I',*pointers[:4],tls,rawcode,action,level,0,0,0)
-             +bytes(288)+struct.pack('<4Q',target_unit,*pointers[4:])+bytes(576))
+             +bytes(288)+struct.pack('<4Q',target_unit,*pointers[4:])+bytes(576)+journal_work())
     validate_work(payload);return payload
 
 def validate_work(payload):
     if len(payload)!=WORK_SIZE:raise ValueError(f'Ability work must contain {WORK_SIZE} bytes')
     selection_validate(payload[:480])
+    validate_journal(payload[JOURNAL_OFFSET:])
     values=struct.unpack_from('<5Q6I',payload,480);ptrs=values[:4];tls=values[4]
     rawcode,action,level,changed,error,completed=values[5:]
     ptrs=ptrs+struct.unpack_from('<3Q',payload,840)
     if (any(not 0x10000<=p<0x800000000000 for p in ptrs) or len(set(ptrs))!=7
         or not 0x10000<=tls<0x800000000000 or tls%8 or not rawcode or action not in range(6)
         or not 0<=level<=100000 or (action in (3,4) and not level) or (action in (0,2,5) and level)
-        or changed or error or completed or any(payload[544:832]) or any(payload[864:])):raise ValueError('Invalid ability batch arguments')
+        or changed or error or completed or any(payload[544:832]) or any(payload[864:JOURNAL_OFFSET])):raise ValueError('Invalid ability batch arguments')
 
 def decode_work(payload,count):
     if len(payload)!=WORK_SIZE:raise ValueError('Truncated ability work')

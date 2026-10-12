@@ -27,14 +27,15 @@ typedef struct ItemWork {
     uint8_t (*move_slot)(uint64_t,uint64_t,int32_t);
     uint64_t target_unit,expected_item;
     uint32_t creation_route,route_reserved;
+    BridgeNativeJournal journal;
 } ItemWork;
-_Static_assert(sizeof(ItemWork)==6016,"ItemWork ABI");
-__declspec(dllexport) const uint32_t item_batch_abi[3]={0x24268069u,216u,6016u};
+_Static_assert(sizeof(ItemWork)==63432,"ItemWork ABI");
+__declspec(dllexport) const uint32_t item_batch_abi[3]={0x2426806fu,216u,63432u};
 static int BridgeItemSnapshot(ItemWork *w,uint64_t unit,uint32_t size,ItemSlot *out) {
     uint32_t i;
     for (i=0;i<6;++i) {
-        uint64_t item=i<size ? w->in_slot(unit,(int32_t)i) : 0;
-        out[i].handle=item;out[i].rawcode=item ? w->type(item) : 0;out[i].charges=item ? w->charges(item) : 0;
+        uint64_t item=i<size ? BridgeObservedItemSlot(w->in_slot,unit,(int32_t)i) : 0;
+        out[i].handle=item;out[i].rawcode=item ? BridgeObservedItemType(w->type,item) : 0;out[i].charges=item ? BridgeObservedCharges(w->charges,item) : 0;
         if (item && (!out[i].rawcode || out[i].charges<0)) return 0;
     }
     return 1;
@@ -52,9 +53,9 @@ static int BridgeItemWasOriginal(ItemWork *w,uint64_t item,uint32_t count) {
 static int BridgeItemSourcesMatch(ItemWork *w,uint64_t unit,ItemUnitRow *r) {
     uint32_t j;
     for (j=0;j<6;++j) if (r->before[j].handle) {
-        uint64_t item=w->in_slot(unit,(int32_t)j);
-        if (item!=r->before[j].handle || w->type(item)!=r->before[j].rawcode ||
-            w->charges(item)!=r->before[j].charges) return 0;
+        uint64_t item=BridgeObservedItemSlot(w->in_slot,unit,(int32_t)j);
+        if (item!=r->before[j].handle || BridgeObservedItemType(w->type,item)!=r->before[j].rawcode ||
+            BridgeObservedCharges(w->charges,item)!=r->before[j].charges) return 0;
     }
     return 1;
 }
@@ -63,28 +64,28 @@ static int BridgeItemCreatedSeen(const uint64_t *created,uint32_t count,uint64_t
 }
 static uint64_t BridgeItemCreateAtSlot(ItemWork *w,uint64_t unit,uint32_t rawcode,uint32_t slot) {
     uint64_t item;
-    if (w->add_slot) w->add_slot(unit,rawcode,(int32_t)slot);
-    item=w->in_slot(unit,(int32_t)slot);
-    if (item && w->type(item)==rawcode) return item;
+    if (w->add_slot) BridgeObservedAddItemSlot(w->add_slot,unit,rawcode,(int32_t)slot);
+    item=BridgeObservedItemSlot(w->in_slot,unit,(int32_t)slot);
+    if (item && BridgeObservedItemType(w->type,item)==rawcode) return item;
     item=w->create(unit,rawcode);
-    if (item && w->in_slot(unit,(int32_t)slot)==item && w->type(item)==rawcode) return item;
+    if (item && BridgeObservedItemSlot(w->in_slot,unit,(int32_t)slot)==item && BridgeObservedItemType(w->type,item)==rawcode) return item;
     return 0;
 }
 static void BridgeItemRollbackSlot(ItemWork *w,uint64_t unit,uint32_t slot,
                                    const ItemSlot *old,uint64_t created) {
     uint64_t restored;
     __try {
-        if (created && w->in_slot(unit,(int32_t)slot)==created) {
-            w->detach(unit,created);w->remove(created);
+        if (created && BridgeObservedItemSlot(w->in_slot,unit,(int32_t)slot)==created) {
+            BridgeObservedDetachItem(w->detach,unit,created);BridgeObservedRemoveItem(w->remove,created);
         }
-        if (old->handle && !w->in_slot(unit,(int32_t)slot)) {
+        if (old->handle && !BridgeObservedItemSlot(w->in_slot,unit,(int32_t)slot)) {
             restored=BridgeItemCreateAtSlot(w,unit,old->rawcode,slot);
-            if (restored && w->charges(restored)!=old->charges)
+            if (restored && BridgeObservedCharges(w->charges,restored)!=old->charges)
                 w->set_charges(restored,old->charges);
         }
     } __except(EXCEPTION_EXECUTE_HANDLER) {}
 }
-__declspec(dllexport) uint64_t BridgeItemQuery(void) {
+static uint64_t BridgeItemQueryBody(void) {
     ItemWork *w=(ItemWork *)g_dispatch->work;
     uint32_t i,j,count;
     if (!w) return 0;
@@ -133,10 +134,10 @@ __declspec(dllexport) uint64_t BridgeItemQuery(void) {
         if (w->action==2) {
             for (j=0;j<6;++j) if (r->before[j].handle) {
                 uint64_t item=r->before[j].handle;
-                if (w->in_slot(unit,(int32_t)j)!=item || w->type(item)!=r->before[j].rawcode || w->charges(item)!=r->before[j].charges) {w->error=45;return count;}
+                if (BridgeObservedItemSlot(w->in_slot,unit,(int32_t)j)!=item || BridgeObservedItemType(w->type,item)!=r->before[j].rawcode || BridgeObservedCharges(w->charges,item)!=r->before[j].charges) {w->error=45;return count;}
                 if (r->before[j].charges!=w->target) {
                     w->error=400+i;w->set_charges(item,w->target);w->error=0;
-                    if (w->charges(item)!=w->target) {w->error=46;return count;}
+                    if (BridgeObservedCharges(w->charges,item)!=w->target) {w->error=46;return count;}
                     ++w->changed;
                 }
             }
@@ -144,14 +145,15 @@ __declspec(dllexport) uint64_t BridgeItemQuery(void) {
         } else if (w->action==4 || w->action==6) {
             for (j=0;j<r->inventory_size;++j) if (r->before[j].handle) {
                 uint64_t item=r->before[j].handle;
-                if (w->in_slot(unit,(int32_t)j)!=item || w->type(item)!=r->before[j].rawcode ||
-                    w->charges(item)!=r->before[j].charges) {w->error=55;return count;}
-                if (w->action==4) {w->detach(unit,item);w->remove(item);}
-                else w->detach(unit,item);
+                if (BridgeObservedItemSlot(w->in_slot,unit,(int32_t)j)!=item || BridgeObservedItemType(w->type,item)!=r->before[j].rawcode ||
+                    BridgeObservedCharges(w->charges,item)!=r->before[j].charges) {w->error=55;return count;}
+                if (w->action==4) {BridgeObservedDetachItem(w->detach,unit,item);BridgeObservedRemoveItem(w->remove,item);}
+                else BridgeObservedDetachItem(w->detach,unit,item);
                 ++w->changed;
             }
             r->status=w->action==4 ? 7 : 8;
         } else if (w->action==7) {
+            BridgeJournalPhase(30);
             uint32_t slot=(uint32_t)w->target;
             uint64_t old=r->before[slot].handle,created=0;
             if (slot>=r->inventory_size || (w->target_unit && old!=w->expected_item)) {w->error=68;return count;}
@@ -159,58 +161,61 @@ __declspec(dllexport) uint64_t BridgeItemQuery(void) {
                 r->status=11;
             } else {
                 __try {
+                    BridgeJournalPhase(31);
                     float x=0,y=0;
                     w->error=100+i;
                     if (!old && !w->creation_route) {
-                        w->add_slot(unit,w->rawcode,(int32_t)slot);
-                        created=w->in_slot(unit,(int32_t)slot);
-                        r->created=created;r->created_type=created ? w->type(created) : 0;
+                        BridgeObservedAddItemSlot(w->add_slot,unit,w->rawcode,(int32_t)slot);
+                        created=BridgeObservedItemSlot(w->in_slot,unit,(int32_t)slot);
+                        r->created=created;r->created_type=created ? BridgeObservedItemType(w->type,created) : 0;
                         if (!created || r->created_type!=w->rawcode) w->error=63;
                         else w->error=0;
                     } else {
-                        created=w->create_ground(w->rawcode,&x,&y);
-                        r->created=created;r->created_type=created ? w->type(created) : 0;
+                        created=BridgeObservedCreateItem(w->create_ground,w->rawcode,&x,&y);
+                        r->created=created;r->created_type=created ? BridgeObservedItemType(w->type,created) : 0;
                         r->reserved=created ? 1 : 0;
-                        if (!created || w->type(created)!=w->rawcode) {w->error=62;}
+                        if (!created || BridgeObservedItemType(w->type,created)!=w->rawcode) {w->error=62;}
                         else {
-                        if (old) w->detach(unit,old);
-                        if (!w->in_slot(unit,(int32_t)slot)) r->reserved|=2;
-                        if (w->add_existing(unit,created)) r->reserved|=4;
-                        if (w->in_slot(unit,(int32_t)slot)!=created)
-                            if (w->move_slot(unit,created,(int32_t)slot)) r->reserved|=8;
-                        if (w->in_slot(unit,(int32_t)slot)!=created) w->error=63;
+                        if (old) BridgeObservedDetachItem(w->detach,unit,old);
+                        if (!BridgeObservedItemSlot(w->in_slot,unit,(int32_t)slot)) r->reserved|=2;
+                        if (BridgeObservedAddItem(w->add_existing,unit,created)) r->reserved|=4;
+                        if (BridgeObservedItemSlot(w->in_slot,unit,(int32_t)slot)!=created)
+                            if (BridgeObservedMoveItem(w->move_slot,unit,created,(int32_t)slot)) r->reserved|=8;
+                        if (BridgeObservedItemSlot(w->in_slot,unit,(int32_t)slot)!=created) w->error=63;
                         else w->error=0;
                         }
                     }
                 } __except(EXCEPTION_EXECUTE_HANDLER) {w->error=64;}
+                BridgeJournalPhase(32);
                 if (!w->error) {
                     for (j=0;j<6;++j) if (j!=slot &&
-                        w->in_slot(unit,(int32_t)j)!=r->before[j].handle) w->error=65;
+                        BridgeObservedItemSlot(w->in_slot,unit,(int32_t)j)!=r->before[j].handle) w->error=65;
                 }
                 if (w->error) {
+                    BridgeJournalPhase(33);
                     __try {
                         if (created && !BridgeItemWasOriginal(w,created,count)) {
-                            w->detach(unit,created);w->remove(created);
+                            BridgeObservedDetachItem(w->detach,unit,created);BridgeObservedRemoveItem(w->remove,created);
                         }
-                        if (old && w->in_slot(unit,(int32_t)slot)!=old) {
-                            w->add_existing(unit,old);
-                            if (w->in_slot(unit,(int32_t)slot)!=old) w->move_slot(unit,old,(int32_t)slot);
+                        if (old && BridgeObservedItemSlot(w->in_slot,unit,(int32_t)slot)!=old) {
+                            BridgeObservedAddItem(w->add_existing,unit,old);
+                            if (BridgeObservedItemSlot(w->in_slot,unit,(int32_t)slot)!=old) BridgeObservedMoveItem(w->move_slot,unit,old,(int32_t)slot);
                         }
                         if (!BridgeItemSnapshot(w,unit,r->inventory_size,r->after) ||
                             !BridgeItemSame(r->before,r->after)) w->error=69;
                     } __except(EXCEPTION_EXECUTE_HANDLER) {w->error=69;}
                     return count;
                 }
-                if (old) w->remove(old);
+                if (old) BridgeObservedRemoveItem(w->remove,old);
                 r->reserved=0;
                     w->error=0;
-                r->created=created;r->created_type=w->type(created);r->created_charges=w->charges(created);
+                r->created=created;r->created_type=BridgeObservedItemType(w->type,created);r->created_charges=BridgeObservedCharges(w->charges,created);
                 r->created_slot=slot;r->status=10;++w->changed;
                 for (j=0;j<6;++j) if (j!=slot) {
-                    uint64_t item=w->in_slot(unit,(int32_t)j);
+                    uint64_t item=BridgeObservedItemSlot(w->in_slot,unit,(int32_t)j);
                     if (item!=r->before[j].handle ||
-                        (item && (w->type(item)!=r->before[j].rawcode ||
-                                  w->charges(item)!=r->before[j].charges))) {
+                        (item && (BridgeObservedItemType(w->type,item)!=r->before[j].rawcode ||
+                                  BridgeObservedCharges(w->charges,item)!=r->before[j].charges))) {
                         w->error=65;return count;
                     }
                 }
@@ -225,7 +230,7 @@ __declspec(dllexport) uint64_t BridgeItemQuery(void) {
                     w->error=100+i;created_item=w->create(unit,r->before[j].rawcode);w->error=0;
                     if (!created_item || BridgeItemWasOriginal(w,created_item,count) ||
                         BridgeItemCreatedSeen(created,created_count,created_item)) {w->error=57;return count;}
-                    created_type=w->type(created_item);created_charges=w->charges(created_item);
+                    created_type=BridgeObservedItemType(w->type,created_item);created_charges=BridgeObservedCharges(w->charges,created_item);
                     if (!created_type || created_type!=r->before[j].rawcode || created_charges<0) {w->error=58;return count;}
                     if (!BridgeItemSourcesMatch(w,unit,r)) {w->error=59;return count;}
                     created[created_count++]=created_item;
@@ -241,12 +246,12 @@ __declspec(dllexport) uint64_t BridgeItemQuery(void) {
             original=BridgeItemWasOriginal(w,r->created,count);
             if (!r->created || original) {w->error=47;return count;}
             __try {
-                r->created_type=w->type(r->created);
+                r->created_type=BridgeObservedItemType(w->type,r->created);
                 if (r->created_type!=w->rawcode) {w->error=48;return count;}
-                if (w->target>=0 && w->charges(r->created)!=w->target) {
+                if (w->target>=0 && BridgeObservedCharges(w->charges,r->created)!=w->target) {
                     w->error=200+i;w->set_charges(r->created,w->target);w->error=0;
                 }
-                r->created_charges=w->charges(r->created);
+                r->created_charges=BridgeObservedCharges(w->charges,r->created);
                 if (w->target>=0 && r->created_charges!=w->target) {w->error=49;return count;}
                 if (!BridgeItemSnapshot(w,unit,r->inventory_size,r->after)) {w->error=50;return count;}
                 for (j=0;j<6;++j) {
@@ -259,8 +264,8 @@ __declspec(dllexport) uint64_t BridgeItemQuery(void) {
                 ++w->changed;
             } __finally {
                 if (!keep) {
-                    w->detach(unit,r->created);w->remove(r->created);
-                    r->reserved=w->type(r->created);
+                    BridgeObservedDetachItem(w->detach,unit,r->created);BridgeObservedRemoveItem(w->remove,r->created);
+                    r->reserved=BridgeObservedItemType(w->type,r->created);
                     BridgeItemSnapshot(w,unit,r->inventory_size,r->after);
                     if (!BridgeItemSame(r->before,r->after)) w->error=53;
                 }
@@ -271,4 +276,12 @@ __declspec(dllexport) uint64_t BridgeItemQuery(void) {
         ++w->completed;
     }
     return count;
+}
+
+__declspec(dllexport) uint64_t BridgeItemQuery(void) {
+    ItemWork*w=(ItemWork*)g_dispatch->work;
+    BridgeNativeJournal*previous=bridge_native_journal;
+    bridge_native_journal=w?&w->journal:0;
+    __try {return BridgeItemQueryBody();}
+    __finally {bridge_native_journal=previous;}
 }

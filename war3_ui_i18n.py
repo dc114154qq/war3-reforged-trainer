@@ -1829,6 +1829,54 @@ _EN_TRANSLATIONS.update({
 
 _EN_TRANSLATIONS.update({"部分英雄属性／背包／装备／天赋未能读取，已读出的字段仍可导出。": "Some hero stats, inventory, equipment or talents were unavailable; fields already read can still be exported."})
 
+_EN_TRANSLATIONS.update({
+    "批量修改": "Batch edit",
+    "读取所有选中单位": "Read all selected units",
+    "全选": "Select all",
+    "全不选": "Deselect all",
+    "勾选": "Checked",
+    "单位代码": "Unit code",
+    "单位实例": "Unit instance",
+    "单击单位代码切换勾选；只修改填写了目标值的字段，其他字段保持原值。":
+        "Click a unit code to toggle it. Only fields with a target value will be changed.",
+    "可修改字段": "Editable fields",
+    "支持单位数": "Supported units",
+    "目标值（留空跳过）": "Target (blank to skip)",
+    "清空全部目标值": "Clear all targets",
+    "尚未读取批量单位": "Read the selected units to begin",
+    "已读取批量单位 ": "Batch units read: ",
+    " 个单位，已勾选 ": " units; checked ",
+    " 个；可修改字段 ": "; editable fields ",
+    " 项，字段读取异常 ": "; units with field read errors ",
+    " 个单位。": " units.",
+    "批量修改完成：成功 ": "Batch complete: successful ",
+    " 项，跳过 ": "; skipped ",
+    " 项，失败 ": "; failed ",
+    " 项，未执行 ": "; not attempted ",
+    " 项。": ". ",
+    "日志：": "Log: ",
+    "成功": "Success",
+    "跳过": "Skipped",
+    "未执行": "Not attempted",
+    "结果": "Result",
+    "目标值": "Target",
+    "读回或跳过原因": "Readback or skip reason",
+    "请先读取批量单位": "Read the batch units first",
+    "写入读回与目标值不一致": "The write readback differs from the target",
+    "批量单位不属于本次读取，请重新读取": "A batch unit is outside this snapshot. Read again.",
+    "批量单位身份已变化，请重新读取": "A batch unit identity changed. Read again.",
+    "批量单位身份重复，请重新读取": "Duplicate batch unit identities. Read again.",
+    "游戏会话已变化，请重新读取批量单位": "The game session changed. Read the batch units again.",
+    "游戏或地图已变化，请重新读取批量单位": "The game or map changed. Read the batch units again.",
+    "该单位此字段只读": "This field is read only for this unit",
+    "该单位没有此字段": "This unit does not have this field",
+    "请先连接游戏再读取批量单位": "Connect to the game before reading batch units",
+    "请至少勾选一个批量单位": "Check at least one batch unit",
+    "请至少填写一个批量字段目标值": "Enter at least one field target",
+    "批量单位原生属性读回身份不一致": "The batch unit's native stat readback identity differs",
+    "批量属性目标与单位身份不一致": "The batch stat target differs from the unit identity",
+})
+
 _EN_REPLACEMENTS = tuple(
     sorted(_EN_TRANSLATIONS.items(), key=lambda item: len(item[0]), reverse=True)
 )

@@ -47,7 +47,7 @@ from war3_3_stats import STAT_DETAIL_BY_KEY, STAT_DETAIL_SPECS
 from war3_ui_i18n import detect_ui_language, translate_ui_text
 
 
-APP_VERSION = "2.1.07"
+APP_VERSION = "2.1.08"
 APP_RELEASE_CHANNEL = "stable"
 GAME_BUILD = "3.0.0.24268"
 PRODUCT_READ_MODE = "normal"
@@ -8445,13 +8445,13 @@ def run_gui(
 
     def elephant_add_standard_auras() -> str:
         entries = (
-            ("AHab", 112),
-            ("AHad", 112),
-            ("AOr2", 112),
-            ("AUau", 112),
-            ("AUav", 112),
-            ("AEar", 112),
-            ("AEah", 112),
+            ("AHab", 3),
+            ("AHad", 3),
+            ("AOr2", 4),
+            ("AUau", 3),
+            ("AUav", 3),
+            ("AEar", 3),
+            ("AEah", 3),
             ("Aabr", None),
             ("ACac", None),
         )
@@ -8471,9 +8471,9 @@ def run_gui(
     def elephant_add_standard_passives() -> str:
         entries = (
             ("AInv", None),
-            ("AHbh", 112),
-            ("AOcr", 112),
-            ("Acdb", 112),
+            ("AHbh", 3),
+            ("AOcr", 3),
+            ("Acdb", 4),
             ("ACce", None),
             ("ACes", None),
             ("ACrn", None),
@@ -9520,6 +9520,7 @@ def run_gui(
             variable.refresh()
         refresh_language_dependent_rows()
         save_extraction_tab.refresh_language()
+        batch_edit_tab.refresh_language()
 
     def on_language_changed(_event: object | None = None) -> None:
         ui_language["code"] = "zh" if language_choice.get() == "中文" else "en"
@@ -9534,7 +9535,11 @@ def run_gui(
     discovery_cancel_button.pack(side="left", padx=(4, 0))
     read_unit_button = ttk.Button(top, text="读取所有选中单位 (Ctrl+F11)")
     read_unit_button.configure(
-        command=lambda: call_async(read_unit_with_sound, "read_unit", read_unit_button)
+        command=lambda: (
+            batch_edit_tab.read_clicked()
+            if notebook.select() == str(batch_edit_tab.frame)
+            else call_async(read_unit_with_sound, "read_unit", read_unit_button)
+        )
     )
     read_unit_button.pack(side="left", padx=(12, 0))
     ttk.Checkbutton(
@@ -9747,6 +9752,13 @@ def run_gui(
     for col in range(7):
         unit.columnconfigure(col, weight=1 if col == 6 else 0)
     unit.rowconfigure(8, weight=1)
+
+    from war3_batch_edit_ui import BatchEditTab
+    batch_edit_tab = BatchEditTab(
+        notebook, get_trainer=trainer, call_async=call_async,
+        ui_text=ui_text, logger_factory=Win10ReadLogger,
+    )
+    notebook.add(batch_edit_tab.frame, text="批量修改")
 
     locks_tab = ttk.Frame(notebook, padding=10)
     notebook.add(locks_tab, text="锁定列表")

@@ -50,6 +50,22 @@ class NativeFacade:
 
 
     def _unit_stats_for_candidate_24268(self, candidate: UnitCandidate) -> dict:
+        from war3_services.batch_edit import active_field_target
+        target = active_field_target()
+        if target is not None:
+            if (target.handle.value, target.address.value, target.rawcode) != (
+                candidate.handle, candidate.unit_address, candidate.unit_type_id
+            ):
+                raise RuntimeError("批量属性目标与单位身份不一致")
+            _candidate, native_handle = self._stat_target_24268(candidate)
+            result = self._engine_instance_24268().unit_stats(target_unit=native_handle)
+            matches = [row for row in result.get("rows", ())
+                       if int(row.get("status", 0)) == 1
+                       and int(row.get("unit", 0)) == native_handle
+                       and int(row.get("rawcode", 0)) == target.rawcode]
+            if len(matches) != 1:
+                raise RuntimeError("批量单位原生属性读回身份不一致")
+            return matches[0]
         result = self._engine_instance_24268().unit_stats()
         rows = [row for row in result.get("rows", ()) if int(row.get("status", 0)) == 1]
         typed = [row for row in rows if int(row.get("rawcode", 0)) == int(candidate.unit_type_id)]

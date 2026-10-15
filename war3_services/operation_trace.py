@@ -53,6 +53,7 @@ def _artifact(path):
 
 class BackpackTrace:
     prefix='backpack'
+    event_name='backpack_phase'
     source_inputs=('operation_trace.py','backpack_interface.py','backpack_carrier.py','facade_extensions.py')
     def __init__(self, host, logger_factory, request):
         self.host, self.logger_factory, self.request = host, logger_factory, request
@@ -89,7 +90,7 @@ class BackpackTrace:
             if len(self.log_errors)<8:self.log_errors.append('serialization: '+repr(exc))
             return
         try:
-            self.logger.log('backpack_phase', operation_id=self.operation_id,
+            self.logger.log(self.event_name, operation_id=self.operation_id,
                             phase=phase, sequence=self.event_sequence,
                             payload=plain)
             if getattr(self.logger, '_files', None) == []:

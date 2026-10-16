@@ -1,6 +1,8 @@
 # 历史更新说明 / Release history
 
-[2.1.09 中文](../RELEASE_NOTES_v2.1.09.md) · [English](RELEASE_NOTES.en.md)
+[2.1.09 批量读取提速](RELEASE_NOTES_v2.1.09-r1.zh.md) · [English](RELEASE_NOTES_v2.1.09-r1.en.md)
+
+[2.1.09 原版中文](../RELEASE_NOTES_v2.1.09.md) · [English](RELEASE_NOTES_v2.1.09.en.md)
 
 - [RELEASE_NOTES_v2.1.08.zh.md](RELEASE_NOTES_v2.1.08.zh.md)
 - [RELEASE_NOTES_v2.1.08.en.md](RELEASE_NOTES_v2.1.08.en.md)

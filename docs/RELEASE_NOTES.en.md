@@ -1,10 +1,11 @@
 # Warcraft III 3.0 Trainer 2.1.09
 
-- Adds a built-in adapter for Warcraft III **3.0.1.24360**. Open the EXE directly; no separate adapter import is needed.
-- Fixes connection failures caused by ambiguous game-state decoding during automatic discovery after the game update.
-- Updates thread, player, selection, attack-component, ability-level and fog data, and recognizes the new stat-mode initializer.
-- Keeps the batch editor from 2.1.08 and the previous four game-build profiles.
+This replaces the existing 2.1.09 download. Close the old trainer and download it again. The new build ID is **B6606E389F0B**.
 
-This release belongs to the Warcraft III 3.0 download section.
+- Speeds up the Batch edit tab by reusing the global selection reader and combining repeated identity binding and stat queries for the whole selection.
+- Keeps every unit's editable fields. The global read button, batch writes and other features are unchanged.
+- Keeps the built-in **3.0.1.24360** adapter and the previous four game-build profiles. No separate import is needed.
 
-Verification covered 4,887 offline tests and 120 subtests (29 skipped), a five-build performance comparison, packaged code/data, offline executable startup and packaged UI initialization. Read-only checks on 24360 covered players, selected units and properties. Gameplay changes and external-machine execution have not been verified.
+4,908 offline tests and 120 subtests passed (29 skipped). Matching before/after fixtures for five game builds returned the same fields; 24 units required 26 native requests instead of 96. Only the batch module changed inside the EXE, and its offline self-test passed. Actual game latency and external-machine effects have not been measured.
+
+Updated source: [v2.1.09-r1](https://github.com/dc114154qq/war3-reforged-trainer/tree/v2.1.09-r1). The attached source ZIP contains this revision; the original v2.1.09 tag retains the initial source.

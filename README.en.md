@@ -10,6 +10,8 @@ Get the EXE from the [website](https://twomengxi.xyz/trainer/?lang=en) or [GitHu
 
 The **3.0.1.24360** adapter is built in. No separate import is needed.
 
+The batch tab now reads faster and keeps every unit's editable fields.
+
 ## Game builds
 
 Warcraft III 3.0: `3.0.0.24268`, `3.0.1.24323`, `3.0.1.24332`, `3.0.1.24342` and `3.0.1.24360`.
@@ -35,6 +37,6 @@ Output: `dist-2.1.09-verified/<hash-prefix>/War3ReforgedTrainer-v2.1.09.exe`.
 
 This tree contains only the runtime, adapters, native source and build files for 2.1.09. Earlier releases remain in Git tags and Releases. Older game-build profiles in `profiles/` are still required by this version.
 
-4,887 offline tests and 120 subtests passed (29 skipped), along with five-build performance, packaged-file, offline EXE startup and UI-resource checks. Read-only checks on 24360 covered players, selected units and properties. Gameplay changes and external-machine execution have not been verified.
+4,908 offline tests and 120 subtests passed (29 skipped), along with five-build performance, packaged-file, offline EXE startup and UI-resource checks. Read-only checks on 24360 covered players, selected units and properties. Gameplay changes and external-machine execution have not been verified.
 
 [Release notes](docs/RELEASE_NOTES.en.md) · [Release history](docs/HISTORY.md) · [Validation](docs/VALIDATION.json)

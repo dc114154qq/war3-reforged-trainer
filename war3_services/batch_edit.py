@@ -5,10 +5,10 @@ from dataclasses import dataclass
 from contextlib import contextmanager
 from contextvars import ContextVar
 import struct
+import time
 import traceback
 
-from war3_external_backend import ExternalMemoryBackend
-from war3_game_session import GameSession, SessionIdentity, UnitRef, session_scope
+from war3_game_session import GameSession, NativeHandle, ObjectAddress, SessionIdentity, UnitRef, session_scope
 from war3_services.operation_trace import BackpackTrace
 
 _FIELD_TARGET = ContextVar("batch_field_target", default=None)
@@ -111,6 +111,102 @@ class BatchTrace(BackpackTrace):
     source_inputs = ("batch_edit.py", "facade_fields.py", "facade_selection.py")
 
 
+class _BatchFieldReader:
+    """Reuse the field reader with native queries local to one batch read.
+
+    The host is never patched. Only this reader sees the grouped results;
+    regular reads and every write keep their existing dispatch paths.
+    """
+    def __init__(self, host, session, memory, registry, candidates, refs, trace):
+        self.host, self.session, self.memory = host, session, memory
+        self.registry, self.trace = registry, trace
+        self.refs = tuple(refs)
+        self.targets = {id(candidate): ref for candidate, ref in zip(candidates, refs)}
+        self.bindings = None
+        self.binding_error = None
+        self.stats = None
+        self.stats_error = None
+
+    def __getattr__(self, name):
+        return getattr(self.host, name)
+
+    def _check(self, ref):
+        if (self.host._game_session is not self.session
+                or self.session.identity != ref.session or self.session.epoch != ref.epoch):
+            raise RuntimeError("游戏或地图已变化，请重新读取批量单位")
+        self.session.resolve(self.memory, self.registry, ref)
+
+    def _stat_target_24268(self, candidate=None):
+        ref = self.targets.get(id(candidate))
+        if ref is None or (candidate.handle, candidate.unit_address, candidate.unit_type_id) != (
+            ref.handle.value, ref.address.value, ref.rawcode
+        ):
+            raise RuntimeError("批量属性目标与单位身份不一致")
+        self._check(ref)
+        if self.binding_error is not None:
+            raise self.binding_error
+        if self.bindings is None:
+            started = time.perf_counter()
+            try:
+                for source in self.refs:
+                    self._check(source)
+                result = self.host._engine_instance_24268().bind_unit_refs(
+                    self.refs, strict_selection=True)
+                if (type(result) is not tuple or len(result) != len(self.refs)
+                        or any(type(row) is not tuple or len(row) != 2
+                               or type(row[0]) is not NativeHandle or row[1] != source
+                               for row, source in zip(result, self.refs))
+                        or len({row[0].value for row in result}) != len(self.refs)):
+                    raise RuntimeError("批量单位原生属性读回身份不一致")
+                for source in self.refs:
+                    self._check(source)
+                self.bindings = {source: native.value for native, source in result}
+                self.trace.record("native_bindings", count=len(result), bindings=result,
+                                  elapsed_ms=(time.perf_counter() - started) * 1000)
+            except Exception as exc:
+                self.binding_error = exc
+                self.trace.record("native_bindings_failed", exception=repr(exc),
+                                  elapsed_ms=(time.perf_counter() - started) * 1000)
+                raise
+        return candidate, self.bindings[ref]
+
+    def _unit_stats_for_candidate_24268(self, candidate):
+        _candidate, target = self._stat_target_24268(candidate)
+        if self.stats_error is not None:
+            raise self.stats_error
+        if self.stats is None:
+            started = time.perf_counter()
+            try:
+                result = self.host._engine_instance_24268().unit_stats()
+                rows = tuple(result.get("rows", ()))
+                expected = {native: ref.rawcode for ref, native in self.bindings.items()}
+                if (len(rows) != len(expected)
+                        or len({int(row.get("unit", 0)) for row in rows}) != len(expected)
+                        or any(int(row.get("status", 0)) != 1
+                               or expected.get(int(row.get("unit", 0))) != int(row.get("rawcode", 0))
+                               for row in rows)):
+                    raise RuntimeError("批量单位原生属性读回身份不一致")
+                for ref in self.refs:
+                    self._check(ref)
+                self.stats = {int(row["unit"]): row for row in rows}
+                self.trace.record("native_stats", count=len(rows), rows=rows,
+                                  elapsed_ms=(time.perf_counter() - started) * 1000)
+            except Exception as exc:
+                self.stats_error = exc
+                self.trace.record("native_stats_failed", exception=repr(exc),
+                                  elapsed_ms=(time.perf_counter() - started) * 1000)
+                raise
+        return self.stats[target]
+
+    def stat_details_24268(self, candidate=None):
+        from war3_services.facade_extensions import ExtensionsFacade
+        return ExtensionsFacade.stat_details_24268(self, candidate)
+
+    def fields(self, candidate):
+        from war3_services.facade_fields import FieldsFacade
+        return FieldsFacade._unit_fields_from_candidate(self, self.memory, candidate)
+
+
 class BatchEditService:
     def __init__(self, host, logger_factory):
         self.host, self.logger_factory = host, logger_factory
@@ -128,25 +224,35 @@ class BatchEditService:
         ) as trace, self.host._process_memory() as memory:
             registry, _, _ = session.prepare(memory)
             identity, epoch = session.identity, session.epoch
-            refs = ExternalMemoryBackend(session).selected_units(memory)
-            if not refs:
+            started = time.perf_counter()
+            # Use the exact selection reader used by the global read button.
+            # Its fresh candidates already contain the validated owner and
+            # field locations; do not rediscover each one by display identity.
+            selected = tuple(self.host._selected_candidates_snapshot(memory))
+            if not selected:
                 raise ValueError("游戏当前没有可操作的选中单位")
+            candidates = tuple(candidate for candidate, _handle in selected)
+            refs = tuple(session.bind_unit(memory, registry, ObjectAddress(candidate.unit_address))
+                         for candidate in candidates)
+            if (len(set(refs)) != len(refs)
+                    or any((ref.handle.value, ref.rawcode) != (candidate.handle, candidate.unit_type_id)
+                           or registry.resolve_unit(memory, candidate.unit_address) != (
+                               candidate.handle, candidate.owner_address)
+                           for ref, candidate in zip(refs, candidates))):
+                raise RuntimeError("批量单位身份已变化，请重新读取")
+            trace.record("selection_read", count=len(refs),
+                         elapsed_ms=(time.perf_counter() - started) * 1000,
+                         source="shared_selected_candidates")
+            reader = _BatchFieldReader(self.host, session, memory, registry, candidates, refs, trace)
             units = []
-            for ref in refs:
-                session.resolve(memory, registry, ref)
-                handle, owner = registry.resolve_unit(memory, ref.address.value)
-                if handle != ref.handle.value:
-                    raise RuntimeError("批量单位身份已变化，请重新读取")
+            for ref, candidate in zip(refs, candidates):
+                started = time.perf_counter()
+                reader._check(ref)
+                owner = candidate.owner_address
                 error, fields = "", ()
                 try:
-                    with field_target(ref):
-                        _panel, candidate, read_fields = self.host.read_unit_fields_by_identity(
-                            ref.handle.value, owner, ref.address.value
-                        )
-                    if (candidate.handle, candidate.owner_address, candidate.unit_address) != (
-                        ref.handle.value, owner, ref.address.value
-                    ):
-                        raise RuntimeError("批量单位身份已变化，请重新读取")
+                    read_fields = reader.fields(candidate)
+                    reader._check(ref)
                     fields = tuple(read_fields)
                 except Exception as exc:
                     error = str(exc)
@@ -154,9 +260,11 @@ class BatchEditService:
                                  exception=repr(exc), traceback=traceback.format_exc())
                 units.append(BatchUnit(ref, owner, fields, error))
                 trace.record("unit_read", ref=ref, owner=owner, error=error,
-                             fields=fields, writable=[f.key for f in fields if f.writable])
+                             fields=fields, writable=[f.key for f in fields if f.writable],
+                             elapsed_ms=(time.perf_counter() - started) * 1000)
             session.prepare(memory)
-            if session.identity != identity or session.epoch != epoch:
+            if (self.host._game_session is not session
+                    or session.identity != identity or session.epoch != epoch):
                 raise RuntimeError("游戏或地图已变化，请重新读取批量单位")
             trace.record("selection_complete", count=len(units), identity=identity, epoch=epoch)
             return BatchSnapshot(session, identity, epoch, tuple(units))

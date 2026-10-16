@@ -1,10 +1,10 @@
 {
   "version": "2.1.09",
+  "source_revision": "v2.1.09-r1",
+  "source_parent": "180627956f3bec28bed3aa2794713d2df97a681b",
   "game_series": "3.0",
-  "game_build": "3.0.1.24360",
-  "source_parent": "6e2dcf4cb9fd651fb6d5b17c6e0296f7c23fcd9a",
-  "exe_sha256": "836b281eeaee885d85e48a999ccb734ddc0634d2dfeafffb6c91113059eba124",
-  "exe_bytes": 20011108,
+  "exe_sha256": "b6606e389f0b334432ef12b18c4cf19a78b159009f8a2e55fe29330600112d95",
+  "exe_bytes": 20015201,
   "production_source_sha256": {
     "ADAPTER_NOTES_3.0.1.24360.md": "B97D2B6AE47BD15F5539FC2B86B9ECE0F53D21EEDA5CE9D365A53A84B3CFE9EE",
     "RELEASE_NOTES_v2.1.09.md": "1770CD271E326E8F5B87BF73C5AFA0EEA8C07E2B9213D5068CDC157301C5451E",
@@ -178,7 +178,7 @@
     "war3_services/archive_fields.py": "F9B0B288A5496BDC8706765A8C65C72072789331E58D2B5D219219158EEA9A0F",
     "war3_services/backpack_carrier.py": "D19ED850286EF271145DFC531BB90DAF88CC25F9EC8DCB4C7584B8B072B3CAE7",
     "war3_services/backpack_interface.py": "D8E79DBE4D9AEFFEE720F128AFF0C07CFF6B0D596182E6CDEE983A0792642DF2",
-    "war3_services/batch_edit.py": "CF54EB29491E0E5FE327CB39ECF57058A75AC924D5ED6A9D46B93A878B0A1D07",
+    "war3_services/batch_edit.py": "D2A43BB625172864AEDEBA9C36F95DD7A7B333BBEE051E422A9993EBAD71F737",
     "war3_services/cursor.py": "E61B01AC136166138C1D86552CE5825CE3814CE17D6D57FF41D004595DECAEFA",
     "war3_services/effect_lifetime.py": "FBB378C24AD74454A4B9CC2F5274A190BC587163B144213B0E3798051202B8D3",
     "war3_services/equipment_effects.py": "B8BE4D747BC08AA13A159787A1ECFF00DCA6EA03D0642420BC131F315714FCED",
@@ -224,281 +224,24 @@
     "tools\\war3_talent_icon_display.dll": "54C0EDD2D639EB4AFD203D5A4222F13814A3ABD27BD694AACBA52545586DE386"
   },
   "production_source_matches_verified_exe": true,
-  "native_images_identical_to_published_2_1_08": true,
-  "previous_four_exact_profiles_unchanged": true,
-  "adapter_id": "war3-3.0.1.24360-r1",
-  "discovery_recipe": 26,
+  "changed_production_files": [
+    "war3_services/batch_edit.py"
+  ],
+  "other_production_inputs_unchanged": true,
+  "changed_packaged_modules": [
+    "war3_services.batch_edit"
+  ],
   "verification": {
-    "full_regression": {
-      "core_passed": 4886,
-      "ui_passed_separately": 1,
-      "total_unique_passed": 4887,
-      "skipped": 29,
-      "subtests_passed": 120
-    },
-    "packaging_targeted_passed": 155,
-    "targeted_overlaps_full_suite": true,
-    "standalone_without_installed_adapters_passed": true,
-    "packaged_ui_resources_passed": true,
-    "built_in_profiles": [
-      "3.0.0.24268",
-      "3.0.1.24323",
-      "3.0.1.24332",
-      "3.0.1.24342",
-      "3.0.1.24360"
-    ],
-    "source_read_only_confirmation": "build/adapt-24360-20261016/exact-live-verification.json",
-    "actual_game_calls_for_exe_verification": 0,
-    "game_writes": 0,
-    "actual_game_effects": "not_executed",
-    "external_machine_game_run": "not_executed"
+    "unique_tests_passed": 4908,
+    "subtests_passed": 120,
+    "skipped": 29,
+    "before_after_five_build_comparison": true,
+    "full_fields_equal": true,
+    "native_requests_24_units_before": 96,
+    "native_requests_24_units_after": 26,
+    "offline_runtime_self_test": true
   },
-  "performance": {
-    "passed": true,
-    "profiles": {
-      "3.0.0.24268": {
-        "first_connection": {
-          "baseline": {
-            "median_ns": 47050.0,
-            "p95_ns": 88100
-          },
-          "current": {
-            "median_ns": 47100.0,
-            "p95_ns": 88500
-          },
-          "ratios": {
-            "median_ns": 1.0010626992561105,
-            "p95_ns": 1.0045402951191829
-          },
-          "samples_each": 5000
-        },
-        "prepared_operation": {
-          "baseline": {
-            "median_ns": 21100.0,
-            "p95_ns": 36300
-          },
-          "current": {
-            "median_ns": 21100.0,
-            "p95_ns": 36500
-          },
-          "ratios": {
-            "median_ns": 1.0,
-            "p95_ns": 1.0055096418732783
-          },
-          "samples_each": 5000
-        },
-        "repeated_prepare": {
-          "baseline": {
-            "median_ns": 19700.0,
-            "p95_ns": 30300
-          },
-          "current": {
-            "median_ns": 19600.0,
-            "p95_ns": 30800
-          },
-          "ratios": {
-            "median_ns": 0.9949238578680203,
-            "p95_ns": 1.0165016501650166
-          },
-          "samples_each": 5000
-        }
-      },
-      "3.0.1.24323": {
-        "first_connection": {
-          "baseline": {
-            "median_ns": 48900.0,
-            "p95_ns": 59100
-          },
-          "current": {
-            "median_ns": 48700.0,
-            "p95_ns": 58400
-          },
-          "ratios": {
-            "median_ns": 0.9959100204498977,
-            "p95_ns": 0.988155668358714
-          },
-          "samples_each": 5000
-        },
-        "prepared_operation": {
-          "baseline": {
-            "median_ns": 20400.0,
-            "p95_ns": 36000
-          },
-          "current": {
-            "median_ns": 20300.0,
-            "p95_ns": 35700
-          },
-          "ratios": {
-            "median_ns": 0.9950980392156863,
-            "p95_ns": 0.9916666666666667
-          },
-          "samples_each": 5000
-        },
-        "repeated_prepare": {
-          "baseline": {
-            "median_ns": 18900.0,
-            "p95_ns": 33100
-          },
-          "current": {
-            "median_ns": 18900.0,
-            "p95_ns": 33000
-          },
-          "ratios": {
-            "median_ns": 1.0,
-            "p95_ns": 0.9969788519637462
-          },
-          "samples_each": 5000
-        }
-      },
-      "3.0.1.24332": {
-        "first_connection": {
-          "baseline": {
-            "median_ns": 47700.0,
-            "p95_ns": 89800
-          },
-          "current": {
-            "median_ns": 47600.0,
-            "p95_ns": 89200
-          },
-          "ratios": {
-            "median_ns": 0.9979035639412998,
-            "p95_ns": 0.9933184855233853
-          },
-          "samples_each": 5000
-        },
-        "prepared_operation": {
-          "baseline": {
-            "median_ns": 20600.0,
-            "p95_ns": 25600
-          },
-          "current": {
-            "median_ns": 20600.0,
-            "p95_ns": 25500
-          },
-          "ratios": {
-            "median_ns": 1.0,
-            "p95_ns": 0.99609375
-          },
-          "samples_each": 5000
-        },
-        "repeated_prepare": {
-          "baseline": {
-            "median_ns": 19300.0,
-            "p95_ns": 33800
-          },
-          "current": {
-            "median_ns": 19200.0,
-            "p95_ns": 33500
-          },
-          "ratios": {
-            "median_ns": 0.9948186528497409,
-            "p95_ns": 0.9911242603550295
-          },
-          "samples_each": 5000
-        }
-      },
-      "3.0.1.24342": {
-        "first_connection": {
-          "baseline": {
-            "median_ns": 48000.0,
-            "p95_ns": 65300
-          },
-          "current": {
-            "median_ns": 47800.0,
-            "p95_ns": 62900
-          },
-          "ratios": {
-            "median_ns": 0.9958333333333333,
-            "p95_ns": 0.9632465543644717
-          },
-          "samples_each": 5000
-        },
-        "prepared_operation": {
-          "baseline": {
-            "median_ns": 20600.0,
-            "p95_ns": 31700
-          },
-          "current": {
-            "median_ns": 20600.0,
-            "p95_ns": 31600
-          },
-          "ratios": {
-            "median_ns": 1.0,
-            "p95_ns": 0.9968454258675079
-          },
-          "samples_each": 5000
-        },
-        "repeated_prepare": {
-          "baseline": {
-            "median_ns": 19300.0,
-            "p95_ns": 26500
-          },
-          "current": {
-            "median_ns": 19200.0,
-            "p95_ns": 27000
-          },
-          "ratios": {
-            "median_ns": 0.9948186528497409,
-            "p95_ns": 1.0188679245283019
-          },
-          "samples_each": 5000
-        }
-      },
-      "3.0.1.24360": {
-        "first_connection": {
-          "baseline": {
-            "median_ns": 45800.0,
-            "p95_ns": 54600
-          },
-          "current": {
-            "median_ns": 45700.0,
-            "p95_ns": 53700
-          },
-          "ratios": {
-            "median_ns": 0.9978165938864629,
-            "p95_ns": 0.9835164835164835
-          },
-          "samples_each": 5000
-        },
-        "prepared_operation": {
-          "baseline": {
-            "median_ns": 20400.0,
-            "p95_ns": 22500
-          },
-          "current": {
-            "median_ns": 20300.0,
-            "p95_ns": 23400
-          },
-          "ratios": {
-            "median_ns": 0.9950980392156863,
-            "p95_ns": 1.04
-          },
-          "samples_each": 5000
-        },
-        "repeated_prepare": {
-          "baseline": {
-            "median_ns": 19200.0,
-            "p95_ns": 21800
-          },
-          "current": {
-            "median_ns": 19100.0,
-            "p95_ns": 21900
-          },
-          "ratios": {
-            "median_ns": 0.9947916666666666,
-            "p95_ns": 1.0045871559633028
-          },
-          "samples_each": 5000
-        }
-      }
-    },
-    "scope": "paired identical sparse snapshot; not live performance"
-  },
-  "offline_exe_self_test": true,
-  "packaged_ui_resources": true,
-  "standalone_without_installed_adapters": true,
-  "actual_game_effects_verified": false,
+  "actual_game_latency_measured": false,
   "external_machine_effects_verified": false,
-  "source_layout": "Current 2.1.09 build closure only; historical source remains in immutable tags",
-  "notification_suppressed": false
+  "notification_suppressed": true
 }

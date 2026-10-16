@@ -1,2 +1,2 @@
-# Preserve exact source snapshot bytes across Windows and archive checkouts.
+# Preserve exact bytes used by the release build manifest.
 * -text

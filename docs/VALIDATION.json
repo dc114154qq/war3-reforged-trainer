@@ -1,19 +1,14 @@
 {
-  "version": "2.1.08",
+  "version": "2.1.09",
   "game_series": "3.0",
-  "source_parent": "50e2b2e7d01ef8fcf7f63c3bc53f70aa7842e081",
-  "exe_sha256": "49bf0adab6ffa3163542efe3d7963fb6574f6c7718d942e83e897e668012d56f",
-  "exe_bytes": 19995803,
-  "baseline": {
-    "tag": "v2.1.07-r2",
-    "url": "https://twomengxi.xyz/downloads/War3ReforgedTrainer-v2.1.07-A113817A00B8.exe?sha256=a113817a00b85a03957baf1811749c2ca33561c9e4013257ab8c2e2d1f3f98c4",
-    "sha256": "a113817a00b85a03957baf1811749c2ca33561c9e4013257ab8c2e2d1f3f98c4",
-    "bytes": 19972871,
-    "local_baseline_matches_actual_online_download": true
-  },
+  "game_build": "3.0.1.24360",
+  "source_parent": "6e2dcf4cb9fd651fb6d5b17c6e0296f7c23fcd9a",
+  "exe_sha256": "836b281eeaee885d85e48a999ccb734ddc0634d2dfeafffb6c91113059eba124",
+  "exe_bytes": 20011108,
   "production_source_sha256": {
-    "RELEASE_NOTES_v2.1.08.md": "6ED73428203497DAA3C738ADD094883C3129C8CFBCAEB527FD8E489780EC03F1",
-    "War3ReforgedTrainer-2.1.08.spec": "633625BB678980121258D2268643C68CBFA346691722303868EE94B38F70A969",
+    "ADAPTER_NOTES_3.0.1.24360.md": "B97D2B6AE47BD15F5539FC2B86B9ECE0F53D21EEDA5CE9D365A53A84B3CFE9EE",
+    "RELEASE_NOTES_v2.1.09.md": "1770CD271E326E8F5B87BF73C5AFA0EEA8C07E2B9213D5068CDC157301C5451E",
+    "War3ReforgedTrainer-2.1.09.spec": "01014B2572B3E4EBBA7D3B7467CAF1DE0E8C0230A4351685BA345379743238F2",
     "assets/app_icon.ico": "E0B4A5823DCA3223F537BC374434F9EDD9529884D61D04A9DFAFAAD94D19872C",
     "assets/app_icon.png": "0CB5FF169BFD990B87A9B12437D7D60406315176A3544C52A6A38E3B06BB279E",
     "diagnostics/__init__.py": "FD0C0F5D935644F3D080B2F4693F57ADBB359A9ACA17A12929083556DF1B3E08",
@@ -22,8 +17,9 @@
     "profiles/3.0.1.24323.json": "36DDBF85E46D2339D126E96C2599238B4962C3B4E053CB64121812C397CC4077",
     "profiles/3.0.1.24332.json": "0BFC6172974400EDCF6827604E60FEF4B7F6095D85FBF29CDF06D15746A601F2",
     "profiles/3.0.1.24342.json": "8A6863130E8F30C728D45DB70695DA0D8E17D818DD776F2486C8566CA77870C7",
-    "profiles/discovery/references.json": "E5EC9DF6E208194E6789F44A1C4D7FF11964926749F961D61F7739016DF38FEF",
-    "profiles/discovery/semantics.json": "A99E03C9157B4586D9A8F05E5D9DAF1ACF68DC861A1A83242220615B7AE7FC1D",
+    "profiles/3.0.1.24360.json": "598579B68F1544241AC2C397B6A161F85322B45ED7DCBD020C117C4F67EDFEF8",
+    "profiles/discovery/references.json": "90CEA8C63D9E53F3A436BA55F147200BA76B8009FAEB7CF5BA85621C20A74D9A",
+    "profiles/discovery/semantics.json": "3F9D2BDB8BEF0CDC8F9A16596C26D30097B323D143A01D3128E1E445888B83FE",
     "third_party/minhook/LICENSE.txt": "D5C2224982B0B95A16B098A561335FA93F3EAF4D0AA964B7843EDB986DF78DC8",
     "third_party/minhook/include/MinHook.h": "62DFF05E63155C6BF8135C36A0D79DEDBDCAAEDE9DA26FE38DAF0BEA34323E38",
     "third_party/minhook/src/buffer.c": "0AB484D7870C3A8E7A3A1EE61E2070072CF445ED85B619D4C4207FED34356D99",
@@ -36,14 +32,15 @@
     "third_party/minhook/src/trampoline.c": "F13A169F803FF5A8E45C58CE668B4377A9878C0FC4452369B8A1325065186B2B",
     "third_party/minhook/src/trampoline.h": "53ED9934492320617A27BFD952FFE7F5B7A4A1D09963D4512447082FE7B727B4",
     "tools/build_engine_bridge.ps1": "5B7AA22AC9D3EA23969B7EB95175C0A1D2126B84BE1D5CBA676F80A3F65EDBF6",
-    "tools/build_release_208.py": "401C15FDCE857B6765BB3A010F45E20E88D238749151F1847BFD83E5E4A235F9",
+    "tools/build_release_209.py": "CFB8D453E6D63106B67BE603CE4BFD057642AF3231B2C6B7F4FCBEC2BFB5AD26",
     "tools/build_speed_clock.ps1": "11812D83606B9C42FAEFDA10645DA277620B81D347233A3D44DC8733695BA491",
     "tools/build_talent_icon_display.ps1": "8926A26D4CE76272CDFAB366B99D592DBE9C081ACEC4219AA4CB9BA400C906CA",
     "tools/generate_bridge_profile.py": "53BF6762E9843D26902F332FDB24ECAFFBD8C46C10137010B4DD7C04752F2F18",
+    "tools/generate_discovery_references.py": "A0DB729C7BECACE1313318C0DB2FACC0C6CF609F5EA7063574F7E6E74C9EE4C0",
     "tools/verify_engine_bridge.py": "A959678715302B1237B627574C3D7F8CC34EA29DE6209C264E4AEEDE5700D02B",
     "tools/verify_speed_clock.py": "462CEB73E186D384F844F11AF0FFEE2E75864984AFF929505E7BE0C8367839C2",
     "tools/verify_talent_icon_display.py": "0B29F5BC5252402ED9029B02C5952BF0C1D9EA80415871C42E0934375A665E5F",
-    "tools/war3-2.1.08-version-info.txt": "C8909C6141BEAA027B2C85668DF09EB4CA711A3017D8FC0B2B9EEC4BDE95AA0E",
+    "tools/war3-2.1.09-version-info.txt": "C991AA5EE81B4FCBC12F084567B66417B7207920E2C21D1335CFBB83EFBE954F",
     "tools/war3_bridge_24268.c": "7A63A22312CABB7C3CE21B3380A741E20F940E7D7C5CE3DD2C1D9BDE8394B95F",
     "tools/war3_bridge_ability.h": "59678B9547B84D2DC3A365FC1CE247A4638847D563C2484C428DFBBBEBFE7EE6",
     "tools/war3_bridge_ability_field.h": "AAB7E02A8EE343FA8BEA76257DEF6AA10762DB08919BCACFC441124B4BB07A6B",
@@ -116,11 +113,11 @@
     "war3_discovery_dependencies.py": "74BE6BE4B84BBE918C8A92EFB241ED372E00AE5108AC132C8FBD85866CE686B9",
     "war3_discovery_fields.py": "693D39D173FA644596D951FB9FCB17C81B39B084C05DA8A2444D569C1C256E04",
     "war3_discovery_image.py": "51DF102DEDEFDD7371ADBF09AF794F340E22073DC6CD2296F7E079B9D99EC365",
-    "war3_discovery_locators.py": "D40AAABB1B99A15583C2B06171658E70AA7946C8237AD55A815B9204F7484375",
+    "war3_discovery_locators.py": "555A7C844857860B05D9A636938BA452DE6E57E2FBC89A7CF7285C920E800C0A",
     "war3_discovery_native.py": "6665ABB0F3B35626E6BD79A0C542B4BF1DD0D57588D2CE94AD0E15E40E96A18A",
     "war3_discovery_properties.py": "E5242B8E14693A88A5E40277EBEEDAF536F603F8538150C3BDF4C50AA351A742",
     "war3_discovery_selection.py": "6F089672D4055480D680AEEA1D6BED0591F1D3982F4FBBCD80D2570E02C8F5A8",
-    "war3_discovery_stats.py": "6355CE3388214E3CF500ECD6B91366BAC224C6222B8E756F0959F78790D24513",
+    "war3_discovery_stats.py": "5E87DE94B612BB28AE078EF3610AEBE622F591C60D1FF38FBDBF06784AE27434",
     "war3_discovery_validation.py": "B737B4548F68CF07948B96727746A32427906948B4D0C95059AA8C53E5B2A998",
     "war3_effect_protocol.py": "416527476D3B0F5C100C8968138CB3D127C5BD5E7E68B8FDADD06D5AE4115E68",
     "war3_engine_24268.py": "8CAD7EF606BF3F32C25B27DC9F2D0880835BC5E68A074C42BA118D407C0885F1",
@@ -166,9 +163,9 @@
     "war3_player_resources.py": "0FA6DBBAB66B1A5C65ABB56FDE2BB453C15679D7B3F1405CD6096DC17BEFEC0D",
     "war3_position_protocol.py": "916F3C4B4D69EA1DD1078B64D0183DAB4F84B35B82411FE0180E8B46D90C6FCF",
     "war3_position_target_protocol.py": "04EAAF56CE8466B7EED801F76445A84C57C65BF84BECBAA1BDB8C9960028F2D1",
-    "war3_profile_discovery.py": "4F69FB1CA60377543A5E061CDC95224630C6553A88584AE1E52FD97985DD84E5",
-    "war3_profile_resolver.py": "808E6E07ACF6AAA73668595F35571CA2C9A552A1458ADA122170DE46CC0B50B0",
-    "war3_reforged_trainer.py": "F5DFF132E65B537A8FA9709043B9FF11C7F92E03E8D7678D08C8B65DAE4ABFD0",
+    "war3_profile_discovery.py": "03D79ADF86F8E1614A91B0E396C7E28139CFE0BB6BD683C120F986CE6ADE51C6",
+    "war3_profile_resolver.py": "7D8E021FC6D79142BD25BC74E466C56D5EF6C31343225116D9BB03E60A6F7FB6",
+    "war3_reforged_trainer.py": "91C804EEC83ACC060A9F5AADD2AC867669DCDE6F0DAC3C80D34B2A0EA692897D",
     "war3_remote_exports.py": "1C06A423249698DE99320BB73DA056FD4CCA3A7B041E768A4925A7E9423908E8",
     "war3_runtime_check.py": "8AF000E995EBE9B5A4178B836C464885AD97D8ACF7D8C8CCF2D16F00025B3DD9",
     "war3_save_codes.py": "DA1BD043DC187684A36E9AD3BD4083594D63812221AD6F6E193EB3BBDC44B1F4",
@@ -227,17 +224,34 @@
     "tools\\war3_talent_icon_display.dll": "54C0EDD2D639EB4AFD203D5A4222F13814A3ABD27BD694AACBA52545586DE386"
   },
   "production_source_matches_verified_exe": true,
-  "native_images_identical_to_published_2_1_07": true,
-  "profiles_and_discovery_data_unchanged": true,
+  "native_images_identical_to_published_2_1_08": true,
+  "previous_four_exact_profiles_unchanged": true,
+  "adapter_id": "war3-3.0.1.24360-r1",
+  "discovery_recipe": 26,
   "verification": {
-    "full_tests_passed": 4808,
-    "subtests_passed": 120,
-    "skipped": 29,
-    "offline_runtime_self_test": true,
-    "adapter_boundaries": true,
-    "native_dependencies": true,
-    "four_profile_performance_passed": true,
-    "ui_fixture_passed": true
+    "full_regression": {
+      "core_passed": 4886,
+      "ui_passed_separately": 1,
+      "total_unique_passed": 4887,
+      "skipped": 29,
+      "subtests_passed": 120
+    },
+    "packaging_targeted_passed": 155,
+    "targeted_overlaps_full_suite": true,
+    "standalone_without_installed_adapters_passed": true,
+    "packaged_ui_resources_passed": true,
+    "built_in_profiles": [
+      "3.0.0.24268",
+      "3.0.1.24323",
+      "3.0.1.24332",
+      "3.0.1.24342",
+      "3.0.1.24360"
+    ],
+    "source_read_only_confirmation": "build/adapt-24360-20261016/exact-live-verification.json",
+    "actual_game_calls_for_exe_verification": 0,
+    "game_writes": 0,
+    "actual_game_effects": "not_executed",
+    "external_machine_game_run": "not_executed"
   },
   "performance": {
     "passed": true,
@@ -245,46 +259,46 @@
       "3.0.0.24268": {
         "first_connection": {
           "baseline": {
-            "median_ns": 44700.0,
-            "p95_ns": 56400
+            "median_ns": 47050.0,
+            "p95_ns": 88100
           },
           "current": {
-            "median_ns": 44600.0,
-            "p95_ns": 55600
+            "median_ns": 47100.0,
+            "p95_ns": 88500
           },
           "ratios": {
-            "median_ns": 0.9977628635346756,
-            "p95_ns": 0.9858156028368794
+            "median_ns": 1.0010626992561105,
+            "p95_ns": 1.0045402951191829
           },
           "samples_each": 5000
         },
         "prepared_operation": {
           "baseline": {
-            "median_ns": 19100.0,
-            "p95_ns": 21900
+            "median_ns": 21100.0,
+            "p95_ns": 36300
           },
           "current": {
-            "median_ns": 19000.0,
-            "p95_ns": 22000
+            "median_ns": 21100.0,
+            "p95_ns": 36500
           },
           "ratios": {
-            "median_ns": 0.9947643979057592,
-            "p95_ns": 1.004566210045662
+            "median_ns": 1.0,
+            "p95_ns": 1.0055096418732783
           },
           "samples_each": 5000
         },
         "repeated_prepare": {
           "baseline": {
-            "median_ns": 17900.0,
-            "p95_ns": 18700
+            "median_ns": 19700.0,
+            "p95_ns": 30300
           },
           "current": {
-            "median_ns": 17900.0,
-            "p95_ns": 18700
+            "median_ns": 19600.0,
+            "p95_ns": 30800
           },
           "ratios": {
-            "median_ns": 1.0,
-            "p95_ns": 1.0
+            "median_ns": 0.9949238578680203,
+            "p95_ns": 1.0165016501650166
           },
           "samples_each": 5000
         }
@@ -292,46 +306,46 @@
       "3.0.1.24323": {
         "first_connection": {
           "baseline": {
-            "median_ns": 42800.0,
-            "p95_ns": 52900
+            "median_ns": 48900.0,
+            "p95_ns": 59100
           },
           "current": {
-            "median_ns": 42800.0,
-            "p95_ns": 53000
+            "median_ns": 48700.0,
+            "p95_ns": 58400
           },
           "ratios": {
-            "median_ns": 1.0,
-            "p95_ns": 1.001890359168242
+            "median_ns": 0.9959100204498977,
+            "p95_ns": 0.988155668358714
           },
           "samples_each": 5000
         },
         "prepared_operation": {
           "baseline": {
-            "median_ns": 19200.0,
-            "p95_ns": 34300
+            "median_ns": 20400.0,
+            "p95_ns": 36000
           },
           "current": {
-            "median_ns": 19200.0,
-            "p95_ns": 34300
+            "median_ns": 20300.0,
+            "p95_ns": 35700
           },
           "ratios": {
-            "median_ns": 1.0,
-            "p95_ns": 1.0
+            "median_ns": 0.9950980392156863,
+            "p95_ns": 0.9916666666666667
           },
           "samples_each": 5000
         },
         "repeated_prepare": {
           "baseline": {
-            "median_ns": 17900.0,
-            "p95_ns": 22700
+            "median_ns": 18900.0,
+            "p95_ns": 33100
           },
           "current": {
-            "median_ns": 17900.0,
-            "p95_ns": 21700
+            "median_ns": 18900.0,
+            "p95_ns": 33000
           },
           "ratios": {
             "median_ns": 1.0,
-            "p95_ns": 0.9559471365638766
+            "p95_ns": 0.9969788519637462
           },
           "samples_each": 5000
         }
@@ -339,46 +353,46 @@
       "3.0.1.24332": {
         "first_connection": {
           "baseline": {
-            "median_ns": 43500.0,
-            "p95_ns": 49200
+            "median_ns": 47700.0,
+            "p95_ns": 89800
           },
           "current": {
-            "median_ns": 43500.0,
-            "p95_ns": 50100
+            "median_ns": 47600.0,
+            "p95_ns": 89200
           },
           "ratios": {
-            "median_ns": 1.0,
-            "p95_ns": 1.0182926829268293
+            "median_ns": 0.9979035639412998,
+            "p95_ns": 0.9933184855233853
           },
           "samples_each": 5000
         },
         "prepared_operation": {
           "baseline": {
-            "median_ns": 19400.0,
-            "p95_ns": 21800
+            "median_ns": 20600.0,
+            "p95_ns": 25600
           },
           "current": {
-            "median_ns": 19400.0,
-            "p95_ns": 21800
+            "median_ns": 20600.0,
+            "p95_ns": 25500
           },
           "ratios": {
             "median_ns": 1.0,
-            "p95_ns": 1.0
+            "p95_ns": 0.99609375
           },
           "samples_each": 5000
         },
         "repeated_prepare": {
           "baseline": {
-            "median_ns": 18000.0,
-            "p95_ns": 20600
+            "median_ns": 19300.0,
+            "p95_ns": 33800
           },
           "current": {
-            "median_ns": 18000.0,
-            "p95_ns": 20200
+            "median_ns": 19200.0,
+            "p95_ns": 33500
           },
           "ratios": {
-            "median_ns": 1.0,
-            "p95_ns": 0.9805825242718447
+            "median_ns": 0.9948186528497409,
+            "p95_ns": 0.9911242603550295
           },
           "samples_each": 5000
         }
@@ -386,46 +400,93 @@
       "3.0.1.24342": {
         "first_connection": {
           "baseline": {
-            "median_ns": 43100.0,
-            "p95_ns": 52700
+            "median_ns": 48000.0,
+            "p95_ns": 65300
           },
           "current": {
-            "median_ns": 43100.0,
-            "p95_ns": 53700
+            "median_ns": 47800.0,
+            "p95_ns": 62900
           },
           "ratios": {
-            "median_ns": 1.0,
-            "p95_ns": 1.0189753320683113
+            "median_ns": 0.9958333333333333,
+            "p95_ns": 0.9632465543644717
           },
           "samples_each": 5000
         },
         "prepared_operation": {
           "baseline": {
-            "median_ns": 19100.0,
-            "p95_ns": 21800
+            "median_ns": 20600.0,
+            "p95_ns": 31700
           },
           "current": {
-            "median_ns": 19200.0,
-            "p95_ns": 22200
+            "median_ns": 20600.0,
+            "p95_ns": 31600
           },
           "ratios": {
-            "median_ns": 1.0052356020942408,
-            "p95_ns": 1.018348623853211
+            "median_ns": 1.0,
+            "p95_ns": 0.9968454258675079
           },
           "samples_each": 5000
         },
         "repeated_prepare": {
           "baseline": {
-            "median_ns": 17700.0,
-            "p95_ns": 20000
+            "median_ns": 19300.0,
+            "p95_ns": 26500
           },
           "current": {
-            "median_ns": 17800.0,
-            "p95_ns": 20400
+            "median_ns": 19200.0,
+            "p95_ns": 27000
           },
           "ratios": {
-            "median_ns": 1.0056497175141244,
-            "p95_ns": 1.02
+            "median_ns": 0.9948186528497409,
+            "p95_ns": 1.0188679245283019
+          },
+          "samples_each": 5000
+        }
+      },
+      "3.0.1.24360": {
+        "first_connection": {
+          "baseline": {
+            "median_ns": 45800.0,
+            "p95_ns": 54600
+          },
+          "current": {
+            "median_ns": 45700.0,
+            "p95_ns": 53700
+          },
+          "ratios": {
+            "median_ns": 0.9978165938864629,
+            "p95_ns": 0.9835164835164835
+          },
+          "samples_each": 5000
+        },
+        "prepared_operation": {
+          "baseline": {
+            "median_ns": 20400.0,
+            "p95_ns": 22500
+          },
+          "current": {
+            "median_ns": 20300.0,
+            "p95_ns": 23400
+          },
+          "ratios": {
+            "median_ns": 0.9950980392156863,
+            "p95_ns": 1.04
+          },
+          "samples_each": 5000
+        },
+        "repeated_prepare": {
+          "baseline": {
+            "median_ns": 19200.0,
+            "p95_ns": 21800
+          },
+          "current": {
+            "median_ns": 19100.0,
+            "p95_ns": 21900
+          },
+          "ratios": {
+            "median_ns": 0.9947916666666666,
+            "p95_ns": 1.0045871559633028
           },
           "samples_each": 5000
         }
@@ -433,9 +494,11 @@
     },
     "scope": "paired identical sparse snapshot; not live performance"
   },
-  "game_calls": 0,
-  "game_writes": 0,
+  "offline_exe_self_test": true,
+  "packaged_ui_resources": true,
+  "standalone_without_installed_adapters": true,
   "actual_game_effects_verified": false,
   "external_machine_effects_verified": false,
-  "notification_suppressed": true
+  "source_layout": "Current 2.1.09 build closure only; historical source remains in immutable tags",
+  "notification_suppressed": false
 }

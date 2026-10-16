@@ -448,6 +448,7 @@ class ProfileResolver:
                 'cross_checked_typed_native_machine_conventions','typed_native_machine_conventions',
                 'typed_native_unit_resolver_callers',
                 'typed_coordinate_getter_and_setter',
+                'typed_player_accessor_decoder_consumers',
                 'typed_unit_selected_player_manager',
                 'native_cooldown_and_canonical_attack_components'):continue
             needed=(3 if proof.method=='typed_native_machine_conventions' else

@@ -209,7 +209,9 @@ def locate(image, source, references, budget):
         checks['context'] = layout_checks['context']
     if 'game_state_player' in layout_checks:
         checks['game_state'][2] = layout_checks['game_state_player']
-    state_updates,state_evidence,state_checks=locate_state_decoder(image,budget)
+    player_check=layout_checks.get('game_state_player')
+    state_updates,state_evidence,state_checks=locate_state_decoder(
+        image,budget,player_accessor=player_check['rva'] if player_check else None)
     updates.update(state_updates);evidence.update(state_evidence)
     if state_checks is not None:
         checks['game_state'][:2]=state_checks
@@ -422,7 +424,57 @@ STATE_FRAGMENTS = (
 )
 
 
-def locate_state_decoder(image, budget):
+def _decoder_player_consumers(image, records, player_accessor, budget):
+    """Distinguish a decoded state from a decoder with a folded member address.
+
+    Require the decoded pointer as RCX of the independently located player
+    accessor in two distinct functions. Frequency and the source constants are
+    not evidence. A second qualifying decoder remains a conflict.
+    """
+    from bisect import bisect_right
+    from capstone.x86 import X86_OP_REG
+    from war3_discovery_abi import _register_family, VOLATILE
+    image.function_size(player_accessor)
+    functions=getattr(image,'_runtime_functions',{})
+    starts=sorted(functions)
+    witnesses={}
+    for record in records:
+        mode,values,root,producer,head,tail,raw=record
+        if mode!='legacy':continue
+        index=bisect_right(starts,tail)-1
+        if index<0:continue
+        start=starts[index];end=functions[start]
+        if not start<=producer<tail<tail+len(raw)<end:continue
+        extent=min(end-tail-len(raw),160)
+        budget.check('正在核对游戏状态解码的实际消费者')
+        try:suffix=image.read(tail+len(raw),extent)
+        except OSError:continue
+        aliases={'rbx'}
+        for ins in decoder().disasm(suffix,tail+len(raw)):
+            if ins.mnemonic in ('ret','int3','jmp'):break
+            if ins.mnemonic=='call':
+                if (ins.operands[0].type==X86_OP_IMM and
+                        ins.operands[0].imm==player_accessor and 'rcx' in aliases):
+                    identity=(mode,tuple(sorted(values.items())),root)
+                    code=image.read(tail,ins.address+ins.size-tail)
+                    witnesses.setdefault(identity,{})[start]=(tail,code.hex())
+                    break
+                aliases.difference_update(VOLATILE)
+                continue
+            ops=ins.operands
+            copied=None
+            if (ins.mnemonic=='mov' and len(ops)==2 and
+                    ops[0].type==ops[1].type==X86_OP_REG and
+                    ops[0].size==ops[1].size==8 and ins.reg_name(ops[1].reg) in aliases):
+                copied=ins.reg_name(ops[0].reg)
+            _,written=ins.regs_access()
+            aliases.difference_update(_register_family(ins.reg_name(reg)) for reg in written)
+            if copied:aliases.add(copied)
+            if not aliases:break
+    return {identity:tuple(rows.values()) for identity,rows in witnesses.items() if len(rows)>=2}
+
+
+def locate_state_decoder(image, budget, *, player_accessor=None):
     records=[]
     for strategy,template in STATE_FRAGMENTS:
         code,mask=signature(template,variable_immediates=True)
@@ -451,6 +503,13 @@ def locate_state_decoder(image, budget):
                 values=dict(values,add1=instructions[1].operands[1].imm&((1<<64)-1),add2=0)
             records.append((mode,values,root[0],producer,head,at,raw))
     identities={(mode,tuple(sorted(values.items())),root) for mode,values,root,*_ in records}
+    consumer_anchors=()
+    if len(identities)>1 and player_accessor is not None:
+        consumers=_decoder_player_consumers(image,records,player_accessor,budget)
+        if len(consumers)==1:
+            identity,consumer_anchors=next(iter(consumers.items()))
+            records=[r for r in records if (r[0],tuple(sorted(r[1].items())),r[2])==identity]
+            identities={identity}
     if len(identities)!=1:
         return {},{'decoder':DiscoveryEvidence('decoder','ambiguous' if records else 'unresolved','known_decoder_dataflow')},None
     # Multiple equivalent instruction sites prove one semantic value; retain the
@@ -462,6 +521,9 @@ def locate_state_decoder(image, budget):
     evidence={name:DiscoveryEvidence(name,'confirmed','known_decoder_dataflow',(value,),tuple(r[3] for r in records))
               for name,value in updates.items()}
     evidence['decoder']=DiscoveryEvidence('decoder','confirmed','known_decoder_dataflow',anchors=tuple(r[5] for r in records))
+    if consumer_anchors:
+        evidence['decoder.player_consumers']=DiscoveryEvidence('decoder.player_consumers','confirmed',
+            'typed_player_accessor_decoder_consumers',anchors=consumer_anchors)
     checks=[{'rva':producer,'bytes':head.hex()},{'rva':tail,'bytes':raw.hex()}]
     for index,row in enumerate(checks):evidence[f'checks.game_state.{index}']=unique_evidence(f'checks.game_state.{index}','equivalent_state_witnesses',[row['rva']])
     return updates,evidence,checks

@@ -30,6 +30,19 @@ def _selector(instructions,kind):
     """Return the initialized byte or the serialized byte with fixed registers."""
     from capstone.x86 import X86_OP_MEM,X86_OP_REG,X86_OP_IMM
     if kind=='initializer':
+        # A reviewed producer variant explicitly clears its fourth argument.
+        # Preserve every semantic instruction and map the selected operand
+        # back to the original body; branch targets still use real addresses.
+        if len(instructions) in (37,56):
+            extra=[i for i,ins in enumerate(instructions)
+                   if (ins.mnemonic,ins.op_str)==('xor','r9d, r9d')]
+            expected=[15] if len(instructions)==37 else [15,34]
+            if extra!=expected or any(
+                    (instructions[i+1].mnemonic,instructions[i+1].op_str)!=('lea','r8, [rsp + 0x38]')
+                    for i in extra):return None
+            kept=[i for i in range(len(instructions)) if i not in extra]
+            selected=_selector([instructions[i] for i in kept],kind)
+            return (kept[selected[0]],selected[1]) if selected is not None else None
         if len(instructions) not in (36,54):return None
         index=27 if len(instructions)==36 else 26
         ins=instructions[index]
@@ -90,7 +103,7 @@ def _method(image,table,recipe,budget):
     mask[member_ins.address+member_ins.disp_offset:member_ins.address+member_ins.disp_offset+member_ins.disp_size]=bytes(member_ins.disp_size)
     # Spell amplification serializes another initialized byte immediately
     # after DataB; it must remain adjacent when this class layout relocates.
-    paired_indices=(45,) if recipe['kind']=='initializer' and len(source)==54 else (13,) if len(source)==19 else ()
+    paired_indices=((45,) if len(source)==54 else (47,) if len(source)==56 else ()) if recipe['kind']=='initializer' else (13,) if len(source)==19 else ()
     for index in paired_indices:
         ins=source[index]
         op=ins.operands[0 if recipe['kind']=='initializer' else 1]

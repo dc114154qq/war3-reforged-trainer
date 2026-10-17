@@ -65,6 +65,20 @@ def run(output_path):
             raise RuntimeError("Campaign cache field parsing check failed")
         report["archive_fields_modules"] = bool(ArchiveFieldsTab)
         report["archive_parser_verified"] = True
+        from war3_extension_definition_ui import ExtensionDefinitionPanel
+        from war3_mpq import library, DLL_SHA256
+        from war3_services.extension_definitions import definition_pack, PACK_SHA256
+        from war3_object_tables import parse_slk, merge_slk
+        manifest, files = definition_pack()
+        merged, _added = merge_slk(files['baseline/Custom_V1/AbilityData.slk'],files['additions/AbilityData.slk'])
+        if not {'AIni','AEqu','ASpc','AThg'} <= set(parse_slk(merged).rows):
+            raise RuntimeError('Offline backpack definition check failed')
+        mpq = library()
+        if report['frozen'] and not Path(mpq._name).resolve().is_relative_to(base.resolve()):
+            raise RuntimeError('MPQ library was loaded outside the executable bundle')
+        report['extension_definitions'] = dict(pack_id=manifest['pack_id'],pack_sha256=PACK_SHA256,
+                                               mpq_sha256=DLL_SHA256,ui_module=bool(ExtensionDefinitionPanel),
+                                               merged_definitions_verified=True)
         report["ok"] = True
     except Exception:
         report["error"] = traceback.format_exc()

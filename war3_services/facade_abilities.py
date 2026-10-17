@@ -973,16 +973,8 @@ class AbilitiesFacade:
         if any(level is not None and not 1 <= level <= 100000 for _, level in bundle):
             raise ValueError("技能组合等级必须在 1 到 100000 之间")
         if uses_indexed_backend(self):
-            # The classic route used 112 as an internal "add at default level"
-            # sentinel for aura/passive bundles. Warcraft III 3.0 treats 112 as
-            # an actual SetUnitAbilityLevel request and rejects it.
-            changed = sum(
-                int(self.ability_batch_24268(
-                    rawcode, 1, 0 if level == 112 else level or 0,
-                )["changed"])
-                for rawcode, level in bundle
-            )
-            return changed, len(bundle)
+            from war3_services.ability_bundle import run_indexed_bundle
+            return run_indexed_bundle(self, bundle)
         results = self._run_bound_ability_actions((1, rawcode, level or 0, 0) for rawcode, level in bundle)
         return sum(bool(item.result) for item in results), len(bundle)
 

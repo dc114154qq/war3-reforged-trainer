@@ -163,7 +163,7 @@ class ExtensionsFacade:
                         expected_item=int(first.get("handle", 0)),creation_route=1,
                     )
                 except Exception as exc:
-                    # Old campaigns may not load the 3.0 item definition table.
+                    # The selected game data set may lack 3.0 definitions.
                     # Keep the original exception for the diagnostic log, but do
                     # not expose its English bridge payload as the user message.
                     report = getattr(self._engine_instance_24268(), "last_report", {})
@@ -172,7 +172,7 @@ class ExtensionsFacade:
                     if error_code in (31, 62, 63):
                         raise RuntimeError(
                             "当前战役未加载 3.0 背包装备定义，无法添加该背包。"
-                            "请在包含 3.0 背包数据的战役中使用；当前物品栏未被修改。"
+                            "请在“3.0 扩展”中点击“补齐战役／地图背包定义”，使用生成的副本重新进入。"
                         ) from exc
                     raise
                 trace.record('item_create_result', result=result)

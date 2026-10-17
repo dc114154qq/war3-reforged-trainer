@@ -18,12 +18,16 @@ a = Analysis(
         (bridge_image, 'tools'),
         (icon_image, 'tools'),
         (speed_image, 'tools'),
+        ('tools/war3_mpq.dll', 'tools'),
     ],
-    datas=[('assets/app_icon.png', 'assets'), ('profiles/*.json', 'profiles'),
+    datas=[('assets/app_icon.png', 'assets'), ('assets/extension-definitions-v1.zip','assets'),
+           ('third_party/stormlib/StormLib-LICENSE.txt','licenses'), ('profiles/*.json', 'profiles'),
            ('profiles/discovery/*.json', 'profiles/discovery'),
            ('third_party/minhook/LICENSE.txt','licenses')],
     hiddenimports=[
         'capstone',
+        'war3_extension_definition_ui', 'war3_mpq', 'war3_object_tables',
+        'war3_services.extension_definitions', 'war3_services.ability_bundle',
         'war3_batch_edit_ui',
         'war3_services.batch_edit',
         'war3_runtime_check',
@@ -100,10 +104,10 @@ a = Analysis(
 pyz = PYZ(a.pure)
 exe = EXE(
     pyz, a.scripts, a.binaries, a.datas, [],
-    name='War3ReforgedTrainer-v2.1.09',
+    name='War3ReforgedTrainer-v2.1.10',
     debug=False, bootloader_ignore_signals=False, strip=False, upx=True,
     upx_exclude=[], runtime_tmpdir=None, console=False,
     disable_windowed_traceback=False, uac_admin=False, argv_emulation=False,
     target_arch=None, codesign_identity=None, entitlements_file=None,
-    icon='assets/app_icon.ico', version='tools/war3-2.1.09-version-info.txt',
+    icon='assets/app_icon.ico', version='tools/war3-2.1.10-version-info.txt',
 )

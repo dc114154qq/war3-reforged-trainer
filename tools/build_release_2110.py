@@ -1,4 +1,4 @@
-"""Build and verify the 2.1.09 package from this worktree only."""
+"""Build and verify the 2.1.10 package from this worktree only."""
 
 from __future__ import annotations
 
@@ -25,13 +25,14 @@ ALLOWED_BRANCHES = {
     "master",
     "codex/war3-modular-adapters-20260926",
 }
-VERSION = (2, 1, 9, 0)
-EXE_NAME = "War3ReforgedTrainer-v2.1.09.exe"
-OUTPUT = ROOT / "dist-2.1.09-verified"
+VERSION = (2, 1, 10, 0)
+EXE_NAME = "War3ReforgedTrainer-v2.1.10.exe"
+OUTPUT = ROOT / "dist-2.1.10-verified"
 PACKAGE_BINARIES = (
     "tools\\war3_bridge_24268.dll",
     "tools\\war3_talent_icon_display.dll",
     "tools\\war3_speed_clock.dll",
+    "tools\\war3_mpq.dll",
 )
 
 
@@ -51,7 +52,7 @@ def sha256(path: Path) -> str:
 
 
 def source_paths() -> tuple[Path, ...]:
-    # Keep this list aligned with the actual 2.1.09 build closure.  In
+    # Keep this list aligned with the actual 2.1.10 build closure.  In
     # particular, the separate hotkey product and diagnostics probes must not
     # silently become part of the trainer source hash or package inputs.
     excluded_runtime = {
@@ -103,7 +104,7 @@ def source_paths() -> tuple[Path, ...]:
     )
     files.update(
         ROOT / name for name in (
-            "War3ReforgedTrainer-2.1.09.spec",
+            "War3ReforgedTrainer-2.1.10.spec",
             "tools/war3_bridge_24268.c",
             "tools/build_engine_bridge.ps1",
             "tools/build_talent_icon_display.ps1",
@@ -113,10 +114,15 @@ def source_paths() -> tuple[Path, ...]:
             "tools/verify_talent_icon_display.py",
             "tools/verify_speed_clock.py",
             "third_party/minhook/LICENSE.txt",
-            "tools/build_release_209.py",
-            "RELEASE_NOTES_v2.1.09.md",
-            "tools/war3-2.1.09-version-info.txt",
+            "tools/build_release_2110.py",
+            "RELEASE_NOTES_v2.1.10.md",
+            "tools/war3-2.1.10-version-info.txt",
             "assets/app_icon.ico",
+        "assets/extension-definitions-v1.zip",
+        "third_party/stormlib/StormLib-LICENSE.txt",
+        "tools/prepare_mpq_dependency.py",
+        "tools/generate_extension_definitions.py",
+        "docs/EXTENSION_DEFINITIONS.md",
             "assets/app_icon.png",
         )
     )
@@ -144,7 +150,7 @@ def assert_workspace() -> tuple[str, str]:
                     isinstance(target, ast.Name) and target.id == "APP_VERSION"
                     for target in node.targets
                 ) and isinstance(node.value, ast.Constant)]
-    if versions != ["2.1.09"]:
+    if versions != ["2.1.10"]:
         raise RuntimeError(f"Source version mismatch: {versions}")
     channels = [node.value.value for node in tree.body
                 if isinstance(node, ast.Assign) and any(
@@ -200,6 +206,8 @@ def inspect_exe(exe: Path, expected: dict[str, str] | None = None) -> dict[str, 
     required.update({"war3_new_equipment_catalog", "war3_new_equipment_ui",
                      "war3_hero_skill_catalog", "war3_hero_skill_ui"})
     required.update({"war3_batch_edit_ui", "war3_services.batch_edit"})
+    required.update({"war3_extension_definition_ui", "war3_mpq", "war3_object_tables",
+                     "war3_services.extension_definitions", "war3_services.ability_bundle"})
     if required - set(pyz.toc):
         raise RuntimeError(f"Packaged architecture modules missing: {sorted(required - set(pyz.toc))}")
     main_code = marshal.loads(archive.extract("war3_reforged_trainer"))
@@ -241,6 +249,13 @@ def inspect_exe(exe: Path, expected: dict[str, str] | None = None) -> dict[str, 
     license_entry="licenses\\LICENSE.txt"
     if license_entry not in archive.toc or archive.extract(license_entry)!=(ROOT/"third_party/minhook/LICENSE.txt").read_bytes():
         raise RuntimeError("MinHook distribution license missing or different")
+    for source, entry in (("assets/extension-definitions-v1.zip", "assets\\extension-definitions-v1.zip"),
+                          ("third_party/stormlib/StormLib-LICENSE.txt", "licenses\\StormLib-LICENSE.txt")):
+        if entry not in archive.toc or archive.extract(entry)!=(ROOT/source).read_bytes():
+            raise RuntimeError("Offline map dependency differs: "+entry)
+    from war3_mpq import DLL_SHA256
+    if bundled[PACKAGE_BINARIES[3]].lower()!=DLL_SHA256:
+        raise RuntimeError("Packaged MPQ dependency hash differs")
     return bundled
 
 
@@ -262,17 +277,19 @@ def verify_manifest() -> None:
 
 def build() -> None:
     branch, head = assert_workspace()
+    from prepare_mpq_dependency import prepare
+    prepare()
     before = source_hashes()
     staging_root = ROOT / "build"
     staging_root.mkdir(exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="release-2109-", dir=staging_root,
+    with tempfile.TemporaryDirectory(prefix="release-2110-", dir=staging_root,
                                      ignore_cleanup_errors=True) as temporary:
         stage = Path(temporary)
         native = stage / "native"
         # The 24360 pack changes runtime configuration and Python discovery.
         # Reuse the last released native images only after checking every C
         # input and all four previous exact profiles against 2.1.08.
-        baseline_root = ROOT / "dist-2.1.08-verified"
+        baseline_root = ROOT / "dist-2.1.09-verified"
         baseline = json.loads((baseline_root / "current.json").read_text(encoding="utf8"))
         baseline_exe = baseline_root / baseline["artifact"]
         if sha256(baseline_exe) != baseline["exe_sha256"]:
@@ -285,7 +302,7 @@ def build() -> None:
                     raise RuntimeError("Native or adapter input changed: " + name)
         baseline_archive = CArchiveReader(str(baseline_exe))
         native.mkdir()
-        for name in PACKAGE_BINARIES:
+        for name in PACKAGE_BINARIES[:3]:
             data = baseline_archive.extract(name)
             if hashlib.sha256(data).hexdigest().upper() != baseline["bundled_sha256"][name]:
                 raise RuntimeError("Published DLL hash differs: " + name)
@@ -294,6 +311,7 @@ def build() -> None:
             PACKAGE_BINARIES[0]: sha256(native / "war3_bridge_24268.dll"),
             PACKAGE_BINARIES[1]: sha256(native / "war3_talent_icon_display.dll"),
             PACKAGE_BINARIES[2]: sha256(native / "war3_speed_clock.dll"),
+            PACKAGE_BINARIES[3]: sha256(ROOT / "tools/war3_mpq.dll"),
         }
         environment = dict(os.environ)
         environment["RELEASE_210_BRIDGE_DLL"] = str(native / "war3_bridge_24268.dll")
@@ -301,7 +319,7 @@ def build() -> None:
         environment["RELEASE_210_SPEED_DLL"] = str(native / "war3_speed_clock.dll")
         run(sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean",
             "--distpath", str(stage / "dist"), "--workpath", str(stage / "build"),
-            "War3ReforgedTrainer-2.1.09.spec", env=environment)
+            "War3ReforgedTrainer-2.1.10.spec", env=environment)
         exe = stage / "dist" / EXE_NAME
         bundled = inspect_exe(exe, compiled)
         if before != source_hashes():
@@ -320,13 +338,13 @@ def build() -> None:
                 raise RuntimeError("Copied release artifact differs")
             os.replace(pending_exe, final_exe)
         manifest = {
-            "version": "2.1.09", "release_channel": "stable", "prerelease": False,
+            "version": "2.1.10", "release_channel": "stable", "prerelease": False,
             "release_status": "built_not_published", "branch": branch, "head": head,
             "source_sha256": before, "bundled_sha256": bundled,
             "exe_sha256": exe_hash, "artifact": artifact.as_posix(),
             "baseline_exe_sha256": baseline["exe_sha256"],
-            "native_images_identical_to_2_1_08": True,
-            "baseline_published_source": "6e2dcf4cb9fd651fb6d5b17c6e0296f7c23fcd9a",
+            "native_images_identical_to_2_1_09": True,
+            "baseline_published_source": "0ce16cfbd0ba2f716f21c0bea0244a1ed5b7d247",
             "new_game_build": "3.0.1.24360",
             "new_adapter_id": "war3-3.0.1.24360-r1",
             "discovery_recipe_version": 26,

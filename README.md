@@ -1,42 +1,40 @@
 [中文](README.md) | [English](README.en.md)
 
-# 魔兽 3.0 修改器 · 2.1.09
+# 魔兽 3.0 修改器 · 2.1.10
 
 读取和修改单位、技能、物品及玩家资源，支持批量修改、扩展背包与存档提取。
 
 ## 下载与使用
 
-从 [个人网站](https://twomengxi.xyz/trainer/) 或 [GitHub Release](https://github.com/dc114154qq/war3-reforged-trainer/releases/tag/v2.1.09) 下载 EXE。先进入地图并选中单位，再打开修改器连接游戏。
+从[个人网站](https://twomengxi.xyz/trainer/)或[GitHub Release](https://github.com/dc114154qq/war3-reforged-trainer/releases/tag/v2.1.10)下载 EXE。进入地图并选中单位后连接游戏。
 
-本版已内置 **3.0.1.24360** 适配，直接使用 EXE 即可。
+**本次新增**：“3.0 扩展”→“读取扩展状态”下方可为 w3n 战役或 w3x 地图补齐背包定义，生成独立副本。完整输出路径可复制。全被动／全光环会记录并跳过已确认清理的单项错误，继续其余技能。
 
-批量栏读取已提速，继续保留每个单位的完整可修改字段。
+把处理副本放入游戏目录后重新进入地图；旧存档沿用原数据。[使用详情](docs/EXTENSION_DEFINITIONS.md)
 
 ## 适配范围
 
-魔兽 3.0：`3.0.0.24268`、`3.0.1.24323`、`3.0.1.24332`、`3.0.1.24342`、`3.0.1.24360`。
-
-连接时按游戏文件指纹选择配置。未收录构建会尝试自动定位，其结果以各项功能检查为准。
+魔兽 3.0：`3.0.0.24268`、`3.0.1.24323`、`3.0.1.24332`、`3.0.1.24342`、`3.0.1.24360`。按游戏文件指纹选择配置，未收录构建会尝试自动定位，以功能检查结果为准。
 
 ## 从源码构建
 
-环境：Windows 10/11 x64、Git、Python 3.12（含 Tkinter）。在仓库根目录执行：
+环境：Windows 10/11 x64、Git、Python 3.12（含 Tkinter）。在仓库根目录运行：
 
 ```powershell
 python -m pip install -r requirements-build.txt
-python tools/prepare_build_baseline_209.py
-python tools/build_release_209.py
-python tools/build_release_209.py --verify-only
+python tools/prepare_build_baseline_2110.py
+python tools/build_release_2110.py
+python tools/build_release_2110.py --verify-only
 ```
 
-准备脚本下载固定哈希的原生模块构建依赖；构建器复用其中已发布的三个 DLL，逐项检查源码和文件哈希。运行修改器无需下载此依赖。
+准备脚本下载固定哈希的原生构建依赖；构建器同时准备并校验 MPQ 组件。定义数据包已经包含，运行时无需联网下载。
 
-输出：`dist-2.1.09-verified/<哈希前缀>/War3ReforgedTrainer-v2.1.09.exe`。
+输出：`dist-2.1.10-verified/<哈希前缀>/War3ReforgedTrainer-v2.1.10.exe`。
 
 ## 源码与验证
 
-当前源码仅保留 2.1.09 的运行模块、适配数据、原生源码和构建文件。旧版本可在 Git 标签与 Releases 中查看；`profiles/` 中的旧游戏构建配置仍是本版依赖。
+这里只保留构建当前版本所需的源码和数据。历史更新说明、Git 标签及 Releases 保留。
 
-已通过 4,908 项离线测试、120 项子测试（29 项跳过），以及五版本性能、包内文件、EXE 离线启动和界面资源检查。24360 另有玩家、选中单位和属性的只读核对；实际游戏修改效果及外机运行尚未验收。
+4,953 项离线测试和 120 个子测试通过，29 项跳过；EXE 自检、长路径和界面缩放检查通过。处理后的战役实际游戏效果及外机运行尚未验收。根目录构建说明保留候选阶段的验证记录，当前公开更新说明见下方链接。
 
-[更新说明](docs/RELEASE_NOTES_v2.1.09-r1.zh.md) · [历史更新](docs/HISTORY.md) · [验证记录](docs/VALIDATION.json)
+[当前更新](docs/RELEASE_NOTES_v2.1.10.zh.md) · [历史更新](docs/HISTORY.md) · [验证记录](docs/VALIDATION.json)

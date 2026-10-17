@@ -96,6 +96,16 @@ def _chain(exc):
 def describe_error(exc, language='zh'):
     """Use recorded evidence, never treat a generic WinError as a root cause."""
     chain=list(_chain(exc))
+    from war3_object_tables import DefinitionError
+    definition_error=next((entry for entry in chain if isinstance(entry,DefinitionError)),None)
+    if definition_error is not None:
+        return dict(category='extension_definitions',operation='extension_definitions',
+                    reason=(str(definition_error) if language=='zh' else
+                            'Campaign/map definition processing stopped. See the processing log for the specific file or object conflict.'),
+                    reason_confirmed=True,
+                    recovery=('原文件已保留，可检查提示和处理日志后重新选择文件。' if language=='zh' else
+                              'The original file is preserved. Review the message and processing log, then choose the file again.'),
+                    business_error=None)
     discovery = next((getattr(e, 'discovery_report', None) for e in chain
                       if isinstance(getattr(e, 'discovery_report', None), dict)), None)
     if discovery is not None:

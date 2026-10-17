@@ -47,12 +47,12 @@ from war3_3_stats import STAT_DETAIL_BY_KEY, STAT_DETAIL_SPECS
 from war3_ui_i18n import detect_ui_language, translate_ui_text
 
 
-APP_VERSION = "2.1.09"
+APP_VERSION = "2.1.10"
 APP_RELEASE_CHANNEL = "stable"
 GAME_BUILD = "3.0.0.24268"
 PRODUCT_READ_MODE = "normal"
 PRODUCT_EDITION_LABEL = "普通读取版"
-WIN10_COMPAT_REVISION = "2.1.09-adapter24360-journal-v4-rule26-20261016"
+WIN10_COMPAT_REVISION = "2.1.10-extension-definitions-bundle-skip-20261017"
 
 
 if sys.platform == "win32":
@@ -8444,6 +8444,7 @@ def run_gui(
         )
 
     def elephant_add_standard_auras() -> str:
+        from war3_services.ability_bundle import format_bundle_outcome
         entries = (
             ("AHab", 3),
             ("AHad", 3),
@@ -8457,18 +8458,24 @@ def run_gui(
         )
         trainer = elephant_trainer()
         if getattr(trainer, "_native_selection_unavailable", False):
-            changed, total = trainer.add_ability_bundle_to_selected_unit(entries)
+            result = trainer.add_ability_bundle_to_selected_unit(entries)
+            changed, total = result
+            if getattr(result, 'failures', ()):
+                return format_bundle_outcome('全光环', (result,), ui_language['code'])
             return f"已批量处理全光环 {total} 项，实际修改 {changed} 项"
         results = elephant_batch(
             lambda: trainer.add_ability_bundle_to_selected_unit(entries),
             "添加全光环",
         )
+        if any(getattr(result, 'failures', ()) for result in results):
+            return format_bundle_outcome('全光环', results, ui_language['code'])
         return (
             f"已为 {len(results)} 个单位添加全光环"
             f"{elephant_batch_suffix()}"
         )
 
     def elephant_add_standard_passives() -> str:
+        from war3_services.ability_bundle import format_bundle_outcome
         entries = (
             ("AInv", None),
             ("AHbh", 3),
@@ -8481,12 +8488,17 @@ def run_gui(
         )
         trainer = elephant_trainer()
         if getattr(trainer, "_native_selection_unavailable", False):
-            changed, total = trainer.add_ability_bundle_to_selected_unit(entries)
+            result = trainer.add_ability_bundle_to_selected_unit(entries)
+            changed, total = result
+            if getattr(result, 'failures', ()):
+                return format_bundle_outcome('全被动', (result,), ui_language['code'])
             return f"已批量处理全被动 {total} 项，实际修改 {changed} 项"
         results = elephant_batch(
             lambda: trainer.add_ability_bundle_to_selected_unit(entries),
             "添加全被动",
         )
+        if any(getattr(result, 'failures', ()) for result in results):
+            return format_bundle_outcome('全被动', results, ui_language['code'])
         return (
             f"已为 {len(results)} 个单位添加全被动"
             f"{elephant_batch_suffix()}"
@@ -9521,6 +9533,7 @@ def run_gui(
         refresh_language_dependent_rows()
         save_extraction_tab.refresh_language()
         batch_edit_tab.refresh_language()
+        extension_definition_panel.refresh_language()
 
     def on_language_changed(_event: object | None = None) -> None:
         ui_language["code"] = "zh" if language_choice.get() == "中文" else "en"
@@ -10028,8 +10041,10 @@ def run_gui(
     notebook.add(extension_tab, text="3.0 扩展")
     extension_toolbar = ttk.Frame(extension_tab)
     extension_toolbar.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 8))
+    extension_status_row = ttk.Frame(extension_toolbar)
+    extension_status_row.pack(side='top', fill='x')
     extension_refresh_button = ttk.Button(
-        extension_toolbar,
+        extension_status_row,
         text="读取扩展状态",
         command=lambda: call_async(
             refresh_extension_snapshot,
@@ -10039,7 +10054,13 @@ def run_gui(
         ),
     )
     extension_refresh_button.pack(side="left")
-    ttk.Label(extension_toolbar, textvariable=extension_status).pack(side="left", padx=(12, 0))
+    ttk.Label(extension_status_row, textvariable=extension_status).pack(side="left", padx=(12, 0))
+    from war3_extension_definition_ui import ExtensionDefinitionPanel
+    extension_definition_panel = ExtensionDefinitionPanel(
+        extension_toolbar, get_language=lambda: ui_language['code'],
+        start_thread=start_operation_thread, is_closing=lambda: bool(state.get('closing')),
+    )
+    extension_definition_panel.pack(side='top', fill='x', pady=(8, 0))
 
     extension_bag_frame = ttk.LabelFrame(extension_tab, text="30 格扩展背包", padding=8)
     extension_bag_frame.grid(row=1, column=0, sticky="nsew", padx=(0, 5), pady=(0, 8))

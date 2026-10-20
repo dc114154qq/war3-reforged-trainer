@@ -101,13 +101,25 @@ a = Analysis(
     hookspath=[], hooksconfig={}, runtime_hooks=[], excludes=[],
     noarchive=False, optimize=0,
 )
+runtime_entries = [row for row in a.binaries
+                   if row[0].lower().startswith('api-ms-win-') or row[0].lower() == 'ucrtbase.dll']
+if runtime_entries:
+    runtime_root = Path(os.environ['RELEASE_2112_RUNTIME_DIR'])
+    pinned_files = sorted(runtime_root.glob('*.dll'))
+    if not pinned_files or not (runtime_root / 'ucrtbase.dll').is_file():
+        raise RuntimeError('Verified baseline runtime set is incomplete')
+    # Restore the complete matched CRT/API dependency set, including its
+    # original closure. New host CRT dependencies are not part of that set.
+    a.binaries = [row for row in a.binaries if row not in runtime_entries]
+    a.binaries.extend((path.name, str(path), 'BINARY') for path in pinned_files)
+
 pyz = PYZ(a.pure)
 exe = EXE(
     pyz, a.scripts, a.binaries, a.datas, [],
-    name='War3ReforgedTrainer-v2.1.10',
+    name='War3ReforgedTrainer-v2.1.12',
     debug=False, bootloader_ignore_signals=False, strip=False, upx=True,
     upx_exclude=[], runtime_tmpdir=None, console=False,
     disable_windowed_traceback=False, uac_admin=False, argv_emulation=False,
     target_arch=None, codesign_identity=None, entitlements_file=None,
-    icon='assets/app_icon.ico', version='tools/war3-2.1.10-version-info.txt',
+    icon='assets/app_icon.ico', version='tools/war3-2.1.12-version-info.txt',
 )

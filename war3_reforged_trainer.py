@@ -47,12 +47,12 @@ from war3_3_stats import STAT_DETAIL_BY_KEY, STAT_DETAIL_SPECS
 from war3_ui_i18n import detect_ui_language, translate_ui_text
 
 
-APP_VERSION = "2.1.10"
+APP_VERSION = "2.1.12"
 APP_RELEASE_CHANNEL = "stable"
 GAME_BUILD = "3.0.0.24268"
 PRODUCT_READ_MODE = "normal"
 PRODUCT_EDITION_LABEL = "普通读取版"
-WIN10_COMPAT_REVISION = "2.1.10-extension-definitions-bundle-skip-20261017"
+WIN10_COMPAT_REVISION = "2.1.12-24371-local-20261020"
 
 
 if sys.platform == "win32":

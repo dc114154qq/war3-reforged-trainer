@@ -1,23 +1,24 @@
-# Warcraft III 3.0 Trainer 2.1.10
+# Warcraft III 3.0 Trainer 2.1.12
 
-Create a repaired copy when a campaign reports missing backpack definitions. All passives and All auras now skip an individually rejected skill and continue the remaining skills after execution cleanup is confirmed.
+Adds a dedicated adapter for **Warcraft III 3.0.1.24371**, included directly in the EXE. No separate adapter installation is needed. Listed in the website's Warcraft III 3.0 section.
 
 ## Changes
 
-- **Add campaign/map backpack definitions**: a new button below Read Extension State in 3.0 Extensions accepts .w3n campaigns and .w3x maps and creates a separate copy, preserving the original.
-- Processes every campaign chapter and adds missing backpack, equipment, related talent and dependency definitions. Existing records are preserved; object-ID conflicts are reported. Archives are reopened and verified after writing.
-- Complete output paths wrap, scroll and support selection, copying and opening the output folder.
-- **All passives / All auras**: a rejected skill is recorded and skipped once callback exit and cleanup are confirmed. The remaining skills continue, with completed/skipped counts and detailed logs. Maximum-level settings are retained.
-- Keeps the faster batch reader from 2.1.09, all five game profiles and existing features.
+- Updates the unit, player, selection and ability-call dependencies for the new build, including the reviewed attack-speed query functions.
+- Includes the previous local preview's **Ctrl+X cursor teleport precision fix**, improving terrain intersection on slopes. Actual in-game landing still needs confirmation.
+- Fixes premature object-identity confirmation in automatic discovery. The builder now checks that every bundled game profile has matching discovery source data.
+- Retains batch editing, campaign backpack definitions, individual failure handling for All passives / All auras, and the previous six game profiles.
 
-## Why the same campaign behaves differently
+## Current limits
 
-An identical Ireland's Soul 1 campaign loaded the base ability table containing the 3.0 definitions in 3.0.0.24268. In the observed 3.0.1.24360 session, it loaded the older custom-data table without those definitions. Loaded data, rather than campaign age alone, determines availability.
+For **3.0.1.24371**, **3.0 detailed attributes, fog operations and alternate local-player mode** remain disabled because their dependencies have not been independently verified in full. Ability leveling retains its existing error handling without a guessed old exception-recovery address.
 
-## Use
+This is a dedicated 24371 adapter. Complete automatic support for future unknown builds remains unverified.
 
-Choose Add backpack definitions → select the input and output folder → Create repaired copy. Put the generated copy in the appropriate game folder and enter the map afresh. Existing saves retain their original map data.
+## Verification
 
-For **Warcraft III 3.0**. Built-in profiles: 3.0.0.24268, 3.0.1.24323, 3.0.1.24332, 3.0.1.24342 and 3.0.1.24360.
+Live read-only checks covered 28 players, the selected hero and another registry unit, 19 components and 1,857 Native registrations. Camera, armor, intelligence and attack-speed queries completed with readback and cleanup. No game business data was changed.
 
-Verification: 4,953 distinct offline tests and 120 subtests passed; 29 skipped. Packaged dependency checks and EXE startup self-test passed. All 11 chapters of Chronicles of the Forsaken 1 were processed and reread. Gameplay effects of the processed copy and external-machine execution remain unverified.
+Across separate runs, **5,013 distinct offline tests and 120 subtests passed; 29 skipped**. One existing Tk initialization failure in the full process passed unchanged in a fresh process; this is not a claim of a single error-free full run. EXE archive checks and startup self-test passed. Game mutation effects, actual Ctrl+X landing and external-machine execution remain unverified.
+
+Bundled profiles: 3.0.0.24268, 3.0.1.24323, 3.0.1.24332, 3.0.1.24342, 3.0.1.24360, 3.0.1.24365 and 3.0.1.24371. Available features depend on each build's profile.

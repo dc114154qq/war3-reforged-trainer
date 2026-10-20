@@ -47,6 +47,9 @@ class CapabilitySet:
                 missing.append(str(exc))
         if name in ('clone_bound','unit_bindings') and not self.profile.section('addresses')['unit_resolver']:
             missing.append('Bound clone unit resolver has not been adapted for this build')
+        if (name == 'world' and request is not None and request.get('action') in (3, 4)
+                and any(not value for value in self.profile.section('fog_recovery').values())):
+            missing.append('当前游戏版本的迷雾恢复位置尚未确认；本次未调用迷雾功能')
         # Internal attack routines need separately located addresses; a generic
         # native handler table cannot make inherited/unknown RVAs executable.
         if name == "attack_speed" and any(self.profile.section("addresses")[key] == 0

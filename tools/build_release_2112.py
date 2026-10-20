@@ -1,4 +1,4 @@
-"""Build and verify the 2.1.10 package from this worktree only."""
+"""Build and verify the 2.1.12 package from this worktree only."""
 
 from __future__ import annotations
 
@@ -25,9 +25,9 @@ ALLOWED_BRANCHES = {
     "master",
     "codex/war3-modular-adapters-20260926",
 }
-VERSION = (2, 1, 10, 0)
-EXE_NAME = "War3ReforgedTrainer-v2.1.10.exe"
-OUTPUT = ROOT / "dist-2.1.10-verified"
+VERSION = (2, 1, 12, 0)
+EXE_NAME = "War3ReforgedTrainer-v2.1.12.exe"
+OUTPUT = ROOT / "dist-2.1.12-verified"
 PACKAGE_BINARIES = (
     "tools\\war3_bridge_24268.dll",
     "tools\\war3_talent_icon_display.dll",
@@ -52,7 +52,7 @@ def sha256(path: Path) -> str:
 
 
 def source_paths() -> tuple[Path, ...]:
-    # Keep this list aligned with the actual 2.1.10 build closure.  In
+    # Keep this list aligned with the actual 2.1.12 build closure.  In
     # particular, the separate hotkey product and diagnostics probes must not
     # silently become part of the trainer source hash or package inputs.
     excluded_runtime = {
@@ -88,6 +88,8 @@ def source_paths() -> tuple[Path, ...]:
         "tools/generate_bridge_profile.py",
         "tools/generate_discovery_references.py",
         "ADAPTER_NOTES_3.0.1.24360.md",
+        "ADAPTER_NOTES_3.0.1.24365.md",
+        "ADAPTER_NOTES_3.0.1.24371.md",
         "tools/war3_talent_icon_display.c",
         "tools/war3_talent_icon_predicate.h",
         "tools/war3_talent_icon_thunk.S",
@@ -104,7 +106,7 @@ def source_paths() -> tuple[Path, ...]:
     )
     files.update(
         ROOT / name for name in (
-            "War3ReforgedTrainer-2.1.10.spec",
+            "War3ReforgedTrainer-2.1.12.spec",
             "tools/war3_bridge_24268.c",
             "tools/build_engine_bridge.ps1",
             "tools/build_talent_icon_display.ps1",
@@ -114,9 +116,9 @@ def source_paths() -> tuple[Path, ...]:
             "tools/verify_talent_icon_display.py",
             "tools/verify_speed_clock.py",
             "third_party/minhook/LICENSE.txt",
-            "tools/build_release_2110.py",
-            "RELEASE_NOTES_v2.1.10.md",
-            "tools/war3-2.1.10-version-info.txt",
+            "tools/build_release_2112.py",
+            "RELEASE_NOTES_v2.1.12.md",
+            "tools/war3-2.1.12-version-info.txt",
             "assets/app_icon.ico",
         "assets/extension-definitions-v1.zip",
         "third_party/stormlib/StormLib-LICENSE.txt",
@@ -133,6 +135,15 @@ def source_paths() -> tuple[Path, ...]:
 
 
 def source_hashes() -> dict[str, str]:
+    from war3_game_profile import ProfileCatalog
+    from war3_profile_discovery import RECIPE_VERSION
+    book = json.loads((ROOT / "profiles/discovery/references.json").read_text(encoding="utf8"))
+    if book.get("recipe_version") != RECIPE_VERSION:
+        raise RuntimeError("Packaged discovery rule version differs")
+    for profile in ProfileCatalog(ROOT / "build/no-installed-source-check").profiles:
+        source = book.get("sources", {}).get(profile.data["game_version"])
+        if source is None or source.get("source_digest") != profile.digest:
+            raise RuntimeError("Exact profile lacks its matching source rule: " + profile.id)
     return {path.relative_to(ROOT).as_posix(): sha256(path) for path in source_paths()}
 
 
@@ -150,7 +161,7 @@ def assert_workspace() -> tuple[str, str]:
                     isinstance(target, ast.Name) and target.id == "APP_VERSION"
                     for target in node.targets
                 ) and isinstance(node.value, ast.Constant)]
-    if versions != ["2.1.10"]:
+    if versions != ["2.1.12"]:
         raise RuntimeError(f"Source version mismatch: {versions}")
     channels = [node.value.value for node in tree.body
                 if isinstance(node, ast.Assign) and any(
@@ -282,44 +293,43 @@ def build() -> None:
     before = source_hashes()
     staging_root = ROOT / "build"
     staging_root.mkdir(exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="release-2110-", dir=staging_root,
+    with tempfile.TemporaryDirectory(prefix="release-2112-", dir=staging_root,
                                      ignore_cleanup_errors=True) as temporary:
         stage = Path(temporary)
         native = stage / "native"
-        # The 24360 pack changes runtime configuration and Python discovery.
-        # Reuse the last released native images only after checking every C
-        # input and all four previous exact profiles against 2.1.08.
-        baseline_root = ROOT / "dist-2.1.09-verified"
+        # The exact data adapter uses the existing bridge protocol unchanged.
+        baseline_root = ROOT / "dist-2.1.11-verified"
         baseline = json.loads((baseline_root / "current.json").read_text(encoding="utf8"))
         baseline_exe = baseline_root / baseline["artifact"]
         if sha256(baseline_exe) != baseline["exe_sha256"]:
-            raise RuntimeError("Published baseline EXE hash differs")
+            raise RuntimeError("Current local baseline EXE hash differs")
         for name, digest in baseline["source_sha256"].items():
             if (name.startswith("profiles/") and name.count("/") == 1) or name.startswith("third_party/") or (
                 name.startswith("tools/") and Path(name).suffix in {".c", ".h", ".S", ".ps1"}
             ):
                 if sha256(ROOT / name) != digest:
-                    raise RuntimeError("Native or adapter input changed: " + name)
+                    raise RuntimeError("Existing native input or exact profile changed: " + name)
         baseline_archive = CArchiveReader(str(baseline_exe))
         native.mkdir()
-        for name in PACKAGE_BINARIES[:3]:
-            data = baseline_archive.extract(name)
-            if hashlib.sha256(data).hexdigest().upper() != baseline["bundled_sha256"][name]:
-                raise RuntimeError("Published DLL hash differs: " + name)
-            (native / name.split("\\")[-1]).write_bytes(data)
-        compiled = {
-            PACKAGE_BINARIES[0]: sha256(native / "war3_bridge_24268.dll"),
-            PACKAGE_BINARIES[1]: sha256(native / "war3_talent_icon_display.dll"),
-            PACKAGE_BINARIES[2]: sha256(native / "war3_speed_clock.dll"),
-            PACKAGE_BINARIES[3]: sha256(ROOT / "tools/war3_mpq.dll"),
-        }
+        for name in PACKAGE_BINARIES:
+            raw = baseline_archive.extract(name)
+            if hashlib.sha256(raw).hexdigest().upper() != baseline["bundled_sha256"][name]:
+                raise RuntimeError("Baseline native image differs: " + name)
+            (native / name.split("\\")[-1]).write_bytes(raw)
+        compiled = dict(baseline["bundled_sha256"])
+        runtime = native / "runtime"
+        runtime.mkdir()
+        for name in baseline_archive.toc:
+            if "\\" not in name and (name.lower().startswith("api-ms-win-") or name.lower() == "ucrtbase.dll"):
+                (runtime / name).write_bytes(baseline_archive.extract(name))
         environment = dict(os.environ)
+        environment["RELEASE_2112_RUNTIME_DIR"] = str(runtime)
         environment["RELEASE_210_BRIDGE_DLL"] = str(native / "war3_bridge_24268.dll")
         environment["RELEASE_210_ICON_DLL"] = str(native / "war3_talent_icon_display.dll")
         environment["RELEASE_210_SPEED_DLL"] = str(native / "war3_speed_clock.dll")
         run(sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean",
             "--distpath", str(stage / "dist"), "--workpath", str(stage / "build"),
-            "War3ReforgedTrainer-2.1.10.spec", env=environment)
+            "War3ReforgedTrainer-2.1.12.spec", env=environment)
         exe = stage / "dist" / EXE_NAME
         bundled = inspect_exe(exe, compiled)
         if before != source_hashes():
@@ -338,16 +348,16 @@ def build() -> None:
                 raise RuntimeError("Copied release artifact differs")
             os.replace(pending_exe, final_exe)
         manifest = {
-            "version": "2.1.10", "release_channel": "stable", "prerelease": False,
+            "version": "2.1.12", "release_channel": "stable", "prerelease": False,
             "release_status": "built_not_published", "branch": branch, "head": head,
             "source_sha256": before, "bundled_sha256": bundled,
             "exe_sha256": exe_hash, "artifact": artifact.as_posix(),
             "baseline_exe_sha256": baseline["exe_sha256"],
-            "native_images_identical_to_2_1_09": True,
-            "baseline_published_source": "0ce16cfbd0ba2f716f21c0bea0244a1ed5b7d247",
-            "new_game_build": "3.0.1.24360",
-            "new_adapter_id": "war3-3.0.1.24360-r1",
-            "discovery_recipe_version": 26,
+            "native_images_identical_to_2_1_11": True,
+            "baseline_kind": "current_verified_local_2.1.11",
+            "new_game_build": "3.0.1.24371",
+            "new_adapter_id": "war3-3.0.1.24371-r1",
+            "discovery_recipe_version": 27,
         }
         pending = OUTPUT / "current.json.tmp"
         pending.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")

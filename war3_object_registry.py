@@ -311,7 +311,10 @@ class ObjectRegistry24268:
         encoded = self._qword(memory, self.base + self.addresses["game_state"])
         state = decode_game_state(encoded, self.profile)
         players = self.players(memory)
-        index_address = state + (self.players_layout["alternate_index"] if mode == 1 else self.players_layout["normal_index"])
+        member = self.players_layout["alternate_index"] if mode == 1 else self.players_layout["normal_index"]
+        if not member:
+            raise ObjectIdentityError("Current game mode's local player index has not been adapted")
+        index_address = state + member
         raw = _read(memory, index_address, 2)
         index = struct.unpack("<H", raw)[0]
         if index >= len(players):

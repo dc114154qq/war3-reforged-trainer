@@ -23,7 +23,7 @@ typedef struct WorldWork {
     uint64_t (*get_xp_rate)(uint64_t);
 } WorldWork;
 _Static_assert(sizeof(WorldWork)==160,"WorldWork ABI");
-__declspec(dllexport) const uint32_t world_batch_abi[3]={0x2426805cu,216u,160u};
+__declspec(dllexport) const uint32_t world_batch_abi[3]={0x24268074u,216u,160u};
 
 static float WorldReal(uint32_t bits) {
     union {uint32_t bits;float value;} value;value.bits=bits;return value.value;
@@ -175,7 +175,9 @@ __declspec(dllexport) uint64_t BridgeWorldQuery(void) {
     uint32_t enabled,i;
     if (w) for(i=0;i<6u;++i) {
         uint32_t offset=i<4u?w->fog_gate[i]:w->fog_tail[i-4u];
-        if (!offset || offset>=0x10000u) {w->error=80;return 0;}
+        if (offset>=0x10000u || (!offset && (w->action==WORLD_QUERY_FOG || w->action==WORLD_SET_FOG))) {
+            w->error=80;return 0;
+        }
     }
     if (!w || w->expected_tls!=g_dispatch->tls_value || w->action<WORLD_SET_TECH || w->action>WORLD_END_GAME ||
         (w->action==WORLD_SET_TECH ? (!w->rawcode || w->value>100000) :

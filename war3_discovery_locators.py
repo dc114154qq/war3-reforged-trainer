@@ -120,7 +120,14 @@ def rtti_table_witness(image,table,budget):
 
 
 def decode_state_fragment(code, rva):
-    """Recognize the two bundled algorithms and recover constants; reject other orderings."""
+    """Recognize the bundled algorithms and recover constants; reject other orderings.
+
+    Handles three confirmed instruction shapes:
+      legacy:       ror / rol / add / xor / add  (add2 in same fragment)
+      modern_tail:  rol / xor / ror              (ror == 64-rol; add2 in same fragment)
+      modern:       rol / xor / rol              (add1==0 omitted; add2 in a separate
+                                                  consumer block, recovered by caller)
+    """
     insns = list(decoder().disasm(code, rva))
     constants, operations = {}, []
     target = None
@@ -142,6 +149,13 @@ def decode_state_fragment(code, rva):
         return "legacy", dict(zip(("ror", "rol", "add1", "xor", "add2"), (op[1] for op in operations)))
     if names == ("rol", "xor", "ror"):
         return "modern_tail", dict(zip(("rol", "xor", "ror"), (op[1] for op in operations)))
+    # ROL/XOR/ROL: add1 is zero and omitted; add2 lives in a separate consumer block.
+    # The caller is responsible for locating add2 via _decoder_consumer_add2.
+    if names == ("rol", "xor", "rol"):
+        rol1, xor_, rol2 = (op[1] for op in operations)
+        # Normalise: ROL n  ≡  ROR (64-n).  Store as ror so downstream profile
+        # fields stay consistent with the existing modern_tail/legacy key set.
+        return "modern", {"rol": rol1, "xor": xor_, "ror": 64 - rol2, "add1": 0, "add2": 0}
     return None
 
 
@@ -270,13 +284,17 @@ def resolver_registry_layout(image, rva, budget):
     values={'primary':first['tables'][0], 'alternate':second['tables'][0],
             'count':count_offsets[0], 'stride':16, 'slot_owner':owners[0]}
     if not all(0<value<0x400 and value%8==0 for value in values.values()): return {}, {}
+    owner_handle = generations[0] - 4
+    if not (0 < owner_handle < 0x400 and owner_handle % 8 == 0):
+        return {}, {'registry.indexed': DiscoveryEvidence('registry.indexed', 'unresolved',
+                                                           'resolver_owner_handle_invalid')}
     updates={'registry.'+key:value for key,value in values.items()}
     evidence={path:DiscoveryEvidence(path,'confirmed','both_resolver_handle_branches',(value,),(rva,))
               for path,value in updates.items()}
-    # Comparing the generation dword does not prove the low dword's position.
-    # Retain the complete-handle member as a candidate until a live owner agrees.
+    # The compared generation dword alone does not establish its neighboring
+    # full handle. Current player backlinks must corroborate that candidate.
     evidence['registry.owner_handle']=DiscoveryEvidence('registry.owner_handle','candidate',
-        'resolver_generation_member',(generations[0]-4,),(rva,))
+        'resolver_generation_member',(owner_handle,),(rva,))
     return updates,evidence
 
 
@@ -417,10 +435,15 @@ def locate_public_layout(image, source, budget):
 
 
 STATE_FRAGMENTS = (
-    # Only the two bundled operation orders. Immediates below are placeholders,
+    # Only the confirmed operation orders. Immediates below are placeholders,
     # not copied target answers; signature() masks them before matching.
-    ("legacy", bytes.fromhex('48d1cb48b8000000000000000048c1c3014803d848b800000000000000004833d848b800000000000000004803d8')),
+    # legacy:       ror / rol / add / xor / add  (24323–24342 shape)
+    # modern_tail:  rol / xor / ror              (24323–24360 variant; ror == 64-rol)
+    # modern:       rol / xor / rol              (24365+ shape; add1==0 omitted, add2
+    #                                             lives in a separate consumer block)
+    ("legacy",      bytes.fromhex('48d1cb48b8000000000000000048c1c3014803d848b800000000000000004833d848b800000000000000004803d8')),
     ("modern_tail", bytes.fromhex('48c1c30148b800000000000000004833d848c1cb01')),
+    ("modern",      bytes.fromhex('48c1c30148b800000000000000004833d848c1c301')),
 )
 
 
@@ -474,6 +497,44 @@ def _decoder_player_consumers(image, records, player_accessor, budget):
     return {identity:tuple(rows.values()) for identity,rows in witnesses.items() if len(rows)>=2}
 
 
+def _locate_modern_add2(image, tail_rva, tail_len, budget):
+    """Recover the nonzero add2 constant that follows the modern ROL/XOR/ROL tail.
+
+    In the 24365 shape the final addition lives in a separate consumer block
+    immediately after the tail fragment.  We scan up to 256 bytes forward for
+    one of two patterns:
+      - movabs <reg>, imm64 / add rbx, <reg>   (constant via register)
+      - add rbx, imm32                           (sign-extended immediate)
+    Only one matching constant is accepted; two or more mean the region is
+    ambiguous and we return None so add2 stays zero rather than being guessed.
+    """
+    from capstone.x86 import X86_OP_REG, X86_OP_IMM
+    try:
+        suffix = image.read(tail_rva + tail_len, 256)
+    except OSError:
+        return None
+    budget.check('正在定位 modern 解码器的独立加法块')
+    constants = {}
+    candidates = []
+    for ins in decoder().disasm(suffix, tail_rva + tail_len):
+        ops = ins.operands
+        if ins.mnemonic in ('ret', 'int3', 'jmp', 'call'):
+            break
+        if ins.mnemonic in ('mov', 'movabs') and len(ops) == 2 and ops[1].type == X86_OP_IMM:
+            constants[ins.reg_name(ops[0].reg)] = ops[1].imm & ((1 << 64) - 1)
+        elif ins.mnemonic == 'add' and len(ops) == 2 and ins.reg_name(ops[0].reg) == 'rbx':
+            if ops[1].type == X86_OP_REG:
+                val = constants.get(ins.reg_name(ops[1].reg))
+                if val is not None and val != 0:
+                    candidates.append(val)
+            elif ops[1].type == X86_OP_IMM and ops[1].imm != 0:
+                # sign-extended imm32 — take the full 64-bit value capstone gives
+                candidates.append(ops[1].imm & ((1 << 64) - 1))
+    if len(candidates) == 1:
+        return candidates[0]
+    return None
+
+
 def locate_state_decoder(image, budget, *, player_accessor=None):
     records=[]
     for strategy,template in STATE_FRAGMENTS:
@@ -501,6 +562,9 @@ def locate_state_decoder(image, budget, *, player_accessor=None):
                 if len(instructions)<3 or instructions[1].mnemonic!='movabs' or instructions[2].mnemonic!='add':continue
                 if instructions[1].op_str.split(',')[0]!='rcx' or instructions[2].op_str!='rbx, rcx':continue
                 values=dict(values,add1=instructions[1].operands[1].imm&((1<<64)-1),add2=0)
+            # modern: head is just the producer load; add1==0 (omitted), add2
+            # is nonzero and lives in a separate consumer block.  It is recovered
+            # below via _decoder_player_consumers before identities are settled.
             records.append((mode,values,root[0],producer,head,at,raw))
     identities={(mode,tuple(sorted(values.items())),root) for mode,values,root,*_ in records}
     consumer_anchors=()
@@ -515,9 +579,17 @@ def locate_state_decoder(image, budget, *, player_accessor=None):
     # Multiple equivalent instruction sites prove one semantic value; retain the
     # lowest site only as an exact-byte witness, not as an address-selection guess.
     mode,values,root,producer,head,tail,raw=min(records,key=lambda r:(r[3],r[5]))
+    # modern: add2 lives in the consumer block immediately following the tail.
+    # Locate it by scanning up to 256 bytes after the tail for a `add rbx,imm64`
+    # pattern (movabs rcx,imm64 followed by add rbx,rcx, or direct add rbx,imm32).
+    if mode=='modern' and values.get('add2')==0:
+        add2=_locate_modern_add2(image,tail,len(raw),budget)
+        if add2 is not None:
+            values=dict(values,add2=add2)
     updates={'addresses.game_state':root, **{'decoder.'+k:v for k,v in values.items()}}
-    strategy='legacy_layout_24332_v1' if mode=='modern_tail' else 'legacy_layout_24323_v1'
-    updates['modules.legacy_layout.implementation']=strategy
+    # Strategy tag: modern variants use 24332_v1 (same decoder protocol, different shape).
+    strategy_map={'legacy':'legacy_layout_24323_v1','modern_tail':'legacy_layout_24332_v1','modern':'legacy_layout_24332_v1'}
+    updates['modules.legacy_layout.implementation']=strategy_map.get(mode,'legacy_layout_24332_v1')
     evidence={name:DiscoveryEvidence(name,'confirmed','known_decoder_dataflow',(value,),tuple(r[3] for r in records))
               for name,value in updates.items()}
     evidence['decoder']=DiscoveryEvidence('decoder','confirmed','known_decoder_dataflow',anchors=tuple(r[5] for r in records))

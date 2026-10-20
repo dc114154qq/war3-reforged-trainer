@@ -14,7 +14,7 @@ import time
 
 from war3_game_profile import ProfileError, _no_duplicates
 
-RECIPE_VERSION = 26
+RECIPE_VERSION = 27
 CACHE_VERSION = 1
 CHUNK = 256 * 1024
 MAX_SCAN_BYTES = 256 * 1024 * 1024

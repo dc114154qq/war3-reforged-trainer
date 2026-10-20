@@ -41,8 +41,20 @@ class ResolvedProfile(BorrowedGameProfile):
         if missing_dependencies(self.evidence, ("modules."+name,)):
             raise DiscoveryError("当前游戏版本的这项扩展尚未完成自动定位。", code="dependencies",
                                  evidence=tuple(self.evidence.values()))
-        # Recognized, bundled strategy only. Instruction-patching modules keep their gate.
-        return super().require_module(name)
+        # Discovered profiles carry an unknown fingerprint by definition, so the
+        # base-class fingerprint-set gate must not apply.  Verify only that the
+        # module is enabled and the strategy name is a known bundled algorithm;
+        # talent_icons still requires an exact fingerprint match because it
+        # patches instructions rather than just relocating data pointers.
+        module = self.data["modules"].get(name)
+        if module is None or not module["enabled"]:
+            raise ProfileError("Adapter capability disabled: " + name)
+        from war3_version_modules import known_implementation, validate_implementation
+        if not known_implementation(name, module["implementation"]):
+            raise ProfileError("Version-specific module needs separate adaptation: " + name)
+        if name == "talent_icons" and not validate_implementation(
+                name, module["implementation"], self.fingerprint):
+            raise ProfileError("Version-specific module needs separate adaptation: " + name)
 
 
 def _set(data, path, value):

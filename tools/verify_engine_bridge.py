@@ -100,7 +100,7 @@ def main() -> None:
     marker(b"clone_bound_abi", (0x24268064, 216, 2680))
     marker(b"unit_bindings_abi", (0x24268065, 216, 1280))
     marker(b"unit_action_batch_abi", (0x24268016, 216, 1432))
-    marker(b"world_batch_abi", (0x2426805c, 216, 160))
+    marker(b"world_batch_abi", (0x24268074, 216, 160))
     marker(b"bulk_batch_abi", (0x2426803A, 216, 656))
     marker(b"effect_batch_abi", (0x24268027, 216, 1168))
     marker(b"world_effect_batch_abi", (0x24268028, 216, 656))

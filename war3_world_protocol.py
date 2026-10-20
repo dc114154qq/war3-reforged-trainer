@@ -3,7 +3,7 @@ import math
 import struct
 
 WORK_SIZE = 160
-ABI = struct.pack('<3I', 0x2426805c, 216, WORK_SIZE)
+ABI = struct.pack('<3I', 0x24268074, 216, WORK_SIZE)
 SIGNATURES = (
     ('GetLocalPlayer', '()Hplayer;'),
     ('SetPlayerTechMaxAllowed', '(Hplayer;II)V'),
@@ -56,11 +56,14 @@ def validate_work(payload):
         raise ValueError('World work must contain 160 bytes')
     if not 0x10000<=struct.unpack_from('<Q',payload,152)[0]<0x800000000000:
         raise ValueError('Invalid experience-rate getter')
-    if any(not 0 < offset < 0x10000 for offset in struct.unpack_from('<6I', payload, 128)):
+    recovery = struct.unpack_from('<6I', payload, 128)
+    if any(not 0 <= offset < 0x10000 for offset in recovery):
         raise ValueError('Invalid fog recovery configuration')
     values = struct.unpack_from('<11Q10I', payload, 0)
     pointers, tls = values[:10], values[10]
     action, rawcode, value, *outputs = values[11:]
+    if action in (ACTION_QUERY_FOG, ACTION_SET_FOG) and not all(recovery):
+        raise ValueError('Fog recovery sites have not been adapted for this build')
     if (any(not 0x10000 <= pointer < 0x800000000000 for pointer in pointers)
             or len(set(pointers)) != len(pointers)
             or not 0x10000 <= tls < 0x800000000000 or tls % 8

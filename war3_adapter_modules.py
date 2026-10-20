@@ -606,3 +606,4 @@ def _component_24332(profile):
     return ComponentAdapter24332(profile)
 
 IMPLEMENTATION_PROVIDERS["legacy_layout_24332_v1"] = _component_24332
+IMPLEMENTATION_PROVIDERS["legacy_layout_24371_v2"] = _component_24332

@@ -76,8 +76,9 @@ def dependencies_for(name, request=None):
         action = request.get('action')
         if action in (1, 2, 5, 6):
             return NATIVE
-        if action in (3, 4):
-            return NATIVE | {'fog_recovery'}
+        if action==3:
+            return NATIVE | {'fog_recovery.enabled_gate','fog_recovery.masked_gate'}
+        if action==4:return NATIVE | {'fog_recovery'}
         raise ValueError('Invalid world action')
     if name == 'selected_units' and request is not None:
         mode = request.get('mode')

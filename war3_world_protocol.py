@@ -3,7 +3,7 @@ import math
 import struct
 
 WORK_SIZE = 160
-ABI = struct.pack('<3I', 0x24268074, 216, WORK_SIZE)
+ABI = struct.pack('<3I', 0x24268075, 216, WORK_SIZE)
 SIGNATURES = (
     ('GetLocalPlayer', '()Hplayer;'),
     ('SetPlayerTechMaxAllowed', '(Hplayer;II)V'),
@@ -62,7 +62,8 @@ def validate_work(payload):
     values = struct.unpack_from('<11Q10I', payload, 0)
     pointers, tls = values[:10], values[10]
     action, rawcode, value, *outputs = values[11:]
-    if action in (ACTION_QUERY_FOG, ACTION_SET_FOG) and not all(recovery):
+    required=recovery[2:4] if action==ACTION_QUERY_FOG else recovery if action==ACTION_SET_FOG else ()
+    if required and not all(required):
         raise ValueError('Fog recovery sites have not been adapted for this build')
     if (any(not 0x10000 <= pointer < 0x800000000000 for pointer in pointers)
             or len(set(pointers)) != len(pointers)

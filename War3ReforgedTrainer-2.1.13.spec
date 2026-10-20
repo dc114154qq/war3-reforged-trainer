@@ -88,7 +88,7 @@ a = Analysis(
         'war3_discovery_properties',
         'war3_discovery_abi',
         'war3_discovery_call_abi',
-        'war3_discovery_stats',
+        'war3_discovery_stats', 'war3_discovery_native_recovery', 'war3_discovery_decoder_flow',
         'war3_discovery_components',
         'war3_discovery_ability_identity',
         'war3_3_stats',
@@ -104,7 +104,7 @@ a = Analysis(
 runtime_entries = [row for row in a.binaries
                    if row[0].lower().startswith('api-ms-win-') or row[0].lower() == 'ucrtbase.dll']
 if runtime_entries:
-    runtime_root = Path(os.environ['RELEASE_2112_RUNTIME_DIR'])
+    runtime_root = Path(os.environ['RELEASE_2113_RUNTIME_DIR'])
     pinned_files = sorted(runtime_root.glob('*.dll'))
     if not pinned_files or not (runtime_root / 'ucrtbase.dll').is_file():
         raise RuntimeError('Verified baseline runtime set is incomplete')
@@ -116,10 +116,10 @@ if runtime_entries:
 pyz = PYZ(a.pure)
 exe = EXE(
     pyz, a.scripts, a.binaries, a.datas, [],
-    name='War3ReforgedTrainer-v2.1.12',
+    name='War3ReforgedTrainer-v2.1.13',
     debug=False, bootloader_ignore_signals=False, strip=False, upx=True,
     upx_exclude=[], runtime_tmpdir=None, console=False,
     disable_windowed_traceback=False, uac_admin=False, argv_emulation=False,
     target_arch=None, codesign_identity=None, entitlements_file=None,
-    icon='assets/app_icon.ico', version='tools/war3-2.1.12-version-info.txt',
+    icon='assets/app_icon.ico', version='tools/war3-2.1.13-version-info.txt',
 )

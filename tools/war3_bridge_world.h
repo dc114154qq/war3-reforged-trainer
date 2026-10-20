@@ -23,7 +23,7 @@ typedef struct WorldWork {
     uint64_t (*get_xp_rate)(uint64_t);
 } WorldWork;
 _Static_assert(sizeof(WorldWork)==160,"WorldWork ABI");
-__declspec(dllexport) const uint32_t world_batch_abi[3]={0x24268074u,216u,160u};
+__declspec(dllexport) const uint32_t world_batch_abi[3]={0x24268075u,216u,160u};
 
 static float WorldReal(uint32_t bits) {
     union {uint32_t bits;float value;} value;value.bits=bits;return value.value;
@@ -104,11 +104,16 @@ static int BridgeKnownFogTail(
         parameters>=2u && instruction==fn+offset && access==0u && address==0u;
 }
 
-static int BridgeFogOpcode(uint64_t instruction,uint32_t phase) {
+static uint32_t BridgeFogOpcodeLength(uint64_t instruction,uint32_t phase) {
     const uint8_t *p=(const uint8_t *)(uintptr_t)instruction;
     __try {
-        if (phase<=2u) return p[0]==0x41 && p[1]==0x0f && p[2]==0xb6 && p[3]==0x04 && p[4]==0x24;
-        return p[0]==0x0f && p[1]==0xb6 && p[2]==0x00;
+        if (phase<=2u) {
+            if (p[0]!=0x41 || p[1]!=0x0f || p[2]!=0xb6) return 0;
+            if (p[3]==0x06) return 4; /* reviewed R14 form in 24371 */
+            if (p[3]==0x04 && p[4]==0x24) return 5; /* existing R12 form */
+            return 0;
+        }
+        return p[0]==0x0f && p[1]==0xb6 && p[2]==0x00 ? 3u : 0u;
     } __except(EXCEPTION_EXECUTE_HANDLER) {return 0;}
 }
 
@@ -122,7 +127,7 @@ static int BridgeFogControlFlowFilter(
         w,(uint64_t)(uintptr_t)fn,phase,e->ExceptionCode,e->ExceptionFlags,
         e->NumberParameters,(uint64_t)(uintptr_t)e->ExceptionAddress,
         e->ExceptionInformation[0],e->ExceptionInformation[1],&length
-    ) && BridgeFogOpcode((uint64_t)(uintptr_t)e->ExceptionAddress,phase)) {
+    ) && (length=BridgeFogOpcodeLength((uint64_t)(uintptr_t)e->ExceptionAddress,phase))!=0u) {
         *resumed=1u;
         info->ContextRecord->Rip+=length;
         ++bridge_recovered_faults;
@@ -132,7 +137,7 @@ static int BridgeFogControlFlowFilter(
         w,(uint64_t)(uintptr_t)fn,phase,e->ExceptionCode,e->ExceptionFlags,
         e->NumberParameters,(uint64_t)(uintptr_t)e->ExceptionAddress,
         e->ExceptionInformation[0],e->ExceptionInformation[1]
-    ) && BridgeFogOpcode((uint64_t)(uintptr_t)e->ExceptionAddress,phase)) {
+    ) && BridgeFogOpcodeLength((uint64_t)(uintptr_t)e->ExceptionAddress,phase)) {
         *error=ERROR_SUCCESS;
         ++bridge_recovered_faults;
         return EXCEPTION_EXECUTE_HANDLER;
@@ -175,7 +180,8 @@ __declspec(dllexport) uint64_t BridgeWorldQuery(void) {
     uint32_t enabled,i;
     if (w) for(i=0;i<6u;++i) {
         uint32_t offset=i<4u?w->fog_gate[i]:w->fog_tail[i-4u];
-        if (offset>=0x10000u || (!offset && (w->action==WORLD_QUERY_FOG || w->action==WORLD_SET_FOG))) {
+        uint32_t required=w->action==WORLD_SET_FOG || (w->action==WORLD_QUERY_FOG && i>=2u && i<4u);
+        if (offset>=0x10000u || (!offset && required)) {
             w->error=80;return 0;
         }
     }

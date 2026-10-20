@@ -444,6 +444,10 @@ class ProfileCatalog:
         }
         if len(matches) == 1:
             return next(iter(matches.values()))
+        if len(matches)>1 and len({p.data['game_version'] for p in matches.values()})==1:
+            revision=max(p.data['adapter_version'] for p in matches.values())
+            newest={digest:p for digest,p in matches.items() if p.data['adapter_version']==revision}
+            if len(newest)==1:return next(iter(newest.values()))
         if not matches and game_version is not None:
             target = version_tuple(game_version)
             candidates = {}

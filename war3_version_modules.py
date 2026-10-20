@@ -13,6 +13,11 @@ IMPLEMENTATIONS.update({
 IMPLEMENTATIONS["legacy_layout_24332_v1"] = (
     "legacy_layout", frozenset({(0x8664, 1791134929, 236732416)})
 )
+# Same arithmetic provider, with the new packaged recovery contracts. The
+# distinct bundled tag makes older EXEs reject the r2 data during import.
+IMPLEMENTATIONS["legacy_layout_24371_v2"] = (
+    "legacy_layout", frozenset({(0x8664, 1792442231, 236904448)})
+)
 
 
 def validate_implementation(name,implementation,fingerprint):

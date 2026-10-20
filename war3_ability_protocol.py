@@ -4,7 +4,7 @@ from war3_selection_protocol import build_work as selection_work,validate_work a
 from war3_native_journal import WORK_SIZE as JOURNAL_SIZE,build_work as journal_work,validate_work as validate_journal
 JOURNAL_OFFSET=1440
 WORK_SIZE=JOURNAL_OFFSET+JOURNAL_SIZE
-ABI=struct.pack('<3I',0x2426806c,216,WORK_SIZE)
+ABI=struct.pack('<3I',0x24268076,216,WORK_SIZE)
 SIGNATURES=(('UnitAddAbility','(Hunit;I)B'),('UnitRemoveAbility','(Hunit;I)B'),
  ('SetUnitAbilityLevel','(Hunit;II)I'),('GetUnitAbilityLevel','(Hunit;I)I'),
  ('BlzGetUnitAbility','(Hunit;I)Hability;'),('BlzGetAbilityId','(Hability;)I'),

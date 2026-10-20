@@ -518,6 +518,7 @@ BOOL WINAPI DllMain(HINSTANCE module,DWORD reason,LPVOID reserved) {
 #include "war3_unit_bindings_fixture.h"
 #include "war3_camera_fixture.h"
 #include "war3_ability_compat_fixture.h"
+#include "war3_recovery_instruction_fixture.h"
 #endif
 
 #ifdef BRIDGE_TEST

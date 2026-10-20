@@ -352,6 +352,9 @@ def native_call_and_field_evidence(image, entries, budget):
     for axis in ('x','y'):updates.pop('layouts.unit.position_'+axis,None)
     coordinate_updates,coordinate_proofs=native_direct_coordinates(image,entries,proof,budget)
     updates.update(coordinate_updates);evidence.update(coordinate_proofs)
+    from war3_discovery_native_recovery import locate_native_recovery
+    recovery_updates,recovery_proofs=locate_native_recovery(image,entries,budget)
+    updates.update(recovery_updates);evidence.update(recovery_proofs)
     return updates,evidence
 
 
@@ -497,44 +500,6 @@ def _decoder_player_consumers(image, records, player_accessor, budget):
     return {identity:tuple(rows.values()) for identity,rows in witnesses.items() if len(rows)>=2}
 
 
-def _locate_modern_add2(image, tail_rva, tail_len, budget):
-    """Recover the nonzero add2 constant that follows the modern ROL/XOR/ROL tail.
-
-    In the 24365 shape the final addition lives in a separate consumer block
-    immediately after the tail fragment.  We scan up to 256 bytes forward for
-    one of two patterns:
-      - movabs <reg>, imm64 / add rbx, <reg>   (constant via register)
-      - add rbx, imm32                           (sign-extended immediate)
-    Only one matching constant is accepted; two or more mean the region is
-    ambiguous and we return None so add2 stays zero rather than being guessed.
-    """
-    from capstone.x86 import X86_OP_REG, X86_OP_IMM
-    try:
-        suffix = image.read(tail_rva + tail_len, 256)
-    except OSError:
-        return None
-    budget.check('正在定位 modern 解码器的独立加法块')
-    constants = {}
-    candidates = []
-    for ins in decoder().disasm(suffix, tail_rva + tail_len):
-        ops = ins.operands
-        if ins.mnemonic in ('ret', 'int3', 'jmp', 'call'):
-            break
-        if ins.mnemonic in ('mov', 'movabs') and len(ops) == 2 and ops[1].type == X86_OP_IMM:
-            constants[ins.reg_name(ops[0].reg)] = ops[1].imm & ((1 << 64) - 1)
-        elif ins.mnemonic == 'add' and len(ops) == 2 and ins.reg_name(ops[0].reg) == 'rbx':
-            if ops[1].type == X86_OP_REG:
-                val = constants.get(ins.reg_name(ops[1].reg))
-                if val is not None and val != 0:
-                    candidates.append(val)
-            elif ops[1].type == X86_OP_IMM and ops[1].imm != 0:
-                # sign-extended imm32 — take the full 64-bit value capstone gives
-                candidates.append(ops[1].imm & ((1 << 64) - 1))
-    if len(candidates) == 1:
-        return candidates[0]
-    return None
-
-
 def locate_state_decoder(image, budget, *, player_accessor=None):
     records=[]
     for strategy,template in STATE_FRAGMENTS:
@@ -544,6 +509,9 @@ def locate_state_decoder(image, budget, *, player_accessor=None):
             raw=image.read(at,len(code));decoded=decode_state_fragment(raw,at)
             if decoded is None:continue
             mode,values=decoded
+            # A split final addition is not zero by default. Its complete
+            # producer-to-accessor path is handled by the bounded flow proof.
+            if mode=='modern':continue
             # The nearby producer must load the same RBX value before this tail.
             # Never traverse across an unreadable hole or invent a missing constant.
             try:prefix=image.read(max(4096,at-512),min(512,at-4096))
@@ -562,9 +530,6 @@ def locate_state_decoder(image, budget, *, player_accessor=None):
                 if len(instructions)<3 or instructions[1].mnemonic!='movabs' or instructions[2].mnemonic!='add':continue
                 if instructions[1].op_str.split(',')[0]!='rcx' or instructions[2].op_str!='rbx, rcx':continue
                 values=dict(values,add1=instructions[1].operands[1].imm&((1<<64)-1),add2=0)
-            # modern: head is just the producer load; add1==0 (omitted), add2
-            # is nonzero and lives in a separate consumer block.  It is recovered
-            # below via _decoder_player_consumers before identities are settled.
             records.append((mode,values,root[0],producer,head,at,raw))
     identities={(mode,tuple(sorted(values.items())),root) for mode,values,root,*_ in records}
     consumer_anchors=()
@@ -575,20 +540,15 @@ def locate_state_decoder(image, budget, *, player_accessor=None):
             records=[r for r in records if (r[0],tuple(sorted(r[1].items())),r[2])==identity]
             identities={identity}
     if len(identities)!=1:
+        from war3_discovery_decoder_flow import locate_decoder_flow
+        flow_updates,flow_evidence,flow_checks=locate_decoder_flow(image,player_accessor,budget)
+        if flow_updates:return flow_updates,flow_evidence,flow_checks
         return {},{'decoder':DiscoveryEvidence('decoder','ambiguous' if records else 'unresolved','known_decoder_dataflow')},None
     # Multiple equivalent instruction sites prove one semantic value; retain the
     # lowest site only as an exact-byte witness, not as an address-selection guess.
     mode,values,root,producer,head,tail,raw=min(records,key=lambda r:(r[3],r[5]))
-    # modern: add2 lives in the consumer block immediately following the tail.
-    # Locate it by scanning up to 256 bytes after the tail for a `add rbx,imm64`
-    # pattern (movabs rcx,imm64 followed by add rbx,rcx, or direct add rbx,imm32).
-    if mode=='modern' and values.get('add2')==0:
-        add2=_locate_modern_add2(image,tail,len(raw),budget)
-        if add2 is not None:
-            values=dict(values,add2=add2)
     updates={'addresses.game_state':root, **{'decoder.'+k:v for k,v in values.items()}}
-    # Strategy tag: modern variants use 24332_v1 (same decoder protocol, different shape).
-    strategy_map={'legacy':'legacy_layout_24323_v1','modern_tail':'legacy_layout_24332_v1','modern':'legacy_layout_24332_v1'}
+    strategy_map={'legacy':'legacy_layout_24323_v1','modern_tail':'legacy_layout_24332_v1'}
     updates['modules.legacy_layout.implementation']=strategy_map.get(mode,'legacy_layout_24332_v1')
     evidence={name:DiscoveryEvidence(name,'confirmed','known_decoder_dataflow',(value,),tuple(r[3] for r in records))
               for name,value in updates.items()}

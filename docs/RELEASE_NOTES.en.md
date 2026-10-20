@@ -1,24 +1,17 @@
-# Warcraft III 3.0 Trainer 2.1.12
+# Warcraft III 3.0 Trainer 2.1.13
 
-Adds a dedicated adapter for **Warcraft III 3.0.1.24371**, included directly in the EXE. No separate adapter installation is needed. Listed in the website's Warcraft III 3.0 section.
+Completes the bundled **3.0.1.24371 r2** adapter. No separate profile installation is needed.
 
-## Changes
+- Restores the detailed-attribute service after independently reviewing both class methods for all four stat types.
+- Adds all six fog recovery locations and the alternate player index. Fog recovery now checks the actual 4-byte or 5-byte instruction length.
+- Handles the new ability-level tail register form, retaining mandatory level readback and strict exception checks.
+- Fixes the decoder changes in 24365 and 24371 by following actual branches and the complete arithmetic into the independently located player accessor. With the target profile hidden, live automatic connection, external unit reads and cache validation succeeded.
+- Adds typed recovery and player-mode discovery. Fog queries require only their getter dependencies. A unique newer exact-profile revision supersedes an older one; conflicting contents at the highest revision still report an error.
 
-- Updates the unit, player, selection and ability-call dependencies for the new build, including the reviewed attack-speed query functions.
-- Includes the previous local preview's **Ctrl+X cursor teleport precision fix**, improving terrain intersection on slopes. Actual in-game landing still needs confirmation.
-- Fixes premature object-identity confirmation in automatic discovery. The builder now checks that every bundled game profile has matching discovery source data.
-- Retains batch editing, campaign backpack definitions, individual failure handling for All passives / All auras, and the previous six game profiles.
+Automatic support remains partial: some protected code captures still lack Native ABI or advanced-field evidence, so dependent operations are blocked before dispatch. Future updates may still need a dedicated adapter.
 
-## Current limits
+Live read-only fog, unit-stat, binding, detailed-stat and camera queries completed with readback and cleanup. The detailed-stat sample had no matching abilities and returned zeros. No game stat setters, fog toggles, skill additions or game UI input were executed. Actual mutation effects, alternate-mode gameplay, Ctrl+X landing and external-machine behavior remain unverified.
 
-For **3.0.1.24371**, **3.0 detailed attributes, fog operations and alternate local-player mode** remain disabled because their dependencies have not been independently verified in full. Ability leveling retains its existing error handling without a guessed old exception-recovery address.
+Offline validation: 5,052 distinct tests and 120 native subtests passed across separate processes; 29 skipped. All seven exact profiles passed the paired offline performance gate, archive inspection and frozen startup self-test passed. Initial failures and subsequent corrections are retained in the evidence.
 
-This is a dedicated 24371 adapter. Complete automatic support for future unknown builds remains unverified.
-
-## Verification
-
-Live read-only checks covered 28 players, the selected hero and another registry unit, 19 components and 1,857 Native registrations. Camera, armor, intelligence and attack-speed queries completed with readback and cleanup. No game business data was changed.
-
-Across separate runs, **5,013 distinct offline tests and 120 subtests passed; 29 skipped**. One existing Tk initialization failure in the full process passed unchanged in a fresh process; this is not a claim of a single error-free full run. EXE archive checks and startup self-test passed. Game mutation effects, actual Ctrl+X landing and external-machine execution remain unverified.
-
-Bundled profiles: 3.0.0.24268, 3.0.1.24323, 3.0.1.24332, 3.0.1.24342, 3.0.1.24360, 3.0.1.24365 and 3.0.1.24371. Available features depend on each build's profile.
+Bundled builds: 3.0.0.24268, 3.0.1.24323, 3.0.1.24332, 3.0.1.24342, 3.0.1.24360, 3.0.1.24365 and 3.0.1.24371. Other builds retain their existing profile limits.

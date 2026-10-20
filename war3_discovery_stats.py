@@ -11,6 +11,20 @@ CLASSES={
 }
 
 
+def confirm_stat_module(evidence,implementation):
+    """Enable the bundled service only after all of its actual inputs agree."""
+    from war3_discovery_dependencies import NATIVE,missing_dependencies
+    from war3_version_modules import known_implementation
+    required=NATIVE|{'stat_runtime','stat_runtime.flat_flag','layouts.ability','layouts.component_list'}|{
+        'stat_mode.'+key for key in CLASSES}
+    path='modules.stat_details'
+    if known_implementation('stat_details',implementation) and not missing_dependencies(evidence,required):
+        evidence[path]=DiscoveryEvidence(path,'confirmed','native_stat_schema_and_owner_bound_mode_proofs',
+            anchors=tuple(dict.fromkeys(a for key in CLASSES for a in evidence['stat_mode.'+key].anchors)))
+    else:
+        evidence[path]=DiscoveryEvidence(path,'unresolved','stat_service_dependencies_incomplete')
+
+
 def reconcile_stat_mode(evidence):
     """A prior parent-group proof must not conceal a new child conflict."""
     paths=['stat_runtime.'+key for key in CLASSES]+['stat_mode.'+key for key in CLASSES]+['stat_runtime.flat_flag']

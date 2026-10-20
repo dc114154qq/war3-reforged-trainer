@@ -16,7 +16,7 @@ typedef struct AbilityWork {
     BridgeNativeJournal journal;
 } AbilityWork;
 _Static_assert(sizeof(AbilityWork)==58856,"AbilityWork ABI");
-__declspec(dllexport) const uint32_t ability_batch_abi[3]={0x2426806cu,216u,58856u};
+__declspec(dllexport) const uint32_t ability_batch_abi[3]={0x24268076u,216u,58856u};
 /* Profile-bound evidence: 24268+0x4bc / 24323+0x4dc read a null address
    AFTER its level mutation. R15 is not stable at handler entry, so it is not
    part of the gate. Do not patch the game or resume at a guessed RIP. Unwind
@@ -32,8 +32,10 @@ static int BridgeKnownAbilityTail(uint64_t handler,uint32_t code,uint32_t flags,
 }
 static int BridgeAbilityTailOpcode(uint64_t instruction) {
     __try {
-        /* Both verified sites: movzx eax, byte ptr [r15]. */
-        return *(volatile uint32_t *)(uintptr_t)instruction==0x07b60f41u;
+        const volatile uint8_t *p=(const volatile uint8_t *)(uintptr_t)instruction;
+        if (p[0]!=0x41 || p[1]!=0x0f || p[2]!=0xb6) return 0;
+        if (p[3]==0x07) return 1; /* existing R15 form */
+        return p[3]==0x04 && p[4]==0x24; /* reviewed 24371 R12 form */
     } __except(EXCEPTION_EXECUTE_HANDLER) { return 0; }
 }
 static LONG BridgeAbilityNativeTailFilter(EXCEPTION_POINTERS *info,uint64_t setter) {

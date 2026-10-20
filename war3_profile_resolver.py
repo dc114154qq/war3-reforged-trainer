@@ -117,7 +117,7 @@ def _build(source, borrowed, updates, evidence, checks, mode):
             if type(value) is not int or not 0 < value < borrowed.fingerprint[2]:
                 raise ProfileError("Discovered address exceeds image")
             _set(data, path, value)
-        elif (path.startswith("context.") or path in ("players.count", "players.array", "players.max_count", "players.normal_index",
+        elif (path.startswith("context.") or path.startswith('fog_recovery.') or path in ("players.count", "players.array", "players.max_count", "players.normal_index", "players.alternate_index", "bridge_layout.ability_level_tail",
                 "layouts.unit.position_x", "layouts.unit.position_y", "bridge_layout.unit_attack", "selection.manager")):
             if type(value) is not int or not 0 < value < 0x10000:
                 raise ProfileError("Discovered layout exceeds bounded object")
@@ -154,6 +154,10 @@ def _build(source, borrowed, updates, evidence, checks, mode):
     for key in ('primary','alternate','stride','slot_owner','owner_handle','owner_data','object_handle','object_rawcode'):
         data['bridge_layout'][key] = data['registry'][key]
     data['bridge_layout']['table_count'] = data['registry']['count']
+    stat_module=evidence.get('modules.stat_details')
+    if (stat_module is not None and stat_module.state=='confirmed' and
+            stat_module.method=='native_stat_schema_and_owner_bound_mode_proofs'):
+        data['modules']['stat_details']['enabled']=True
     if data['equipment_runtime']['ability_owner'] != data['layouts']['ability']['unit_owner']:
         if 'layouts.ability.unit_owner' in updates and 'equipment_runtime.ability_owner' not in updates:
             data['equipment_runtime']['ability_owner'] = data['layouts']['ability']['unit_owner']
@@ -246,6 +250,9 @@ class ProfileResolver:
                     native_updates.update(attack_updates)
                     native_evidence.update(attack_evidence)
                     _merge_observations(updates, evidence, native_updates, native_evidence)
+                    from war3_discovery_native_recovery import native_mode_indices
+                    mode_updates,mode_proofs=native_mode_indices(image,contexts[association[1]],evidence,checks,budget)
+                    _merge_observations(updates,evidence,mode_updates,mode_proofs)
                     semantic_recipes=refs['references'].get('semantic_fields',())
                     if any('binding' in row for row in semantic_recipes):
                         from war3_discovery_fields import locate_semantic_fields
@@ -303,6 +310,10 @@ class ProfileResolver:
         # Validators are read-only and each group has its own evidence requirements.
         from war3_discovery_validation import validate_common
         candidate, evidence = validate_common(candidate, image, memory, base, budget)
+        from war3_discovery_stats import confirm_stat_module
+        confirm_stat_module(evidence,candidate.data['modules']['stat_details']['implementation'])
+        from war3_discovery_native_recovery import reconcile_native_recovery
+        reconcile_native_recovery(evidence)
         for path,proof in evidence.items():
             if (proof.state=='confirmed' and len(proof.candidates)==1 and proof.method in (
                 'tagged_states_packed_ids_and_owner_backlinks','proved_record_member_span',
@@ -340,8 +351,9 @@ class ProfileResolver:
         required=(
             'native_abi', 'addresses.unit_resolver', 'selection.native_manager',
             'bridge_layout.unit_attack', 'layouts.unit.position_x', 'layouts.unit.position_y',
-            'layouts.property.maximum')
-        if stat_recipes:required+=('stat_runtime.flat_flag',)
+            'layouts.property.maximum', 'players.alternate_index', 'fog_recovery',
+            'bridge_layout.ability_level_tail')
+        if stat_recipes:required+=('stat_runtime.flat_flag','modules.stat_details')
         return bool(missing_dependencies(evidence,required))
 
     @staticmethod
@@ -374,6 +386,9 @@ class ProfileResolver:
             changes = dict(cached['updates'])
             _merge_observations(changes, proof, layout_updates, layout_evidence)
             _merge_observations(changes, proof, updates, observed)
+            from war3_discovery_native_recovery import native_mode_indices
+            mode_updates,mode_proofs=native_mode_indices(image,contexts[association[1]],proof,cached['checks'],budget)
+            _merge_observations(changes,proof,mode_updates,mode_proofs)
             if stat_recipes:
                 from war3_discovery_stats import locate_stat_mode,reconcile_stat_mode
                 stat_updates,stat_proofs=locate_stat_mode(image,stat_recipes,proof,budget)
@@ -399,6 +414,10 @@ class ProfileResolver:
                 abi = native_abi_evidence(image, contexts[association[1]], budget,real_forwarders=real_forwarders)
                 if abi.state == 'confirmed':
                     proof['native_abi'] = abi
+            from war3_discovery_stats import confirm_stat_module
+            confirm_stat_module(proof,candidate.data['modules']['stat_details']['implementation'])
+            from war3_discovery_native_recovery import reconcile_native_recovery
+            reconcile_native_recovery(proof)
             result = _build(candidate.source, candidate, changes, proof, cached['checks'], 'discovery_cache')
             payload = dict(updates=changes, checks=cached['checks'],
                            evidence={key: value.to_dict() for key, value in proof.items()})
@@ -462,10 +481,15 @@ class ProfileResolver:
                 'typed_coordinate_getter_and_setter',
                 'typed_player_accessor_decoder_consumers',
                 'typed_unit_selected_player_manager',
+                'proved_decoder_paths_to_typed_players','bounded_decoder_to_player_paths',
+                'typed_local_player_mode_branches','typed_native_fog_gate','typed_native_fog_tail',
+                'typed_native_fog_getter','typed_native_ability_level_tail','all_typed_fog_recovery_sites',
                 'native_cooldown_and_canonical_attack_components'):continue
             needed=(3 if proof.method=='typed_native_machine_conventions' else
                     1 if proof.method in ('typed_native_scalar_member_return','typed_unit_selected_player_manager',
-                    'native_cooldown_and_canonical_attack_components') else 2)
+                    'native_cooldown_and_canonical_attack_components','typed_local_player_mode_branches',
+                    'typed_native_fog_gate','typed_native_fog_tail','typed_native_fog_getter',
+                    'typed_native_ability_level_tail') else 6 if proof.method=='all_typed_fog_recovery_sites' else 2)
             if len(proof.anchors)<needed:return None
             sites=set()
             for anchor in proof.anchors:
@@ -475,6 +499,8 @@ class ProfileResolver:
                 expected=bytes.fromhex(hex_code)
                 minimum=12 if proof.method in ('cross_checked_typed_native_machine_conventions','typed_native_machine_conventions',
                     'typed_native_unit_resolver_callers','typed_coordinate_getter_and_setter') else 24
+                if proof.method in ('typed_native_fog_gate','typed_native_fog_tail','typed_native_fog_getter',
+                                    'all_typed_fog_recovery_sites'):minimum=9
                 if not minimum<=len(expected)<=1024 or not 0<rva<rva+len(expected)<=borrowed.fingerprint[2]:return None
                 sites.add(rva)
                 semantic_anchors.add((rva,expected))

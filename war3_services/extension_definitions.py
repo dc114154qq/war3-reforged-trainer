@@ -6,9 +6,11 @@ from pathlib import Path
 import hashlib, json, os, shutil, sys, tempfile, time, traceback, uuid, zipfile
 from war3_mpq import Archive, MpqError, STORAGE_FLAGS, canonical_name
 from war3_object_tables import (DefinitionError, parse_slk, parse_profile, merge_slk,
-                                merge_profile, map_data_mode, campaign_maps, object_ids, _value)
+                                merge_profile, map_data_mode, campaign_maps, object_ids, _value,
+                                validate_game_slk, make_extension_versions_compatible)
 
 PACK_SHA256='92fb7ef32f24d0b218124034c42642490a1c251b843e9511ab531a12bd7c03f1'
+PROCESSING_REVISION='extension-version-gate-v2-20261021'
 META={'(listfile)','(attributes)'}
 OBJECT_FILES=(('w3a',True),('w3t',False),('w3u',False),('w3h',False),('w3q',True))
 
@@ -97,10 +99,11 @@ def _custom_ids(archive,prefix):
 
 
 def _critical_check(name,raw,reference,manifest):
-    if not name.endswith('.slk'):return
+    if not name.endswith('.slk'):return {}
     current,wanted=parse_slk(raw),parse_slk(reference)
     ids=(manifest['critical_abilities'] if name=='AbilityData.slk' else
          manifest['critical_items'] if name=='ItemData.slk' else ())
+    evidence={}
     for key in ids:
         if key not in current.rows or key not in wanted.rows:
             raise DefinitionError('关键背包定义校验失败：'+key)
@@ -110,6 +113,10 @@ def _critical_check(name,raw,reference,manifest):
                 if _value(value) in ('','-','_'):continue
                 if _value(actual.get(field,'K""'))!=_value(value):
                     raise DefinitionError('地图已修改同编号的背包或天赋定义，请单独处理：'+key+' / '+field)
+        evidence[key]={field:_value(value) for field,value in actual.items()
+                       if field in ('code','version','levels','abilList','equipment')
+                       or field.startswith(('Data','BuffID','EfctID')) and _value(value) not in ('','-','_','0')}
+    return evidence
 
 
 def _plan(archive,members,mode,inherited,custom,manifest,files,journal):
@@ -125,33 +132,54 @@ def _plan(archive,members,mode,inherited,custom,manifest,files,journal):
         reference=files['additions/'+name]
         merger=merge_slk if name.endswith('.slk') else merge_profile
         result,added=merger(raw,reference)
+        availability={}
+        if name.endswith('.slk'):
+            result,version_changes=make_extension_versions_compatible(result,reference,required)
+            compatible_rows=parse_slk(result).rows
+            availability=dict(policy='pack_generation_2_to_universal_0',
+                reason='legacy object-version gate filters generation 2 even when SLK rows exist',
+                version_changes=version_changes,
+                versions={key:_value(compatible_rows[key].get('version','K-1'))
+                          for key in required} if name in ('AbilityData.slk','ItemData.slk') else {})
+            journal.event('object_availability_verified',path=path,**availability)
         parsed=(parse_slk(result).rows if name.endswith('.slk') else parse_profile(result))
+        layout={}
+        if name.endswith('.slk'):
+            old_table=parse_slk(raw);checked=validate_game_slk(result)
+            layout=dict(original_max_column=old_table.max_x,output_max_column=checked.max_x,
+                named_fields=len(checked.columns),game_column_limit=202,
+                ignored_unnamed_cells=sum(x not in old_table.columns for row in old_table.opaque.values() for x in row))
+            journal.event('table_layout_verified',path=path,**layout)
         if not set(required)<=set(parsed):raise DefinitionError('补齐后的定义依赖仍有缺项：'+name)
         if name.endswith('.slk') and set(added)&custom:
             raise DefinitionError('地图自定义对象与新增定义编号冲突：'+', '.join(sorted(set(added)&custom)))
-        _critical_check(name,result,reference,manifest)
+        critical_definitions=_critical_check(name,result,reference,manifest)
         # Even when the baseline contains some rows, a custom-mode map must
         # carry the explicit table so the game does not choose the old overlay.
         if member is None or result!=raw:plan[path]=(result,member)
         details.append(dict(path=path,origin=origin,added=list(added),bytes=len(result),
-                            sha256=hashlib.sha256(result).hexdigest(),write=path in plan))
+                            sha256=hashlib.sha256(result).hexdigest(),write=path in plan,
+                            critical_definitions=critical_definitions,layout=layout,availability=availability))
     return plan,details
 
 
 def _fingerprints(archive,members,journal):
     result={}
-    for key,member in members.items():
+    for index,(key,member) in enumerate(members.items(),1):
         journal.check()
+        if index==1 or index%32==0:journal.event('scan_archive',path=member.name,index=index,total=len(members))
         if key[0] in META:continue
         result[key]=(hashlib.sha256(archive.read(member)).hexdigest(),member.flags&STORAGE_FLAGS)
     return result
 
 
 def _verify(path,before,expected,journal):
+    journal.event('archive_verify',path=path.name)
     with Archive(path) as archive:
         members=_members(archive)
-        for key,(digest,flags) in before.items():
+        for index,(key,(digest,flags)) in enumerate(before.items(),1):
             journal.check();member=members.get(key)
+            if index==1 or index%32==0:journal.event('verify_member',path=key[0],index=index,total=len(before))
             if member is None or member.flags&STORAGE_FLAGS!=flags:
                 raise DefinitionError('原有文件目录或压缩方式校验失败：'+key[0])
             if hashlib.sha256(archive.read(member)).hexdigest()!=expected.get(key,digest):
@@ -198,13 +226,17 @@ def prepare_extension_definitions(source,output_folder,*,progress=None,cancel=No
     pending=run_folder/('未完成.tmp')
     try:
         initial_stat=(source.stat().st_size,source.stat().st_mtime_ns)
+        journal.event('source_hash_begin',source=str(source),log_path=str(journal.path))
         source_hash=file_hash(source)
         journal.event('start',source=str(source),source_sha256=source_hash,pack_id=manifest['pack_id'],
-                      pack_sha256=PACK_SHA256,source_game=manifest['source_game'],original_edited=False)
+                      pack_sha256=PACK_SHA256,source_game=manifest['source_game'],original_edited=False,
+                      processing_revision=PROCESSING_REVISION)
         with tempfile.TemporaryDirectory(prefix='war3-definitions-') as temporary:
             work=Path(temporary);staged=work/('campaign'+source.suffix)
+            journal.event('copy_begin',path=source.name)
             shutil.copyfile(source,staged)
             if file_hash(staged)!=source_hash:raise DefinitionError('输入文件复制校验失败，请重新选择文件。')
+            journal.event('source_copied',path=source.name)
             reports=[]
             if source.suffix.casefold()=='.w3n':
                 with Archive(staged) as archive:
@@ -244,18 +276,21 @@ def prepare_extension_definitions(source,output_folder,*,progress=None,cancel=No
             else:
                 journal.event('chapter_begin',index=1,total=1,name=source.name)
                 reports=[dict(name=source.name,**_patch_map(staged,{},set(),manifest,files,journal))]
+                journal.event('chapter_verified',**reports[0])
             journal.check()
             if (source.stat().st_size,source.stat().st_mtime_ns)!=initial_stat or file_hash(source)!=source_hash:
                 raise DefinitionError('处理期间输入文件发生变化，已停止输出，请重新选择文件。')
+            journal.event('output_verify',path=source.name)
             digest=file_hash(staged);shutil.copyfile(staged,pending)
             if file_hash(pending)!=digest:raise DefinitionError('输出文件复制校验失败。')
             output=run_folder/(source.stem+'_3.0背包定义'+source.suffix)
             report_path=run_folder/'处理报告.json'
             report=dict(schema=1,source=str(source),source_sha256=source_hash,output=str(output),
-                        output_sha256=digest,pack_id=manifest['pack_id'],chapters=reports,
+                        output_sha256=digest,pack_id=manifest['pack_id'],processing_revision=PROCESSING_REVISION,chapters=reports,
                         verification=dict(all_original_members_preserved=True,storage_flags_preserved=True,
                                           source_unchanged=True,added_definitions_reextracted=True,
-                                          gameplay_tested=False,old_saved_games_updated=False))
+                                          gameplay_tested=False,old_saved_games_updated=False,
+                                          runtime_validation_required=True))
             report_path.write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf8')
             journal.event('verified',report_path=str(report_path),output=str(output),output_sha256=digest)
             os.fsync(journal.stream.fileno());journal.check();journal.close()

@@ -79,6 +79,21 @@ def run(output_path):
         report['extension_definitions'] = dict(pack_id=manifest['pack_id'],pack_sha256=PACK_SHA256,
                                                mpq_sha256=DLL_SHA256,ui_module=bool(ExtensionDefinitionPanel),
                                                merged_definitions_verified=True)
+        from tempfile import TemporaryDirectory
+        from war3_artifact_plan import ArtifactPlanSettings, ArtifactPlanStore, DEFAULT_ARTIFACT_CODES
+        from war3_artifact_plan_ui import ArtifactPlanPanel
+        from war3_services.artifact_plan import apply_artifact_plan
+        with TemporaryDirectory(prefix='war3-artifact-plan-self-test-') as directory:
+            store = ArtifactPlanStore(Path(directory) / 'preferences' / 'six-artifacts.json')
+            settings = ArtifactPlanSettings(store)
+            if settings.snapshot().codes != DEFAULT_ARTIFACT_CODES:
+                raise RuntimeError('Artifact default plan differs')
+            requested = ('I001', 'I002', 'I003', 'I004', 'I005', 'I006')
+            settings.update(requested)
+            if ArtifactPlanSettings(store).snapshot().codes != requested:
+                raise RuntimeError('Artifact plan persistence check failed')
+        report['artifact_plan'] = dict(ui_module=bool(ArtifactPlanPanel), service_module=bool(apply_artifact_plan),
+                                       slots=6,default_verified=True,persistence_verified=True,user_preferences_touched=False)
         report["ok"] = True
     except Exception:
         report["error"] = traceback.format_exc()

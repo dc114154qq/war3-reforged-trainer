@@ -35,6 +35,7 @@ def detect_ui_language(locale_name: str | None = None) -> str:
 
 
 _EN_TRANSLATIONS = {
+    "一键神器装备方案": "Six-slot item plan",
     "当前战役未加载 3.0 背包装备定义，无法添加该背包。请在“3.0 扩展”中点击“补齐战役／地图背包定义”，使用生成的副本重新进入。": "The current campaign has not loaded the 3.0 backpack definitions. Under 3.0 Extensions, click Add backpack definitions, then load the generated copy.",
     "补齐背包能力后，经典物品栏读回发生变化；已停止后续操作，请保留诊断日志。": "Classic inventory readback changed after adding backpack components. Subsequent operations stopped; keep the diagnostic log.",
     "背包能力已读回，但诊断日志写入未完成；请检查日志目录。": "Backpack components were read back, but the diagnostic log was not fully saved. Check the log directory.",

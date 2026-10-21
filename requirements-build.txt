@@ -1,3 +1,5 @@
 PyInstaller>=6.0
 capstone>=5.0
 pefile>=2023.2.7
+pywebview==6.2.1
+pythonnet==3.2.1

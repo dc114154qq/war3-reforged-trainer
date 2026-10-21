@@ -113,7 +113,25 @@ def regenerate_loadout(host, saved, before, slot_types):
     created = []
     desired = []
     item_skips = []
-    expected_charges = list(charges)
+    # Empty slot records may retain a UI/cache quantity; they own no item.
+    expected_charges = [int(value) if int(row[1]) else 0 for row, value in zip(layout, charges)]
+    placement_started = False
+
+    def committed_snapshot(current, warning=''):
+        if int(current['target_unit']) != target:
+            return None
+        actual = tuple((int(item['handle']), int(item['rawcode'])) for item in current['equipment'])
+        if len(desired) != len(layout) or actual != tuple(desired):
+            return None
+        mismatches = tuple(dict(slot=slot, expected=expected_charges[slot], actual=int(item.get('charges', 0)))
+                           for slot, item in enumerate(current['equipment'])
+                           if actual[slot][0] and int(item.get('charges', 0)) != expected_charges[slot])
+        current['loadout_item_skips'] = tuple(item_skips)
+        current['loadout_charge_mismatches'] = mismatches
+        current['loadout_placement_verified'] = True
+        if warning:
+            current['loadout_postcondition_warning'] = warning
+        return current
     try:
         for slot, row in enumerate(layout):
             rawcode = int(row[1])
@@ -152,23 +170,47 @@ def regenerate_loadout(host, saved, before, slot_types):
                 host.set_extension_equipment_any_slot_24268(True)
             host.set_extension_bag_charges_24268(int(item['slot']), int(charges[slot]))
             desired.append(created[-1])
+        placement_started = True
         after = host._restore_extension_loadout_handles_24268(tuple(desired), target)
-        actual = tuple((int(row['handle']), int(row['rawcode'])) for row in after['equipment'])
-        if actual != tuple(desired):
+        committed = committed_snapshot(after)
+        if committed is None:
             raise RuntimeError('Generated loadout slot readback differs')
-        if tuple(int(row.get('charges', 0)) for row in after['equipment']) != tuple(int(v) for v in expected_charges):
-            raise RuntimeError('Generated loadout charges readback differs')
-        after['loadout_item_skips']=tuple(item_skips)
-        return after
+        return committed
     except Exception as exc:
         errors = []
+        if placement_started:
+            # Equip can finish before effect-refresh/readback reports an error.
+            # A proven completed layout is retained even if quantities differ.
+            try:
+                current = host.extension_snapshot_24268()
+                committed = committed_snapshot(current, str(exc))
+                if committed is not None:
+                    return committed
+            except Exception as read_exc:
+                raise RuntimeError(f'套装装备结果待确认，已保留物品，请刷新检查：{exc}; {read_exc}') from exc
+            if int(current['target_unit']) == target:
+                generated = set(created)
+                placed = tuple((int(row['handle']), int(row['rawcode'])) for row in current['equipment']
+                               if (int(row['handle']), int(row['rawcode'])) in generated)
+                if placed:
+                    error = RuntimeError(f'套装已部分装备，已保留已装备和背包中的物品，请刷新检查剩余槽位：{exc}')
+                    error.report = dict(loadout_partial_placement=True, target_unit=target,
+                                        placed=placed, generated=tuple(created), cleanup_issued=False)
+                    raise error from exc
+            if isinstance(exc, TimeoutError) or (getattr(exc, 'report', None) or {}).get('cleanup_uncertain', False):
+                raise RuntimeError(f'套装操作结果待确认，已保留物品，请刷新检查：{exc}') from exc
+        rollback_ok = False
         try:
-            host._restore_extension_loadout_handles_24268(old_layout, target)
+            rolled_back = host._restore_extension_loadout_handles_24268(old_layout, target)
+            rollback_ok = (int(rolled_back['target_unit']) == target and
+                           tuple((int(r['handle']), int(r['rawcode'])) for r in rolled_back['equipment']) == old_layout)
+            if not rollback_ok:
+                errors.append('Original equipment rollback was not verified')
         except Exception as rollback_exc:
             errors.append(str(rollback_exc))
         # Remove only newly generated instances, and only when they are
         # uniquely back in the bag. Never remove uncertain/equipped instances.
-        for handle, rawcode in reversed(created):
+        for handle, rawcode in reversed(created) if rollback_ok else ():
             try:
                 current = host.extension_snapshot_24268()
                 if int(current['target_unit']) != target:

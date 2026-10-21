@@ -280,7 +280,7 @@ class AbilitiesFacade:
             if duration:
                 from war3_services.effect_lifetime import run_held_effect
                 from war3_services.operation_trace import SkillTrace
-                from war3_reforged_trainer import Win10ReadLogger
+                from war3_backend import Win10ReadLogger
                 engine=self._engine_instance_24268()
                 with SkillTrace(self,Win10ReadLogger,dict(rawcode=ability_rawcode,mode=mode,
                         passes=count,area=area or 100000.0,duration=duration)) as trace:

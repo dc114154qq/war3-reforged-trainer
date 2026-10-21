@@ -1,34 +1,30 @@
 [中文](README.md) | [English](README.en.md)
 
-# Warcraft III 3.0 Trainer · 2.1.13
+# Warcraft III 3.0 Trainer · 2.1.14
 
 Read and edit units, abilities, items and resources. Includes batch editing, extended backpacks and save extraction.
 
-## Download and use
+## Download and run
 
-Download the EXE from the [website](https://twomengxi.xyz/trainer/?lang=en) or [GitHub Release](https://github.com/dc114154qq/war3-reforged-trainer/releases/tag/v2.1.13). Enter a map, select a unit and connect.
+Download the EXE from the [website](https://twomengxi.xyz/trainer/?lang=en) or [GitHub Release](https://github.com/dc114154qq/war3-reforged-trainer/releases/tag/v2.1.14). Enter a map, select a unit and connect.
 
-Completes the **3.0.1.24371** detailed-stat, fog recovery, alternate-player and ability-tail data, and repairs automatic state decoding for the two recent updates.
+Windows 10/11 x64. No Python, Node.js or separate frontend server is needed. First launch offers Microsoft WebView2 setup if it is missing; installation requires Internet access.
 
-Seven bundled builds: 24268, 24323, 24332, 24342, 24360, 24365 and 24371. Features retain each profile's limits. Advanced functions on future unknown builds may still need an adapter.
+Updates: refreshed desktop UI, persistent custom six-artifact preset, ability-field list fix, preservation of equipped loadout items, and backpack definition repair.
 
 ## Build from source
 
-Windows 10/11 x64, Git, Python 3.12 with Tkinter, Visual Studio 2022 Community C++ tools and Windows SDK, and LLVM clang-cl. The builder uses the default VS installation path.
+Windows 10/11 x64, Python 3.12 and Node.js 22. The helper prepares fixed-hash published native components and the Microsoft WebView2 bootstrapper.
 
 ```powershell
 python -m pip install -r requirements-build.txt
-python tools/prepare_build_baseline_2113.py
-python tools/build_release_2113.py
-python tools/build_release_2113.py --verify-only
+python tools/prepare_build_baseline_2114.py
+npm ci --prefix frontend
+npm run build --prefix frontend
+python tools/build_modern_release.py
+python tools/build_modern_release.py --verify-only
 ```
 
-The helper downloads the fixed-hash published 2.1.12 dependency baseline. Use `--from-file PATH` for an identical local copy. This release recompiles the bridge and verifies/reuses the other native components and runtime. No runtime adapter download is needed.
+Output: `dist-2.1.14-modern-verified/<hash-prefix>/War3ReforgedTrainer-v2.1.14-Web.exe`.
 
-Output: `dist-2.1.13-verified/<hash-prefix>/War3ReforgedTrainer-v2.1.13.exe`.
-
-## Verification and history
-
-Across separate processes, 5,052 distinct tests and 120 subtests passed; 29 skipped. Seven-profile performance, archive checks and startup self-test passed. Live read-only queries passed; mutation effects, alternate-mode gameplay, teleport landing and external-machine operation remain unverified.
-
-[Current release](docs/RELEASE_NOTES_v2.1.13.en.md) · [History](docs/HISTORY.md) · [Validation](docs/VALIDATION.json) · [Backpack definitions](docs/EXTENSION_DEFINITIONS.md)
+[Release notes](docs/RELEASE_NOTES_v2.1.14.en.md) · [History](docs/HISTORY.md) · [Validation](docs/VALIDATION.json)

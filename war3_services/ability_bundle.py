@@ -78,7 +78,7 @@ def run_indexed_bundle(host, bundle):
     identity = (session.identity, session.epoch) if isinstance(session, GameSession) else None
     manager = nullcontext(active_trace())
     if isinstance(session, GameSession) and active_trace() is None:
-        from war3_reforged_trainer import Win10ReadLogger
+        from war3_backend import Win10ReadLogger
         manager = SkillTrace(host, Win10ReadLogger,
                             dict(operation='ability_bundle', entries=bundle,
                                  failure_policy='skip_released_skill_rejection_without_replay'))

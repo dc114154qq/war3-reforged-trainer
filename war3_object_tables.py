@@ -9,6 +9,11 @@ class DefinitionError(ValueError):
     pass
 
 
+# The reviewed 3.0 SLK reader uses a 0x658-byte row: an 8-byte header and
+# 202 cell pointers. X203+ writes beyond that allocation before it grows rows.
+GAME_SLK_COLUMNS = 202
+
+
 def _tokens(line):
     result, start, quoted, index = [], 0, False, 0
     while index < len(line):
@@ -84,25 +89,56 @@ def parse_slk(raw):
 
 
 def merge_slk(original, reference):
-    """Append missing rows/columns; original rows and all original cell bytes stay intact."""
+    """Add missing definitions, retaining every original named field and value."""
     old = parse_slk(original); new = reference if isinstance(reference, Slk) else parse_slk(reference)
     if old.columns[1].casefold() != new.columns[1].casefold():
         raise DefinitionError('地图数据表编号字段与补齐资料不一致。')
     missing = [key for key in new.rows if key not in old.rows]
-    if not missing: return original, ()
+    if not missing and old.max_x <= GAME_SLK_COLUMNS: return original, ()
     columns = dict(old.columns); indexes = {name: index for index, name in columns.items()}
     extra = []
-    max_x = old.max_x
+    max_x = max(old.columns)
     for name in new.columns.values():
         if name not in indexes:
             max_x += 1; x = max_x; columns[x] = name; indexes[name] = x
             extra.append(f'C;X{x};Y1;K"{name}"')
+    if len(columns) > GAME_SLK_COLUMNS:
+        raise DefinitionError('合并后的数据表字段超过游戏读取上限，已停止输出并保留原文件。')
+    # Some legacy Blizzard tables have unnamed trailing placeholder cells.
+    # They are not named fields. Counting them reserved four phantom columns and
+    # pushed the modern 202-field ability schema to X206, corrupting the game
+    # SLK reader's fixed row buffer. Re-emit when those cells would acquire a
+    # field name; retain every named original field/value and named spacer cell.
+    # Unnamed cells (including stock X99=1 without a header) were ignored by
+    # the database importer. The untouched source and its digest remain in the
+    # processing report; do not turn these ignored values into new field data.
+    collisions = {x for row in old.opaque.values() for x in row
+                  if x not in old.columns and x in columns}
+    rewrite = bool(collisions or max_x > GAME_SLK_COLUMNS or old.max_x > GAME_SLK_COLUMNS)
+    if rewrite:
+        columns = {x:name for x,name in enumerate(columns.values(),1)}
+        indexes = {name:x for x,name in columns.items()}
+        max_x = max(columns)
+        extra=[]
     y = old.max_y
     for key in missing:
         y += 1
         for name, token in new.rows[key].items():
             extra.append(f'C;X{indexes[name]};Y{y};{token}')
-    lines = original.decode('latin1').splitlines()
+    if rewrite:
+        lines = ['ID;PWXL;N;E', f'B;X{max_x};Y{y};D0']
+        lines.extend(f'C;X{x};Y1;K"{name}"' for x,name in columns.items())
+        for key,row in old.rows.items():
+            at = old.row_numbers[key]
+            lines.extend(f'C;X{indexes[name]};Y{at};{token}' for name,token in row.items())
+        for at,row in old.opaque.items():
+            for x,token in row.items():
+                if x not in old.columns:
+                    continue
+                lines.append(f'C;X{indexes[old.columns[x]]};Y{at};{token}')
+        lines.append('E')
+    else:
+        lines = original.decode('latin1').splitlines()
     bounds = [index for index, line in enumerate(lines) if line.startswith('B;')]
     if len(bounds) != 1: raise DefinitionError('地图数据表边界异常。')
     index = bounds[0]
@@ -111,13 +147,72 @@ def merge_slk(original, reference):
     newline = '\r\n' if b'\r\n' in original else '\n'
     result = (newline.join(lines[:-1] + extra + ['E']) + newline).encode('latin1')
     parsed = parse_slk(result)
-    if any(parsed.opaque.get(y) != row for y, row in old.opaque.items()):
+    expected_opaque = {at:{(indexes[old.columns[x]] if rewrite else x):t for x,t in row.items() if not rewrite or x in old.columns}
+                       for at,row in old.opaque.items()}
+    if any(parsed.opaque.get(at, {}) != row for at,row in expected_opaque.items()):
         raise DefinitionError('原有地图附加单元格校验失败。')
     if any(parsed.rows[key] != row for key, row in old.rows.items()):
         raise DefinitionError('原有地图记录校验失败，已放弃本次处理。')
     if any(parsed.rows[key] != new.rows[key] for key in missing):
         raise DefinitionError('补齐记录校验失败，已放弃本次处理。')
+    validate_game_slk(result)
     return result, tuple(missing)
+
+
+def validate_game_slk(raw):
+    table = parse_slk(raw)
+    if max(table.columns) > GAME_SLK_COLUMNS or table.max_x > GAME_SLK_COLUMNS:
+        raise DefinitionError('数据表超过游戏读取上限（202列），已停止输出并保留原文件。')
+    return table
+
+
+def make_extension_versions_compatible(raw, reference, required):
+    """Expose requested generation-2 definitions to legacy campaign loaders.
+
+    The game's object gate accepts version 0 in every map generation. Merely
+    adding a row with version 2 leaves it excluded in generation 0/1 maps.
+    Touch only rows requested by the trusted pack whose reference is version 2;
+    keep existing version 0/1 values, all other objects, and all other cells.
+    This also repairs the previous tool's already-merged output.
+    """
+    old = validate_game_slk(raw)
+    wanted = reference if isinstance(reference, Slk) else parse_slk(reference)
+    edits = {key: {'before': 2, 'after': 0} for key in required
+             if key in wanted.rows and key in old.rows
+             and _value(wanted.rows[key].get('version', 'K-1')) == '2'
+             and _value(old.rows[key].get('version', 'K-1')) == '2'}
+    if not edits:
+        return raw, {}
+    column = next(x for x, name in old.columns.items() if name == 'version')
+    targets = {old.row_numbers[key] for key in edits}
+    lines, changed, x, y = [], set(), 0, 0
+    for line in raw.decode('latin1').splitlines(keepends=True):
+        body = line.rstrip('\r\n'); ending = line[len(body):]
+        if body.startswith('C;'):
+            tokens = _tokens(body)
+            for token in tokens[1:]:
+                if token.startswith('X'): x = int(token[1:])
+                elif token.startswith('Y'): y = int(token[1:])
+            if x == column and y in targets:
+                for index, token in enumerate(tokens):
+                    if token.startswith('K'):
+                        if _value(token) != '2' or y in changed:
+                            raise DefinitionError('扩展定义版本标记校验失败，已保留原文件。')
+                        tokens[index] = 'K0'; changed.add(y)
+                body = ';'.join(tokens)
+        lines.append(body + ending)
+    if changed != targets:
+        raise DefinitionError('扩展定义版本标记有缺项，已保留原文件。')
+    result = ''.join(lines).encode('latin1')
+    checked = validate_game_slk(result)
+    for key, row in old.rows.items():
+        expected = dict(row)
+        if key in edits: expected['version'] = 'K0'
+        if checked.rows.get(key) != expected:
+            raise DefinitionError('扩展定义兼容处理改变了其他字段，已保留原文件。')
+    if checked.columns != old.columns or checked.opaque != old.opaque:
+        raise DefinitionError('扩展定义兼容处理改变了表结构，已保留原文件。')
+    return result, edits
 
 
 def parse_profile(raw):

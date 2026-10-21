@@ -1,6 +1,6 @@
 """Bind and inspect the actual official backpack item before repairing its host."""
 from copy import deepcopy
-from war3_game_session import GameSession,FullHandle,ObjectAddress
+from war3_game_session import GameSession,FullHandle,NativeHandle,UnitRef,ObjectAddress
 
 def _preserve(previous,current):
     for area in ('bag','equipment'):
@@ -20,14 +20,32 @@ def inspect_backpack_carrier(host,target,classic,controller,snapshot,trace):
     session=engine.session
     candidates=host._selected_candidates_snapshot(None)
     trace.record('backpack_identity_candidates',target_unit=target,
-        candidates=[dict(native_handle=native,candidate=candidate) for candidate,native in candidates])
-    matches=[candidate for candidate,native in candidates if int(native)==int(target)]
-    if len(matches)!=1:raise RuntimeError('背包持有者与当前选中单位未匹配，已停止本次修复')
-    candidate=matches[0]
+        target_namespace='native_handle',
+        candidates=[dict(snapshot_handle=handle,full_handle=candidate.handle,
+                         selection_source=candidate.selection_source,candidate=candidate)
+                    for candidate,handle in candidates])
+    # Memory selection snapshots carry full object identities. Their second
+    # tuple value is not a JASS/Native handle. Resolve exact objects with the
+    # existing read-only binding query; never infer identity from type or order.
+    refs=host._capture_unit_refs_24268(tuple(candidate for candidate,_ in candidates))
+    trace.record('backpack_identity_binding',target_unit=target,unit_refs=refs,
+        operation='unit_bindings',strict_selection=True,read_only=True)
+    bindings=engine.bind_unit_refs(refs,strict_selection=True)
+    if (type(bindings) is not tuple or len(bindings)!=len(refs)
+            or any(type(pair) is not tuple or len(pair)!=2
+                   or type(pair[0]) is not NativeHandle or type(pair[1]) is not UnitRef
+                   or pair[1]!=ref for pair,ref in zip(bindings,refs))):
+        raise RuntimeError('背包持有者的原生编号映射与完整单位身份不一致，已停止本次修复')
+    trace.record('backpack_identity_binding_result',target_unit=target,
+        bindings=[dict(native_handle=native.value,unit_ref=ref) for native,ref in bindings])
+    matches=[(candidate,ref) for (candidate,_),(native,ref) in zip(candidates,bindings)
+             if native.value==int(target)]
+    if len(matches)!=1:raise RuntimeError('背包持有者已不在当前选中单位中，已停止本次修复；已生成的背包会保留')
+    candidate,bound_unit=matches[0]
     with engine.memory_factory(engine.pid) as memory:
         registry,_,_=session.prepare(memory)
         unit=session.bind_unit(memory,registry,ObjectAddress(candidate.unit_address))
-        if unit.handle.value!=candidate.handle or unit.rawcode!=candidate.unit_type_id:
+        if unit!=bound_unit or unit.handle.value!=candidate.handle or unit.rawcode!=candidate.unit_type_id:
             raise RuntimeError('背包检查期间英雄对象变化，已停止本次修复')
         inventory=host._inventory_items_from_candidate(memory,candidate)
         items=[item for item in inventory if item.slot==1 and item.rawcode==int(classic['rawcode'])]

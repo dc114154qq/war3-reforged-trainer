@@ -25,10 +25,13 @@ a = Analysis(
            ('profiles/discovery/*.json', 'profiles/discovery'),
            ('third_party/minhook/LICENSE.txt','licenses')],
     hiddenimports=[
+        'war3_metadata', 'war3_contracts', 'war3_view_contract', 'war3_ui_services',
+        'war3_tk_view', 'war3_gui', 'war3_application', 'war3_backend', 'war3_cli', 'war3_app',
         'capstone',
         'war3_extension_definition_ui', 'war3_mpq', 'war3_object_tables',
         'war3_services.extension_definitions', 'war3_services.ability_bundle',
         'war3_batch_edit_ui',
+        'war3_artifact_plan', 'war3_artifact_plan_ui', 'war3_services.artifact_plan',
         'war3_services.batch_edit',
         'war3_runtime_check',
         'war3_clone_protocol',
@@ -104,7 +107,7 @@ a = Analysis(
 runtime_entries = [row for row in a.binaries
                    if row[0].lower().startswith('api-ms-win-') or row[0].lower() == 'ucrtbase.dll']
 if runtime_entries:
-    runtime_root = Path(os.environ['RELEASE_2113_RUNTIME_DIR'])
+    runtime_root = Path(os.environ['RELEASE_2114_RUNTIME_DIR'])
     pinned_files = sorted(runtime_root.glob('*.dll'))
     if not pinned_files or not (runtime_root / 'ucrtbase.dll').is_file():
         raise RuntimeError('Verified baseline runtime set is incomplete')
@@ -116,10 +119,10 @@ if runtime_entries:
 pyz = PYZ(a.pure)
 exe = EXE(
     pyz, a.scripts, a.binaries, a.datas, [],
-    name='War3ReforgedTrainer-v2.1.13',
+    name='War3ReforgedTrainer-v2.1.14',
     debug=False, bootloader_ignore_signals=False, strip=False, upx=True,
     upx_exclude=[], runtime_tmpdir=None, console=False,
     disable_windowed_traceback=False, uac_admin=False, argv_emulation=False,
     target_arch=None, codesign_identity=None, entitlements_file=None,
-    icon='assets/app_icon.ico', version='tools/war3-2.1.13-version-info.txt',
+    icon='assets/app_icon.ico', version='tools/war3-2.1.14-version-info.txt',
 )

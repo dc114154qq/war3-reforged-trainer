@@ -1,8 +1,8 @@
 __pycache__/
 *.py[cod]
 .venv/
+node_modules/
 build/
-dist/
 dist-*/
 *.exe
 *.dll

@@ -3,11 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 import os, queue, threading, tkinter as tk
 from tkinter import ttk, filedialog, messagebox
+from war3_ui_services import get_ui_services
 
 
 class ExtensionDefinitionPanel(ttk.Frame):
-    def __init__(self,parent,*,get_language=lambda:'zh',start_thread=None,is_closing=lambda:False):
+    def __init__(self,parent,*,get_language=lambda:'zh',start_thread=None,is_closing=lambda:False,services=None):
         super().__init__(parent)
+        self.services=get_ui_services(parent,services)
         self.get_language=get_language;self.start_thread=start_thread;self.is_closing=is_closing
         self.dialog=None
         self.button=ttk.Button(self,command=self.open_dialog)
@@ -161,8 +163,7 @@ class DefinitionDialog(tk.Toplevel):
         self.say('正在复制和检查文件，请稍候…','Copying and checking the file…')
         def worker():
             try:
-                from war3_services.extension_definitions import prepare_extension_definitions
-                result=prepare_extension_definitions(source,folder,cancel=self.cancel,
+                result=self.panel.services.prepare_extension_definitions(source,folder,cancel=self.cancel,
                         progress=lambda stage,data:self.events.put(('progress',(stage,data))))
                 self.events.put(('result',result))
             except Exception as exc:self.events.put(('error',exc))

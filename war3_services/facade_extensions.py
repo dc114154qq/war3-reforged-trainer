@@ -170,9 +170,16 @@ class ExtensionsFacade:
                     status = report.get("item_catalog_status") or report.get("item_status") or {}
                     error_code = int(status.get("error", 0) or 0) if isinstance(status, dict) else 0
                     if error_code in (31, 62, 63):
+                        trace.record('item_create_rejected',item_rawcode=rawcode,
+                            item_status=status,game_internal_cause_confirmed=False,
+                            observation='item creation or slot postcondition failed',
+                            known_legacy_gate='generation 0/1 maps filter version 2 object definitions',
+                            automatic_replay_performed=False)
                         raise RuntimeError(
-                            "当前战役未加载 3.0 背包装备定义，无法添加该背包。"
-                            "请在“3.0 扩展”中点击“补齐战役／地图背包定义”，使用生成的副本重新进入。"
+                            f"游戏创建或放入背包 {rawcode} 未通过检查（错误 {error_code}）。"
+                            "老战役可能过滤新版本物品，即使文件里已有定义也会发生。"
+                            "请使用本版“补齐战役／地图背包定义”重新生成副本，"
+                            "再从该副本的章节入口进入；已有的游戏存档不会更新定义。"
                         ) from exc
                     raise
                 trace.record('item_create_result', result=result)

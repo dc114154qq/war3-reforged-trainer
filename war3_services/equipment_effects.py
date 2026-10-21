@@ -17,7 +17,7 @@ def skipped_snapshot(snapshot, rawcode):
 def preflight_creation(host, rawcode, target):
     """No pickup event: temporary object is inspected and removed in one callback."""
     from war3_game_session import GameSession
-    from war3_reforged_trainer import ProcessMemory
+    from war3_backend import ProcessMemory
     from war3_item_safety_protocol import SIGNATURES, build_work, decode_work
     engine=host._engine_instance_24268()
     # Legacy test hosts have no live session and cannot dispatch a game callback.
@@ -48,7 +48,7 @@ def active_abilities(host, memory, candidate):
 
 def require_creation_capacity(host, rawcode, target, definition=None):
     """Ordinary items need one temporary classic slot before bag insertion."""
-    from war3_reforged_trainer import ProcessMemory
+    from war3_backend import ProcessMemory
     engine=host._engine_instance_24268();session=engine.session
     classic=host.item_batch_24268()
     rows=[r for r in classic['rows'] if int(r['handle'])==int(target)]
@@ -62,7 +62,7 @@ def require_creation_capacity(host, rawcode, target, definition=None):
 
 
 def classify_state(host, snapshot, slot, area, *, destruction=False):
-    from war3_reforged_trainer import ProcessMemory
+    from war3_backend import ProcessMemory
     engine=host._engine_instance_24268();session=engine.session
     candidate,_=host._direct_selected_context()
     from war3_3_extension_catalog import OFFICIAL_BACKPACKS
@@ -100,7 +100,7 @@ def classify_state(host, snapshot, slot, area, *, destruction=False):
 
 
 def build_bound_work(host,state,entries,tls,action,slot):
-    from war3_reforged_trainer import ProcessMemory
+    from war3_backend import ProcessMemory
     from war3_equipment_effect_protocol import build_work
     session=host._engine_instance_24268().session
     if state['item'].epoch!=session.epoch or state['unit'].session!=session.identity:
@@ -150,7 +150,7 @@ def repair_bag(host,before,slot):
 
 def repair_equipment(host, before):
     """Rehydrate inherited instance classifiers in place, without equip events."""
-    from war3_reforged_trainer import ProcessMemory
+    from war3_backend import ProcessMemory
     from war3_equipment_effect_protocol import SIGNATURES,TRANSFER_SIGNATURES,decode_work,ORDINARY_CLASSES
     engine=host._engine_instance_24268();session=engine.session
     kinds=(1,2,3,4,5,5,6,7,8)
@@ -224,7 +224,7 @@ def destroy(host,before,slot,area,*,expected=None):
 
 
 def perform(host, before, source_slot, equipment_slot, *, equip):
-    from war3_reforged_trainer import ProcessMemory
+    from war3_backend import ProcessMemory
     from war3_equipment_effect_protocol import SIGNATURES,TRANSFER_SIGNATURES,build_work,decode_work
     engine=host._engine_instance_24268();session=engine.session
     with session.lock:
@@ -295,7 +295,7 @@ def perform(host, before, source_slot, equipment_slot, *, equip):
 
 def transfer_created(host, target, native_item, rawcode):
     """Bind a generated classic instance and move it through native bag insertion."""
-    from war3_reforged_trainer import ProcessMemory
+    from war3_backend import ProcessMemory
     from war3_equipment_effect_protocol import SIGNATURES, TRANSFER_SIGNATURES, build_work, decode_work
     engine=host._engine_instance_24268(); session=engine.session
     classic=host.item_batch_24268()

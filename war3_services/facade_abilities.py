@@ -1128,9 +1128,13 @@ class AbilitiesFacade:
                 candidate,
                 required_rawcodes={ability_rawcode},
             )
+        if not instances:
+            raise RuntimeError(
+                f"当前单位没有仍在使用的 {format_rawcode(ability_rawcode)} 技能；请重新读取单位并核对技能代码"
+            )
         if len(instances) != 1:
             raise RuntimeError(
-                f"当前单位上的 {format_rawcode(ability_rawcode)} 运行时技能实例不唯一"
+                f"当前单位上的 {format_rawcode(ability_rawcode)} 有 {len(instances)} 个仍在使用的实例，请核对技能来源"
             )
         instance = instances[0]
         if (instance.rawcode != ability_rawcode or not instance.class_rawcode

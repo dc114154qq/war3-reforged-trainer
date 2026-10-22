@@ -22,6 +22,7 @@ class OperationSpec:
 
 
 OPERATIONS = {
+    "item_effect": OperationSpec("item_effect", "war3_item_effect_protocol", b"item_effect_abi", b"BridgeItemEffectQuery", False, True),
     "item_ability": OperationSpec("item_ability", "war3_item_ability_protocol",
         b"item_ability_abi", b"BridgeItemAbilityQuery", False, True),
     "item_safety": OperationSpec("item_safety", "war3_item_safety_protocol",
@@ -329,6 +330,6 @@ def is_read_query(kind, request):
     if kind=='hero':return request.get('target')==0
     if kind=='hero_attributes':return request.get('target') is None
     if kind=='attack_speed':return request.get('target_aps')==0
-    if kind in ('unit_stats','stat_details','ability','ability_field','item','item_field','item_ability','extension','game_speed'):
+    if kind in ('unit_stats','stat_details','ability','ability_field','item','item_field','item_ability','item_effect','extension','game_speed'):
         return request.get('action')==0
     return False

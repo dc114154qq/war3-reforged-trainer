@@ -96,6 +96,10 @@ export const api = {
   // 6. Item Fields
   readItemFields: (slot: string, filterText?: string, showZero?: boolean, showUnsupported?: boolean) =>
     callApi<ItemFieldsData>('read_item_fields', slot, filterText ?? '', showZero ?? true, showUnsupported ?? true),
+  readItemEffectFields: (area: string, slot: string, level: string) =>
+    callApi<ItemFieldsData>('read_item_effect_fields', area, slot, level),
+  writeItemEffectField: (rowIid: string, newValue: string) =>
+    callApi<{ success: boolean; data?: ItemFieldsData; error?: string }>('write_item_effect_field', rowIid, newValue),
   writeItemField: (rowIid: string, newValue: string) =>
     callApi<{ success: boolean; data?: ItemFieldsData; error?: string }>('write_item_field', rowIid, newValue),
 

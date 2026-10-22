@@ -24,9 +24,15 @@
   let backpackChoice = $state('');
 
   let loadoutNameInput = $state('套装1');
+  let selectedLoadoutName = $state('');
+  function restorePlanName() {
+    return selectedLoadoutName || ((snapshot.loadoutNames || []).includes(loadoutNameInput) ? loadoutNameInput : '');
+  }
   let talentChoiceInput = $state('');
 
   let loading = $state(false);
+  let equipmentBusy = $state(false);
+  let equipmentElapsed = $state(0);
   let actionMessage = $state('');
 
   // Definition Repair Dialog state
@@ -67,6 +73,12 @@
   }
 
   async function handleEquipmentAction(action: string, params: Record<string, any> = {}) {
+    if (equipmentBusy) return;
+    equipmentBusy = true;
+    equipmentElapsed = 0;
+    const started = Date.now();
+    const timer = setInterval(() => equipmentElapsed = Math.floor((Date.now() - started) / 1000), 1000);
+    actionMessage = action.includes('restore') ? '正在恢复套装并按部位装备，请稍候…' : '正在处理装备，请稍候…';
     try {
       const res = await api.extensionEquipmentAction(action, { row_iid: selectedEquipIid, bag_row_iid: selectedBagIid, ...params });
       if (res.success && res.data) {
@@ -78,6 +90,9 @@
       }
     } catch (err: any) {
       actionMessage = `错误: ${err.message || err}`;
+    } finally {
+      clearInterval(timer);
+      equipmentBusy = false;
     }
   }
 
@@ -202,6 +217,7 @@
 
     <!-- 9-Slot Equipment -->
     <div class="ext-card">
+      <fieldset disabled={equipmentBusy} style="display: contents;">
       <div class="card-header">
         <span class="card-title">9 槽装备 ({snapshot.equipment.length} 件)</span>
         <span class="hint">按装备部位装配</span>
@@ -262,24 +278,26 @@
         </div>
 
         <div class="control-row">
-          <select class="input-sm" onchange={(e) => loadoutNameInput = e.currentTarget.value}><option value="">选择已保存方案</option>{#each snapshot.loadoutNames || [] as name}<option value={name}>{name}</option>{/each}</select>
+          <select class="input-sm" bind:value={selectedLoadoutName} onchange={(e) => { if (e.currentTarget.value) loadoutNameInput = e.currentTarget.value; }}><option value="">自动匹配已保存方案</option>{#each snapshot.loadoutNames || [] as name}<option value={name}>{name}</option>{/each}</select>
           <button class="btn btn-secondary btn-sm" onclick={() => handleEquipmentAction('export_loadouts')}>导出方案</button>
           <button class="btn btn-secondary btn-sm" onclick={() => handleEquipmentAction('import_loadouts')}>导入方案</button>
           <input type="text" placeholder="套装名称" class="input-sm" style="width: 90px;" bind:value={loadoutNameInput} />
           <button class="btn btn-primary btn-sm" onclick={() => handleEquipmentAction('save_loadout', { name: loadoutNameInput })}>
             保存套装
           </button>
-          <button class="btn btn-secondary btn-sm" onclick={() => handleEquipmentAction('restore_loadout', { name: loadoutNameInput })}>
+          <button class="btn btn-secondary btn-sm" onclick={() => handleEquipmentAction('restore_loadout', { name: restorePlanName() })}>
             恢复套装
           </button>
-          <button class="btn btn-secondary btn-sm" onclick={() => handleEquipmentAction('save_all_loadouts')}>
+          <button class="btn btn-secondary btn-sm" onclick={() => handleEquipmentAction('save_all_loadouts', { name: loadoutNameInput })}>
             一键保存全英雄
           </button>
-          <button class="btn btn-secondary btn-sm" onclick={() => handleEquipmentAction('restore_all_loadouts')}>
+          <button class="btn btn-secondary btn-sm" onclick={() => handleEquipmentAction('restore_all_loadouts', { name: restorePlanName() })}>
             一键恢复全英雄
           </button>
         </div>
+        {#if equipmentBusy}<p role="status" class="hint">正在处理装备，已用时 {equipmentElapsed} 秒；完成后会核对九个部位。</p>{/if}
       </div>
+      </fieldset>
     </div>
   </div>
 

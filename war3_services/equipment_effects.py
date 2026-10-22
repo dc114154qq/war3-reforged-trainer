@@ -25,6 +25,17 @@ def preflight_creation(host, rawcode, target):
         return {}
     session=engine.session
     with session.lock:
+        from war3_services.loadout_runtime import current_restore
+        restoration = current_restore(host)
+        cache_key = None
+        if restoration is not None:
+            if int(target) != restoration.target:
+                raise RuntimeError('套装物品检查的目标已变化')
+            with ProcessMemory(host.pid) as memory:
+                session.prepare(memory)
+            cache_key = (session.identity, session.epoch, int(rawcode))
+            if cache_key in restoration.definitions:
+                return dict(restoration.definitions[cache_key])
         candidate,_=host._direct_selected_context()
         with ProcessMemory(host.pid) as memory:
             registry,_,_=session.prepare(memory)
@@ -34,8 +45,12 @@ def preflight_creation(host, rawcode, target):
                 registry,_,_=session.prepare(memory)
                 session.resolve(memory,registry,unit)
             return build_work(entries,tls,target=target,rawcode=rawcode)
-        return engine._execute('item_safety',tuple(n for n,_ in SELECTION+SIGNATURES),
+        result = engine._execute('item_safety',tuple(n for n,_ in SELECTION+SIGNATURES),
             builder,decode_work,dict(target=target,rawcode=rawcode))
+        if restoration is not None:
+            # Definition-only data is reused only inside this one restore.
+            restoration.definitions[cache_key] = dict(result)
+        return result
 
 
 def active_abilities(host, memory, candidate):

@@ -12,7 +12,8 @@
   let matchCount = $state(0);
   let copiedCode = $state<string | null>(null);
 
-  let searchTimeout: any = null;
+  let searchTimeout: ReturnType<typeof setTimeout>;
+  let searchRevision = 0;
 
   const kinds = [
     { id: 'item', label: '物品目录 (Items)', icon: Package },
@@ -21,26 +22,31 @@
   ] as const;
 
   async function performSearch(kind: 'item' | 'ability' | 'unit' = currentKind, query: string = searchQuery) {
+    const revision = ++searchRevision;
     isLoading = true;
     try {
       const data: CatalogSearchData = await api.searchIdCatalog(kind, query);
+      if (revision !== searchRevision) return;
       rows = data.rows || [];
       totalCount = data.totalCount || 0;
       matchCount = data.matchCount || 0;
     } catch (err) {
       console.error('searchIdCatalog error:', err);
     } finally {
-      isLoading = false;
+      if (revision === searchRevision) isLoading = false;
     }
   }
 
   function handleKindChange(kind: 'item' | 'ability' | 'unit') {
+    clearTimeout(searchTimeout);
+    rows = [];
     currentKind = kind;
     performSearch(kind, searchQuery);
   }
 
   function handleQueryInput(val: string) {
     searchQuery = val;
+    ++searchRevision;
     if (searchTimeout) clearTimeout(searchTimeout);
     searchTimeout = setTimeout(() => {
       performSearch(currentKind, searchQuery);
@@ -60,7 +66,10 @@
   }
 
   onMount(() => {
+    const refreshLanguage = () => performSearch(currentKind, searchQuery);
+    window.addEventListener('war3-language', refreshLanguage);
     performSearch('item', '');
+    return () => { ++searchRevision; clearTimeout(searchTimeout); window.removeEventListener('war3-language', refreshLanguage); };
   });
 </script>
 
@@ -91,7 +100,7 @@
       <input
         type="text"
         class="search-input"
-        placeholder="搜索 FourCC 代号 (如 ckng, AHbz)、中文名称、英文名称或分类..."
+        placeholder="搜索 FourCC 代号 (如 ckng, AHbz)、中文名称、英文名称、分类或效果..."
         value={searchQuery}
         oninput={(e) => handleQueryInput((e.target as HTMLInputElement).value)}
       />
@@ -116,9 +125,9 @@
         <thead>
           <tr>
             <th style="width: 130px;">Rawcode (FourCC)</th>
-            <th style="width: 260px;">中文名称</th>
-            <th style="width: 260px;">英文名称 (English)</th>
-            <th>分类 / 归属</th>
+            <th style="width: 220px;">名称 / English</th>
+            <th class="description-heading">{currentKind === 'unit' ? '单位介绍' : '描述 / 效果'}</th>
+            <th style="width: 110px;">分类 / 归属</th>
             <th style="width: 100px; text-align: center;">操作</th>
           </tr>
         </thead>
@@ -132,9 +141,12 @@
               </td>
               <td class="name-zh font-medium">
                 {row.name_zh || '-'}
+                <div class="name-en text-muted">{row.name_en || '-'}</div>
               </td>
-              <td class="name-en text-muted">
-                {row.name_en || '-'}
+              <td class="object-description">
+                <div class="description-text">{row.description || '游戏基础资料未提供此对象的介绍。'}</div>
+                {#if row.descriptionSource}<div class="description-source">{row.descriptionSource}</div>{/if}
+                {#if row.descriptionPartial}<div class="description-source">部分变量以游戏内数值为准。</div>{/if}
               </td>
               <td>
                 <span class="category-pill">{row.category || '未分类'}</span>
@@ -163,11 +175,18 @@
 
   <!-- Footer Tip -->
   <div class="footer-bar">
-    <span>💡 检索支持大小写忽略；点击“复制”即可获得4字节代号，用于大象面板、物品创建或技能添加</span>
+    <span>💡 检索支持大小写忽略；说明来自游戏基础资料，地图自定义可能不同。点击“复制”可获取代码；输入效果关键词也能搜索</span>
   </div>
 </div>
 
 <style>
+  .object-description { min-width: 320px; max-width: 740px; }
+  .description-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65; color: var(--text-normal); user-select: text; }
+  .description-source { font-size: 11px; color: var(--text-muted); margin-top: 6px; white-space: normal; overflow-wrap: anywhere; }
+  .name-en { margin-top: 4px; overflow-wrap: anywhere; }
+  .data-table { table-layout: auto; min-width: 900px; }
+  .header-bar, .footer-bar { flex-wrap: wrap; gap: 8px; }
+
   .catalog-container {
     display: flex;
     flex-direction: column;

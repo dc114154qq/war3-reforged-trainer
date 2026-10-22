@@ -31,6 +31,10 @@ class War3IdEntry:
     name_en: str
     category_zh: str
     category_en: str
+    description_zh: str = ""
+    description_en: str = ""
+    description_source: str = ""
+    description_partial: bool = False
 
 
 _CATALOG_B85 = (
@@ -457,8 +461,9 @@ _CATALOG_B85 = (
 def get_id_catalog() -> dict[str, tuple[War3IdEntry, ...]]:
     raw = zlib.decompress(base64.b85decode("".join(_CATALOG_B85)))
     decoded = json.loads(raw.decode("utf-8"))
+    from war3_id_descriptions import description_for
     return {
-        kind: tuple(War3IdEntry(**entry) for entry in entries)
+        kind: tuple(War3IdEntry(**entry, **description_for(kind, entry["rawcode"])) for entry in entries)
         for kind, entries in decoded.items()
     }
 
@@ -480,4 +485,6 @@ def search_id_entries(kind: str, query: str = "") -> tuple[War3IdEntry, ...]:
         or needle in entry.name_en.casefold()
         or needle in entry.category_zh.casefold()
         or needle in entry.category_en.casefold()
+        or needle in entry.description_zh.casefold()
+        or needle in entry.description_en.casefold()
     )

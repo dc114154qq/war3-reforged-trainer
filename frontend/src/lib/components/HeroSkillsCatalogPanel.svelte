@@ -65,7 +65,7 @@
     actionFeedback = `正在给选中单位赋予技能 [${name} (${code})]...`;
     isError = false;
     try {
-      const res = await api.executeElephantAction('add_ability', { ability_rawcode: code, ability_level: '1' });
+      const res = await api.executeElephantAction('add_ability', { rawcode: code, level: '1' });
       if (res.success) {
         actionFeedback = `✓ 已成功添加技能 [${name}] 到选中英雄`;
       } else {

@@ -4,6 +4,9 @@
   import type { ItemFieldRow, ItemFieldsData } from '../types';
   import { Package, RefreshCw, Search, Check, AlertCircle, Edit2, X, Save } from 'lucide-svelte';
 
+  let mode = $state('basic');
+  let area = $state('classic');
+  let level = $state<number | undefined>(1);
   let selectedSlot = $state('0'); // 0-5
   let filterText = $state('');
   let showZero = $state(true);
@@ -31,11 +34,13 @@
   ];
 
   async function handleRead(slotId: string = selectedSlot) {
+    if (isLoading || isSaving) return;
     selectedSlot = slotId;
+    cancelEdit();
     isLoading = true;
     feedback = '';
     try {
-      const data: ItemFieldsData = await api.readItemFields(
+      const data: ItemFieldsData = mode === 'effects' ? await api.readItemEffectFields(area, selectedSlot, String(level ?? 1)) : await api.readItemFields(
         selectedSlot,
         filterText.trim(),
         showZero,
@@ -51,13 +56,14 @@
     } catch (err: any) {
       feedback = `读取失败: ${err.message || err}`;
       isError = true;
-      rows = [];
+      rows = []; summary = ''; detail = '';
     } finally {
       isLoading = false;
     }
   }
 
   function startEdit(row: ItemFieldRow) {
+    if (isLoading || isSaving || row.editable === false) return;
     editingRowId = row._iid;
     editingValue = row.value;
   }
@@ -70,7 +76,7 @@
   async function saveEdit(row: ItemFieldRow) {
     isSaving = true;
     try {
-      const res = await api.writeItemField(row._iid, editingValue);
+      const res = mode === 'effects' ? await api.writeItemEffectField(row._iid, editingValue) : await api.writeItemField(row._iid, editingValue);
       if (res.success) {
         if (res.data) { rows = res.data.rows; summary = res.data.summary; detail = res.data.detail; }
         editingRowId = null;
@@ -80,8 +86,9 @@
         feedback = `✗ 写入失败: ${res.error}`;
         isError = true;
       }
-      setTimeout(() => (feedback = ''), 3000);
+      if (!res.success) { rows = []; summary = ''; detail = ''; cancelEdit(); }
     } catch (err: any) {
+      rows = []; summary = ''; detail = ''; cancelEdit();
       feedback = `✗ 异常: ${err.message || err}`;
       isError = true;
     } finally {
@@ -106,14 +113,40 @@
 
 <div class="fields-container">
   <!-- Controls Bar -->
+  <div class="mode-controls">
+    <label>编辑内容
+      <select class="input-field" bind:value={mode} disabled={isLoading || isSaving} onchange={() => { rows = []; summary = ''; detail = ''; feedback = ''; selectedSlot = '0'; cancelEdit(); }}>
+        <option value="basic">物品基础字段</option>
+        <option value="effects">装备加成 / 附带技能</option>
+      </select>
+    </label>
+    {#if mode === 'effects'}
+      <label>物品位置
+        <select class="input-field" bind:value={area} disabled={isLoading || isSaving} onchange={() => { rows = []; summary = ''; detail = ''; feedback = ''; selectedSlot = '0'; cancelEdit(); }}>
+          <option value="classic">普通物品栏</option>
+          <option value="bag">3.0 扩展背包</option>
+          <option value="equipment">3.0 装备栏</option>
+        </select>
+      </label>
+      <label>字段等级 <input aria-label="物品技能字段等级" class="input-field level-input" type="number" min="1" max="1000" bind:value={level} disabled={isLoading || isSaving} oninput={() => { rows = []; summary = ''; detail = ''; cancelEdit(); }} /></label>
+    {/if}
+  </div>
   <div class="controls-card">
     <div class="top-row">
       <div class="slot-selector">
-        <span class="selector-label">物品栏槽位:</span>
+        <span class="selector-label">物品槽位:</span>
+        {#if mode === 'effects' && area !== 'classic'}
+          <select aria-label="物品槽位" class="input-field" bind:value={selectedSlot} disabled={isLoading || isSaving} onchange={() => { rows = []; summary = ''; detail = ''; cancelEdit(); }}>
+            {#each Array.from({ length: area === 'bag' ? 30 : 9 }, (_, i) => i) as slot}
+              <option value={String(slot)}>{area === 'equipment' ? ['头部','胸部','手套','靴子','戒指 1','戒指 2','主手','副手','饰品'][slot] : `背包 ${slot+1}`}</option>
+            {/each}
+          </select>
+        {:else}
         <div class="slot-chips">
           {#each slots as s}
             <button
               class="slot-chip {selectedSlot === s.id ? 'active' : ''}"
+              disabled={isLoading || isSaving}
               onclick={() => handleRead(s.id)}
             >
               <Package size={13} />
@@ -121,10 +154,11 @@
             </button>
           {/each}
         </div>
+        {/if}
       </div>
 
       <div class="button-group">
-        <button class="btn btn-primary" onclick={() => handleRead()} disabled={isLoading}>
+        <button class="btn btn-primary" onclick={() => handleRead()} disabled={isLoading || isSaving}>
           <RefreshCw size={14} class={isLoading ? 'spinning' : ''} />
           读取选定槽位
         </button>
@@ -184,7 +218,7 @@
         <Package size={36} class="empty-icon" />
         <div class="empty-title">{isLoading ? '正在读取物品字段...' : '当前槽位无数据'}</div>
         <div class="empty-desc">
-          请确保游戏中选中持有物品的英雄或单位，选择对应槽位（槽位 1 - 6）并点击“读取选定槽位”。
+          请确保游戏中选中持有物品的英雄或单位，选择对应槽位并点击“读取选定槽位”。
         </div>
       </div>
     {:else}
@@ -203,7 +237,7 @@
           {#each filteredRows as row}
             <tr class={editingRowId === row._iid ? 'editing-row' : ''}>
               <td class="mono font-semibold text-bright">{row.field}</td>
-              <td class="text-gold">{row.name || '-'}</td>
+              <td class="text-gold">{row.name || '-'}{#if row.ability}<div class="field-source mono">{row.ability} / {row.effectClass} · {row.scope === 'level' ? `等级 ${level ?? 1}` : '通用'}</div>{/if}{#if row.note}<div class="field-source">{row.note}</div>{/if}</td>
               <td><span class="type-badge">{row.type}</span></td>
               <td>
                 {#if editingRowId === row._iid}
@@ -239,7 +273,7 @@
                     </button>
                   </div>
                 {:else}
-                  <button class="btn-icon edit" onclick={() => startEdit(row)} title="编辑此字段值">
+                  <button class="btn-icon edit" disabled={row.editable === false || isLoading || isSaving} onclick={() => startEdit(row)} title={row.editable === false ? '此字段仅供查看' : '编辑此字段值'}>
                     <Edit2 size={13} />
                   </button>
                 {/if}
@@ -253,11 +287,24 @@
 
   <div class="footer-bar">
     <span>共显示 {filteredRows.length} / {rows.length} 个物品字段</span>
-    <span class="tip">💡 支持读取和修改物品的使用次数(charges)、冷却时间、属性加成与分类标识</span>
+    <span class="tip">💡 基础字段与物品附带技能分开读取；修改仅作用于当前物品，地图脚本计算的效果以游戏内为准</span>
   </div>
 </div>
 
 <style>
+  .mode-controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; color: var(--text-normal); font-size: 12px; }
+  .mode-controls label { display: flex; gap: 6px; align-items: center; }
+  .input-field { background: var(--bg-surface); color: var(--text-bright); border: 1px solid var(--border-normal); border-radius: 4px; padding: 5px; }
+  .level-input { width: 72px; }
+  .field-source { font-size: 11px; color: var(--text-muted); overflow-wrap: anywhere; margin-top: 3px; }
+  button:disabled { opacity: .45; cursor: default; }
+  .top-row, .bottom-row { flex-wrap: wrap; gap: 10px; }
+  .slot-selector { min-width: 0; flex-wrap: wrap; }
+  .slot-chips { flex-wrap: wrap; }
+  .summary-pill { overflow-wrap: anywhere; white-space: normal; }
+  .detail-box span, .feedback-banner span { min-width: 0; overflow-wrap: anywhere; }
+  .footer-bar { flex-wrap: wrap; gap: 6px; }
+
   .fields-container {
     display: flex;
     flex-direction: column;

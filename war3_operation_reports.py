@@ -2,6 +2,9 @@
 import struct
 
 def record_status(kind,evidence,report):
+    if kind=='item_effect' and evidence.get('work_result_hex'):
+        from war3_item_effect_protocol import status
+        report['item_effect_status']=status(bytes.fromhex(evidence['work_result_hex']))
     if kind in ('ability','item','item_ability','direct_cast') and evidence.get('work_result_hex'):
         from importlib import import_module
         from war3_native_journal import decode_work as decode_journal,rawcode as code_text

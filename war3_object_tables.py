@@ -283,25 +283,49 @@ class Reader:
         value = self.raw[self.at:end]; self.at = end + 1; return value
 
 
-def object_ids(raw, *, extended=False):
-    """Read .w3a/.w3t/etc identifiers without editing custom object records."""
-    reader = Reader(raw); version = reader.integer(); result = set()
-    if version not in (1, 2, 3): raise DefinitionError('地图自定义对象格式尚未适配。')
-    for _ in range(2):
-        for _ in range(reader.count()):
-            old, new = reader.take(4), reader.take(4)
-            result.add((new if new != bytes(4) else old).decode('latin1'))
-            if version == 3: reader.take(reader.count(1024)*4)
-            for _ in range(reader.count()):
-                reader.take(4); kind = reader.integer()
-                if extended: reader.take(8)
-                if kind in (0, 1, 2): reader.take(4)
-                elif kind == 3: reader.string()
-                else: raise DefinitionError('地图自定义对象字段格式异常。')
-                if reader.take(4) not in (old, new, bytes(4)):
-                    raise DefinitionError('地图自定义对象结束标识异常。')
-    if reader.at != len(raw): raise DefinitionError('地图自定义对象包含额外数据。')
-    return result
+def object_ids(raw, *, extended=False, diagnostics=None):
+    """Scan IDs without changing object data, including editor-retained end IDs.
+
+    Copied or renamed objects can retain the source object's four-byte trailer.
+    It is still consumed at its exact structural position. Counts, value types,
+    strings, table count and complete input consumption remain mandatory; no
+    byte scanning or guessed resynchronization is used.
+    """
+    reader = Reader(raw); result = set()
+    report = diagnostics if diagnostics is not None else {}
+    report.update(bytes=len(raw), objects=0, modifications=0, nonstandard_end_ids=0, end_id_examples=[])
+    try:
+        version = reader.integer(); report['version'] = version
+        if version not in (1, 2, 3): raise DefinitionError('地图自定义对象格式尚未适配。')
+        for table in range(2):
+            count = reader.count(); report[f'table_{table}_objects'] = count
+            for object_index in range(count):
+                old, new = reader.take(4), reader.take(4)
+                identity = new if new != bytes(4) else old
+                report.update(table=table, object_index=object_index, object_id=identity.decode('latin1'))
+                result.add(identity.decode('latin1'))
+                if version == 3: reader.take(reader.count(1024)*4)
+                for modification in range(reader.count()):
+                    field = reader.take(4); kind = reader.integer()
+                    report.update(modification=modification, field_id=field.decode('latin1'), value_kind=kind)
+                    if extended: reader.take(8)
+                    if kind in (0, 1, 2): reader.take(4)
+                    elif kind == 3: reader.string()
+                    else: raise DefinitionError('地图自定义对象字段格式异常。')
+                    offset = reader.at; marker = reader.take(4)
+                    if marker not in (old, new, bytes(4)):
+                        report['nonstandard_end_ids'] += 1
+                        if len(report['end_id_examples']) < 16:
+                            report['end_id_examples'].append(dict(table=table, object_index=object_index,
+                                object_id=identity.hex(), old_id=old.hex(), new_id=new.hex(),
+                                field_id=field.hex(), end_id=marker.hex(), offset=offset))
+                    report['modifications'] += 1
+                report['objects'] += 1
+        if reader.at != len(raw): raise DefinitionError('地图自定义对象包含额外数据。')
+        report['complete'] = True
+        return result
+    finally:
+        report['offset'] = reader.at
 
 
 def map_data_mode(raw):

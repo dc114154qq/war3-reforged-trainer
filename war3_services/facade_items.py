@@ -3,6 +3,14 @@ from __future__ import annotations
 from contextlib import contextmanager
 
 class ItemsFacade:
+    def read_item_effect_fields(self, area: str = 'classic', slot: int = 0, level: int = 1):
+        from war3_services.item_effect_fields import read
+        return read(self, area, slot, level)
+
+    def write_item_effect_field(self, snapshot, row_index: int, value: str):
+        from war3_services.item_effect_fields import write
+        return write(self, snapshot, row_index, value)
+
     def create_all_loaded_items(
         self,
         limit: int = 0,

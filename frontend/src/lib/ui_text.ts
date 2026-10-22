@@ -1,5 +1,16 @@
 // Presentation text for the desktop view. Game object names remain catalogue data.
 export const UI_EN: Record<string, string> = {
+  '检查地图对象':'Checking map objects','对象检查完成':'Object checks complete','发现对象结构异常':'Object structure issue found',
+  '编辑内容':'Edit content','物品基础字段':'Basic item fields','装备加成 / 附带技能':'Equipment bonuses / attached abilities',
+  '物品位置':'Item location','普通物品栏':'Classic inventory','3.0 扩展背包':'3.0 backpack','3.0 装备栏':'3.0 equipment slots',
+  '物品槽位:':'Item slot:','名称 / English':'Name / English','单位介绍':'Unit introduction','描述 / 效果':'Description / effects',
+  '游戏基础资料未提供此对象的介绍。':'The base game data has no description for this object.',
+  '部分变量以游戏内数值为准。':'Some variables use the values shown in the game.',
+  '攻击加成':'Attack bonus','力量加成':'Strength bonus','敏捷加成':'Agility bonus','智力加成':'Intelligence bonus','护甲加成':'Armor bonus',
+  '移动速度加成':'Movement speed bonus','生命值加成':'Hit point bonus','魔法值加成':'Mana bonus','视野加成':'Sight range bonus',
+  '施法时间':'Casting time','冷却时间':'Cooldown','持续时间':'Duration','魔法消耗':'Mana cost','影响范围':'Area of effect',
+  '创建中...':'Creating...',
+
   'by B站两杯沈梦溪':'by Bilibili Two Cups of Shen Mengxi',
   '大象功能灵感来源于经典版大象修改器，本软件完全免费，谨防倒卖':'Elephant features were inspired by the classic Elephant Trainer. This software is completely free; beware of resellers.',
   '知道了':'OK','操作未完成':'Operation did not complete','诊断日志：':'Diagnostic log:',
@@ -81,6 +92,9 @@ export const UI_EN: Record<string, string> = {
   '修复错槽': 'Repair misplaced items', '卸下所选': 'Unequip selected', '审计装备': 'Check equipment',
   '开启任意槽': 'Enable any slot', '刷新天赋图标': 'Refresh talent icons', '选择天赋': 'Choose a talent',
   '选择已保存方案': 'Choose a saved plan', '补齐战役／地图背包定义 (生成无损副本)': 'Add backpack definitions (create a copy)',
+  '自动匹配已保存方案': 'Match saved plans automatically',
+  '正在恢复套装并按部位装备，请稍候…': 'Restoring the loadout to its saved slots, please wait…',
+  '正在处理装备，请稍候…': 'Processing equipment, please wait…',
   '地图/战役文件完整路径': 'Full campaign / map path', '输出文件夹（留空则放在原文件旁边）': 'Output folder (empty = beside the input)',
   '复制完整路径': 'Copy full path', '处理报告：': 'Report:', '处理日志：': 'Log:',
   '初始化大象功能': 'Initialize Elephant features', '地图与战局全局控制': 'Map and game controls',
@@ -115,6 +129,8 @@ export const UI_EN: Record<string, string> = {
 };
 
 export function translateDynamic(source: string): string | undefined {
+  const progress = /^正在处理装备，已用时 (\d+) 秒；完成后会核对九个部位。$/.exec(source);
+  if (progress) return `Processing equipment: ${progress[1]} seconds elapsed. All nine slots will be checked.`;
   let m = /^(30 格扩展背包|9 槽装备) \((\d+) 件\)$/.exec(source);
   if (m) return `${m[1].startsWith('30') ? '30-slot bag' : '9 equipment slots'} (${m[2]} items)`;
   m = /^3\.0 官方战役天赋树 \((\d+) 层记录\)$/.exec(source);

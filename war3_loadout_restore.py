@@ -89,6 +89,25 @@ def run_loadout_batch(host, name, action, record=None):
 
 
 def regenerate_loadout(host, saved, before, slot_types):
+    from war3_services.loadout_runtime import restore_scope
+    with restore_scope(host, before['target_unit'], saved.get('name', '')) as runtime:
+        result = _regenerate_loadout(host, saved, before, slot_types, runtime)
+    if runtime.refresh_result is not None:
+        result['loadout_effect_refresh'] = runtime.refresh_result
+        if runtime.refresh_result.get('status') in ('failed', 'unavailable'):
+            result['loadout_postcondition_warning'] = '装备位置已核对；属性刷新需要检查，已保留装备'
+    if getattr(host, '_game_session', None) is not None:
+        final = host.extension_snapshot_24268()
+        for key, value in result.items():
+            if key.startswith('loadout_'):
+                final[key] = value
+        if any(final[k] != result[k] for k in ('target_unit', 'bag', 'equipment', 'bag_size')):
+            final['loadout_postcondition_warning'] = '套装已完成装备；随后库存发生变化，已保留物品，请刷新检查'
+        return final
+    return result
+
+
+def _regenerate_loadout(host, saved, before, slot_types, runtime):
     target = int(before['target_unit'])
     layout = tuple(saved['equipment'])
     if len(layout) != len(slot_types):
@@ -96,26 +115,33 @@ def regenerate_loadout(host, saved, before, slot_types):
     charges = tuple(saved.get('equipment_charges', (0,) * len(layout)))
     if len(charges) != len(layout) or any(not 0 <= int(v) <= 1_000_000_000 for v in charges):
         raise ValueError('Invalid saved item charges')
-    needed = sum(bool(int(row[1])) for row in layout)
     old_layout = tuple((int(row['handle']), int(row['rawcode'])) for row in before['equipment'])
+    reusable = tuple(bool(old_layout[i][0]) and old_layout[i][1] == int(row[1])
+        and int(before['equipment'][i].get('charges', 0)) == int(charges[i])
+        for i, row in enumerate(layout))
+    needed = sum(bool(int(row[1])) and not reusable[i] for i, row in enumerate(layout))
+    displaced = sum(bool(handle) and not reusable[i] for i, (handle, _) in enumerate(old_layout))
     free = int(before['bag_size']) - sum(bool(int(row['handle'])) for row in before['bag'])
     # Reserve staging and rollback capacity before creating anything. Old
     # equipment is preserved in the bag, including after a successful restore.
-    if free < needed + sum(bool(handle) for handle, _ in old_layout):
+    if free < needed + displaced:
         raise RuntimeError('扩展背包空位不足以生成套装并保留原装备，未开始恢复')
     requires_any = bool(saved.get('requires_any_slot')) or any(
         int(row[1]) and (len(row) < 3 or int(row[2]) not in (slot_types[index], 9))
         for index, row in enumerate(layout)
     )
     key = (int(getattr(host, 'pid', 0)), target)
-    if requires_any and not getattr(host, '_extension_any_slot_enabled', {}).get(key):
+    if needed and not getattr(host, '_extension_any_slot_enabled', {}).get(key):
         host.set_extension_equipment_any_slot_24268(True)
+    runtime.record('any_slot_ready', enabled=bool(getattr(host, '_extension_any_slot_enabled', {}).get(key)),
+        saved_requires_any=requires_any, item_count=needed, free_bag_slots=free)
     created = []
     desired = []
     item_skips = []
     # Empty slot records may retain a UI/cache quantity; they own no item.
     expected_charges = [int(value) if int(row[1]) else 0 for row, value in zip(layout, charges)]
     placement_started = False
+    current = before
 
     def committed_snapshot(current, warning=''):
         if int(current['target_unit']) != target:
@@ -135,6 +161,10 @@ def regenerate_loadout(host, saved, before, slot_types):
     try:
         for slot, row in enumerate(layout):
             rawcode = int(row[1])
+            if reusable[slot]:
+                desired.append(old_layout[slot])
+                runtime.record('slot_preserved', slot=slot, item_handle=old_layout[slot][0], rawcode=rawcode)
+                continue
             # Preserve a protected old instance before generating a replacement,
             # rather than discovering the restriction after other slots moved.
             if old_layout[slot][0]:
@@ -149,9 +179,10 @@ def regenerate_loadout(host, saved, before, slot_types):
             if not rawcode:
                 desired.append((0, 0))
                 continue
-            prior = host.extension_snapshot_24268()
+            prior = current
             prior_handles = {int(item['handle']) for area in ('bag', 'equipment') for item in prior[area]}
             after = host.add_extension_item_24268(rawcode)
+            current = after
             if int(after['target_unit']) != target:
                 raise RuntimeError('Loadout target changed during creation; no replay was issued')
             if after.get('operation_skipped'):
@@ -168,13 +199,19 @@ def regenerate_loadout(host, saved, before, slot_types):
             current_type = int(item.get('equipment_type', int(row[2]) if len(row) > 2 else 0))
             if current_type not in (slot_types[slot], 9) and not getattr(host, '_extension_any_slot_enabled', {}).get(key):
                 host.set_extension_equipment_any_slot_24268(True)
-            host.set_extension_bag_charges_24268(int(item['slot']), int(charges[slot]))
+            if int(item.get('charges', 0)) != int(charges[slot]):
+                current = host.set_extension_bag_charges_24268(int(item['slot']), int(charges[slot]))
             desired.append(created[-1])
+            runtime.record('item_generated', slot=slot, item_handle=int(item['handle']), rawcode=rawcode,
+                desired_charges=int(charges[slot]), observed_charges=int(item.get('charges', 0)),
+                equipment_type=current_type)
         placement_started = True
         after = host._restore_extension_loadout_handles_24268(tuple(desired), target)
         committed = committed_snapshot(after)
         if committed is None:
             raise RuntimeError('Generated loadout slot readback differs')
+        runtime.record('placement_verified', desired=desired, item_skips=item_skips,
+            charge_mismatches=committed.get('loadout_charge_mismatches', ()))
         return committed
     except Exception as exc:
         errors = []

@@ -71,3 +71,20 @@ class ExternalMemoryBackend:
             raise
         self.session.last_evidence = OperationEvidence(True, True, False, True, False)
         return result
+
+    def increment_talent_point(self,memory,registry,unit,candidate,instance,controller,tiers,expected):
+        self.session.require_write()
+        self.session.profile.require_module('talents')
+        def revalidate():
+            self.session.resolve(memory,registry,unit)
+            if (unit.address.value,unit.handle.value,unit.rawcode)!=(candidate.unit_address,candidate.handle,candidate.unit_type_id):
+                raise RuntimeError('天赋加点目标身份发生变化')
+        revalidate()
+        try:
+            result=self.session.profile.adapter.talents.increment_point(
+                memory,candidate,instance,controller,tiers,expected,registry,revalidate)
+        except Exception:
+            self.session.last_evidence=OperationEvidence(uncertain=True)
+            raise
+        self.session.last_evidence=OperationEvidence(True,True,False,True,False)
+        return result

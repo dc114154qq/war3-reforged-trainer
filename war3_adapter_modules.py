@@ -302,6 +302,12 @@ class AttackAdapter(LayoutProvider):
 
 
 class AbilityAdapter(LayoutProvider):
+    def instance_is_current(self, memory, data):
+        ability = self.profile.section("layouts")["ability"]
+        # Retired abilities can remain linked to their unit after native
+        # removal. Hidden/disabled live abilities still belong in the list.
+        return not memory.read_u32(data + ability["flags"]) & ability["retired_mask"]
+
     def instance(self, host, pm, candidate, wrapper, component_rawcodes, instance_type):
         component = self.profile.section("layouts")["component_list"]
         ability = self.profile.section("layouts")["ability"]
@@ -328,6 +334,8 @@ class AbilityAdapter(LayoutProvider):
             mirror_rawcode = pm.read_u32(data + ability["mirror_rawcode"])
             handle = pm.read_u64(wrapper + component["handle"])
             data_cache_pointer = pm.read_u64(data + ability["data_cache"])
+            if not self.instance_is_current(pm, data):
+                return None
         except OSError:
             return None
         if not host._looks_like_vtable(data_vtable):
@@ -529,6 +537,39 @@ class TalentAdapter(LayoutProvider):
 
     def selection_order(self, tier, choice_index):
         return self.layout["order_base"] + tier * self.layout["choices_per_tier"] + choice_index
+
+    def increment_point(self, memory, candidate, instance, controller, tiers, expected, registry, revalidate):
+        ability=self.profile.section('layouts')['ability']
+        component=self.profile.section('layouts')['component_list']
+        data=int(instance.data_address)
+        def identity():
+            revalidate()
+            wrapper=registry.resolve_handle(memory,int(instance.handle))
+            if (wrapper!=int(instance.wrapper_address) or memory.read_u64(wrapper+component['data'])!=data
+                or memory.read_u64(data+ability['full_handle'])!=int(instance.handle)
+                or memory.read_u32(data+ability['rawcode'])!=controller
+                or memory.read_u64(data+ability['unit_owner'])!=candidate.unit_address
+                or memory.read_u32(data+ability['flags']) & ability['retired_mask']):
+                raise RuntimeError('天赋控制器身份已经变化，本次未继续加点')
+        identity()
+        parsed=self.records(memory,candidate,[instance],tiers,registry)
+        if parsed is None:raise RuntimeError('天赋控制器点数或选择记录未通过校验')
+        remaining,records,choices=parsed
+        spent=sum(full!=0xffffffffffffffff for full,_flags in records)
+        if remaining!=expected:raise RuntimeError('天赋点数已变化，请重新读取后再加点')
+        if remaining+spent>=len(tiers)*self.layout['choices_per_tier']:
+            raise RuntimeError('当前天赋树已经达到可消费点数上限')
+        start=data+self.layout['snapshot_start'];size=self.layout['snapshot_size']
+        before=memory.read(start,size);offset=self.layout['point_counter']-self.layout['snapshot_start']
+        if struct.unpack_from('<I',before,offset)[0]!=expected:raise RuntimeError('加点前天赋状态发生变化，请重新读取')
+        identity()
+        if memory.read(start,size)!=before:raise RuntimeError('加点前天赋选择记录发生变化，请重新读取')
+        memory.write_u32(data+self.layout['point_counter'],expected+1)
+        after=memory.read(start,size);wanted=bytearray(before);struct.pack_into('<I',wanted,offset,expected+1)
+        identity()
+        if after!=bytes(wanted):raise RuntimeError('天赋加点后的点数或选择记录读回不一致，请先重新读取，勿重复加点')
+        return dict(before=expected,after=expected+1,controller=controller,controller_full=int(instance.handle),
+                    selection_records_preserved=True,route='controller_point_counter')
 
     def records(self, memory, candidate, instances, tiers, registry=None):
         ability = self.profile.section("layouts")["ability"]

@@ -92,6 +92,7 @@ def main() -> None:
     marker(b"ability_field_batch_abi", (0x24268021, 216, 7688))
     marker(b"item_batch_abi", (0x2426806f, 216, 63432))
     marker(b"item_ability_abi", (0x24268070, 216, 58632))
+    marker(b"item_effect_abi", (0x24268077, 216, 2584))
     marker(b"equipment_effect_abi", (0x2426805b, 216, 1672))
     marker(b"item_safety_abi", (0x24268056, 216, 600))
     marker(b"item_catalog_batch_abi", (0x2426802B, 216, 0))

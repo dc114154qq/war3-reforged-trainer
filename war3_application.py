@@ -1178,6 +1178,31 @@ class TrainerApplication:
         self.view.value('root').after(0, lambda: self.apply_item_field_snapshot(updated_snapshot) if self.view.value('state').get('item_field_snapshot') is snapshot else None)
         return f'物品字段 {field_value.spec.rawcode} 已写入并读回：{actual.value_text()}'
 
+    def read_item_effect_field_snapshot(self, area: str, slot: int, level: int):
+        return self.trainer().read_item_effect_fields(area, slot, level)
+
+    def write_item_effect_field_value(self, snapshot, row_index: int, text: str):
+        actual = self.trainer().write_item_effect_field(snapshot, row_index, text)
+        self.set_status('物品附带技能字段已写入并读回，请在游戏中核对效果')
+        return actual
+
+    def item_effect_fields_view(self, snapshot) -> dict:
+        source = snapshot.source
+        labels = {'classic': '普通物品栏', 'bag': '扩展背包', 'equipment': '装备栏'}
+        rows = []
+        for index, (ability, field, note) in enumerate(snapshot.rows):
+            ability_code = format_rawcode(ability['rawcode'])
+            effect = format_rawcode(ability['effect_class'])
+            spec = field.spec if field is not None else None
+            rows.append(dict(_iid=f'{snapshot.generation}:{index}',
+                field=spec.rawcode if spec else '—', type=spec.value_kind if spec else '组件',
+                scope=spec.scope if spec else '', name=({'Iatt':'攻击加成','Idef':'护甲加成','Iagi':'敏捷加成','Iint':'智力加成','Istr':'力量加成','Imvb':'移动速度加成','Ilif':'生命值加成','Iman':'魔法值加成','Isib':'视野加成','acas':'施法时间','acdn':'冷却时间','adur':'持续时间','amcs':'魔法消耗','aare':'影响范围'}.get(spec.rawcode, spec.constant_name if not spec.constant_name.startswith('METADATA_') else spec.field_name or spec.display_name)) if spec else note,
+                value=field.value_text() if field else '—', status=field.status if field else '只读',
+                editable=bool(field and field.value is not None and spec.writable and spec.runtime_supported),
+                ability=ability_code, effectClass=effect, note=field.note if field else note))
+        return dict(summary=f"{labels[source.area]}第 {source.slot+1} 格；物品 {format_rawcode(source.rawcode)}；附带技能 {len(snapshot.abilities)} 个；字段 {len(rows)} 项；字段等级 {snapshot.level}",
+            detail='修改当前这件物品的技能数值；地图脚本另行计算的加成未必属于这里。实际战斗效果请在游戏中核对。', rows=rows)
+
     def item_field_write_clicked(self) -> None:
         snapshot = self.view.value('state').get('item_field_snapshot')
         if not isinstance(snapshot, ItemFieldSnapshot):
@@ -1711,7 +1736,10 @@ class TrainerApplication:
         text = f'天赋操作：成功 {result['succeeded']}，跳过 {result['skipped']}，失败 {result['failed']}'
         errors = [f'0x{row['target']:x}：{row['reason']}' for row in result['results'] if row['status'] == 'failed']
         if errors:
-            raise RuntimeError(text + '；' + '；'.join(errors))
+            error=RuntimeError(text + '；' + '；'.join(errors))
+            error.report={'operation':'talent_batch','batch_failures':tuple(
+                row['explanation'] for row in result['results'] if row['status']=='failed' and row.get('explanation'))}
+            raise error
         return text
 
     def extension_selected_talent_tier(self) -> int:

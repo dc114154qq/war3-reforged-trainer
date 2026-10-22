@@ -128,7 +128,7 @@ class Engine24268(UnitsService, AbilitiesService, ItemsService, ExtensionsServic
     def _execute(self,kind,names,builder,decoder,request):
         from war3_services.operation_trace import active_trace,SkillTrace
         if (active_trace() is None and
-                (kind=='direct_cast' or kind in ('ability','item_ability') and request.get('action',0)!=0)):
+                (kind in ('direct_cast','item_effect') or kind in ('ability','item_ability') and request.get('action',0)!=0)):
             from war3_backend import Win10ReadLogger
             with SkillTrace(self,Win10ReadLogger,dict(operation=kind,**request)) as trace:
                 trace.bind_engine(self)

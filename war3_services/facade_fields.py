@@ -234,6 +234,8 @@ class FieldsFacade:
                     return None
                 if pm.read_u32(instance.data_address + ability_layout["mirror_rawcode"]) != instance.rawcode:
                     return None
+                if not current_profile().adapter.abilities.instance_is_current(pm, instance.data_address):
+                    return None
             except OSError:
                 return None
         return list(cached)

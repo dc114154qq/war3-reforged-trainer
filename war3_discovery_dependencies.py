@@ -35,6 +35,7 @@ DEPENDENCIES = {
     "ability": NATIVE | {"layouts.ability", "bridge_layout.ability_level_tail"},
     "ability_field": NATIVE,
     "item": NATIVE, "item_catalog": NATIVE | {"equipment_runtime"},
+    "item_effect": NATIVE | {"layouts.item", "layouts.ability", "layouts.component_list", "layouts.equipment_record", "equipment_runtime", "addresses.unit_resolver"},
     "item_field": NATIVE, "item_ability": NATIVE | {"layouts.item","equipment_runtime.item_rawcode_mirror"},
     "clone": NATIVE | {"bridge_layout.ability_level_tail"},
     "unit_action": NATIVE, "clone_bound": NATIVE | {"addresses.unit_resolver", "bridge_layout.ability_level_tail"},

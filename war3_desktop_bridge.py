@@ -532,7 +532,7 @@ class DesktopBridgeApi:
         return {
             "summary": self.port.value("item_field_summary").get(),
             "detail": self.port.value("item_field_detail").get(),
-            "rows": tree.to_list_of_dicts(),
+            "rows": [dict(row, editable=bool((field := self.port.value("state")["item_field_rows"].get(row["_iid"])) and field.value is not None and field.spec.writable)) for row in tree.to_list_of_dicts()],
         }
 
     def write_item_field(self, row_iid: str, new_value: str) -> dict[str, Any]:
@@ -548,6 +548,35 @@ class DesktopBridgeApi:
             return {"success": True, "data": self.read_item_fields(str(int(self.port.value("item_field_slot").get()) - 1))}
         except Exception as err:
             return self._failure(err)
+
+    def read_item_effect_fields(self, area: str, slot: str, level: str = '1') -> dict[str, Any]:
+        state = self.port.value('state')
+        state['item_effect_snapshot'] = None
+        snapshot = self.app.read_item_effect_field_snapshot(str(area), int(slot), int(level))
+        state['item_effect_snapshot'] = snapshot
+        return self.app.item_effect_fields_view(snapshot)
+
+    def write_item_effect_field(self, row_iid: str, new_value: str) -> dict[str, Any]:
+        state = self.port.value('state')
+        snapshot = state.get('item_effect_snapshot')
+        try:
+            if snapshot is None or not isinstance(row_iid, str):
+                raise ValueError('请重新读取物品附带技能字段')
+            generation, index = row_iid.rsplit(':', 1)
+            if generation != snapshot.generation:
+                raise ValueError('这条物品字段已失效，请重新读取')
+            self.app.write_item_effect_field_value(snapshot, int(index), str(new_value))
+            state['item_effect_snapshot'] = None
+            try:
+                current = self.app.read_item_effect_field_snapshot(snapshot.source.area, snapshot.source.slot, snapshot.level)
+                state['item_effect_snapshot'] = current
+                return {'success': True, 'data': self.app.item_effect_fields_view(current)}
+            except Exception as exc:
+                payload = self._failure(RuntimeError('物品数值已写入并读回；刷新列表时发生错误，请重新读取。'+str(exc)), 'refresh_item_effect_fields')
+                return dict(payload, write_completed=True)
+        except Exception as exc:
+            state['item_effect_snapshot'] = None
+            return self._failure(exc, 'write_item_effect_field')
 
     # =========================================================================
     # 7. 3.0 Extensions (Backpack, Equipment, Talents, Definition Repair)
@@ -626,16 +655,20 @@ class DesktopBridgeApi:
             elif action == "save_loadout":
                 name = params.get("name", "套装1")
                 self.port.value("extension_loadout_name").set(name)
-                self.app.extension_save_loadout()
+                message = self.app.extension_save_loadout()
             elif action == "restore_loadout":
                 name = params.get("name", "")
-                if name:
+                if 'name' in params:
                     self.port.value("extension_loadout_choice").set(name)
                 message = self.app.extension_restore_loadout()
             elif action == "save_all_loadouts":
-                self.app.extension_save_all_loadouts()
+                if 'name' in params:
+                    self.port.value("extension_loadout_name").set(params['name'])
+                message = self.app.extension_save_all_loadouts()
             elif action == "restore_all_loadouts":
-                self.app.extension_restore_all_loadouts()
+                if 'name' in params:
+                    self.port.value("extension_loadout_choice").set(params['name'])
+                message = self.app.extension_restore_all_loadouts()
             elif action == "audit":
                 self.app.extension_audit_equipment()
             elif action == "repair_misplaced":
@@ -1033,6 +1066,7 @@ class DesktopBridgeApi:
         state['fields_need_refresh'] = True
         state['ability_field_snapshot'] = None
         state['item_field_snapshot'] = None
+        state['item_effect_snapshot'] = None
         self.app.refresh_ability_field_tree()
         self.app.refresh_item_field_tree()
 
@@ -1046,7 +1080,11 @@ class DesktopBridgeApi:
         matches = search_id_entries(kind, query)
         # Limit matches to 200 for fast serialization
         rows = [
-            {"rawcode": row.rawcode, "name_zh": row.name_zh, "name_en": row.name_en, "category": row.category_zh}
+            {"rawcode": row.rawcode, "name_zh": row.name_zh, "name_en": row.name_en,
+             "category": row.category_en if self.port.value('ui_language')['code']=='en' else row.category_zh,
+             "description": (row.description_en or row.description_zh) if self.port.value('ui_language')['code']=='en' else (row.description_zh or row.description_en),
+             "descriptionSource": 'Warcraft III 3.0.1.24371 base game data' if self.port.value('ui_language')['code']=='en' else row.description_source,
+             "descriptionPartial": row.description_partial}
             for row in matches[:200]
         ]
         return {

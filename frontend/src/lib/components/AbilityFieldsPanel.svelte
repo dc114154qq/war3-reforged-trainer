@@ -5,7 +5,7 @@
   import { Sparkles, RefreshCw, Search, Check, AlertCircle, Edit2, X, Save } from 'lucide-svelte';
 
   let rawcode = $state('AHhb');
-  let level = $state('1');
+  let level = $state<number | undefined>(1);
   let filterText = $state('');
   let showZero = $state(true);
   let showUnsupported = $state(true);
@@ -34,7 +34,7 @@
     try {
       const data: AbilityFieldsData = await api.readAbilityFields(
         rawcode.trim(),
-        level.trim() || '1',
+        String(level ?? 1),
         filterText.trim(),
         showZero,
         showUnsupported
@@ -50,6 +50,9 @@
       feedback = `读取失败: ${err.message || err}`;
       isError = true;
       rows = [];
+      summary = '';
+      detail = '';
+      editingRowId = null;
     } finally {
       isLoading = false;
     }

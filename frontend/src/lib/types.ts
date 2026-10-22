@@ -115,6 +115,11 @@ export interface AbilityFieldsData {
 }
 
 export interface ItemFieldRow {
+  editable?: boolean;
+  ability?: string;
+  effectClass?: string;
+  scope?: string;
+  note?: string;
   _iid: string;
   field: string;
   type: string;
@@ -186,6 +191,9 @@ export interface HotkeyItem {
 }
 
 export interface CatalogItemRow {
+  description: string;
+  descriptionSource: string;
+  descriptionPartial: boolean;
   rawcode: string;
   name_zh: string;
   name_en: string;

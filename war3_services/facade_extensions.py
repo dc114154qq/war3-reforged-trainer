@@ -6,6 +6,11 @@ from war3_3_stats import STAT_DETAIL_SPECS
 
 def _refresh_extension_equipment_effects(host, target_unit: int, candidate=None) -> dict:
     """Refresh native 3.0 stat controllers after an AEqu record move."""
+    from war3_services.loadout_runtime import current_restore
+    restoration = current_restore(host)
+    if restoration is not None:
+        restoration.effect_refresh_needed = True
+        return {'status': 'deferred_until_loadout_complete'}
     try:
         before = host.stat_details_24268(candidate)
     except Exception as exc:
@@ -45,6 +50,10 @@ def _refresh_extension_equipment_effects(host, target_unit: int, candidate=None)
 
 class ExtensionsFacade:
     def extension_snapshot_24268(self, target_unit: int = 0) -> dict:
+        from war3_services.loadout_runtime import current_restore
+        restoration = current_restore(self)
+        if restoration is not None:
+            return restoration.inventory(target_unit)
         engine = self._engine_instance_24268()
         override = getattr(self, '_elephant_selection_override', None)
         if not target_unit and override is not None:
@@ -234,14 +243,18 @@ class ExtensionsFacade:
         definition=preflight_creation(self, code, int(before['target_unit']))
         if definition.get('skipped'):
             return skipped_snapshot(before,code)
-        require_creation_capacity(self, code, int(before["target_unit"]), definition)
+        from war3_services.loadout_runtime import current_restore
+        restoration = current_restore(self)
+        if restoration is None or not definition.get('equipment_type'):
+            require_creation_capacity(self, code, int(before["target_unit"]), definition)
         engine = self._engine_instance_24268()
         created_result = engine.extension(
             action=1,
             target_unit=int(before["target_unit"]),
             item_rawcode=code,
         )
-        after = self.extension_snapshot_24268()
+        after = (restoration.mutation_snapshot(created_result) if restoration is not None
+                 else self.extension_snapshot_24268())
         before_handles = {int(item["handle"]) for area in ('bag','equipment')
                           for item in before[area] if int(item["handle"])}
         created_handle = int(created_result.get("item_handle", 0))
@@ -282,14 +295,16 @@ class ExtensionsFacade:
             raise ValueError("物品数量必须在 0 到 1000000000 之间")
         before = self.extension_snapshot_24268()
         item = self._extension_bag_item(before, slot)
-        self._engine_instance_24268().extension(
+        result = self._engine_instance_24268().extension(
             action=6,
             target_unit=int(before["target_unit"]),
             slot=charges,
             item_rawcode=int(item["rawcode"]),
             item_handle=int(item["handle"]),
         )
-        after = self.extension_snapshot_24268()
+        from war3_services.loadout_runtime import current_restore
+        restoration = current_restore(self)
+        after = restoration.mutation_snapshot(result) if restoration is not None else self.extension_snapshot_24268()
         same = [row for row in after["bag"] if int(row["handle"]) == int(item["handle"])]
         if len(same) != 1 or int(same[0]["charges"]) != charges:
             raise RuntimeError("物品数量写入后实例或读回值不一致")
@@ -465,6 +480,12 @@ class ExtensionsFacade:
 
 
     def equip_extension_bag_item_to_slot_24268(self, bag_slot: int, equipment_slot: int) -> dict:
+        from war3_services.equipment_slots import equipment_slot_transaction
+        with equipment_slot_transaction(self, equipment_slot):
+            return self._equip_extension_bag_item_to_slot_24268(bag_slot, equipment_slot)
+
+
+    def _equip_extension_bag_item_to_slot_24268(self, bag_slot: int, equipment_slot: int) -> dict:
         """Equip one owned bag instance into an explicitly selected loadout slot."""
         from war3_services.facade_extensions import _refresh_extension_equipment_effects
         from war3_game_profile import current_profile
@@ -594,10 +615,32 @@ class ExtensionsFacade:
                     item_state = native_records[source_slot][1]
                     adapter.move_record(memory, records, source_slot, equipment_slot,
                                         item_full, item_state)
+                    # The full move completed. Subsequent native operations
+                    # may change bag ownership; never replay this old layout
+                    # over their results when recovering a later failure.
+                    records_redirected = False
             for displaced in displaced_items:
-                engine.extension(action=4, target_unit=target,
-                                 item_rawcode=int(displaced["rawcode"]),
-                                 item_handle=int(displaced["handle"]))
+                current = self.extension_snapshot_24268(target)
+                bag_matches = [row for row in current["bag"]
+                               if (int(row["handle"]), int(row["rawcode"])) ==
+                                  (int(displaced["handle"]), int(displaced["rawcode"]))]
+                if len(bag_matches) != 1:
+                    raise RuntimeError("临时卸下的装备实例未唯一保留在背包中")
+                from war3_services.loadout_runtime import current_restore
+                restoration = current_restore(self)
+                if restoration is not None:
+                    restoration.record('restore_displaced_item', item_handle=int(displaced['handle']),
+                        item_rawcode=int(displaced['rawcode']), original_slot=int(displaced['slot']),
+                        bag_slot=int(bag_matches[0]['slot']), strategy='exact_original_slot')
+                # Native equip chooses the item's default part, which can
+                # differ from its saved part under any-slot mode. Bind and
+                # redirect this old instance exactly as we do the new item.
+                restored = self.equip_extension_bag_item_to_slot_24268(
+                    int(bag_matches[0]["slot"]), int(displaced["slot"]),
+                )
+                if restoration is not None:
+                    restoration.record('displaced_item_restored', item_handle=int(displaced['handle']),
+                        original_slot=int(displaced['slot']), actual_slot=restored['equipment'][int(displaced['slot'])])
             after = self.extension_snapshot_24268(target)
             placed = after["equipment"][equipment_slot]
             duplicates = [row for row in after["equipment"] if int(row["handle"]) == int(item["handle"])]
@@ -614,6 +657,12 @@ class ExtensionsFacade:
             )
             return after
         except Exception as exc:
+            if isinstance(exc, TimeoutError) or (getattr(exc, 'report', None) or {}).get('cleanup_uncertain'):
+                error = RuntimeError(f"装备结果待确认，已保留物品；请刷新检查：{exc}")
+                error.report = dict(getattr(exc, 'report', None) or {},
+                    cleanup_uncertain=True, operation='equipment_slot', target_unit=target,
+                    item_handle=int(item['handle']), target_slot=equipment_slot)
+                raise error from exc
             rollback_error = ""
             try:
                 # If raw record writes stopped midway, restore the native
@@ -637,16 +686,9 @@ class ExtensionsFacade:
                     raise RuntimeError("回滚时目标物品占据多个槽位")
                 for slot in slots:
                     engine.extension(action=2, target_unit=target, slot=slot)
-                current = self.extension_snapshot_24268(target)
-                for old in before["equipment"]:
-                    if not int(old["handle"]) or any(int(row["handle"]) == int(old["handle"])
-                                                     for row in current["equipment"]):
-                        continue
-                    if sum(int(row["handle"]) == int(old["handle"]) for row in current["bag"]) != 1:
-                        raise RuntimeError("回滚时旧装备实例未在背包中")
-                    engine.extension(action=4, target_unit=target,
-                                     item_rawcode=int(old["rawcode"]), item_handle=int(old["handle"]))
-                    current = self.extension_snapshot_24268(target)
+                current = self._restore_extension_loadout_handles_24268(
+                    tuple((int(row['handle']), int(row['rawcode'])) for row in before['equipment']), target,
+                )
                 if [int(row["handle"]) for row in current["equipment"]] != [int(row["handle"]) for row in before["equipment"]]:
                     raise RuntimeError("回滚后装备槽实例与操作前不一致")
                 if sorted(int(row["handle"]) for row in current["bag"] if int(row["handle"])) != sorted(int(row["handle"]) for row in before["bag"] if int(row["handle"])):
@@ -788,8 +830,11 @@ class ExtensionsFacade:
                     f"套装物品实例 0x{handle:x}/{format_rawcode(rawcode)} 已不在当前背包或装备栏"
                 )
 
-        for slot, (wanted_handle, wanted_rawcode) in enumerate(desired_pairs):
-            snapshot = self.extension_snapshot_24268()
+        # Establish the native weapon slots before restoring accessories.
+        # Their temporary use of a native source slot must not undo a piece
+        # that was already placed into a saved arbitrary slot.
+        for slot in (6, 7, 0, 1, 2, 3, 4, 5, 8):
+            wanted_handle, wanted_rawcode = desired_pairs[slot]
             current_handle = int(snapshot["equipment"][slot]["handle"])
             if current_handle == wanted_handle:
                 continue
@@ -799,8 +844,7 @@ class ExtensionsFacade:
                 occupied = sum(bool(int(row["handle"])) for row in snapshot["bag"][:bag_size])
                 if occupied >= bag_size:
                     raise RuntimeError("扩展背包已满，无法临时卸下当前装备")
-                self.unequip_extension_slot_24268(slot)
-                snapshot = self.extension_snapshot_24268()
+                snapshot = self.unequip_extension_slot_24268(slot)
                 current_locations = locations(snapshot)
             if wanted_handle:
                 area, current_slot, actual_rawcode = current_locations[wanted_handle]
@@ -811,15 +855,19 @@ class ExtensionsFacade:
                     occupied = sum(bool(int(row["handle"])) for row in snapshot["bag"][:bag_size])
                     if occupied >= bag_size:
                         raise RuntimeError("扩展背包已满，无法交换装备槽")
-                    self.unequip_extension_slot_24268(current_slot)
-                    snapshot = self.extension_snapshot_24268()
+                    snapshot = self.unequip_extension_slot_24268(current_slot)
                 bag_slots = [
                     int(row["slot"]) for row in snapshot["bag"]
                     if int(row["handle"]) == wanted_handle
                 ]
                 if len(bag_slots) != 1:
                     raise RuntimeError("套装物品实例未唯一回到扩展背包")
-                self.equip_extension_bag_item_to_slot_24268(bag_slots[0], slot)
+                snapshot = self.equip_extension_bag_item_to_slot_24268(bag_slots[0], slot)
+                from war3_services.loadout_runtime import current_restore
+                restoration = current_restore(self)
+                if restoration is not None:
+                    restoration.record('slot_equipped', slot=slot, item_handle=wanted_handle,
+                        item_rawcode=wanted_rawcode, actual_slot=snapshot['equipment'][slot])
 
         after = self.extension_snapshot_24268()
         actual = tuple((int(row["handle"]), int(row["rawcode"])) for row in after["equipment"])
@@ -961,7 +1009,8 @@ class ExtensionsFacade:
                     last = self.add_talent_choice_24268(controller, tier, choice, target_unit=target)
                 results.append(dict(target=target, status="success"))
             except Exception as exc:
-                results.append(dict(target=target, status="failed", reason=str(exc)))
+                from war3_error_messages import describe_error
+                results.append(dict(target=target, status="failed", reason=str(exc),explanation=describe_error(exc)))
         return dict(snapshot=last, results=results,
                     succeeded=sum(row["status"] == "success" for row in results),
                     skipped=sum(row["status"] == "skipped" for row in results),
@@ -977,15 +1026,8 @@ class ExtensionsFacade:
         point_cap = int(state["tier_count"]) * 3
         if int(state["total_points"]) >= point_cap:
             raise RuntimeError("当前天赋树已经达到可消费点数上限")
-        # ttal is an auto-consumed PowerUp (ATap), not an inventory item.
-        # Native consumption works with all six classic slots occupied;
-        # verify the actual point counter instead of requiring an empty slot.
-        self._engine_instance_24268().extension(
-            (int(self._coerce_memory_value("rawcode", controller)) & 0xFFFFFFFF,),
-            action=7,
-            target_unit=int(snapshot["target_unit"]),
-            item_rawcode=int(self._coerce_memory_value("rawcode", "ttal")) & 0xFFFFFFFF,
-        )
+        from war3_services.talent_points import grant_controller_point
+        grant_controller_point(self,snapshot,state,Win10ReadLogger)
         deadline = time.monotonic() + 1.0
         while time.monotonic() < deadline:
             after = (self.extension_snapshot_24268(target_unit) if target_unit else self.extension_snapshot_24268())

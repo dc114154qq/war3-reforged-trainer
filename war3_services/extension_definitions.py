@@ -10,7 +10,7 @@ from war3_object_tables import (DefinitionError, parse_slk, parse_profile, merge
                                 validate_game_slk, make_extension_versions_compatible)
 
 PACK_SHA256='92fb7ef32f24d0b218124034c42642490a1c251b843e9511ab531a12bd7c03f1'
-PROCESSING_REVISION='extension-version-gate-v2-20261021'
+PROCESSING_REVISION='extension-object-trailer-v3-20261022'
 META={'(listfile)','(attributes)'}
 OBJECT_FILES=(('w3a',True),('w3t',False),('w3u',False),('w3h',False),('w3q',True))
 
@@ -89,12 +89,19 @@ def _neutral(members,name):
     return matches[0] if matches else None
 
 
-def _custom_ids(archive,prefix):
+def _custom_ids(archive,prefix,journal=None):
     result=set()
     for suffix,extended in OBJECT_FILES:
         for stem in (prefix,prefix+'Skin'):
             raw=archive.read(stem+'.'+suffix,optional=True)
-            if raw is not None:result.update(object_ids(raw,extended=extended))
+            if raw is not None:
+                name=stem+'.'+suffix;details={}
+                if journal:journal.event('custom_object_begin',name=name,bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+                try:result.update(object_ids(raw,extended=extended,diagnostics=details))
+                except DefinitionError as exc:
+                    if journal:journal.event('custom_object_failed',name=name,**details)
+                    raise DefinitionError('读取 '+name+' 失败：'+str(exc)) from exc
+                if journal:journal.event('custom_object_verified',name=name,**details)
     return result
 
 
@@ -195,7 +202,7 @@ def _verify(path,before,expected,journal):
 def _patch_map(path,inherited,parent_custom,manifest,files,journal):
     with Archive(path) as archive:
         members=_members(archive);metadata=map_data_mode(archive.read('war3map.w3i'))
-        custom=parent_custom|_custom_ids(archive,'war3map')
+        custom=parent_custom|_custom_ids(archive,'war3map',journal)
         before=_fingerprints(archive,members,journal)
         plan,details=_plan(archive,members,metadata['mode'],inherited,custom,manifest,files,journal)
     if plan:
@@ -251,7 +258,7 @@ def prepare_extension_definitions(source,output_folder,*,progress=None,cancel=No
                     for name in manifest['required']:
                         path='Units\\'+name;member=_neutral(members,path)
                         if member:inherited[path.casefold()]=archive.read(member)
-                    custom=_custom_ids(archive,'war3campaign')
+                    custom=_custom_ids(archive,'war3campaign',journal)
                     for index,member in enumerate(chapters):
                         canonical_name(member.name)
                         chapter=work/('chapter-'+str(index)+'.w3x')

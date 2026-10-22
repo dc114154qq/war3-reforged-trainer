@@ -11,6 +11,7 @@
   let matchCount = $state(0);
   let copiedCode = $state<string | null>(null);
   let actionFeedback = $state('');
+  let creatingCode = $state<string | null>(null);
   let isError = $state(false);
 
   let searchTimeout: any = null;
@@ -50,20 +51,24 @@
   }
 
   async function handleCreateItem(code: string, name: string) {
+    if (creatingCode !== null) return;
+    creatingCode = code;
     actionFeedback = `正在为选中单位创建 [${name} (${code})]...`;
     isError = false;
     try {
-      const res = await api.executeElephantAction('create_item', { item_rawcode: code });
+      const res = await api.executeElephantAction('add_item', { rawcode: code });
       if (res.success) {
         actionFeedback = `✓ 已创建 [${name}] 到选中英雄或脚下`;
       } else {
         actionFeedback = `✗ 创建失败: ${res.error}`;
         isError = true;
       }
-      setTimeout(() => (actionFeedback = ''), 3500);
+
     } catch (err: any) {
       actionFeedback = `✗ 异常: ${err.message || err}`;
       isError = true;
+    } finally {
+      creatingCode = null;
     }
   }
 
@@ -162,11 +167,12 @@
                   </button>
                   <button
                     class="btn-sm primary"
+                    disabled={creatingCode !== null}
                     onclick={() => handleCreateItem(row.code, row.name)}
                     title="直接给选中单位生成此装备"
                   >
                     <PlusCircle size={12} />
-                    <span>创建</span>
+                    <span>{creatingCode === row.code ? '创建中...' : '创建'}</span>
                   </button>
                 </div>
               </td>

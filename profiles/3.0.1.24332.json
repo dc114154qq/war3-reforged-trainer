@@ -327,7 +327,11 @@
       "charges": 2256,
       "owner_scan_radius": 32768,
       "owner_scan_stride": 8,
-      "equipment_mask": 16384
+      "equipment_mask": 16384,
+      "ability_records": 648,
+      "ability_record_stride": 32,
+      "ability_record_rawcode": 24,
+      "ability_record_limit": 50
     },
     "inventory": {
       "owner": 104,

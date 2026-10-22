@@ -228,6 +228,9 @@ def load_profile(path) -> GameProfile:
         unit = data.get('layouts', {}).get('unit', {})
         unit.setdefault('position_x', 0)
         unit.setdefault('position_y', 0)
+        item = data.get('layouts', {}).get('item', {})
+        for key in ('ability_records', 'ability_record_stride', 'ability_record_rawcode', 'ability_record_limit'):
+            item.setdefault(key, 0)
     _validate_shape(data, template)
     if (
         data["schema_version"] != SCHEMA_VERSION
@@ -293,6 +296,12 @@ def load_profile(path) -> GameProfile:
     if data["equipment_runtime"]["ability_owner"] != data["layouts"]["ability"]["unit_owner"]:
         raise ProfileError("Equipment and ability layouts disagree")
     item = data["layouts"]["item"]
+    record_keys = ('ability_records', 'ability_record_stride', 'ability_record_rawcode', 'ability_record_limit')
+    if any(item[k] for k in record_keys) and (not all(item[k] for k in record_keys) or
+            item['ability_record_limit'] > 128 or item['ability_record_stride'] < 12 or
+            item['ability_record_rawcode'] + 4 > item['ability_record_stride'] or
+            item['ability_records'] + item['ability_record_stride'] * item['ability_record_limit'] > item['charges']):
+        raise ProfileError('Invalid item ability records')
     unit = data['layouts']['unit']
     if bool(unit['position_x']) != bool(unit['position_y']) or (
         unit['position_x'] and (unit['position_x'] % 4 or unit['position_y'] % 4

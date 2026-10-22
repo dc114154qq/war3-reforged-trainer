@@ -57,6 +57,7 @@ def main() -> None:
         b"BridgeCloneQuery",
         b"BridgeWorldQuery",
         b"BridgeBulkQuery",
+        b"BridgeGoldMineQuery",
         b"BridgeEffectQuery",
         b"BridgeWorldEffectQuery",
         b"BridgeWorldCastQuery",
@@ -93,6 +94,7 @@ def main() -> None:
     marker(b"item_batch_abi", (0x2426806f, 216, 63432))
     marker(b"item_ability_abi", (0x24268070, 216, 58632))
     marker(b"item_effect_abi", (0x24268077, 216, 2584))
+    marker(b"gold_mine_abi", (0x24268078, 216, 197240))
     marker(b"equipment_effect_abi", (0x2426805b, 216, 1672))
     marker(b"item_safety_abi", (0x24268056, 216, 600))
     marker(b"item_catalog_batch_abi", (0x2426802B, 216, 0))

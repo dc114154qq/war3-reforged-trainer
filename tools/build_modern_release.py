@@ -15,10 +15,10 @@ from PyInstaller.archive.readers import CArchiveReader
 import pefile
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / 'dist-2.1.15-modern-verified'
-CASE = ROOT / 'build/release-2.1.15-20261022/exe-build'
-SPEC = 'War3ReforgedTrainer-Web-2.1.15.spec'
-EXE = 'War3ReforgedTrainer-v2.1.15-Web.exe'
+OUT = ROOT / 'dist-2.1.16-modern-verified'
+CASE = ROOT / 'build/release-2.1.16-20261022/exe-build'
+SPEC = 'War3ReforgedTrainer-Web-2.1.16.spec'
+EXE = 'War3ReforgedTrainer-v2.1.16-Web.exe'
 BRIDGE_IMAGE = None
 
 
@@ -27,7 +27,7 @@ def digest(raw):
 
 
 def inputs():
-    loader = importlib.util.spec_from_file_location('modern_legacy_inputs', ROOT / 'tools/build_release_2115.py')
+    loader = importlib.util.spec_from_file_location('modern_legacy_inputs', ROOT / 'tools/build_release_2116.py')
     module = importlib.util.module_from_spec(loader)
     loader.loader.exec_module(module)
     paths = set(module.source_paths())
@@ -45,7 +45,7 @@ def inputs():
 def inspect(exe, source_root, source_hashes, baseline):
     pe = pefile.PE(str(exe), fast_load=False)
     fixed = pe.VS_FIXEDFILEINFO[0]
-    assert (fixed.FileVersionMS, fixed.FileVersionLS) == ((2 << 16) | 1, 15 << 16)
+    assert (fixed.FileVersionMS, fixed.FileVersionLS) == ((2 << 16) | 1, 16 << 16)
     archive = CArchiveReader(str(exe))
     pyz = archive.open_embedded_archive('PYZ-00.pyz')
     modules = {}
@@ -96,7 +96,7 @@ def build():
     top = subprocess.check_output(['git', 'rev-parse', '--show-toplevel'], cwd=ROOT, text=True).strip()
     assert Path(top).resolve() == ROOT.resolve()
     source_hashes = inputs()
-    base_dir = ROOT / 'dist-2.1.14-verified'
+    base_dir = ROOT / 'dist-native-baseline'
     baseline = json.loads((base_dir / 'current.json').read_text(encoding='utf8'))
     base_exe = base_dir / baseline['artifact']
     assert digest(base_exe.read_bytes()) == baseline['exe_sha256']
@@ -125,7 +125,7 @@ def build():
         for name in archive.toc:
             if '\\' not in name and (name.lower().startswith('api-ms-win-') or name.lower() == 'ucrtbase.dll'):
                 (runtime / name).write_bytes(archive.extract(name))
-        environment = dict(os.environ, RELEASE_2115_RUNTIME_DIR=str(runtime),
+        environment = dict(os.environ, RELEASE_2116_RUNTIME_DIR=str(runtime),
             RELEASE_210_BRIDGE_DLL=str(native / 'war3_bridge_24268.dll'),
             RELEASE_210_ICON_DLL=str(native / 'war3_talent_icon_display.dll'),
             RELEASE_210_SPEED_DLL=str(native / 'war3_speed_clock.dll'))
@@ -145,12 +145,12 @@ def build():
             assert digest(destination.read_bytes()) == sha
         else:
             shutil.copy2(exe, destination)
-        manifest = dict(ok=True, version='2.1.15', kind='reviewed_modern_frontend',
+        manifest = dict(ok=True, version='2.1.16', kind='reviewed_modern_frontend',
             status='built_not_published', artifact=artifact.as_posix(), exe_sha256=sha,
             exe_bytes=exe.stat().st_size, source_sha256=source_hashes,
             head=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
             source_inputs=len(source_hashes), baseline_exe_sha256=baseline['exe_sha256'],
-            bridge_source=str(Path(BRIDGE_IMAGE).resolve()) if BRIDGE_IMAGE is not None else 'pinned_2.1.14', **verified)
+            bridge_source=str(Path(BRIDGE_IMAGE).resolve()) if BRIDGE_IMAGE is not None else 'pinned_current_native_baseline', **verified)
         OUT.mkdir(parents=True, exist_ok=True)
         pending = OUT / 'current.json.pending'
         pending.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf8')
@@ -164,7 +164,7 @@ def verify():
     assert manifest['source_sha256'] == inputs()
     exe = OUT / manifest['artifact']
     assert digest(exe.read_bytes()) == manifest['exe_sha256']
-    baseline = json.loads((ROOT / 'dist-2.1.14-verified/current.json').read_text(encoding='utf8'))
+    baseline = json.loads((ROOT / 'dist-native-baseline/current.json').read_text(encoding='utf8'))
     package_baseline, bridge_key = native_baseline(baseline, expected_native=manifest['native'])
     assert inspect(exe, ROOT, manifest['source_sha256'], package_baseline)['modules'] == manifest['modules']
     print(json.dumps(dict(ok=True, artifact=str(exe), sha256=manifest['exe_sha256']), ensure_ascii=False))

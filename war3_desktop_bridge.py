@@ -282,6 +282,33 @@ class DesktopBridgeApi:
             "groups": groups,
         }
 
+    def gold_mines(self, scope: str='selected', amount: str | None=None) -> dict[str, Any]:
+        result = None
+        def execute():
+            nonlocal result
+            result = self.app.gold_mines(scope,amount)
+            return f"金矿：{result['count']}；已修改 {result['changed']}；已符合 {result['unchanged']}；跳过或失败 {result['failed']}"
+        try:
+            self._run_action(execute,'gold_mines',busy_text='正在读取或修改金矿，请稍候...')
+            rows=[]
+            kinds={1:'普通金矿',2:'闹鬼金矿',4:'缠绕金矿'}
+            states={0:'已读取',1:'已修改',2:'已符合目标',3:'修改失败',4:'状态变化，已跳过',5:'结果待确认'}
+            for r in result['rows']:
+                rows.append(dict(handle=hex(r['handle']),rawcode=r['rawcode'].to_bytes(4,'big').decode('ascii','replace'),
+                    kind=kinds.get(r['kind'],'自定义金矿'),owner=r['owner'],before=r['before'],after=r['after'],
+                    status=states[r['status']],error=r['error'],x=r['x'],y=r['y']))
+            data={k:result[k] for k in ('count','visited','ignored','changed','unchanged','failed','uncertain')}
+            data.update(rows=rows,scope=scope,action=0 if amount is None else 1)
+            if result['failed']:
+                return {**self._failure(RuntimeError('部分金矿未完成修改，请查看下方逐项结果；已完成的金矿保留。'),'gold_mines'),
+                        'data':data,'reports':rows}
+            if amount is not None and not rows:
+                return {**self._failure(RuntimeError('当前范围未找到可修改的金矿，请检查游戏选择或改用全图读取。'),'gold_mines'),
+                        'data':data,'reports':rows}
+            return dict(success=True,data=data)
+        except Exception as err:
+            return self._failure(err,'gold_mines')
+
     def refresh_resources(self) -> dict[str, Any]:
         try:
             self.app.refresh_resources()

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { api } from '../api';
-  import type { ResourceSnapshot, ResourceGroup } from '../types';
+  import type { ResourceSnapshot, ResourceGroup, GoldMineData } from '../types';
   import { Coins, Trees, Users, RefreshCw, Lock, Plus, Minus } from 'lucide-svelte';
 
   let snapshot = $state<ResourceSnapshot>({
@@ -13,6 +13,31 @@
 
   let selectedGroup = $state<ResourceGroup | null>(null);
   let loading = $state(false);
+  let mineAmount = $state('1000000');
+  let mineBusy = $state(false);
+  let mineSeconds = $state(0);
+  let mineResult = $state<GoldMineData | null>(null);
+  let mineError = $state('');
+
+  async function handleMines(scope: 'selected' | 'world', write = false) {
+    if (mineBusy) return;
+    mineBusy = true;
+    mineError = '';
+    mineResult = null;
+    mineSeconds = 0;
+    const started = Date.now();
+    const timer = setInterval(() => { mineSeconds = Math.floor((Date.now() - started) / 1000); }, 250);
+    try {
+      const res = await api.goldMines(scope, write ? mineAmount : undefined);
+      mineResult = res.data ?? null;
+      mineError = res.success ? '' : (res.error ?? '操作未完成');
+    } catch (err) {
+      mineError = err instanceof Error ? err.message : String(err);
+    } finally {
+      clearInterval(timer);
+      mineBusy = false;
+    }
+  }
 
   async function loadData() {
     loading = true;
@@ -133,6 +158,52 @@
     </div>
   </div>
 
+  <section class="resource-card gold-border mine-section" aria-label="金矿剩余金币">
+    <div class="card-title"><Coins size={16} class="text-gold" /><span>金矿剩余金币</span></div>
+    <p class="mine-help">设置的是每座金矿剩余可采的金币。全图操作包含其他玩家和中立金矿；非金矿、已移除的矿点会跳过。</p>
+    <div class="mine-controls">
+      <div class="input-row">
+        <label for="mine-amount">每座金矿的目标剩余金币</label>
+        <input id="mine-amount" type="text" inputmode="numeric" class="mono" bind:value={mineAmount} disabled={mineBusy} />
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-secondary btn-sm" disabled={mineBusy} onclick={() => handleMines('selected')}>读取选中金矿</button>
+        <button class="btn btn-primary btn-sm" disabled={mineBusy} onclick={() => handleMines('selected', true)}>修改选中金矿</button>
+        <button class="btn btn-secondary btn-sm" disabled={mineBusy} onclick={() => handleMines('world')}>读取全图金矿</button>
+        <button class="btn btn-primary btn-sm" disabled={mineBusy} onclick={() => handleMines('world', true)}>批量修改全图金矿</button>
+      </div>
+    </div>
+    <p class="mine-help">支持普通、缠绕和闹鬼金矿。数值范围 0–100000000；设为 0 会耗尽金矿。点击修改时会重新读取当前范围。</p>
+    {#if mineBusy}
+      <div class="mine-feedback" role="status">正在处理金矿… {mineSeconds} s</div>
+    {:else if mineResult}
+      <div class="mine-feedback" role="status">
+        <span>金矿数量：{mineResult.count}</span>
+        {#if mineResult.action}
+          <span>已修改：{mineResult.changed}</span><span>已符合目标：{mineResult.unchanged}</span><span>跳过或失败：{mineResult.failed}</span>
+        {/if}
+        <span>范围：{mineResult.scope === 'world' ? '全图金矿' : '当前选中金矿'}</span>
+      </div>
+    {/if}
+    {#if mineError}<p class="mine-error" role="alert">{mineError}</p>{/if}
+    {#if mineResult}
+      <div class="game-table-container table-wrap mine-table">
+        <table class="game-table">
+          <thead><tr><th>金矿代码</th><th>金矿类型</th><th>玩家槽位</th><th>坐标</th><th>读取时金币</th><th>操作后金币</th><th>结果</th></tr></thead>
+          <tbody>
+            {#each mineResult.rows as row (row.handle)}
+              <tr><td class="font-mono">{row.rawcode}</td><td>{row.kind}</td><td>{row.owner}</td>
+                <td class="font-mono">{row.x.toFixed(1)}, {row.y.toFixed(1)}</td><td class="font-mono">{row.before}</td>
+                <td class="font-mono">{row.after < 0 ? '待确认' : row.after}</td><td>{row.status}{row.error ? ` (${row.error})` : ''}</td></tr>
+            {:else}
+              <tr><td colspan="7" class="empty-cell">当前范围未读取到金矿。</td></tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    {/if}
+  </section>
+
   <!-- Bottom Control Grid -->
   <div class="controls-grid">
     <!-- Card: Gold -->
@@ -243,6 +314,14 @@
 </div>
 
 <style>
+  .mine-section { flex-shrink: 0; min-width: 0; }
+  .mine-controls { display: flex; align-items: end; gap: 12px; flex-wrap: wrap; }
+  .mine-controls .input-row { min-width: 180px; flex: 0 1 240px; }
+  .mine-help { margin: 0; font-size: 12px; line-height: 1.65; color: var(--text-secondary); overflow-wrap: anywhere; }
+  .mine-feedback { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--text-primary); line-height: 1.6; }
+  .mine-error { margin: 0; color: var(--status-danger-text); line-height: 1.6; overflow-wrap: anywhere; }
+  .mine-table { max-height: 280px; overflow: auto; }
+  .mine-table table { min-width: 660px; }
   .panel-layout {
     display: flex;
     flex-direction: column;

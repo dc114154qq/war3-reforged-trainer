@@ -1,6 +1,7 @@
 import type {
   SystemStatus,
   ResourceSnapshot,
+  GoldMineData,
   SelectedUnitData,
   CandidateUnit,
   LockItem,
@@ -54,6 +55,8 @@ async function callApi<T>(method: string, ...args: any[]): Promise<T> {
 }
 
 export const api = {
+  goldMines: (scope: 'selected' | 'world', amount?: string) =>
+    callApi<{success: boolean; data?: GoldMineData; error?: string; reports?: GoldMineData['rows']}>('gold_mines', scope, amount ?? null),
   // 1. System
   getSystemStatus: () => callApi<SystemStatus>('get_system_status'),
   getUiNotifications: () => callApi<UiNotice[]>('get_ui_notifications'),

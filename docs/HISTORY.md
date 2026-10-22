@@ -1,5 +1,7 @@
 # 历史更新说明 / Release history
 
+[2.1.16 中文](RELEASE_NOTES_v2.1.16.zh.md) · [English](RELEASE_NOTES_v2.1.16.en.md)
+
 [2.1.15 中文](RELEASE_NOTES_v2.1.15.zh.md) · [English](RELEASE_NOTES_v2.1.15.en.md)
 
 [2.1.14 中文](RELEASE_NOTES_v2.1.14.zh.md) · [English](RELEASE_NOTES_v2.1.14.en.md)

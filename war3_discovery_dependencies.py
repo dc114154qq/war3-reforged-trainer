@@ -25,6 +25,7 @@ PROPERTY_FIELDS = {"hp_current": "value", "mp_current": "value", "hp_max": "maxi
 SELECTED_READ = COMMON | {"players.count", "players.array", "players.max_count",
                           "selection.read_only", "modules.legacy_layout"}
 DEPENDENCIES = {
+    "gold_mine": NATIVE,
     "item_safety": NATIVE, "equipment_effect": EQUIPMENT_RUNTIME,
     "legacy_equipment_probe": EQUIPMENT_RUNTIME, "game_speed": NATIVE,
     "direct_cast": EFFECT | {"bridge_layout.ability_level_tail"}, "talent_icon_control": TALENTS | {"modules.talent_icons", "module_addresses"},

@@ -299,6 +299,9 @@ class TrainerApplication:
             return str(labels[iid])
         return f'0x{cache.gold_address:x}'
 
+    def gold_mines(self, scope: str='selected', amount: str | None=None):
+        return self.trainer().gold_mines(scope,amount)
+
     def refresh_resources(self) -> str:
         t = self.trainer()
         caches = t.list_resource_caches()

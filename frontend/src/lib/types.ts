@@ -39,6 +39,20 @@ export interface ResourceSnapshot {
   groups: ResourceGroup[];
 }
 
+export interface GoldMineData {
+  scope: 'selected' | 'world';
+  action: number;
+  count: number;
+  visited: number;
+  ignored: number;
+  changed: number;
+  unchanged: number;
+  failed: number;
+  uncertain: number;
+  rows: { handle: string; rawcode: string; kind: string; owner: number; before: number; after: number;
+          status: string; error: number; x: number; y: number }[];
+}
+
 export interface UnitFieldRow {
   _iid: string;
   category: string;

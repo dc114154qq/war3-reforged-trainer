@@ -3,6 +3,10 @@ from __future__ import annotations
 from contextlib import contextmanager
 
 class ResourcesFacade:
+    def gold_mines(self, scope='selected', amount=None):
+        from war3_services.gold_mines import execute
+        return execute(self,scope,amount)
+
     def _iter_resource_properties(
         self,
         pm: ProcessMemory,

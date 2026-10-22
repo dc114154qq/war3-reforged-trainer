@@ -5,7 +5,7 @@ ROOT=Path(__file__).resolve().parents[1]
 parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--from-file',type=Path);parser.add_argument('--webview-from-file',type=Path);args=parser.parse_args()
 def sha(b):return hashlib.sha256(b).hexdigest().lower()
 def fetch(url,limit):
-    with urllib.request.urlopen(urllib.request.Request(url,headers={'User-Agent':'War3Trainer-build/2.1.15'}),timeout=120) as r:
+    with urllib.request.urlopen(urllib.request.Request(url,headers={'User-Agent':'War3Trainer-build/2.1.16'}),timeout=120) as r:
         data=r.read(limit+1)
     if len(data)>limit:raise ValueError('Dependency download exceeds its limit')
     return data
@@ -16,8 +16,8 @@ def atomic(path,data):
         return
     pending=path.with_suffix(path.suffix+'.pending');pending.write_bytes(data);os.replace(pending,path)
 manifest=json.loads((ROOT/'docs/NATIVE_BUILD_BASELINE.json').read_text(encoding='utf8'))
-assert manifest['exe_sha256']=='25A4A8570B247398FA3424ED7E18A8AD864032AB8D99CFB0DC88E521E000695B'
-folder=ROOT/'dist-2.1.14-verified';target=folder/manifest['artifact']
+assert len(manifest['exe_sha256']) == 64 and manifest['version'] == '2.1.16'
+folder=ROOT/'dist-native-baseline';target=folder/manifest['artifact']
 assert target.resolve().is_relative_to(folder.resolve())
 data=args.from_file.read_bytes() if args.from_file else target.read_bytes() if target.exists() else fetch(manifest['carrier_url'],40*1024*1024)
 assert sha(data)==manifest['exe_sha256'].lower()

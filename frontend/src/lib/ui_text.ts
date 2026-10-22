@@ -1,5 +1,22 @@
 // Presentation text for the desktop view. Game object names remain catalogue data.
 export const UI_EN: Record<string, string> = {
+  '金矿剩余金币':'Gold remaining in mines',
+  '设置的是每座金矿剩余可采的金币。全图操作包含其他玩家和中立金矿；非金矿、已移除的矿点会跳过。':'Sets the remaining gold of each mine. Map-wide actions include other players and neutral mines; other units and removed mines are skipped.',
+  '每座金矿的目标剩余金币':'Target gold remaining per mine',
+  '读取选中金矿':'Read selected mines','修改选中金矿':'Set selected mines',
+  '读取全图金矿':'Read all map mines','批量修改全图金矿':'Set all map mines',
+  '支持普通、缠绕和闹鬼金矿。数值范围 0–100000000；设为 0 会耗尽金矿。点击修改时会重新读取当前范围。':'Supports normal, entangled and haunted mines. Range: 0–100000000; zero depletes a mine. Each write rereads its current scope.',
+  '金矿数量：':'Mines:','已修改：':'Changed:','已符合目标：':'Already matched:','跳过或失败：':'Skipped or failed:',
+  '范围：':'Scope:','全图金矿':'All map mines','当前选中金矿':'Currently selected mines',
+  '金矿代码':'Mine ID','金矿类型':'Mine type','玩家槽位':'Player slot','读取时金币':'Gold before','操作后金币':'Gold after',
+  '普通金矿':'Gold mine','闹鬼金矿':'Haunted gold mine','缠绕金矿':'Entangled gold mine','自定义金矿':'Custom gold mine',
+  '已读取':'Read','已修改':'Changed','已符合目标':'Already matched','修改失败':'Write failed',
+  '状态变化，已跳过':'Changed state; skipped','结果待确认':'Result unconfirmed','待确认':'Unconfirmed',
+  '当前范围未读取到金矿。':'No mines found in this scope.',
+  '部分金矿未完成修改，请查看下方逐项结果；已完成的金矿保留。':'Some mines were not changed. Review the individual results below; completed changes are preserved.',
+  '当前范围未找到可修改的金矿，请检查游戏选择或改用全图读取。':'No editable mines were found. Check the game selection or read all map mines.',
+  '金矿剩余金币请输入整数':'Enter a whole number for the remaining gold.',
+  '金矿剩余金币范围为 0 到 100000000':'Remaining gold must be between 0 and 100000000.',
   '检查地图对象':'Checking map objects','对象检查完成':'Object checks complete','发现对象结构异常':'Object structure issue found',
   '编辑内容':'Edit content','物品基础字段':'Basic item fields','装备加成 / 附带技能':'Equipment bonuses / attached abilities',
   '物品位置':'Item location','普通物品栏':'Classic inventory','3.0 扩展背包':'3.0 backpack','3.0 装备栏':'3.0 equipment slots',
@@ -129,6 +146,10 @@ export const UI_EN: Record<string, string> = {
 };
 
 export function translateDynamic(source: string): string | undefined {
+  const mineProgress = /^正在处理金矿… (\d+) s$/.exec(source);
+  if (mineProgress) return `Processing mines… ${mineProgress[1]} s`;
+  const mineCounts = /^(金矿数量|已修改|已符合目标|跳过或失败)：(\d+)$/.exec(source);
+  if (mineCounts) return `${UI_EN[mineCounts[1] + '：']} ${mineCounts[2]}`;
   const progress = /^正在处理装备，已用时 (\d+) 秒；完成后会核对九个部位。$/.exec(source);
   if (progress) return `Processing equipment: ${progress[1]} seconds elapsed. All nine slots will be checked.`;
   let m = /^(30 格扩展背包|9 槽装备) \((\d+) 件\)$/.exec(source);

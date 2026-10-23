@@ -3,14 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass, asdict
 from functools import lru_cache
 from pathlib import Path
-import hashlib, json, os, shutil, sys, tempfile, time, traceback, uuid, zipfile
-from war3_mpq import Archive, MpqError, STORAGE_FLAGS, canonical_name
+import hashlib, json, os, re, shutil, sys, tempfile, time, traceback, uuid, zipfile
+from war3_mpq import Archive, MpqError, STORAGE_FLAGS, canonical_name, unknown_member_name
 from war3_object_tables import (DefinitionError, parse_slk, parse_profile, merge_slk,
                                 merge_profile, map_data_mode, campaign_maps, object_ids, _value,
                                 validate_game_slk, make_extension_versions_compatible)
 
 PACK_SHA256='92fb7ef32f24d0b218124034c42642490a1c251b843e9511ab531a12bd7c03f1'
-PROCESSING_REVISION='extension-object-trailer-v3-20261022'
+PROCESSING_REVISION='extension-mpq-known-names-v4-20261023'
 META={'(listfile)','(attributes)'}
 OBJECT_FILES=(('w3a',True),('w3t',False),('w3u',False),('w3h',False),('w3q',True))
 
@@ -72,14 +72,82 @@ class Journal:
     def close(self):self.stream.close()
 
 
-def _members(archive):
+def _members(archive,journal=None):
     members=archive.members();result={}
     for member in members:
         key=(member.name.casefold(),member.locale)
-        if key in result:raise DefinitionError('地图归档存在重复文件或大小写冲突：'+member.name)
+        if key in result:
+            if key[0] in META:
+                # Editors sometimes leave older listfile/attribute entries.
+                # These are library-maintained metadata, excluded from payload
+                # fingerprints. Keep strict ambiguity checks for all game files.
+                if journal:journal.event('archive_duplicate_metadata',archive=archive.path.name,
+                    name=member.name,locale=member.locale,kept_block=result[key].block_index,
+                    duplicate_block=member.block_index)
+                continue
+            raise DefinitionError('地图归档存在重复文件或大小写冲突：'+member.name)
         if member.name.casefold()=='(signature)':raise DefinitionError('该地图带有归档签名，请单独处理这份地图。')
         result[key]=member
     return result
+
+
+def _reference_names(raw):
+    """Bounded filename hints from stored object/script/model strings.
+
+    Hints never rename a member: StormLib accepts only exact existing hashes.
+    JASS escapes backslashes, and Warcraft accepts .mdl references for .mdx.
+    """
+    names=set()
+    suffix=re.compile(rb'\.(?:blp|tga|dds|mdx|mdl|wav|mp3|ogg|flac|fdf|toc|txt|slk|lua|j)(?=$|[\s"\',;])',re.I)
+    for match in re.finditer(rb'[\x20-\x7e\x80-\xff]{4,1024}',raw):
+        text=match.group().replace(b'\\\\',b'\\')
+        for end in suffix.finditer(text):
+            segment=text[:end.end()]
+            starts=[0]+[i+1 for i,char in enumerate(segment) if char in b'"\'=,;([])\t']
+            for start in starts:
+                value=segment[start:].strip()
+                if not 4<=len(value)<260:continue
+                if any(char in value for char in (b'"',b"'",b'=',b',',b';')):continue
+                try:name=canonical_name(value.decode('utf8'))
+                except (UnicodeError,MpqError):continue
+                names.add(name)
+                if name.lower().endswith('.mdl'):names.add(name[:-4]+'.mdx')
+                if name.lower().endswith(('.mdl','.mdx')) and not name[:-4].lower().endswith('_portrait'):
+                    names.add(name[:-4]+'_Portrait.mdx')
+                icon=re.fullmatch(r'ReplaceableTextures\\CommandButtons\\BTN([^\\]+)\.blp',name,re.I)
+                if icon:names.add('ReplaceableTextures\\CommandButtonsDisabled\\DISBTN'+icon.group(1)+'.blp')
+                if len(names)>10000:raise DefinitionError('地图资源路径数量超出处理范围，已停止处理。')
+    return names
+
+
+def _identify_archive_names(archive,journal):
+    """Recover stripped names from actual map references before rehashing."""
+    initial=archive.members();unknown=[m for m in initial if unknown_member_name(m.name)]
+    if not unknown:return
+    hints=set();scanned=0;seen=set();probed=set();resolved=set();rounds=0
+    for rounds in range(1,9):
+        current=archive.members()
+        if not any(unknown_member_name(m.name) for m in current):break
+        candidates=[m for m in current if (m.block_index,m.locale) not in seen and
+            not m.name.lower().endswith(('.blp','.tga','.dds','.wav','.mp3','.ogg','.flac','.w3x','.w3m'))]
+        # Learn paths from named scripts/objects before opening unnamed encrypted
+        # models. Small encrypted files require their real basename for the key.
+        named=[m for m in candidates if not unknown_member_name(m.name)]
+        candidates=named or [m for m in candidates if not m.flags&0x10000 and m.size<=32*1024*1024]
+        if not candidates:break
+        for member in candidates:
+            journal.check()
+            if member.size>32*1024*1024 or scanned+member.size>128*1024*1024:
+                raise DefinitionError('地图资源文件名识别的数据量超出范围，已停止处理。')
+            raw=archive.read(member);scanned+=len(raw);seen.add((member.block_index,member.locale))
+            hints.update(_reference_names(raw))
+            if len(hints)>10000:raise DefinitionError('地图资源路径数量超出处理范围，已停止处理。')
+        resolved.update(archive.identify_names(sorted(hints-probed)));probed.update(hints)
+    remaining=[m.name for m in archive.members() if unknown_member_name(m.name)]
+    journal.event('archive_reference_names_identified',archive=archive.path.name,
+        unknown_before=len(unknown),unknown_after=len(remaining),candidate_count=len(hints),
+        names_matched=sorted(resolved),scan_bytes=scanned,rounds=rounds,remaining_examples=remaining[:16],
+        strategy='exact_hash_matches_from_existing_map_strings')
 
 
 def _neutral(members,name):
@@ -183,7 +251,16 @@ def _fingerprints(archive,members,journal):
 def _verify(path,before,expected,journal):
     journal.event('archive_verify',path=path.name)
     with Archive(path) as archive:
-        members=_members(archive)
+        hints=[]
+        for key in set(before)|set(expected):
+            if unknown_member_name(key[0]):continue
+            # Existing archives may contain noncanonical resource names. They
+            # remain accessible by their Member and are never exported as paths.
+            # Such names need no optional filename hint if already in listfile.
+            try:hints.append(canonical_name(key[0]))
+            except MpqError:continue
+        archive.identify_names(hints)
+        members=_members(archive,journal)
         for index,(key,(digest,flags)) in enumerate(before.items(),1):
             journal.check();member=members.get(key)
             if index==1 or index%32==0:journal.event('verify_member',path=key[0],index=index,total=len(before))
@@ -201,13 +278,20 @@ def _verify(path,before,expected,journal):
 
 def _patch_map(path,inherited,parent_custom,manifest,files,journal):
     with Archive(path) as archive:
-        members=_members(archive);metadata=map_data_mode(archive.read('war3map.w3i'))
+        archive.identify_names('Units\\'+name for name in manifest['required'])
+        _identify_archive_names(archive,journal)
+        members=_members(archive,journal);metadata=map_data_mode(archive.read('war3map.w3i'))
+        journal.event('archive_names_identified',archive=path.name,member_count=len(members),
+            known_warcraft_names=list(archive.identified_names))
         custom=parent_custom|_custom_ids(archive,'war3map',journal)
         before=_fingerprints(archive,members,journal)
         plan,details=_plan(archive,members,metadata['mode'],inherited,custom,manifest,files,journal)
     if plan:
         with Archive(path,writable=True) as archive:
-            archive.reserve(sum(member is None for raw,member in plan.values()))
+            archive.identify_names('Units\\'+name for name in manifest['required'])
+            _identify_archive_names(archive,journal)
+            archive.reserve(sum(member is None for raw,member in plan.values()),
+                progress=lambda stage,data:journal.event(stage,**data))
             for name,(raw,member) in plan.items():
                 journal.event('write_table',map=path.name,path=name,bytes=len(raw),original_flags=member.flags if member else None)
                 archive.write(name,raw,original=member)
@@ -231,6 +315,7 @@ def prepare_extension_definitions(source,output_folder,*,progress=None,cancel=No
     run_folder.mkdir(exist_ok=False)
     journal=Journal(run_folder/'处理日志.jsonl',progress,cancel)
     pending=run_folder/('未完成.tmp')
+    current_chapter = None
     try:
         initial_stat=(source.stat().st_size,source.stat().st_mtime_ns)
         journal.event('source_hash_begin',source=str(source),log_path=str(journal.path))
@@ -247,7 +332,7 @@ def prepare_extension_definitions(source,output_folder,*,progress=None,cancel=No
             reports=[]
             if source.suffix.casefold()=='.w3n':
                 with Archive(staged) as archive:
-                    members=_members(archive);before=_fingerprints(archive,members,journal)
+                    members=_members(archive,journal);before=_fingerprints(archive,members,journal)
                     referenced=campaign_maps(archive.read('war3campaign.w3f'))
                     chapters=[m for m in members.values() if m.name.casefold().endswith(('.w3x','.w3m'))]
                     if not chapters or len(chapters)>1000:raise DefinitionError('战役章节列表为空或数量异常。')
@@ -266,6 +351,7 @@ def prepare_extension_definitions(source,output_folder,*,progress=None,cancel=No
                         reports.append(dict(name=member.name,stage_path=str(chapter),original_flags=member.flags))
                 changes=[];expected={}
                 for index,report in enumerate(reports):
+                    current_chapter=report['name']
                     journal.event('chapter_begin',index=index+1,total=len(reports),name=report['name'])
                     chapter=Path(report.pop('stage_path'))
                     report.update(_patch_map(chapter,inherited,custom,manifest,files,journal))
@@ -281,6 +367,7 @@ def prepare_extension_definitions(source,output_folder,*,progress=None,cancel=No
                         archive.flush()
                 _verify(staged,before,expected,journal)
             else:
+                current_chapter=source.name
                 journal.event('chapter_begin',index=1,total=1,name=source.name)
                 reports=[dict(name=source.name,**_patch_map(staged,{},set(),manifest,files,journal))]
                 journal.event('chapter_verified',**reports[0])
@@ -310,11 +397,13 @@ def prepare_extension_definitions(source,output_folder,*,progress=None,cancel=No
         # Keep the diagnostic directory even when no campaign/map is published.
         try:
             journal.stream.write(json.dumps(dict(stage='failed',exception=repr(exc),traceback=traceback.format_exc(),
-                                                 source=str(source),output_published=False),ensure_ascii=False)+'\n')
+                                                 source=str(source),chapter=current_chapter,
+                                                 archive_details=getattr(exc,'mpq_details',{}),output_published=False),ensure_ascii=False)+'\n')
             journal.stream.flush()
         except (OSError,ValueError):pass
         if not isinstance(exc,DefinitionError):
-            error=DefinitionError('处理战役或地图时出错，原文件已保留。详细原因已记录在处理日志中。')
+            error=DefinitionError((f'处理章节“{current_chapter}”时：' if current_chapter else '')+str(exc)
+                if isinstance(exc,MpqError) else '处理战役或地图时出错，原文件已保留。详细原因已记录在处理日志中。')
             error.__cause__=exc;exc=error
         exc.diagnostic_log_path=str(journal.path)
         raise exc

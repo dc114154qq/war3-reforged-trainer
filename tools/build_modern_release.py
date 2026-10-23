@@ -15,8 +15,8 @@ from PyInstaller.archive.readers import CArchiveReader
 import pefile
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / 'dist-2.1.18-native-handles-preview'
-CASE = ROOT / 'build/clone-native-handles-20261023/exe-build'
+OUT = ROOT / 'dist-2.1.18-mpq-member-recovery-preview'
+CASE = ROOT / 'build/definition-mpq-capacity-20261023/exe-build'
 SPEC = 'War3ReforgedTrainer-Web-2.1.18.spec'
 EXE = 'War3ReforgedTrainer-v2.1.18-Web.exe'
 BRIDGE_IMAGE = None

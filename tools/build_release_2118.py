@@ -77,6 +77,7 @@ def source_paths() -> tuple[Path, ...]:
         "tools/prepare_mpq_dependency.py",
         "tools/generate_extension_definitions.py",
         "docs/EXTENSION_DEFINITIONS.md",
+        "docs/MPQ_MEMBER_RECOVERY.md",
         "docs/MOUSE_PROJECTION.md",
             "assets/app_icon.png",
         )

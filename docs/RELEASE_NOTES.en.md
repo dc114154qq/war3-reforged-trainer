@@ -1,6 +1,6 @@
 # Warcraft III 3.0 Trainer 2.1.18
 
-Improves unit cloning with classic inventory, extended bags, equipment positions and native talent progress. Fixes duplicate backpack abilities and missing talent choices, with clearer copy results and detailed logs.
+Fixes backpack-definition processing failures in campaigns with incomplete internal filenames, small archive directories or stale metadata entries. Retains this version's inventory cloning, equipment placement and native talent-state improvements.
 
 1. **Copy extended inventory**: fixes copy failures caused by incorrect ability and item identity conversion in some maps; copies the 30-slot extended bag as well as the classic six slots, preserving occupied slots and gaps. Checks actual inventory membership so a dropped item is not reported as successfully copied.
 
@@ -14,8 +14,10 @@ Improves unit cloning with classic inventory, extended bags, equipment positions
 
 6. **Clear results and detailed logs**: verifies copied item positions and talent state. Failed or partial operations show a popup with the differences and the detailed log location.
 
+7. **Process more campaigns successfully**: resolves existing resource paths before growing the archive directory, fixing failures that occurred immediately after processing started. Reopens and verifies original content and added definitions before output. Errors show the affected chapter and specific cause; the original file is preserved.
+
 Cloning covers the exposed inventory and equipment positions, ordinary ability levels and native talent state described above. Campaign-private quest progress and character-specific script variables are outside this scope.
 
 **Run**: Warcraft III 3.0, Windows 10/11 x64. Close the previous version and launch the EXE directly; no Python, Node.js or separate frontend server is needed. The lightweight desktop uses Microsoft WebView2. If missing, first launch offers an Internet-based installation.
 
-Retains the previous mouse-position correction, gold-mine editing, ability and item fields, loadout restoration and existing features. The implementation passed 971 related regression tests, including native copy tests for all seven adapter profiles. This version promotion also checks the EXE and public-source build. Copy-state readback completed for four selected units in the running game; temporary-copy cleanup is verified separately.
+Retains mouse positioning, gold-mine editing, ability and item fields, loadout restoration and existing features. This revision changes offline map archive processing; all game profiles and four native components are unchanged. Archive and object-table verification precede output; gameplay still requires testing the processed map in the game.

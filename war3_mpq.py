@@ -6,8 +6,10 @@ from pathlib import Path
 import ctypes as c
 import hashlib
 import importlib.util
+import re
 import sys
 import threading
+from war3_mpq_names import STANDARD_RESOURCE_NAMES
 
 DLL_SHA256 = '6cd644f3c091c2fff6430cbf612dbbf6657d8508941fba2e925caadfa7a04da6'
 STORAGE_FLAGS = 0x100 | 0x200 | 0x10000 | 0x20000 | 0x1000000 | 0x4000000
@@ -15,9 +17,31 @@ MAX_MEMBER = 512 * 1024 * 1024
 LOCK = threading.RLock()
 H, U, B = c.c_void_p, c.c_uint32, c.c_bool
 
+# MPQ editors can remove most of (listfile) while keeping all game files.
+# Probe exact, documented Warcraft member names before taking a fingerprint:
+# StormLib learns a real name only when that name matches an existing hash.
+# This changes its in-memory name cache; it creates no archive members.
+WARCRAFT_MEMBER_NAMES = (
+    *(f'war3map.{suffix}' for suffix in ('w3i','w3e','wpm','shd','mmp','doo',
+        'w3r','w3c','w3s','w3a','w3t','w3u','w3b','w3d','w3h','w3q','wtg','wct','wts','imp','j','lua')),
+    *(f'war3mapSkin.{suffix}' for suffix in ('w3a','w3t','w3u','w3b','w3d','w3h','w3q')),
+    'war3mapUnits.doo','war3mapMap.blp','war3mapMap.tga','war3mapPreview.tga',
+    'war3mapMisc.txt','war3mapSkin.txt','war3mapExtra.txt',
+    'scripts\\war3map.j','scripts\\war3map.lua','war3campaign.w3f','war3campaign.wts',
+    *(f'war3campaign.{suffix}' for suffix in ('w3a','w3t','w3u','w3b','w3d','w3h','w3q')),
+    *(f'war3campaignSkin.{suffix}' for suffix in ('w3a','w3t','w3u','w3b','w3d','w3h','w3q')),
+    *(f'UI\\Cursor\\{race}Cursor.blp' for race in ('Human','Orc','Undead','NightElf')),
+)
+
+
+def unknown_member_name(name):
+    return bool(re.fullmatch(r'File[0-9a-fA-F]{8}\.[^\\/]+', name, re.IGNORECASE))
+
 
 class MpqError(ValueError):
-    pass
+    def __init__(self, message, *, details=None):
+        super().__init__(message)
+        self.mpq_details = details or {}
 
 
 class _Find(c.Structure):
@@ -79,6 +103,29 @@ class Archive:
         with LOCK:
             if not self.dll.SFileOpenArchive(str(self.path), 0, 0 if writable else 0x100, c.byref(self.handle)):
                 raise MpqError(f'地图归档打开失败（错误 {c.get_last_error()}）：{self.path}')
+            try:
+                self.identified_names = self.identify_names(WARCRAFT_MEMBER_NAMES + STANDARD_RESOURCE_NAMES)
+            except Exception:
+                self.close()
+                raise
+
+    def identify_names(self, names):
+        """Resolve exact hash matches in StormLib without changing file data."""
+        identified = []
+        with LOCK:
+            previous = self.dll.SFileSetLocale(0)
+            try:
+                for name in dict.fromkeys(canonical_name(n) for n in names):
+                    handle = H()
+                    if self.dll.SFileOpenFileEx(self.handle, name.encode('utf8'), 0, c.byref(handle)):
+                        if not self.dll.SFileCloseFile(handle):
+                            raise MpqError('地图文件名识别后的句柄关闭失败：'+name)
+                        identified.append(name)
+                    elif c.get_last_error() not in (2, 3):
+                        raise MpqError(f'地图文件名识别失败（错误 {c.get_last_error()}）：{name}')
+            finally:
+                self.dll.SFileSetLocale(previous)
+        return tuple(identified)
 
     def __enter__(self): return self
 
@@ -157,13 +204,38 @@ class Archive:
         with LOCK:
             if not self.dll.SFileFlushArchive(self.handle): raise MpqError('地图数据保存失败。')
 
-    def reserve(self, additional):
+    def reserve(self, additional, *, progress=None):
         if not self.writable or not 0 <= additional <= 4096:
             raise MpqError('地图新增文件数量异常。')
         with LOCK:
             current = self.dll.SFileGetMaxFileCount(self.handle)
-            required = len(self.members()) + additional + 8
+            members = self.members()
+            required = len(members) + additional + 8
+            unknown = [m.name for m in members if unknown_member_name(m.name)]
+            evidence = dict(archive=self.path.name,current_capacity=current,member_count=len(members),
+                additional=additional,required_capacity=required,identified_names=list(self.identified_names),
+                unknown_member_count=len(unknown),unknown_member_examples=unknown[:16],
+                strategy='exact_warcraft_names_before_directory_growth')
+            if progress: progress('archive_capacity_check', evidence)
             if required > current:
                 capacity = 1 << (required - 1).bit_length()
+                evidence['target_capacity'] = capacity
+                c.set_last_error(0)
                 if not self.dll.SFileSetMaxFileCount(self.handle, capacity):
-                    raise MpqError('地图文件目录扩容失败，已保留原文件。')
+                    error = c.get_last_error()
+                    evidence.update(error_code=error,growth_verified=False)
+                    if progress: progress('archive_capacity_failed', evidence)
+                    if error == 10007:
+                        raise MpqError(f'地图的内部文件名清单不完整，目录扩容已停止（错误 {error}）。原文件已保留。', details=evidence)
+                    if error == 112:
+                        raise MpqError(f'地图文件目录容量不足，扩容被归档组件拒绝（错误 {error}）。原文件已保留。', details=evidence)
+                    raise MpqError(f'地图文件目录扩容失败（错误 {error}）。原文件已保留。', details=evidence)
+                actual = self.dll.SFileGetMaxFileCount(self.handle)
+                if actual < capacity:
+                    evidence.update(actual_capacity=actual,growth_verified=False)
+                    raise MpqError('地图文件目录扩容后的容量校验失败，原文件已保留。', details=evidence)
+                evidence.update(actual_capacity=actual,growth_verified=True)
+                if progress: progress('archive_capacity_expanded', evidence)
+            else:
+                evidence.update(actual_capacity=current,growth_verified=True,growth_needed=False)
+            return evidence

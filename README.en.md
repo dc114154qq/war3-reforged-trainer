@@ -10,7 +10,7 @@ Download the EXE from the [website](https://twomengxi.xyz/trainer/?lang=en) or [
 
 Windows 10/11 x64. No Python, Node.js or separate frontend server is needed. First launch offers Microsoft WebView2 setup if it is missing; installation requires Internet access.
 
-Corrects shared mouse coordinates, custom talents, cloned inventory placement and talent progress, and the talent-choice list. Current revision source is on main and in the attached source ZIP; the v2.1.18 tag retains the first release snapshot.
+This revision fixes backpack-definition processing in campaigns with incomplete archive filenames, while retaining mouse positioning, custom talents, cloned inventory placement and talent progress. Current revision source is on main and in the attached source ZIP; the v2.1.18 tag retains the first release snapshot.
 
 ## Build from source
 
@@ -25,6 +25,6 @@ python tools/build_modern_release.py
 python tools/build_modern_release.py --verify-only
 ```
 
-Output: `dist-2.1.18-native-handles-preview/<hash-prefix>/War3ReforgedTrainer-v2.1.18-Web.exe`.
+Output: `dist-2.1.18-mpq-member-recovery-preview/<hash-prefix>/War3ReforgedTrainer-v2.1.18-Web.exe`.
 
 [Release notes](docs/RELEASE_NOTES_v2.1.18.en.md) · [History](docs/HISTORY.md) · [Validation](docs/VALIDATION.json)

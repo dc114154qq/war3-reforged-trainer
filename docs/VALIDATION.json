@@ -1,7 +1,8 @@
 {
   "version": "2.1.18",
-  "exe_sha256": "400440E56F5908D9182EBAF885BFA2E77BEFE164BE3C9E5E181CA2FD1DC63C26",
-  "source_parent": "fa76c973ea52901a9b0db95672aefa37847feeaf",
+  "build": "E425EED2DA73",
+  "exe_sha256": "E425EED2DA73D8DF372CB2BA1BE4F9DA4ABD70E412A52C629D8AF30A0BA9C794",
+  "source_parent": "5ebd0e4d868f0727162c6861a725269052181829",
   "production_source_sha256": {
     "ADAPTER_NOTES_3.0.1.24360.md": "B97D2B6AE47BD15F5539FC2B86B9ECE0F53D21EEDA5CE9D365A53A84B3CFE9EE",
     "ADAPTER_NOTES_3.0.1.24365.md": "785E41F08760EC4765A93C581249B3A02B36A7F6AC742C72FE1686C63FEF5243",
@@ -14,6 +15,7 @@
     "diagnostics/war3_native_profile.py": "773439816F0BFB514E4EDAD353CC1D33DE2D154E3557B2965D15043DDDB89E17",
     "docs/EXTENSION_DEFINITIONS.md": "E38B22832F872CCA75E462F47F93B08795F4ACAF226BAD66A56BC7680F726850",
     "docs/MOUSE_PROJECTION.md": "F7D6DD0A072E94F673AE16B152A6AA65AE1FF100854BA1BDEBA924622F3DB075",
+    "docs/MPQ_MEMBER_RECOVERY.md": "D4476A68E5277E91D170429335E83EA8403461BDBA1CDC96EC062A07DD291698",
     "frontend/dist/assets/index-BeWTnXJg.js": "46E9E75F270422531A2564123DD7A3594DDCA686CCF47C001D3E8500B38757B4",
     "frontend/dist/assets/index-BhMHjlKe.css": "269F7553E6AC661CAB56AD9099CA5E55FE5D38F92CD3BB7F71A24AC4C3043FE5",
     "frontend/dist/favicon.svg": "61BC9A161DE58248288E6905425D7180F0624C2865007B97D763FDAC12043A66",
@@ -64,7 +66,7 @@
     "profiles/3.0.1.24371.json": "0333EE38CEAB395567E32C61800D5F0DD7D993E0EE7FCD82162DA6B4FF2F9391",
     "profiles/discovery/references.json": "740C0282E9238EB63E1EAC5B7C78988515B68980973E55E1074A28475032D3E7",
     "profiles/discovery/semantics.json": "8E2B0042CADFB14A359F0F8F906E5BE13AF654296C33B7F159CE866DA5C4DE36",
-    "RELEASE_NOTES_v2.1.18.md": "BAAE1F4CB74CBCA997F32DBDEB95490834AF073D9A9F22A6FA76F9206A1102C0",
+    "RELEASE_NOTES_v2.1.18.md": "C6AA455143ABED1B4889F3B9AFD6BEF591FF4A07D51F6A66132801AFDB8EA311",
     "third_party/minhook/include/MinHook.h": "62DFF05E63155C6BF8135C36A0D79DEDBDCAAEDE9DA26FE38DAF0BEA34323E38",
     "third_party/minhook/LICENSE.txt": "D5C2224982B0B95A16B098A561335FA93F3EAF4D0AA964B7843EDB986DF78DC8",
     "third_party/minhook/src/buffer.c": "0AB484D7870C3A8E7A3A1EE61E2070072CF445ED85B619D4C4207FED34356D99",
@@ -78,8 +80,8 @@
     "third_party/minhook/src/trampoline.h": "53ED9934492320617A27BFD952FFE7F5B7A4A1D09963D4512447082FE7B727B4",
     "third_party/stormlib/StormLib-LICENSE.txt": "50B128E6750ED9D887E7A5748A6021238BB2F3BF34A5DD2768C410D932069E35",
     "tools/build_engine_bridge.ps1": "5B7AA22AC9D3EA23969B7EB95175C0A1D2126B84BE1D5CBA676F80A3F65EDBF6",
-    "tools/build_modern_release.py": "DEEFACBD2EE5020C776CE6576A135BC35C6A154E462F31AA52091216B20F2DC4",
-    "tools/build_release_2118.py": "D2952A755AA4CABC3C786DF04E4B000A883F2FC0C6D79933D73ABD592CBBE188",
+    "tools/build_modern_release.py": "06D58F2E04239C0191FDD3A87B1EBFD01F3DB48B88602B3A932173B02CA8E4FB",
+    "tools/build_release_2118.py": "109A815F5A95A2DE956A0B5599ED10F65109FA0603E9E2605B8C7A420A7CD684",
     "tools/build_speed_clock.ps1": "11812D83606B9C42FAEFDA10645DA277620B81D347233A3D44DC8733695BA491",
     "tools/build_talent_icon_display.ps1": "8926A26D4CE76272CDFAB366B99D592DBE9C081ACEC4219AA4CB9BA400C906CA",
     "tools/generate_bridge_profile.py": "53BF6762E9843D26902F332FDB24ECAFFBD8C46C10137010B4DD7C04752F2F18",
@@ -222,9 +224,10 @@
     "war3_loadout_restore.py": "CFE9972586CF88BFEC98C66995B9DACB5AAF653EA38F35614F357F1346D356B7",
     "war3_loadout_storage.py": "2DD38350941A2B6D059B348E345ECA959BC2F4EECFC6BC499C447F516607B700",
     "war3_map_bounds_protocol.py": "CF3EE6FE82CF2CAC8EE3FAAD23A5C0FC454B26CF4D55D76C94EB32E2C1C85693",
-    "war3_metadata.py": "8D4309DF2D4E7D14D332AC43B61CC9ED5282D15CBB68C1EE8B0E33CF487CF414",
+    "war3_metadata.py": "FFC8350C66CFB70007B19480FF2BFBD46BE9AC829211158FF5B76876C10B3964",
     "war3_mouse_protocol.py": "46555086E6FD3AAEADEE05261351D80D93A4881C4150EDAFC00F533F488E2E24",
-    "war3_mpq.py": "158A1B0C897BD0F947CF61C70D8EF371B5A17E9648037E808B6A6CDEA5F987E2",
+    "war3_mpq.py": "C641EBAEB410787DF6D5F961F9270B69C7D522CD8A22AFA48BD6CDE644509F6A",
+    "war3_mpq_names.py": "ADEAF732C55C11929DC8E5E59D69F4A699E89F80E529FAF3A7E27A1357AB1AC9",
     "war3_native_journal.py": "F2E3D426C6EF705D02E498E853AB9EF4563B463D3B1026C90B64E65DC7630C7E",
     "war3_native_preflight.py": "7570EB28587434657B22B0A5D87585DE8F181386DA6EDCC75BD5B9B5DE9425EC",
     "war3_native_table.py": "1E402CE4AC139641CEE05FC804FD66A3D5F83F2619B1F1963AD4D404A93CB0DA",
@@ -260,7 +263,7 @@
     "war3_services/effect_lifetime.py": "FBB378C24AD74454A4B9CC2F5274A190BC587163B144213B0E3798051202B8D3",
     "war3_services/equipment_effects.py": "49A0B9A7406729919750A76691187743FBDC62D0DBE56C628494693D75BD38B0",
     "war3_services/equipment_slots.py": "F42BB8A677CADCF56DA4FD312E8E7579A3DDA89F0AEB6F25EFE1122D27DC00A2",
-    "war3_services/extension_definitions.py": "9796F900CA79C67641655F2006D73A199AC27BF9D40702AA983634C151553F97",
+    "war3_services/extension_definitions.py": "8981A12CA4F9880D26B6AA1AF4103B13772AB97ED92819C5575CA9C0DBC412D9",
     "war3_services/extensions.py": "58DB46D3698D2B49C92CEFEF306026EB28F6D804AE78AE45AAE649C6FE68AAFD",
     "war3_services/facade_abilities.py": "43A62507221B026B58C560B62F61BF4454F88FD18BB442A68BC1D1453FADBE29",
     "war3_services/facade_binding.py": "68FCF5F82DD3E32951FE86BEBC9378F2C2592C751DB7BCF5FD136D5F71CE5180",
@@ -309,252 +312,70 @@
     "war3_world_protocol.py": "5DD8CD892BE17EBA23A578864253FB1868DCE5BDF1E874964D45BD24FC00C7BF",
     "War3ReforgedTrainer-Web-2.1.18.spec": "D67BEE13B9F1E5A606A3FAFCF2D12BB51AE36C806238C6AC2ACA0BC40609DE5A"
   },
-  "production_inputs": 305,
-  "packaged_modules": 169,
+  "production_inputs": 307,
+  "packaged_modules": 170,
   "native_dlls_sha256": {
     "tools\\war3_bridge_24268.dll": "E959610CEEB15880DDE185C68EEFDAFD378A2C8D8513A6FD69912870B779ADF4",
     "tools\\war3_mpq.dll": "6CD644F3C091C2FFF6430CBF612DBBF6657D8508941FBA2E925CAADFA7A04DA6",
     "tools\\war3_speed_clock.dll": "91FB4F87344EBA12EB21759EF426437601EFB93C256F6F82ADB22B92BCC2685E",
     "tools\\war3_talent_icon_display.dll": "54C0EDD2D639EB4AFD203D5A4222F13814A3ABD27BD694AACBA52545586DE386"
   },
-  "runtime_checks": {
+  "seven_game_profiles_unchanged": true,
+  "four_native_dlls_unchanged": true,
+  "offline_definition_processing_tests": {
     "ok": true,
-    "version": "2.1.18",
-    "exe": "E:\\xiugai\\work\\reforged-modular-adapters\\dist-2.1.18-native-handles-preview\\400440E56F59\\War3ReforgedTrainer-v2.1.18-Web.exe",
-    "sha256": "400440E56F5908D9182EBAF885BFA2E77BEFE164BE3C9E5E181CA2FD1DC63C26",
-    "bytes": 30212087,
-    "single_exe_only_directory": true,
-    "without_python_node_on_path": true,
-    "checks": {
-      "runtime": {
-        "ok": true,
-        "frozen": true,
-        "decoder": "C:\\Users\\14186\\AppData\\Local\\Temp\\_MEI406162\\capstone\\lib\\capstone.dll",
-        "decoder_sha256": "76958e18380023a68fd1714fa2e01c594cc6db1955a07ad6937b66e66dc5d6c3",
-        "bridge": "C:\\Users\\14186\\AppData\\Local\\Temp\\_MEI406162\\tools\\war3_bridge_24268.dll",
-        "bridge_sha256": "e959610ceeb15880dde185c68eefdafd378a2c8d8513a6fd69912870b779adf4",
-        "instructions": [
-          "mov",
-          "mov",
-          "call",
-          "ret"
-        ],
-        "retired_helper_present": false,
-        "save_extraction_modules": true,
-        "save_code_parser_verified": true,
-        "archive_fields_modules": true,
-        "archive_parser_verified": true,
-        "extension_definitions": {
-          "pack_id": "war3-extension-definitions-24360-v1",
-          "pack_sha256": "92fb7ef32f24d0b218124034c42642490a1c251b843e9511ab531a12bd7c03f1",
-          "mpq_sha256": "6cd644f3c091c2fff6430cbf612dbbf6657d8508941fba2e925caadfa7a04da6",
-          "ui_module": true,
-          "merged_definitions_verified": true
-        },
-        "artifact_plan": {
-          "ui_module": true,
-          "service_module": true,
-          "slots": 6,
-          "default_verified": true,
-          "persistence_verified": true,
-          "user_preferences_touched": false
-        }
+    "tests_passed": 38,
+    "tests_failed": 0,
+    "skipped": 0,
+    "regression_campaign_chapters": 15,
+    "affected_campaign_chapters": 86,
+    "total_chapters_verified": 101,
+    "campaigns": [
+      {
+        "chapters": 86,
+        "source_sha256": "44f7836bdd6aeb1cad38edb067e165ed2bb2bd8e0f9058cbf345d64bf8bd3c30",
+        "output_sha256": "2c8aee9b2f8ec544173c5c7d25cd2f108945ecb1d2d25b7f8d41e9539904b726",
+        "all_original_content_and_flags_verified": true,
+        "critical_definitions_reextracted": true,
+        "original_preserved": true,
+        "gameplay_tested": false,
+        "reference_recovery_events": 26,
+        "capacity_checks": 86,
+        "duplicate_metadata_events": 24
       },
-      "desktop": {
-        "ok": true,
-        "offline": true,
-        "frozen": true,
-        "dom": {
-          "title": "魔兽争霸 III 修改器 by B站两杯沈梦溪",
-          "navigation": [
-            "玩家资源",
-            "选中单位",
-            "批量修改",
-            "锁定列表",
-            "技能字段",
-            "物品字段",
-            "3.0 扩展功能",
-            "大象经典作弊",
-            "全局快捷键 68",
-            "ID 检索目录",
-            "3.0 新增装备",
-            "3.0 英雄技能",
-            "存档代码提取"
-          ],
-          "controls": 42,
-          "viewportWidth": 1266,
-          "bodyWidth": 1266,
-          "status": "未挂载游戏进程",
-          "bridgeReady": true
-        },
-        "hotkeys": 68,
-        "parameters": 17,
-        "panels": [
-          {
-            "label": "玩家资源",
-            "controls": 22,
-            "bodyWidth": 1266,
-            "viewportWidth": 1266
-          },
-          {
-            "label": "选中单位",
-            "controls": 16,
-            "bodyWidth": 1266,
-            "viewportWidth": 1266
-          },
-          {
-            "label": "批量修改",
-            "controls": 5,
-            "bodyWidth": 1266,
-            "viewportWidth": 1266
-          },
-          {
-            "label": "锁定列表",
-            "controls": 2,
-            "bodyWidth": 1266,
-            "viewportWidth": 1266
-          },
-          {
-            "label": "技能字段",
-            "controls": 6,
-            "bodyWidth": 1266,
-            "viewportWidth": 1266
-          },
-          {
-            "label": "物品字段",
-            "controls": 11,
-            "bodyWidth": 1266,
-            "viewportWidth": 1266
-          },
-          {
-            "label": "3.0 扩展功能",
-            "controls": 29,
-            "bodyWidth": 1266,
-            "viewportWidth": 1266
-          },
-          {
-            "label": "大象经典作弊",
-            "controls": 41,
-            "bodyWidth": 1266,
-            "viewportWidth": 1266
-          },
-          {
-            "label": "全局快捷键 68",
-            "controls": 186,
-            "bodyWidth": 1266,
-            "viewportWidth": 1266
-          },
-          {
-            "label": "ID 检索目录",
-            "controls": 204,
-            "bodyWidth": 1266,
-            "viewportWidth": 1266
-          },
-          {
-            "label": "3.0 新增装备",
-            "controls": 401,
-            "bodyWidth": 1266,
-            "viewportWidth": 1266
-          },
-          {
-            "label": "3.0 英雄技能",
-            "controls": 56,
-            "bodyWidth": 1266,
-            "viewportWidth": 1266
-          },
-          {
-            "label": "存档代码提取",
-            "controls": 4,
-            "bodyWidth": 1266,
-            "viewportWidth": 1266
-          }
-        ]
+      {
+        "chapters": 15,
+        "source_sha256": "a2e28d01283efbebe9e2d86e7e53a640c05190985b3d1f9188175bbb1d7e2177",
+        "output_sha256": "8a7a6ac915d827e90e18e32633cf4491cd4955de453ec0993d0514e1943ff441",
+        "all_original_content_and_flags_verified": true,
+        "critical_definitions_reextracted": true,
+        "original_preserved": true,
+        "gameplay_tested": false,
+        "reference_recovery_events": 0,
+        "capacity_checks": 15,
+        "duplicate_metadata_events": 0
       }
-    },
-    "source_modules": 169,
-    "production_inputs": 305,
-    "game_launched": false
-  },
-  "code_verification": {
-    "ok": true,
-    "tests_passed": 971,
-    "failed": 0,
-    "skipped": 0,
-    "production_c_callback_used": true,
-    "seven_profiles": true,
-    "actual_script_handle_identity_fixture": true,
-    "ordinary_definition_equipment_fixture": true,
-    "carrier_last_cleanup_fixture": true
-  },
-  "live_talent_reading": {
-    "ok": true,
-    "live_game_pid": 30512,
-    "game_version": "3.0.1.24371-r2",
-    "temporary_units": 4,
-    "actual_production_clone_callback": true,
-    "production_bridge_sha256": "e959610ceeb15880dde185c68eefdafd378a2c8d8513a6fd69912870b779adf4",
-    "all_copy_states_verified": true,
-    "copied_items": 17,
-    "areas_verified": [
-      "classic six slots",
-      "30-slot extended bag including gaps",
-      "nine equipment positions"
     ],
-    "source_inventory_talents_equipment_and_selection_preserved": true,
-    "all_temporary_copies_removed": true,
-    "cleanup_readback_performed_after_active_game_frames": true,
-    "source_talent_choices_learned": 0,
-    "source_remaining_points": [
-      0
-    ],
-    "nonempty_talent_choice_remapping_verified_in_native_fixtures": true,
-    "no_claim_of_live_nonempty_talent_choices": true,
-    "initial_published_build_failed_783": true,
-    "script_id_to_registry_index_error_fixed": true,
-    "ordinary_campaign_item_classification_fixed": true,
-    "protected_image_code_parsed_inside_callback": true
+    "adapter_boundaries_passed": true,
+    "adapter_files_checked": 38,
+    "frontend_dependency_audit_passed": true,
+    "zero_game_access": true
   },
-  "native_clone_runtime_state_fixture": {
-    "ok": true,
-    "tests_passed": 971,
-    "failed": 0,
-    "skipped": 0,
-    "production_c_callback_used": true,
-    "seven_profiles": true,
-    "actual_script_handle_identity_fixture": true,
-    "ordinary_definition_equipment_fixture": true,
-    "carrier_last_cleanup_fixture": true
-  },
-  "current_session_clone_test": {
-    "ok": true,
-    "live_game_pid": 30512,
-    "game_version": "3.0.1.24371-r2",
-    "temporary_units": 4,
-    "actual_production_clone_callback": true,
-    "production_bridge_sha256": "e959610ceeb15880dde185c68eefdafd378a2c8d8513a6fd69912870b779adf4",
-    "all_copy_states_verified": true,
-    "copied_items": 17,
-    "areas_verified": [
-      "classic six slots",
-      "30-slot extended bag including gaps",
-      "nine equipment positions"
-    ],
-    "source_inventory_talents_equipment_and_selection_preserved": true,
-    "all_temporary_copies_removed": true,
-    "cleanup_readback_performed_after_active_game_frames": true,
-    "source_talent_choices_learned": 0,
-    "source_remaining_points": [
-      0
-    ],
-    "nonempty_talent_choice_remapping_verified_in_native_fixtures": true,
-    "no_claim_of_live_nonempty_talent_choices": true,
-    "initial_published_build_failed_783": true,
-    "script_id_to_registry_index_error_fixed": true,
-    "ordinary_campaign_item_classification_fixed": true,
-    "protected_image_code_parsed_inside_callback": true
-  },
+  "changed_inputs": [
+    "RELEASE_NOTES_v2.1.18.md",
+    "tools/build_modern_release.py",
+    "tools/build_release_2118.py",
+    "war3_metadata.py",
+    "war3_mpq.py",
+    "war3_services/extension_definitions.py"
+  ],
+  "affected_campaign_chapters_verified": 86,
+  "regression_campaign_chapters_verified": 15,
+  "original_content_and_storage_flags_verified": true,
+  "original_campaigns_preserved": true,
+  "isolated_single_exe_runtime_verified": true,
+  "desktop_pages_verified": 13,
+  "gameplay_tested_in_this_revision": false,
   "same_version_replacement": true,
-  "original_release_tag_preserved": true,
-  "source_build_tag": "v2.1.18-build-400440E56F59",
-  "notifications_resent": false
+  "notification_authorized": false
 }

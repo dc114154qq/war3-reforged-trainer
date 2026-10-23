@@ -1,7 +1,7 @@
 {
-  "version": "2.1.17",
-  "exe_sha256": "623C6175AF5A0768F0F96CC8509A7322906F540F5542B8EE7B6362E7B0C83C18",
-  "source_parent": "3d865472d490737ec719ff76db17c610b589323e",
+  "version": "2.1.18",
+  "exe_sha256": "8F36267271550FE94E4427CD9A595AEEDA323C613A8F27DACD0E7387AE2556B1",
+  "source_parent": "7ee215fe214da010fcd78b78ce479b48b87d40ac",
   "production_source_sha256": {
     "ADAPTER_NOTES_3.0.1.24360.md": "B97D2B6AE47BD15F5539FC2B86B9ECE0F53D21EEDA5CE9D365A53A84B3CFE9EE",
     "ADAPTER_NOTES_3.0.1.24365.md": "785E41F08760EC4765A93C581249B3A02B36A7F6AC742C72FE1686C63FEF5243",
@@ -14,18 +14,18 @@
     "diagnostics/war3_native_profile.py": "773439816F0BFB514E4EDAD353CC1D33DE2D154E3557B2965D15043DDDB89E17",
     "docs/EXTENSION_DEFINITIONS.md": "E38B22832F872CCA75E462F47F93B08795F4ACAF226BAD66A56BC7680F726850",
     "docs/MOUSE_PROJECTION.md": "F7D6DD0A072E94F673AE16B152A6AA65AE1FF100854BA1BDEBA924622F3DB075",
+    "frontend/dist/assets/index-BeWTnXJg.js": "46E9E75F270422531A2564123DD7A3594DDCA686CCF47C001D3E8500B38757B4",
     "frontend/dist/assets/index-BhMHjlKe.css": "269F7553E6AC661CAB56AD9099CA5E55FE5D38F92CD3BB7F71A24AC4C3043FE5",
-    "frontend/dist/assets/index-HQy_dXP0.js": "3F78D91D3B5A5E9837EBC1365AD70D030F94665460A91177255680E48AA87F4C",
     "frontend/dist/favicon.svg": "61BC9A161DE58248288E6905425D7180F0624C2865007B97D763FDAC12043A66",
     "frontend/dist/icons.svg": "B45FA506195CFCDEF406BA9F0C77B36DDC1A7C224040926EC70ABC2FDEA7B93A",
-    "frontend/dist/index.html": "2E71E752D3FF8795FC7D7AF579656A4214D2801178F1839909DC8A713D83159E",
+    "frontend/dist/index.html": "2DA352F1AF46E237C8382AB59E38C756DCA280371D687F4C14645E40BD30CE57",
     "frontend/index.html": "44FD4343796CDF861D23B09CDE3A6A15E9E2792B96003E7F035C32B20A8F07C6",
     "frontend/package-lock.json": "D5FBC411200B1C40CBBC3A7A8400D0453F882FE31BBEF1EE955C2470DD09EC03",
     "frontend/package.json": "6C42372FE3D3C8F51F3E4F2526F6153E8E5370DFD03C73EF6FF236DF5C8E449F",
     "frontend/public/favicon.svg": "61BC9A161DE58248288E6905425D7180F0624C2865007B97D763FDAC12043A66",
     "frontend/public/icons.svg": "B45FA506195CFCDEF406BA9F0C77B36DDC1A7C224040926EC70ABC2FDEA7B93A",
     "frontend/src/app.css": "6F7EF0C1ACB2F76E6D61BA220045A9E2987F2C50D907938050F33200A56405E8",
-    "frontend/src/App.svelte": "56468C20A27C17C70762232F4115177848F16C4C4EC3A812F0E32947329F8D2C",
+    "frontend/src/App.svelte": "4593466157AA6CCAB698BBF003240A042B1AC5E9B27E1172D35F3400C4507239",
     "frontend/src/assets/hero.png": "881FFBCAAFC212E49ADDAD08846A5B82761355FA20624253AF3477BA33262C5C",
     "frontend/src/assets/svelte.svg": "A39F39B75032527099AA1EDE54FF2A507065E32E7329A1460A35A3A4D6EA88FE",
     "frontend/src/assets/vite.svg": "5BE21ACD42EB7B896E517F4E0F0F11EB5C5D9E54FBBCEBE9453F033008FCCA6F",
@@ -64,7 +64,7 @@
     "profiles/3.0.1.24371.json": "0333EE38CEAB395567E32C61800D5F0DD7D993E0EE7FCD82162DA6B4FF2F9391",
     "profiles/discovery/references.json": "740C0282E9238EB63E1EAC5B7C78988515B68980973E55E1074A28475032D3E7",
     "profiles/discovery/semantics.json": "8E2B0042CADFB14A359F0F8F906E5BE13AF654296C33B7F159CE866DA5C4DE36",
-    "RELEASE_NOTES_v2.1.17.md": "EC97161C4B981182818EE52E6C501AF60452029AE08A09943AE8AA598577D4B2",
+    "RELEASE_NOTES_v2.1.18.md": "CBE8CF33804CC0A3F09471319B7106F30FF9E65B153D4E8969D9BCE125101559",
     "third_party/minhook/include/MinHook.h": "62DFF05E63155C6BF8135C36A0D79DEDBDCAAEDE9DA26FE38DAF0BEA34323E38",
     "third_party/minhook/LICENSE.txt": "D5C2224982B0B95A16B098A561335FA93F3EAF4D0AA964B7843EDB986DF78DC8",
     "third_party/minhook/src/buffer.c": "0AB484D7870C3A8E7A3A1EE61E2070072CF445ED85B619D4C4207FED34356D99",
@@ -78,8 +78,8 @@
     "third_party/minhook/src/trampoline.h": "53ED9934492320617A27BFD952FFE7F5B7A4A1D09963D4512447082FE7B727B4",
     "third_party/stormlib/StormLib-LICENSE.txt": "50B128E6750ED9D887E7A5748A6021238BB2F3BF34A5DD2768C410D932069E35",
     "tools/build_engine_bridge.ps1": "5B7AA22AC9D3EA23969B7EB95175C0A1D2126B84BE1D5CBA676F80A3F65EDBF6",
-    "tools/build_modern_release.py": "313CD88F7621D28C3668B12EC3C5BFF7C04B3D7E8820EAC0394816069CED877A",
-    "tools/build_release_2117.py": "96774FE2CF1FADBF4CF2DFE99C599FD1F8F19775341CDE863A4AC7D122A98B5D",
+    "tools/build_modern_release.py": "DDC32DF11CBB6782D0D3A28A0E90AD1B970DB147D5A82494BB311F46D60ED559",
+    "tools/build_release_2118.py": "D2952A755AA4CABC3C786DF04E4B000A883F2FC0C6D79933D73ABD592CBBE188",
     "tools/build_speed_clock.ps1": "11812D83606B9C42FAEFDA10645DA277620B81D347233A3D44DC8733695BA491",
     "tools/build_talent_icon_display.ps1": "8926A26D4CE76272CDFAB366B99D592DBE9C081ACEC4219AA4CB9BA400C906CA",
     "tools/generate_bridge_profile.py": "53BF6762E9843D26902F332FDB24ECAFFBD8C46C10137010B4DD7C04752F2F18",
@@ -90,7 +90,7 @@
     "tools/verify_engine_bridge.py": "A2DFAF35370ED11707471B8003B36303C7FFC53BAB7E85A7AB9B3D4758F59FB6",
     "tools/verify_speed_clock.py": "462CEB73E186D384F844F11AF0FFEE2E75864984AFF929505E7BE0C8367839C2",
     "tools/verify_talent_icon_display.py": "0B29F5BC5252402ED9029B02C5952BF0C1D9EA80415871C42E0934375A665E5F",
-    "tools/war3-2.1.17-version-info.txt": "9BDD21A93503651E6BAF4DD188553E27070EC3D7DDD68436DDF70BB1FC036B5A",
+    "tools/war3-2.1.18-version-info.txt": "72EDB5B2290A1DF7AEB8AB83149E13BC21E2735EAD5F06C9A6B7BF1FD463B047",
     "tools/war3_bridge_24268.c": "C72BF48DB37BF47E41FBE9053D326870637BD94A4EB43F2C708DA0368962CBB1",
     "tools/war3_bridge_ability.h": "AF2022C7B1DC3E31B7B4B8D176A06C93A2A17D5120B318398358C97821BF1D5D",
     "tools/war3_bridge_ability_field.h": "AAB7E02A8EE343FA8BEA76257DEF6AA10762DB08919BCACFC441124B4BB07A6B",
@@ -222,7 +222,7 @@
     "war3_loadout_restore.py": "CFE9972586CF88BFEC98C66995B9DACB5AAF653EA38F35614F357F1346D356B7",
     "war3_loadout_storage.py": "2DD38350941A2B6D059B348E345ECA959BC2F4EECFC6BC499C447F516607B700",
     "war3_map_bounds_protocol.py": "CF3EE6FE82CF2CAC8EE3FAAD23A5C0FC454B26CF4D55D76C94EB32E2C1C85693",
-    "war3_metadata.py": "4F8EE41CBE3A30086883787F91EB31FE7623B7116AE06F6D77E0508A8E086EBE",
+    "war3_metadata.py": "CCDF4EA44BF376A889973E053E43934E5525DB05CB48B50FB9E7EF681F6F4E30",
     "war3_mouse_protocol.py": "46555086E6FD3AAEADEE05261351D80D93A4881C4150EDAFC00F533F488E2E24",
     "war3_mpq.py": "158A1B0C897BD0F947CF61C70D8EF371B5A17E9648037E808B6A6CDEA5F987E2",
     "war3_native_journal.py": "F2E3D426C6EF705D02E498E853AB9EF4563B463D3B1026C90B64E65DC7630C7E",
@@ -307,7 +307,7 @@
     "war3_world_cast_protocol.py": "840646A619F95B810D75AD127D538FFFAB446C8F9B09CC9805C2954186A30A55",
     "war3_world_effect_protocol.py": "390D96810633D6E4DAC350AC14FF49D576DDCA60E5C6816B179A65FBFD7168CA",
     "war3_world_protocol.py": "5DD8CD892BE17EBA23A578864253FB1868DCE5BDF1E874964D45BD24FC00C7BF",
-    "War3ReforgedTrainer-Web-2.1.17.spec": "8D9D3C2D847FB126534E06F0AF13B8E0659DD5753F6B2AFF18EA443F2A5066FC"
+    "War3ReforgedTrainer-Web-2.1.18.spec": "D67BEE13B9F1E5A606A3FAFCF2D12BB51AE36C806238C6AC2ACA0BC40609DE5A"
   },
   "production_inputs": 305,
   "packaged_modules": 169,
@@ -319,19 +319,19 @@
   },
   "runtime_checks": {
     "ok": true,
-    "version": "2.1.17",
-    "exe": "E:\\xiugai\\work\\reforged-modular-adapters\\dist-2.1.17-clone-state-preview\\623C6175AF5A\\War3ReforgedTrainer-v2.1.17-Web.exe",
-    "sha256": "623C6175AF5A0768F0F96CC8509A7322906F540F5542B8EE7B6362E7B0C83C18",
-    "bytes": 30211038,
+    "version": "2.1.18",
+    "exe": "E:\\xiugai\\work\\reforged-modular-adapters\\dist-2.1.18-modern-verified\\8F3626727155\\War3ReforgedTrainer-v2.1.18-Web.exe",
+    "sha256": "8F36267271550FE94E4427CD9A595AEEDA323C613A8F27DACD0E7387AE2556B1",
+    "bytes": 30211035,
     "single_exe_only_directory": true,
     "without_python_node_on_path": true,
     "checks": {
       "runtime": {
         "ok": true,
         "frozen": true,
-        "decoder": "C:\\Users\\14186\\AppData\\Local\\Temp\\_MEI271762\\capstone\\lib\\capstone.dll",
+        "decoder": "C:\\Users\\14186\\AppData\\Local\\Temp\\_MEI363962\\capstone\\lib\\capstone.dll",
         "decoder_sha256": "76958e18380023a68fd1714fa2e01c594cc6db1955a07ad6937b66e66dc5d6c3",
-        "bridge": "C:\\Users\\14186\\AppData\\Local\\Temp\\_MEI271762\\tools\\war3_bridge_24268.dll",
+        "bridge": "C:\\Users\\14186\\AppData\\Local\\Temp\\_MEI363962\\tools\\war3_bridge_24268.dll",
         "bridge_sha256": "18c9dc63b0ad8beada297fb7cf0f6da44666ab37cc8e64df15b36d09b9cfc6bc",
         "instructions": [
           "mov",
@@ -475,7 +475,62 @@
     "production_inputs": 305,
     "game_launched": false
   },
-  "code_verification": {
+  "exact_implementation_promotion": {
+    "ok": true,
+    "preview_sha256": "623C6175AF5A0768F0F96CC8509A7322906F540F5542B8EE7B6362E7B0C83C18",
+    "release_sha256": "8F36267271550FE94E4427CD9A595AEEDA323C613A8F27DACD0E7387AE2556B1",
+    "changed_existing_source_inputs": [
+      "frontend/dist/assets/index-HQy_dXP0.js",
+      "frontend/dist/index.html",
+      "frontend/src/App.svelte",
+      "RELEASE_NOTES_v2.1.17.md",
+      "tools/build_modern_release.py",
+      "tools/build_release_2117.py",
+      "tools/war3-2.1.17-version-info.txt",
+      "war3_metadata.py",
+      "War3ReforgedTrainer-Web-2.1.17.spec"
+    ],
+    "changed_packaged_python_modules": [
+      "war3_metadata"
+    ],
+    "changed_non_frontend_archive_members": [
+      "PYZ-00.pyz"
+    ],
+    "gameplay_implementation_unchanged": true,
+    "seven_profiles_and_discovery_unchanged": true,
+    "four_native_dlls_unchanged": true,
+    "matched_runtime_dependency_closure": true,
+    "frontend_only_version_change": true,
+    "inherited_functional_evidence": {
+      "ok": true,
+      "tests_passed": 961,
+      "failed": 0,
+      "skipped": 0,
+      "junit": "build\\clone-state-20261023\\final-regression.xml",
+      "native_state_test": {
+        "ok": true,
+        "production_c_callback_used": true,
+        "supported_profiles": 7,
+        "tests_passed": 14,
+        "coverage": [
+          "classic slot membership",
+          "bag holes preserved",
+          "both rings in distinct slots",
+          "new talent instance references",
+          "remaining points",
+          "controller setter initialization ordering",
+          "ground-item rejection and cleanup",
+          "equipment rejection and cleanup",
+          "product default route",
+          "corrupt result rejection"
+        ],
+        "actual_live_clone_tested": false,
+        "game_closed_before_clone": true
+      },
+      "adapter_frontend_and_dependency_audits_passed": true
+    }
+  },
+  "inherited_code_verification": {
     "ok": true,
     "tests_passed": 961,
     "failed": 0,
@@ -503,405 +558,6 @@
     },
     "adapter_frontend_and_dependency_audits_passed": true
   },
-  "live_talent_reading": {
-    "game_started": false,
-    "game_writes": 0,
-    "pid": 45464,
-    "snapshot": {
-      "status": "扩展背包 0/30；装备 0/9；自定义天赋 TalR TalR/1；点数 1/4",
-      "bag": [
-        {
-          "_iid": "bag:0",
-          "slot": 1,
-          "rawcode": "",
-          "charges": "",
-          "handle": ""
-        },
-        {
-          "_iid": "bag:1",
-          "slot": 2,
-          "rawcode": "",
-          "charges": "",
-          "handle": ""
-        },
-        {
-          "_iid": "bag:2",
-          "slot": 3,
-          "rawcode": "",
-          "charges": "",
-          "handle": ""
-        },
-        {
-          "_iid": "bag:3",
-          "slot": 4,
-          "rawcode": "",
-          "charges": "",
-          "handle": ""
-        },
-        {
-          "_iid": "bag:4",
-          "slot": 5,
-          "rawcode": "",
-          "charges": "",
-          "handle": ""
-        },
-        {
-          "_iid": "bag:5",
-          "slot": 6,
-          "rawcode": "",
-          "charges": "",
-          "handle": ""
-        },
-        {
-          "_iid": "bag:6",
-          "slot": 7,
-          "rawcode": "",
-          "charges": "",
-          "handle": ""
-        },
-        {
-          "_iid": "bag:7",
-          "slot": 8,
-          "rawcode": "",
-          "charges": "",
-          "handle": ""
-        },
-        {
-          "_iid": "bag:8",
-          "slot": 9,
-          "rawcode": "",
-          "charges": "",
-          "handle": ""
-        },
-        {
-          "_iid": "bag:9",
-          "slot": 10,
-          "rawcode": "",
-          "charges": "",
-          "handle": ""
-        },
-        {
-          "_iid": "bag:10",
-          "slot": 11,
-          "rawcode": "",
-          "charges": "",
-          "handle": ""
-        },
-        {
-          "_iid": "bag:11",
-          "slot": 12,
-          "rawcode": "",
-          "charges": "",
-          "handle": ""
-        },
-        {
-          "_iid": "bag:12",
-          "slot": 13,
-          "rawcode": "",
-          "charges": "",
-          "handle": ""
-        },
-        {
-          "_iid": "bag:13",
-          "slot": 14,
-          "rawcode": "",
-          "charges": "",
-          "handle": ""
-        },
-        {
-          "_iid": "bag:14",
-          "slot": 15,
-          "rawcode": "",
-          "charges": "",
-          "handle": ""
-        },
-        {
-          "_iid": "bag:15",
-          "slot": 16,
-          "rawcode": "",
-          "charges": "",
-          "handle": ""
-        },
-        {
-          "_iid": "bag:16",
-          "slot": 17,
-          "rawcode": "",
-          "charges": "",
-          "handle": ""
-        },
-        {
-          "_iid": "bag:17",
-          "slot": 18,
-          "rawcode": "",
-          "charges": "",
-          "handle": ""
-        },
-        {
-          "_iid": "bag:18",
-          "slot": 19,
-          "rawcode": "",
-          "charges": "",
-          "handle": ""
-        },
-        {
-          "_iid": "bag:19",
-          "slot": 20,
-          "rawcode": "",
-          "charges": "",
-          "handle": ""
-        },
-        {
-          "_iid": "bag:20",
-          "slot": 21,
-          "rawcode": "",
-          "charges": "",
-          "handle": ""
-        },
-        {
-          "_iid": "bag:21",
-          "slot": 22,
-          "rawcode": "",
-          "charges": "",
-          "handle": ""
-        },
-        {
-          "_iid": "bag:22",
-          "slot": 23,
-          "rawcode": "",
-          "charges": "",
-          "handle": ""
-        },
-        {
-          "_iid": "bag:23",
-          "slot": 24,
-          "rawcode": "",
-          "charges": "",
-          "handle": ""
-        },
-        {
-          "_iid": "bag:24",
-          "slot": 25,
-          "rawcode": "",
-          "charges": "",
-          "handle": ""
-        },
-        {
-          "_iid": "bag:25",
-          "slot": 26,
-          "rawcode": "",
-          "charges": "",
-          "handle": ""
-        },
-        {
-          "_iid": "bag:26",
-          "slot": 27,
-          "rawcode": "",
-          "charges": "",
-          "handle": ""
-        },
-        {
-          "_iid": "bag:27",
-          "slot": 28,
-          "rawcode": "",
-          "charges": "",
-          "handle": ""
-        },
-        {
-          "_iid": "bag:28",
-          "slot": 29,
-          "rawcode": "",
-          "charges": "",
-          "handle": ""
-        },
-        {
-          "_iid": "bag:29",
-          "slot": 30,
-          "rawcode": "",
-          "charges": "",
-          "handle": ""
-        }
-      ],
-      "equipment": [
-        {
-          "_iid": "equipment:0",
-          "slot": "头部",
-          "rawcode": "",
-          "type": "",
-          "charges": "",
-          "handle": ""
-        },
-        {
-          "_iid": "equipment:1",
-          "slot": "胸部",
-          "rawcode": "",
-          "type": "",
-          "charges": "",
-          "handle": ""
-        },
-        {
-          "_iid": "equipment:2",
-          "slot": "手套",
-          "rawcode": "",
-          "type": "",
-          "charges": "",
-          "handle": ""
-        },
-        {
-          "_iid": "equipment:3",
-          "slot": "靴子",
-          "rawcode": "",
-          "type": "",
-          "charges": "",
-          "handle": ""
-        },
-        {
-          "_iid": "equipment:4",
-          "slot": "戒指",
-          "rawcode": "",
-          "type": "",
-          "charges": "",
-          "handle": ""
-        },
-        {
-          "_iid": "equipment:5",
-          "slot": "戒指 2",
-          "rawcode": "",
-          "type": "",
-          "charges": "",
-          "handle": ""
-        },
-        {
-          "_iid": "equipment:6",
-          "slot": "主手",
-          "rawcode": "",
-          "type": "",
-          "charges": "",
-          "handle": ""
-        },
-        {
-          "_iid": "equipment:7",
-          "slot": "副手",
-          "rawcode": "",
-          "type": "",
-          "charges": "",
-          "handle": ""
-        },
-        {
-          "_iid": "equipment:8",
-          "slot": "饰品",
-          "rawcode": "",
-          "type": "",
-          "charges": "",
-          "handle": ""
-        }
-      ],
-      "talents": [
-        {
-          "_iid": "talent:TalR:0",
-          "hero": "自定义天赋 TalR",
-          "tier": 1,
-          "choices": "[原生已选] Cmsh / Fmsh / Tmsh",
-          "selected": "原生选择：Cmsh；能力：Cmsh",
-          "choiceCodes": [
-            "Cmsh",
-            "Fmsh",
-            "Tmsh"
-          ]
-        },
-        {
-          "_iid": "talent:TalR:1",
-          "hero": "自定义天赋 TalR",
-          "tier": 2,
-          "choices": "[原生已选] Mtl1 / Mtl2 / Mtl3",
-          "selected": "原生选择：Mtl1；能力：Mtl1",
-          "choiceCodes": [
-            "Mtl1",
-            "Mtl2",
-            "Mtl3"
-          ]
-        },
-        {
-          "_iid": "talent:TalR:2",
-          "hero": "自定义天赋 TalR",
-          "tier": 3,
-          "choices": "[原生已选] RTs1 / RTs2 / RTs3",
-          "selected": "原生选择：RTs1；能力：RTs1",
-          "choiceCodes": [
-            "RTs1",
-            "RTs2",
-            "RTs3"
-          ]
-        },
-        {
-          "_iid": "talent:TalR:3",
-          "hero": "自定义天赋 TalR",
-          "tier": 4,
-          "choices": "RUt1 / RUt2 / RUt3",
-          "selected": "",
-          "choiceCodes": [
-            "RUt1",
-            "RUt2",
-            "RUt3"
-          ]
-        }
-      ],
-      "selectedTalentIid": "talent:TalR:0",
-      "currentTalentChoice": "Cmsh",
-      "officialBackpacks": [
-        "人类加雷克 (ebhg)",
-        "人类兰登 (ebhl)",
-        "人类伊拉斯塔 (ebhi)",
-        "亡灵加雷克 (ebug)",
-        "亡灵安雅 (ebua)",
-        "亡灵列奥尼德 (ebul)"
-      ],
-      "currentBackpackChoice": "亡灵加雷克 (ebug)",
-      "loadoutName": "套装1",
-      "loadoutNames": [],
-      "talentChoices": [
-        "Cmsh",
-        "Fmsh",
-        "Tmsh"
-      ],
-      "loadoutWarnings": {}
-    },
-    "ok": true,
-    "checks": [
-      {
-        "iid": "talent:TalR:0",
-        "choices": [
-          "Cmsh",
-          "Fmsh",
-          "Tmsh"
-        ]
-      },
-      {
-        "iid": "talent:TalR:1",
-        "choices": [
-          "Mtl1",
-          "Mtl2",
-          "Mtl3"
-        ]
-      },
-      {
-        "iid": "talent:TalR:2",
-        "choices": [
-          "RTs1",
-          "RTs2",
-          "RTs3"
-        ]
-      },
-      {
-        "iid": "talent:TalR:3",
-        "choices": [
-          "RUt1",
-          "RUt2",
-          "RUt3"
-        ]
-      }
-    ],
-    "profile": "war3-3.0.1.24371-r2"
-  },
   "native_clone_runtime_state_fixture": {
     "ok": true,
     "production_c_callback_used": true,
@@ -922,9 +578,9 @@
     "actual_live_clone_tested": false,
     "game_closed_before_clone": true
   },
-  "current_session_clone_test": "game closed before a clone transaction was issued",
-  "same_version_replacement": true,
-  "original_release_tag_preserved": true,
-  "source_build_tag": "v2.1.17-build-623C6175AF5A",
-  "notifications_resent": false
+  "real_game_clone_tested": false,
+  "game_started_for_this_release": false,
+  "real_game_clone_scope": "No new real-game clone acceptance; inherited regression evidence is identified separately",
+  "new_version_release": true,
+  "mail_authorized": true
 }

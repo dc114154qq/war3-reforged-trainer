@@ -1,16 +1,16 @@
 [中文](README.md) | [English](README.en.md)
 
-# 魔兽 3.0 修改器 · 2.1.17
+# 魔兽 3.0 修改器 · 2.1.18
 
 读取和修改单位、技能、物品与资源，支持批量修改、扩展背包、装备套装和存档提取。
 
 ## 下载使用
 
-从[个人网站](https://twomengxi.xyz/trainer/)或[GitHub Release](https://github.com/dc114154qq/war3-reforged-trainer/releases/tag/v2.1.17)下载 EXE，直接打开。进入地图并选中单位后连接。
+从[个人网站](https://twomengxi.xyz/trainer/)或[GitHub Release](https://github.com/dc114154qq/war3-reforged-trainer/releases/tag/v2.1.18)下载 EXE，直接打开。进入地图并选中单位后连接。
 
 Windows 10/11 x64。无需安装 Python、Node.js 或另行启动前端；缺少微软 WebView2 时，首次启动会询问是否联网安装。
 
-本次修正鼠标坐标、自定义背包天赋、复制单位的物品位置与天赋进度，并修复天赋选项列表。当前修订源码在 main 分支和 Release 附带的 source ZIP；v2.1.17 标签保留首次发布快照。
+本次完善复制单位的背包与装备位置、原生天赋选择和剩余点数，避免重复背包技能，并修复自定义背包的天赋选项。失败或部分完成会弹窗并提供日志。源码在 main 分支、v2.1.18 标签和 Release 附带的 source ZIP。
 
 ## 从源码构建
 
@@ -18,13 +18,13 @@ Windows 10/11 x64。无需安装 Python、Node.js 或另行启动前端；缺少
 
 ```powershell
 python -m pip install -r requirements-build.txt
-python tools/prepare_build_baseline_2117.py
+python tools/prepare_build_baseline_2118.py
 npm ci --prefix frontend
 npm run build --prefix frontend
 python tools/build_modern_release.py
 python tools/build_modern_release.py --verify-only
 ```
 
-输出：`dist-2.1.17-clone-state-preview/<哈希前缀>/War3ReforgedTrainer-v2.1.17-Web.exe`。
+输出：`dist-2.1.18-modern-verified/<哈希前缀>/War3ReforgedTrainer-v2.1.18-Web.exe`。
 
-[更新说明](docs/RELEASE_NOTES_v2.1.17.zh.md) · [历史更新](docs/HISTORY.md) · [验证记录](docs/VALIDATION.json)
+[更新说明](docs/RELEASE_NOTES_v2.1.18.zh.md) · [历史更新](docs/HISTORY.md) · [验证记录](docs/VALIDATION.json)

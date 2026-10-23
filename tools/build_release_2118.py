@@ -1,10 +1,10 @@
-"""Current 2.1.17 production source inventory for the desktop builder."""
+"""Current 2.1.18 production source inventory for the desktop builder."""
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def source_paths() -> tuple[Path, ...]:
-    # Keep this list aligned with the actual 2.1.17 build closure.  In
+    # Keep this list aligned with the actual 2.1.18 build closure.  In
     # particular, the separate hotkey product and diagnostics probes must not
     # silently become part of the trainer source hash or package inputs.
     excluded_runtime = {
@@ -58,7 +58,7 @@ def source_paths() -> tuple[Path, ...]:
     )
     files.update(
         ROOT / name for name in (
-            "War3ReforgedTrainer-Web-2.1.17.spec",
+            "War3ReforgedTrainer-Web-2.1.18.spec",
             "tools/war3_bridge_24268.c",
             "tools/build_engine_bridge.ps1",
             "tools/build_talent_icon_display.ps1",
@@ -68,9 +68,9 @@ def source_paths() -> tuple[Path, ...]:
             "tools/verify_talent_icon_display.py",
             "tools/verify_speed_clock.py",
             "third_party/minhook/LICENSE.txt",
-            "tools/build_release_2117.py",
-            "RELEASE_NOTES_v2.1.17.md",
-            "tools/war3-2.1.17-version-info.txt",
+            "tools/build_release_2118.py",
+            "RELEASE_NOTES_v2.1.18.md",
+            "tools/war3-2.1.18-version-info.txt",
             "assets/app_icon.ico",
         "assets/extension-definitions-v1.zip",
         "third_party/stormlib/StormLib-LICENSE.txt",

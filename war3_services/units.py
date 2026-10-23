@@ -18,8 +18,10 @@ class UnitsService:
             with self.memory_factory(self.pid) as memory:
                 registry,_,_=self.session.prepare(memory);self.session.require_write()
                 for _,ref in expected_sources:self.session.resolve(memory,registry,ref)
+                image_size=self.session.profile.section('fingerprint')['image_size']
                 return build_work(entries,tls,base=registry.base,
                     unit_resolver=registry.base+self.session.profile.section('addresses')['unit_resolver'],
+                    image_size=image_size,
                     expected_sources=expected_sources,layout=self.session.profile.adapter.talents.clone_layout(),flags=flags,
                     spawn_x_bits=options.get('spawn_x_bits',0),spawn_y_bits=options.get('spawn_y_bits',0))
         request=dict(options,expected_sources=tuple(dict(native_handle=n.value,full_handle=r.handle.value,

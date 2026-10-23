@@ -36,20 +36,33 @@ typedef struct CloneStateWork {
     uint64_t (*ability)(uint64_t,uint32_t);
     uint32_t (*handle_id)(uint64_t);
     uint64_t (*item_kind)(uint64_t);
+    uint64_t (*resolve_ability)(uint64_t),(*resolve_item)(uint64_t);
     uint32_t definition_class,definition_levels,talent_points,talent_flags;
-    uint32_t completed,reserved;
+    uint32_t completed,image_size;
     CloneStateRow rows[24];
 } CloneStateWork;
-_Static_assert(sizeof(CloneStateWork)==175992,"CloneStateWork ABI");
-__declspec(dllexport) const uint32_t clone_state_abi[3]={0x2426807cu,216u,175992u};
+_Static_assert(sizeof(CloneStateWork)==176008,"CloneStateWork ABI");
+__declspec(dllexport) const uint32_t clone_state_abi[3]={0x2426807du,216u,176008u};
+
+static uint64_t clone_state_getter_resolver(CloneStateWork*s,uint64_t handler,uint32_t rawcode_offset) {
+    static const uint8_t before[5]={0x48,0x83,0xec,0x28,0xe8};
+    static const uint8_t after[18]={0x48,0x85,0xc0,0x75,0x05,0x48,0x83,0xc4,0x28,0xc3,0x8b,0x40,0x70,0x48,0x83,0xc4,0x28,0xc3};
+    uint64_t base=s->bound.base,end=base+s->image_size;
+    if(handler<base || handler>end-27 || rawcode_offset>127)return 0;
+    const uint8_t*p=(const uint8_t*)(uintptr_t)handler;
+    for(uint32_t i=0;i<5;++i)if(p[i]!=before[i])return 0;
+    for(uint32_t i=0;i<18;++i)if(p[i+9]!=(i==12?rawcode_offset:after[i]))return 0;
+    int64_t target=(int64_t)handler+9+*(const int32_t*)(uintptr_t)(handler+5);
+    return target>=(int64_t)base && target<(int64_t)end ? (uint64_t)target : 0;
+}
 
 static uint64_t clone_state_data(CloneStateWork*s,uint64_t native,uint32_t code,int ability) {
-    uint64_t owner=BridgeProfileResolveOwner(s->bound.base,s->handle_id(native),0);
-    uint64_t data=owner?*(uint64_t *)(uintptr_t)(owner+bridge_profile.owner_data):0;
+    uint64_t data=ability?s->resolve_ability(native):s->resolve_item(native);
     uint32_t offset=ability?bridge_profile.ability_rawcode:bridge_profile.object_rawcode;
     if(!data || *(uint32_t *)(uintptr_t)(data+offset)!=code)return 0;
     uint64_t full=*(uint64_t *)(uintptr_t)(data+bridge_profile.object_handle);
-    if(BridgeProfileResolveOwner(s->bound.base,full,1)!=owner)return 0;
+    uint64_t owner=BridgeProfileResolveOwner(s->bound.base,full,1);
+    if(!owner || *(uint64_t *)(uintptr_t)(owner+bridge_profile.owner_data)!=data)return 0;
     return data;
 }
 static uint32_t clone_state_class(CloneStateWork*s,uint64_t data,uint32_t code) {
@@ -71,9 +84,16 @@ static int clone_state_prepare(CloneStateWork*s,uint32_t count) {
     CloneWork*w=&s->bound.clone;
     if(!s->inventory_size || !s->bag_size || !s->bag_item || !s->slot_enum || !s->equipped ||
        !s->add_existing || !s->move_slot || !s->equip || !s->unequip || !s->ability ||
-       !s->handle_id || !s->item_kind || !s->definition_class || !s->definition_levels ||
+       !s->handle_id || !s->item_kind || s->resolve_ability || s->resolve_item || !s->definition_class || !s->definition_levels ||
        !s->talent_points || s->talent_flags>=bridge_profile.talent_record_stride ||
-       s->completed || s->reserved){w->error=780;return 0;}
+       s->completed || s->image_size<4096 || s->image_size>0x40000000u){w->error=780;return 0;}
+    /* Enter both registered getters through their ordinary null-handle query.
+       Protected game images may make these pages unreadable out of process.
+       Bind their typed conversion inside this same game-thread callback. */
+    if(w->ability_id(0) || w->item_type(0)){w->error=797;return 0;}
+    s->resolve_ability=(uint64_t(*)(uint64_t))(uintptr_t)clone_state_getter_resolver(s,(uint64_t)(uintptr_t)w->ability_id,bridge_profile.ability_rawcode);
+    s->resolve_item=(uint64_t(*)(uint64_t))(uintptr_t)clone_state_getter_resolver(s,(uint64_t)(uintptr_t)w->item_type,bridge_profile.object_rawcode);
+    if(!s->resolve_ability || !s->resolve_item){w->error=797;return 0;}
     for(uint32_t i=0;i<count;++i){
         CloneStateRow*r=&s->rows[i];uint64_t source=w->selection.rows[i].unit;
         int32_t classic=s->inventory_size(source),bag=s->bag_size(source);
@@ -230,6 +250,15 @@ static int clone_state_extended(CloneStateWork*s,uint32_t row) {
             if(in_bag!=1){w->error=792;return 0;}
         }
         if(j>=36){
+            static const uint32_t kinds[9]={1u,2u,3u,4u,5u,5u,6u,7u,8u};
+            uint64_t created_data=clone_state_data(s,item->clone,item->rawcode,0);
+            if(!created_data){w->error=791;return 0;}
+            /* Ordinary campaign items have no equipment type in their
+               definition. Restore the classifier on this new instance before
+               asking the native equipment system to apply its effects. */
+            *(uint32_t *)(uintptr_t)(created_data+bridge_profile.item_flags)|=bridge_profile.item_equipment_mask;
+            *(uint32_t *)(uintptr_t)(created_data+bridge_profile.item_class)=7u;
+            *(uint32_t *)(uintptr_t)(created_data+bridge_profile.item_equipment_type)=kinds[j-36];
             uint64_t native=s->ability(unit,r->equipment_code);
             uint64_t data=native?clone_state_data(s,native,r->equipment_code,1):0;
             uint64_t records=data?*(uint64_t *)(uintptr_t)(data+bridge_profile.equipment_records):0;
@@ -332,10 +361,35 @@ static int clone_state_verify(CloneStateWork*s,uint32_t row) {
 }
 static int clone_state_discard(CloneStateWork*s,uint32_t row) {
     CloneWork*w=&s->bound.clone;CloneRow*copy=&w->rows[row];int cleaned=1;
-    for(uint32_t j=0;j<45;++j){
+    /* Keep the classic backpack carrier alive until all extended items have
+       been removed. Bag items first also make room for native unequipping. */
+    for(uint32_t n=0;n<45;++n){
+        uint32_t j=n<39?n+6:n-39;
         uint64_t item=s->rows[row].items[j].clone;if(!item)continue;
         __try {
-            if(w->item_type(item))w->remove_item(item);
+            if(w->item_type(item)){
+                uint64_t data=clone_state_data(s,item,s->rows[row].items[j].rawcode,0);
+                if(!data){cleaned=0;continue;}
+                uint32_t in_classic=0,in_bag=0,in_equipment=0,equipment_slot=0;
+                for(uint32_t k=0;k<6;++k)if(w->item_in_slot(copy->clone,k)==item)++in_classic;
+                for(uint32_t k=0;k<(uint32_t)s->bag_size(copy->clone);++k)if(s->bag_item(copy->clone,k)==item)++in_bag;
+                for(uint32_t k=0;k<9;++k)if(s->equipped(copy->clone,s->slot_enum(k))==item){++in_equipment;equipment_slot=k;}
+                if(in_equipment){
+                    static const uint32_t kinds[9]={1u,2u,3u,4u,5u,5u,6u,7u,8u};
+                    *(uint32_t *)(uintptr_t)(data+bridge_profile.item_flags)|=bridge_profile.item_equipment_mask;
+                    *(uint32_t *)(uintptr_t)(data+bridge_profile.item_class)=7u;
+                    *(uint32_t *)(uintptr_t)(data+bridge_profile.item_equipment_type)=kinds[equipment_slot];
+                    if(s->unequip(copy->clone,s->slot_enum(equipment_slot))!=item){cleaned=0;continue;}
+                    in_bag=1;
+                }
+                if(in_bag){
+                    *(uint32_t *)(uintptr_t)(data+bridge_profile.item_flags)|=bridge_profile.item_equipment_mask;
+                    *(uint32_t *)(uintptr_t)(data+bridge_profile.item_class)=7u;
+                    *(uint32_t *)(uintptr_t)(data+bridge_profile.item_equipment_type)=9u;
+                }
+                if(in_classic)w->detach_item(copy->clone,item);
+                w->remove_item(item);
+            }
             if(w->item_type(item))cleaned=0;
         }__except(BridgeExceptionFilter(GetExceptionInformation())) {cleaned=0;copy->pad=GetExceptionCode();}
     }

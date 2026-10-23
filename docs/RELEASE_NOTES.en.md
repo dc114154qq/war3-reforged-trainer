@@ -2,7 +2,7 @@
 
 Improves unit cloning with classic inventory, extended bags, equipment positions and native talent progress. Fixes duplicate backpack abilities and missing talent choices, with clearer copy results and detailed logs.
 
-1. **Copy extended inventory**: copies the 30-slot extended bag as well as the classic six slots, preserving occupied slots and gaps. Checks actual inventory membership so a dropped item is not reported as successfully copied.
+1. **Copy extended inventory**: fixes copy failures caused by incorrect ability and item identity conversion in some maps; copies the 30-slot extended bag as well as the classic six slots, preserving occupied slots and gaps. Checks actual inventory membership so a dropped item is not reported as successfully copied.
 
 2. **Keep equipment in the correct slots**: restores main-hand, off-hand and accessory positions. Two rings retain separate slots instead of the second replacing the first.
 
@@ -18,4 +18,4 @@ Cloning covers the exposed inventory and equipment positions, ordinary ability l
 
 **Run**: Warcraft III 3.0, Windows 10/11 x64. Close the previous version and launch the EXE directly; no Python, Node.js or separate frontend server is needed. The lightweight desktop uses Microsoft WebView2. If missing, first launch offers an Internet-based installation.
 
-Retains the previous mouse-position correction, gold-mine editing, ability and item fields, loadout restoration and existing features. The implementation passed 961 related regression tests, including native copy tests for all seven adapter profiles. This version promotion also checks the EXE and public-source build. Full cloning has not received a real-game acceptance test in this round.
+Retains the previous mouse-position correction, gold-mine editing, ability and item fields, loadout restoration and existing features. The implementation passed 971 related regression tests, including native copy tests for all seven adapter profiles. This version promotion also checks the EXE and public-source build. Copy-state readback completed for four selected units in the running game; temporary-copy cleanup is verified separately.

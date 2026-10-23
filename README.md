@@ -10,7 +10,7 @@
 
 Windows 10/11 x64。无需安装 Python、Node.js 或另行启动前端；缺少微软 WebView2 时，首次启动会询问是否联网安装。
 
-本次完善复制单位的背包与装备位置、原生天赋选择和剩余点数，避免重复背包技能，并修复自定义背包的天赋选项。失败或部分完成会弹窗并提供日志。源码在 main 分支、v2.1.18 标签和 Release 附带的 source ZIP。
+本次修正鼠标坐标、自定义背包天赋、复制单位的物品位置与天赋进度，并修复天赋选项列表。当前修订源码在 main 分支和 Release 附带的 source ZIP；v2.1.18 标签保留首次发布快照。
 
 ## 从源码构建
 
@@ -25,6 +25,6 @@ python tools/build_modern_release.py
 python tools/build_modern_release.py --verify-only
 ```
 
-输出：`dist-2.1.18-modern-verified/<哈希前缀>/War3ReforgedTrainer-v2.1.18-Web.exe`。
+输出：`dist-2.1.18-native-handles-preview/<哈希前缀>/War3ReforgedTrainer-v2.1.18-Web.exe`。
 
 [更新说明](docs/RELEASE_NOTES_v2.1.18.zh.md) · [历史更新](docs/HISTORY.md) · [验证记录](docs/VALIDATION.json)

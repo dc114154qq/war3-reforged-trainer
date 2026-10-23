@@ -30,9 +30,13 @@ def grant_controller_point(host,snapshot,state,logger_factory):
                     session.resolve(memory,registry,unit)
                     instances=host._ability_instances_from_candidate(memory,candidate,required_rawcodes={code},allow_global_scan=False)
                     if len(instances)!=1:raise RuntimeError('当前英雄的天赋控制器不唯一，请重新读取')
+                    if state.get('controller_instance_full') and int(instances[0].handle)!=int(state['controller_instance_full']):
+                        raise RuntimeError('自定义天赋控制器已被替换，请重新读取')
+                    tiers=(TALENT_CONTROLLERS[controller][1] if controller in TALENT_CONTROLLERS else
+                           tuple(tuple(row['choices']) for row in state['tiers']))
                     trace.record('bound',unit_ref=unit,controller_instance=instances[0],expected_points=state['remaining_points'])
                     result=ExternalMemoryBackend(session).increment_talent_point(memory,registry,unit,candidate,instances[0],
-                        code,TALENT_CONTROLLERS[controller][1],int(state['remaining_points']))
+                        code,tiers,int(state['remaining_points']))
                     trace.record('write_readback',result=result)
             current=engine.bind_unit_refs((unit,),strict_selection=True)
             if current!=((NativeHandle(target),unit),):raise RuntimeError('加点后目标身份变化，请先重新读取，勿重复加点')

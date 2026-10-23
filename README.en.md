@@ -10,7 +10,7 @@ Download the EXE from the [website](https://twomengxi.xyz/trainer/?lang=en) or [
 
 Windows 10/11 x64. No Python, Node.js or separate frontend server is needed. First launch offers Microsoft WebView2 setup if it is missing; installation requires Internet access.
 
-Corrects shared mouse coordinates for Ctrl+X teleport, Ctrl+A unit cloning and other features using the same mouse-position path. A user confirmed accurate placement with both shortcuts in the preview.
+Corrects shared mouse coordinates and supports native talents in custom backpacks. Current revision source is on main and in the attached source ZIP; the v2.1.17 tag retains the first release snapshot.
 
 ## Build from source
 

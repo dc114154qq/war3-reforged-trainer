@@ -538,6 +538,71 @@ class TalentAdapter(LayoutProvider):
     def selection_order(self, tier, choice_index):
         return self.layout["order_base"] + tier * self.layout["choices_per_tier"] + choice_index
 
+    def definition(self, memory, candidate, instance, registry):
+        """Read the ATal BuffID level lists, including map-defined aliases.
+
+        CAbility's BuffID getter uses the 0x78 small level array (4 inline
+        entries, 0x420 bytes each), then the 0x3e8 small FourCC array (3
+        inline entries). Both arrays switch to their pointer at sentinel -1.
+        The owner, registry identity and cache aliases are checked before
+        and after the bounded read; no definition or gameplay data is written.
+        """
+        ability=self.profile.section('layouts')['ability']
+        component=self.profile.section('layouts')['component_list']
+        data=int(instance.data_address);tag=int.from_bytes(b'ATal','big')
+        if int(instance.class_rawcode)!=tag:raise RuntimeError('目标能力不是原生天赋控制器')
+        reads=[]
+        def read(address,size):
+            if not 0x10000<=address<0x800000000000 or size<0 or address+size>0x800000000000:
+                raise RuntimeError('自定义天赋定义指针越界')
+            raw=memory.read(address,size)
+            if len(raw)!=size:raise RuntimeError('自定义天赋定义读取不完整')
+            reads.append((address,raw));return raw
+        def identity():
+            wrapper=registry.resolve_handle(memory,int(instance.handle))
+            if (wrapper!=instance.wrapper_address or memory.read_u64(wrapper+component['data'])!=data
+                    or memory.read_u64(data+ability['full_handle'])!=instance.handle
+                    or memory.read_u64(data+ability['unit_owner'])!=candidate.unit_address
+                    or memory.read_u32(data+ability['rawcode'])!=instance.rawcode
+                    or memory.read_u32(data+ability['flags']) & ability['retired_mask']):
+                raise RuntimeError('自定义天赋控制器身份已变化')
+        identity()
+        primary,override=struct.unpack('<QQ',read(data+ability['data_cache'],16))
+        cache=override or primary
+        header=read(cache,0x78)
+        if (header[0x58]!=1 or struct.unpack_from('<I',header,0x5c)[0]!=tag
+                or struct.unpack_from('<I',header,0x60)[0]!=instance.rawcode):
+            raise RuntimeError('自定义天赋定义与控制器代码不匹配')
+        declared=struct.unpack_from('<I',header,0x68)[0]
+        sentinel=struct.unpack('<i',read(cache+0x10f8,4))[0]
+        if sentinel==-1:
+            level_header=read(cache+0x78,24)
+            count,levels,capacity=struct.unpack('<I4xQI4x',level_header)
+            if not count<=capacity<=1000:raise RuntimeError('自定义天赋层数组容量异常')
+        else:count,levels=sentinel,cache+0x78
+        if not 1<=count<=6 or count!=declared:raise RuntimeError('自定义天赋层数超出原生六层范围')
+        tiers=[]
+        for index in range(count):
+            address=levels+index*0x420+0x3e8
+            raw=read(address,28);inline=struct.unpack_from('<i',raw,24)[0]
+            if inline==-1:
+                size,pointer,capacity=struct.unpack_from('<I4xQI',raw)
+                if not size<=capacity<=64:raise RuntimeError('自定义天赋选项数组容量异常')
+            else:size,pointer=inline,address
+            if not 1<=size<=self.layout['choices_per_tier']:raise RuntimeError('自定义天赋每层选项数量异常')
+            codes=struct.unpack('<'+str(size)+'I',read(pointer,size*4))
+            choices=[]
+            for code in codes:
+                text=code.to_bytes(4,'big')
+                if any(c<33 or c>126 for c in text):raise RuntimeError('自定义天赋选项代码异常')
+                choices.append(text.decode('ascii'))
+            if len(set(choices))!=len(choices):raise RuntimeError('自定义天赋同层选项重复')
+            tiers.append(tuple(choices))
+        if any(memory.read(address,len(raw))!=raw for address,raw in reads):
+            raise RuntimeError('自定义天赋定义在读取期间变化，请重新读取')
+        identity()
+        return tuple(tiers)
+
     def increment_point(self, memory, candidate, instance, controller, tiers, expected, registry, revalidate):
         ability=self.profile.section('layouts')['ability']
         component=self.profile.section('layouts')['component_list']
@@ -552,17 +617,23 @@ class TalentAdapter(LayoutProvider):
                 or memory.read_u32(data+ability['flags']) & ability['retired_mask']):
                 raise RuntimeError('天赋控制器身份已经变化，本次未继续加点')
         identity()
+        from war3_3_extension_catalog import TALENT_CONTROLLERS
+        custom=controller.to_bytes(4,'big').decode('ascii') not in TALENT_CONTROLLERS
+        if custom and self.definition(memory,candidate,instance,registry)!=tuple(tuple(row) for row in tiers):
+            raise RuntimeError('自定义天赋选项已经变化，请重新读取')
         parsed=self.records(memory,candidate,[instance],tiers,registry)
         if parsed is None:raise RuntimeError('天赋控制器点数或选择记录未通过校验')
         remaining,records,choices=parsed
         spent=sum(full!=0xffffffffffffffff for full,_flags in records)
         if remaining!=expected:raise RuntimeError('天赋点数已变化，请重新读取后再加点')
-        if remaining+spent>=len(tiers)*self.layout['choices_per_tier']:
+        if remaining+spent>=sum(len(row) for row in tiers):
             raise RuntimeError('当前天赋树已经达到可消费点数上限')
         start=data+self.layout['snapshot_start'];size=self.layout['snapshot_size']
         before=memory.read(start,size);offset=self.layout['point_counter']-self.layout['snapshot_start']
         if struct.unpack_from('<I',before,offset)[0]!=expected:raise RuntimeError('加点前天赋状态发生变化，请重新读取')
         identity()
+        if custom and self.definition(memory,candidate,instance,registry)!=tuple(tuple(row) for row in tiers):
+            raise RuntimeError('加点前自定义天赋定义已变化')
         if memory.read(start,size)!=before:raise RuntimeError('加点前天赋选择记录发生变化，请重新读取')
         memory.write_u32(data+self.layout['point_counter'],expected+1)
         after=memory.read(start,size);wanted=bytearray(before);struct.pack_into('<I',wanted,offset,expected+1)

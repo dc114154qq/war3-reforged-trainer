@@ -63,9 +63,12 @@ class ExtensionsFacade:
             for rawcode in TALENT_CONTROLLERS
         )
         snapshot = engine.extension(controller_codes, target_unit=target_unit) if target_unit else engine.extension(controller_codes)
+        from war3_services.talent_definitions import enrich_snapshot, catalog
+        snapshot = enrich_snapshot(self, snapshot, engine)
+        talent_metadata = {key: snapshot[key] for key in ('talent_definitions','talent_discovery_errors') if key in snapshot}
         abilities = dict(snapshot["abilities"])
         active_choices = []
-        for controller, (_name, tiers) in TALENT_CONTROLLERS.items():
+        for controller, (_name, tiers) in catalog(snapshot).items():
             controller_code = int(self._coerce_memory_value("rawcode", controller)) & 0xFFFFFFFF
             if abilities.get(controller_code, 0) > 0:
                 active_choices.extend(choice for tier in tiers for choice in tier)
@@ -79,6 +82,7 @@ class ExtensionsFacade:
             abilities.update(detail["abilities"])
             snapshot = detail
         snapshot["abilities"] = abilities
+        snapshot.update(talent_metadata)
         if override is not None:
             selection = dict(snapshot['selection'])
             selection['rows'] = tuple(row for row in selection['rows']
@@ -991,7 +995,8 @@ class ExtensionsFacade:
         for target in targets:
             try:
                 snapshot = self.extension_snapshot_24268(target)
-                active = [name for name in TALENT_CONTROLLERS
+                from war3_services.talent_definitions import catalog
+                active = [name for name in catalog(snapshot)
                           if snapshot["abilities"].get(int.from_bytes(name.encode("ascii"), "big"), 0) > 0]
                 if not active:
                     results.append(dict(target=target, status="skipped", reason="没有天赋控制器"))
@@ -1022,8 +1027,8 @@ class ExtensionsFacade:
         state = self.talent_state_24268(snapshot)
         controller = state["controller"]
         if not controller:
-            raise RuntimeError("当前单位没有官方天赋控制器")
-        point_cap = int(state["tier_count"]) * 3
+            raise RuntimeError("当前单位没有原生天赋控制器")
+        point_cap = sum(len(row['choices']) for row in state['tiers'])
         if int(state["total_points"]) >= point_cap:
             raise RuntimeError("当前天赋树已经达到可消费点数上限")
         from war3_services.talent_points import grant_controller_point
@@ -1045,8 +1050,9 @@ class ExtensionsFacade:
     def talent_state_24268(self, snapshot: dict | None = None) -> dict:
         snapshot = snapshot or self.extension_snapshot_24268()
         levels = {int(code): int(level) for code, level in snapshot.get("abilities", {}).items()}
+        from war3_services.talent_definitions import catalog
         active = []
-        for controller, (name, tiers) in TALENT_CONTROLLERS.items():
+        for controller, (name, tiers) in catalog(snapshot).items():
             level = levels.get(int.from_bytes(controller.encode("ascii"), "big"), 0)
             if level > 0:
                 active.append((controller, name, tiers, level))
@@ -1054,6 +1060,8 @@ class ExtensionsFacade:
             return dict(controller="", name="多个控制器", tier_count=0, controller_level=0,
                         total_points=0, used_points=0, remaining_points=0, tiers=(),
                         anomalies=("检测到多个官方天赋控制器",))
+        if snapshot.get('talent_discovery_errors') and (not active or active[0][0] not in TALENT_CONTROLLERS):
+            raise RuntimeError('读取自定义天赋定义失败：'+'；'.join(snapshot['talent_discovery_errors']))
         if not active:
             return dict(controller="", name="", tier_count=0, controller_level=0,
                         total_points=0, used_points=0, remaining_points=0, tiers=(),
@@ -1077,7 +1085,12 @@ class ExtensionsFacade:
         native_choices = None
         point_read_error = None
         try:
-            if getattr(self, "pid", 0):
+            if getattr(self, "pid", 0) and controller in snapshot.get('talent_definitions',{}):
+                from war3_services.talent_definitions import read_custom_records
+                parsed = read_custom_records(self,snapshot,controller,tiers)
+                if parsed is not None:
+                    live_remaining,native_records,native_choices=parsed
+            elif getattr(self, "pid", 0):
                 with ProcessMemory(int(self.pid)) as memory:
                     native_rows = [row for row in snapshot.get("selection", {}).get("rows", ())
                                    if int(row["handle"]) == int(snapshot["target_unit"])]
@@ -1132,6 +1145,7 @@ class ExtensionsFacade:
             name=name,
             tier_count=len(tiers),
             controller_level=int(controller_level),
+            controller_instance_full=int(snapshot.get('talent_definitions',{}).get(controller,{}).get('instance_full',0)),
             total_points=total,
             used_points=used if native_records is None else spent,
             selected_count=used,

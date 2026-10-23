@@ -939,12 +939,48 @@ class TrainerApplication:
             if getattr(trainer, '_native_selection_unavailable', False):
                 x, y = trainer.query_mouse_world_position()
                 result = trainer.clone_batch_24268(keep=True, preserve_owner=preserve_owner, copy_abilities=True, copy_items=True, spawn=True, spawn_x_bits=trainer._float_bits(float(x)), spawn_y_bits=trainer._float_bits(float(y)))
-                return f'已复制 {result['count']} 个选中单位，技能 {sum((row['ability_count'] for row in result['rows']))} 个，物品 {sum((row['item_count'] for row in result['rows']))} 个'
+                warning = self.clone_partial_warning(result)
+                if result.get('runtime_state_verified'):
+                    return f'已复制 {result["count"]} 个选中单位，按原位置复制物品 {sum(row["item_count"] for row in result["rows"])} 件；背包、装备位置与天赋记录已核对' + warning
+                return f'已复制 {result['count']} 个选中单位，完整复制技能 {sum((row['ability_count'] for row in result['rows']))} 个，物品 {sum((row['item_count'] for row in result['rows']))} 个' + warning
             results = self.elephant_batch(lambda: trainer.create_local_unit(None, use_selected_lookup=True, preserve_owner=preserve_owner), '复制选中单位')
             owner_text = '并保留原阵营' if preserve_owner else '给自己'
             return f'已复制 {len(results)} 个选中单位{owner_text}{self.elephant_batch_suffix()}'
         unit_rawcode, handle = self.elephant_trainer().create_local_unit(rawcode, use_selected_lookup=True)
         return f'已创建 {format_rawcode(unit_rawcode)}；handle=0x{handle:x}'
+
+    def clone_partial_warning(self, result: dict) -> str:
+        issues = result.get('ability_issues') or ()
+        if not issues:
+            return ''
+        details = []
+        seen = set()
+        english = self.view.value('ui_language')['code'] == 'en'
+        for issue in issues:
+            code = issue['code']
+            key = (code, issue['requested_level'], issue['actual_level'], issue['reason'])
+            if key in seen:
+                continue
+            seen.add(key)
+            reason = (('Game rejected the addition' if issue['reason'] == 66 else
+                       'Temporary state has no copyable ability level' if issue['reason'] == 65 else
+                       f'Source level {issue["requested_level"]}, clone level {issue["actual_level"]}') if english else
+                      '游戏未接受添加' if issue['reason'] == 66 else
+                      '临时状态没有可复制的技能等级' if issue['reason'] == 65 else
+                      f'原等级 {issue["requested_level"]}，副本读回 {issue["actual_level"]}')
+            if len(details) < 12:
+                details.append(f'{code}：{reason}')
+        paths = result.get('log_paths') or [result.get('operation_trace', {}).get('log_path')]
+        text = (f'Units created; {len(issues)} ability states were not fully copied. Other contents continued.\n\n' if english else
+                f'单位已复制，{len(issues)} 项技能状态未完整复制，其余内容继续处理。\n\n') + '\n'.join(details)
+        if len(seen) > len(details):
+            text += '\nMore details are in the log.' if english else '\n其余项目见日志。'
+        if paths and paths[0]:
+            text += ('\n\nDetailed log: ' if english else '\n\n详细日志：') + str(paths[0])
+        self.view.value('root').after(0, self.view.value('messagebox').showwarning,
+            'Units created with ability differences' if english else '复制完成，部分技能需注意', text)
+        return (f'; {len(issues)} ability states differ; see the notice and log' if english else
+                f'；{len(issues)} 项技能状态未完整复制，详见提示与日志')
 
     def elephant_add_item(self) -> str:
         rawcode = self.view.value('elephant_item_rawcode').get().strip()
@@ -1274,7 +1310,8 @@ class TrainerApplication:
         trainer = self.elephant_trainer()
         if getattr(trainer, '_native_selection_unavailable', False):
             unit_rawcode, created = trainer.create_local_units(count, None)
-            return f'已按当前选择批量复制 {format_rawcode(unit_rawcode)}，共创建 {created} 个单位'
+            warning = self.clone_partial_warning(getattr(trainer, '_last_clone_summary', {}))
+            return f'已按当前选择批量复制 {format_rawcode(unit_rawcode)}，共创建 {created} 个单位' + warning
         results = self.elephant_batch(lambda: trainer.create_local_units(count, None, use_selected_lookup=True), '大量复制选中单位')
         created = sum((int(result[1]) for result in results))
         return f'已按 {len(results)} 个选中单位创建 {created} 个复制单位{self.elephant_batch_suffix()}'
@@ -1482,6 +1519,9 @@ class TrainerApplication:
 
     def populate_extension_snapshot(self, snapshot: dict) -> None:
         self.view.value('state')['extension_snapshot'] = snapshot
+        selected_talents = self.view.value('extension_talent_tree').selection()
+        talent_choices = {}
+        self.view.value('state')['extension_talent_choices'] = talent_choices
         self.view.value('extension_bag_tree').delete(*self.view.value('extension_bag_tree').get_children())
         self.view.value('extension_equipment_tree').delete(*self.view.value('extension_equipment_tree').get_children())
         self.view.value('extension_talent_tree').delete(*self.view.value('extension_talent_tree').get_children())
@@ -1501,9 +1541,14 @@ class TrainerApplication:
         if talent_state['controller']:
             active_controllers.append(f'{talent_state['name']} {talent_state['controller']}/{talent_state['controller_level']}；点数 {talent_state['remaining_points']}/{talent_state['total_points']}')
             for row in talent_state['tiers']:
+                talent_choices[f'talent:{talent_state["controller"]}:{int(row["index"])}'] = tuple(row['choices'])
                 self.view.value('extension_talent_tree').insert('', 'end', iid=f'talent:{talent_state['controller']}:{int(row['index'])}', values=(talent_state['name'], int(row['index']) + 1, ' / '.join((f'{('[原生已选] ' if choice == row.get('native_choice', '') else '')}{('[能力已添加] ' if choice in row.get('selected', ()) and choice != row.get('native_choice', '') else '')}{choice} {row.get('labels', {}).get(choice, '')}'.strip() for choice in row['choices'])), f'原生选择：{row.get('native_choice')}；能力：{' / '.join(row['selected']) or '无'}' if row.get('native_choice') else ' / '.join(row['selected'])))
         elif talent_state['anomalies']:
             active_controllers.append('；'.join(talent_state['anomalies']))
+        selected_talent = next((iid for iid in selected_talents if iid in talent_choices),
+                               next(iter(talent_choices), ''))
+        self.view.value('extension_talent_tree').selection_set(selected_talent)
+        self.extension_talent_tree_selected()
         occupied_bag = sum((bool(int(row.get('rawcode', 0))) for row in bag_rows[:bag_size]))
         occupied_equipment = sum((bool(int(row.get('rawcode', 0))) for row in equipment_rows))
         controller_text = '，'.join(active_controllers) if active_controllers else '未检测到官方天赋控制器'
@@ -1757,10 +1802,10 @@ class TrainerApplication:
             self.view.value('extension_talent_choice').set('')
             self.view.value('extension_talent_choice_box')['values'] = ()
             return
-        row = self.view.value('extension_talent_tree').item(selected[0], 'values')
-        choices = tuple((str(value).strip() for value in str(row[2]).split('/') if str(value).strip()))
-        choices = tuple((value.split(' ', 1)[0] for value in choices))
+        choices = tuple(self.view.value('state').get('extension_talent_choices', {}).get(selected[0], ()))
         self.view.value('extension_talent_choice_box')['values'] = choices
+        if not choices:
+            self.view.value('extension_talent_choice').set('')
         if choices and self.view.value('extension_talent_choice').get() not in choices:
             self.view.value('extension_talent_choice').set(choices[0])
 
@@ -1773,6 +1818,8 @@ class TrainerApplication:
         choice = self.view.value('extension_talent_choice').get().strip()
         if not choice:
             raise ValueError('请先选择一个天赋选项')
+        if choice not in self.view.value('state').get('extension_talent_choices', {}).get(selected[0], ()):
+            raise ValueError('天赋选项已变化，请重新选择天赋层')
         return self.extension_talent_batch_result(self.trainer().selected_talent_batch_24268('choice', controller, tier, choice))
 
     def extension_refresh_talent_icons(self) -> str:

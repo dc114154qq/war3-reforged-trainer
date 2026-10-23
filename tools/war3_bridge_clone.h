@@ -4,7 +4,16 @@
 #define CLONE_COPY_ABILITIES 0x04u
 #define CLONE_COPY_ITEMS 0x08u
 #define CLONE_USE_SPAWN 0x10u
+#define CLONE_ALLOW_PARTIAL_ABILITIES 0x20u
 #define CLONE_MAX_ITEM_ABILITIES (6u * 128u)
+#define CLONE_MAX_ISSUES (24u * 128u)
+
+typedef struct CloneAbilityIssue {
+    uint32_t row, rawcode;
+    int32_t requested, actual;
+    uint32_t reason;
+} CloneAbilityIssue;
+_Static_assert(sizeof(CloneAbilityIssue)==20,"CloneAbilityIssue ABI");
 
 typedef struct CloneRow {
     uint64_t clone;
@@ -50,9 +59,11 @@ typedef struct CloneWork {
     CloneRow rows[24];
     void (*enum_owner)(uint64_t,uint64_t,uint64_t);
     uint8_t (*in_group)(uint64_t,uint64_t);
+    uint32_t issue_count, issue_reserved;
+    CloneAbilityIssue issues[CLONE_MAX_ISSUES];
 } CloneWork;
-_Static_assert(sizeof(CloneWork) == 1888, "CloneWork ABI");
-__declspec(dllexport) const uint32_t clone_batch_abi[3] = {0x24268063u, 216u, 1888u};
+_Static_assert(sizeof(CloneWork) == 63336, "CloneWork ABI");
+__declspec(dllexport) const uint32_t clone_batch_abi[3] = {0x2426807au, 216u, 63336u};
 
 typedef struct CloneSourceIdentity {
     uint64_t native, full, object;
@@ -66,8 +77,8 @@ typedef struct CloneBoundWork {
     CloneSourceIdentity sources[24];
 } CloneBoundWork;
 _Static_assert(sizeof(CloneSourceIdentity)==32,"CloneSourceIdentity ABI");
-_Static_assert(sizeof(CloneBoundWork)==2680,"CloneBoundWork ABI");
-__declspec(dllexport) const uint32_t clone_bound_abi[3]={0x24268064u,216u,2680u};
+_Static_assert(sizeof(CloneBoundWork)==64128,"CloneBoundWork ABI");
+__declspec(dllexport) const uint32_t clone_bound_abi[3]={0x2426807bu,216u,64128u};
 
 static int clone_source_matches(CloneBoundWork *bound,uint32_t index,SelectionRow *source) {
     if(!bound)return 1;
@@ -96,7 +107,21 @@ static int clone_set_level(CloneWork *w, uint64_t unit, int32_t level) {
 }
 
 static int clone_set_ability_level(CloneWork *w, uint64_t unit, uint32_t rawcode, int32_t level) {
-    return BridgeNativeSetAbilityLevelChecked(w->set_ability_level,w->ability_level,unit,rawcode,level)==level;
+    BridgeNativeSetAbilityLevelChecked(w->set_ability_level,w->ability_level,unit,rawcode,level);
+    return w->ability_level(unit,rawcode)==level;
+}
+
+/* Only explicit business readbacks may become partial results. Native faults
+   still reach the enclosing transaction exception handler and its rollback. */
+static int clone_ability_issue(CloneWork *w,CloneRow *row,uint32_t rawcode,
+                               int32_t requested,int32_t actual,uint32_t reason) {
+    if(!(w->flags & CLONE_ALLOW_PARTIAL_ABILITIES) || actual<0 || w->issue_count>=CLONE_MAX_ISSUES) {
+        w->error=reason;return 0;
+    }
+    CloneAbilityIssue *issue=&w->issues[w->issue_count++];
+    *issue=(CloneAbilityIssue){(uint32_t)(row-w->rows),rawcode,requested,actual,reason};
+    row->reserved=0;
+    return 1;
 }
 
 static int clone_is_essential_ability(uint32_t rawcode) {
@@ -230,11 +255,20 @@ static void clone_copy_abilities(CloneWork *w, uint64_t source, CloneRow *row) {
         int32_t existing = w->ability_level(clone, rawcode);
         if (level <= 0) {
             if (!level && clone_has_ability(w, clone, rawcode)) { row->reserved = 0; continue; }
+            if (!level && clone_ability_issue(w,row,rawcode,level,existing,65)) continue;
             w->error = 65; break;
         }
-        if (!existing && !w->add_ability(clone, rawcode)) { w->error = 66; break; }
+        if (!existing && !w->add_ability(clone, rawcode)) {
+            existing=w->ability_level(clone,rawcode);
+            if (existing<=0) {
+                if(clone_ability_issue(w,row,rawcode,level,existing,66))continue;
+                break;
+            }
+        }
         existing = w->ability_level(clone, rawcode);
         if (existing != level && !clone_set_ability_level(w, clone, rawcode, level)) {
+            existing=w->ability_level(clone,rawcode);
+            if(clone_ability_issue(w,row,rawcode,level,existing,67))continue;
             w->error = 67; break;
         }
         ++row->ability_count; row->reserved = 0;
@@ -242,7 +276,9 @@ static void clone_copy_abilities(CloneWork *w, uint64_t source, CloneRow *row) {
     if (!w->error && index == 128 && w->ability_by_index(source, 128)) w->error = 75;
 }
 
-static uint64_t BridgeCloneExecute(CloneWork *w,CloneBoundWork *bound) {
+#include "war3_bridge_clone_state.h"
+
+static uint64_t BridgeCloneExecute(CloneWork *w,CloneBoundWork *bound,CloneStateWork *state) {
     uint32_t count;
     uint64_t created_items[24][6] = {0};
     uint64_t owners[24] = {0};
@@ -288,6 +324,7 @@ static uint64_t BridgeCloneExecute(CloneWork *w,CloneBoundWork *bound) {
                 w->error = 62; break;
             }
         }
+        if(!w->error && state && !clone_state_prepare(state,count)) { /* preflight before creation */ }
         for (uint32_t i = 0; i < count && !w->error; ++i) {
             uint64_t source = w->selection.rows[i].unit;
             CloneRow *row = &w->rows[i];
@@ -326,8 +363,12 @@ static uint64_t BridgeCloneExecute(CloneWork *w,CloneBoundWork *bound) {
                     w->error = 71; break;
                 }
             }
-            if (w->flags & CLONE_COPY_ABILITIES) clone_copy_abilities(w, source, row);
-            if (!w->error && (w->flags & CLONE_COPY_ITEMS)) {
+            if(state){
+                if(!clone_state_classic(state,i) || !clone_state_abilities(state,i) ||
+                   !clone_state_extended(state,i) || !clone_state_talents(state,i) ||
+                   !clone_state_verify(state,i))break;
+            }else if (w->flags & CLONE_COPY_ABILITIES) clone_copy_abilities(w, source, row);
+            if (!state && !w->error && (w->flags & CLONE_COPY_ITEMS)) {
                 for (uint32_t slot = 0; slot < 6; ++slot) {
                     uint64_t item = w->item_in_slot(source, (int32_t)slot);
                     if (!item) continue;
@@ -353,7 +394,7 @@ static uint64_t BridgeCloneExecute(CloneWork *w,CloneBoundWork *bound) {
     if (w->error || !(w->flags & CLONE_KEEP)) {
         int cleaned = 1;BridgeFault body_fault=bridge_fault;
         for (uint32_t i = 0; i < count; ++i)
-            if (!clone_discard_row(w, &w->rows[i], created_items[i])) cleaned = 0;
+            if (!(state?clone_state_discard(state,i):clone_discard_row(w, &w->rows[i], created_items[i]))) cleaned = 0;
         if (!cleaned) { w->pad = w->error; w->error = 74; }
         if (w->error && cleaned) { w->changed = 0; w->completed = 0; }
         if(w->reserved && body_fault.code)bridge_fault=body_fault;
@@ -362,11 +403,16 @@ static uint64_t BridgeCloneExecute(CloneWork *w,CloneBoundWork *bound) {
 }
 
 __declspec(dllexport) uint64_t BridgeCloneQuery(void) {
-    return BridgeCloneExecute((CloneWork *)g_dispatch->work,0);
+    return BridgeCloneExecute((CloneWork *)g_dispatch->work,0,0);
 }
 __declspec(dllexport) uint64_t BridgeCloneBoundQuery(void) {
     CloneBoundWork *w=(CloneBoundWork *)g_dispatch->work;
-    return BridgeCloneExecute(w?&w->clone:0,w);
+    return BridgeCloneExecute(w?&w->clone:0,w,0);
+}
+
+__declspec(dllexport) uint64_t BridgeCloneStateQuery(void) {
+    CloneStateWork*s=(CloneStateWork *)g_dispatch->work;
+    return BridgeCloneExecute(s?&s->bound.clone:0,s?&s->bound:0,s);
 }
 
 #ifdef BRIDGE_DIAGNOSTIC
@@ -377,7 +423,7 @@ typedef struct CloneRemovalInspectWork {
     uint64_t object;
     uint32_t native_type, flags;
 } CloneRemovalInspectWork;
-__declspec(dllexport) const uint32_t clone_removal_inspect_abi[3]={0x24323061u,216u,1920u};
+__declspec(dllexport) const uint32_t clone_removal_inspect_abi[3]={0x24323062u,216u,sizeof(CloneRemovalInspectWork)};
 __declspec(dllexport) uint64_t BridgeCloneRemovalInspect(void) {
     CloneRemovalInspectWork *p=(CloneRemovalInspectWork *)g_dispatch->work;
     if(!p || !p->resolve_unit || !p->target) return 0;

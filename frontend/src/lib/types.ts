@@ -170,6 +170,7 @@ export interface TalentRow {
   hero: string;
   tier: string;
   choices: string;
+  choiceCodes?: string[];
   selected: string;
 }
 
@@ -183,6 +184,8 @@ export interface ExtensionsSnapshot {
   loadoutName: string;
   loadoutNames?: string[];
   talentChoices?: string[];
+  selectedTalentIid?: string;
+  currentTalentChoice?: string;
   loadoutWarnings?: Record<string, unknown>;
 }
 

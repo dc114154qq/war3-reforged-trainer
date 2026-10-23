@@ -135,15 +135,15 @@ def record_status(kind,evidence,report):
         if len(raw)==5136:
             changed,error,completed=struct.unpack_from('<3I',raw,552+12)
             report['item_field_status']=dict(changed=changed,error=error,completed=completed)
-    if kind in ('clone','clone_bound') and evidence.get('work_result_hex'):
+    if kind in ('clone','clone_bound','clone_state') and evidence.get('work_result_hex'):
+        from importlib import import_module
+        protocol=import_module('war3_'+kind+'_protocol')
         raw=bytes.fromhex(evidence['work_result_hex'])
-        if len(raw)==(2680 if kind=='clone_bound' else 1888):
+        if len(raw)==protocol.WORK_SIZE:
             changed,error,completed=struct.unpack_from('<3I',raw,700)
             report['clone_status']=dict(changed=changed,error=error,completed=completed)
-            from war3_clone_protocol import failure_status
-            failure = failure_status(raw[:1888])
-            if failure:
-                report['clone_status'].update(failure)
+            failure=protocol.failure_status(raw)
+            if failure:report['clone_status'].update(failure)
     if kind=='unit_action' and evidence.get('work_result_hex'):
         raw=bytes.fromhex(evidence['work_result_hex'])
         if len(raw)==1432:

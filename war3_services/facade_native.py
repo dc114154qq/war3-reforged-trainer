@@ -412,7 +412,9 @@ class NativeFacade:
                           spawn: bool = False,
                           spawn_x_bits: int = 0,
                           spawn_y_bits: int = 0,
-                          expected_sources=None) -> dict:
+                          expected_sources=None,
+                          allow_partial_abilities: bool = True,
+                          copy_runtime_state: bool = True) -> dict:
         options = dict(
             keep=keep,
             preserve_owner=preserve_owner,
@@ -421,9 +423,13 @@ class NativeFacade:
             spawn=spawn,
             spawn_x_bits=spawn_x_bits,
             spawn_y_bits=spawn_y_bits,
+            allow_partial_abilities=allow_partial_abilities,
         )
         if expected_sources is not None:
             options['expected_sources'] = expected_sources
+        if copy_runtime_state and copy_abilities and copy_items:
+            options['expected_sources'] = expected_sources if expected_sources is not None else self._capture_clone_sources_24268()
+            return self._engine_instance_24268().clone_state(**options)
         return self._engine_instance_24268().clone_batch(**options)
 
 

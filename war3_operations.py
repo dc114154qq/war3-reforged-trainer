@@ -22,6 +22,7 @@ class OperationSpec:
 
 
 OPERATIONS = {
+    'clone_state': OperationSpec('clone_state','war3_clone_state_protocol',b'clone_state_abi',b'BridgeCloneStateQuery',False,True),
     "gold_mine": OperationSpec("gold_mine", "war3_gold_mine_protocol", b"gold_mine_abi", b"BridgeGoldMineQuery", False, True),
     "item_effect": OperationSpec("item_effect", "war3_item_effect_protocol", b"item_effect_abi", b"BridgeItemEffectQuery", False, True),
     "item_ability": OperationSpec("item_ability", "war3_item_ability_protocol",

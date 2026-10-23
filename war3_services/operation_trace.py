@@ -241,6 +241,23 @@ class SkillTrace(BackpackTrace):
         return result
 
 
+class CloneTrace(SkillTrace):
+    prefix='clone'
+    event_name='clone_phase'
+    source_inputs=('operation_trace.py','units.py','facade_native.py')
+
+    def bind_engine(self, engine):
+        self.engine=engine
+        import struct
+        from war3_clone_protocol import ABI
+        from war3_clone_bound_protocol import ABI as BOUND_ABI
+        from war3_clone_state_protocol import ABI as STATE_ABI
+        image=getattr(engine,'image',None)
+        self.record('engine_context',bridge=_artifact(image) if isinstance(image,(str,Path)) else {},
+                    expected_bridge_protocol=hex(struct.unpack_from('<I', STATE_ABI if self.request.get('operation')=='clone_state' else BOUND_ABI if
+                        self.request.get('operation')=='clone_bound' else ABI)[0]))
+
+
 def record_engine_execution(engine, report):
     trace = _ACTIVE_TRACE.get()
     if trace is None or (trace.engine is not None and trace.engine is not engine):

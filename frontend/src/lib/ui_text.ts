@@ -107,7 +107,7 @@ export const UI_EN: Record<string, string> = {
   '天赋树归属': 'Talent controller', '层级': 'Tier', '候选天赋池': 'Talent choices', '已激活选择': 'Active choices',
   '未检测到英雄天赋树结构': 'No hero talent controller detected.', '保存套装': 'Save loadout', '恢复套装': 'Restore loadout',
   '修复错槽': 'Repair misplaced items', '卸下所选': 'Unequip selected', '审计装备': 'Check equipment',
-  '开启任意槽': 'Enable any slot', '刷新天赋图标': 'Refresh talent icons', '选择天赋': 'Choose a talent',
+  '开启任意槽': 'Enable any slot', '选择天赋': 'Choose a talent', '先读取扩展状态，再选择下方天赋层': 'Read extension status, then select a talent tier below.',
   '选择已保存方案': 'Choose a saved plan', '补齐战役／地图背包定义 (生成无损副本)': 'Add backpack definitions (create a copy)',
   '自动匹配已保存方案': 'Match saved plans automatically',
   '正在恢复套装并按部位装备，请稍候…': 'Restoring the loadout to its saved slots, please wait…',
@@ -154,7 +154,7 @@ export function translateDynamic(source: string): string | undefined {
   if (progress) return `Processing equipment: ${progress[1]} seconds elapsed. All nine slots will be checked.`;
   let m = /^(30 格扩展背包|9 槽装备) \((\d+) 件\)$/.exec(source);
   if (m) return `${m[1].startsWith('30') ? '30-slot bag' : '9 equipment slots'} (${m[2]} items)`;
-  m = /^3\.0 官方战役天赋树 \((\d+) 层记录\)$/.exec(source);
+  m = /^3\.0 (?:官方战役天赋树|天赋树) \((\d+) 层记录\)$/.exec(source);
   if (m) return `Campaign talents (${m[1]} tiers)`;
   m = /^共显示 (\d+) \/ (\d+) 个(物品)?字段$/.exec(source);
   if (m) return `Showing ${m[1]} / ${m[2]} ${m[3] ? 'item ' : ''}fields`;

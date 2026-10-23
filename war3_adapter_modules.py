@@ -531,6 +531,9 @@ class EffectAdapter(LayoutProvider):
 
 
 class TalentAdapter(LayoutProvider):
+    def clone_layout(self):
+        return dict(definition_class=0x5c,definition_levels=0x68,
+                    talent_points=self.layout['point_counter'],talent_flags=self.layout['record_flags'])
     @cached_property
     def layout(self):
         return self.profile.section("layouts")["talent"]

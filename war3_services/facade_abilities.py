@@ -824,6 +824,7 @@ class AbilitiesFacade:
         if not 1 <= total <= 100:
             raise ValueError("批量复制数量必须在 1 到 100 之间")
         if uses_indexed_backend(self) and rawcode is None:
+            self._last_clone_summary = {'ability_issues': [], 'log_paths': []}
             expected_sources = self._capture_clone_sources_24268()
             unit_rawcode = expected_sources[0][1].rawcode
             created = 0
@@ -844,6 +845,10 @@ class AbilitiesFacade:
                         expected_sources=expected_sources,
                     )
                     rows = tuple(result.get("rows", ()))
+                    self._last_clone_summary['ability_issues'].extend(result.get('ability_issues', ()))
+                    log_path = result.get('operation_trace', {}).get('log_path')
+                    if log_path:
+                        self._last_clone_summary['log_paths'].append(log_path)
                     handles = tuple(row['clone'] for row in rows)
                     if (len(rows) != len(expected_sources)
                             or int(result.get("changed", 0)) != len(rows)

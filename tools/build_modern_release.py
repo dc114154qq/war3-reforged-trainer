@@ -15,8 +15,8 @@ from PyInstaller.archive.readers import CArchiveReader
 import pefile
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / 'dist-2.1.17-modern-verified'
-CASE = ROOT / 'build/custom-talents-20261023/exe-build'
+OUT = ROOT / 'dist-2.1.17-clone-state-preview'
+CASE = ROOT / 'build/clone-state-20261023/exe-build'
 SPEC = 'War3ReforgedTrainer-Web-2.1.17.spec'
 EXE = 'War3ReforgedTrainer-v2.1.17-Web.exe'
 BRIDGE_IMAGE = None

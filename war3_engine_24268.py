@@ -126,14 +126,15 @@ class Engine24268(UnitsService, AbilitiesService, ItemsService, ExtensionsServic
 
 
     def _execute(self,kind,names,builder,decoder,request):
-        from war3_services.operation_trace import active_trace,SkillTrace
+        from war3_services.operation_trace import active_trace,SkillTrace,CloneTrace
         if (active_trace() is None and
-                (kind in ('direct_cast','item_effect','gold_mine') or kind in ('ability','item_ability') and request.get('action',0)!=0)):
+                (kind in ('clone','clone_bound','clone_state','direct_cast','item_effect','gold_mine') or kind in ('ability','item_ability') and request.get('action',0)!=0)):
             from war3_backend import Win10ReadLogger
-            with SkillTrace(self,Win10ReadLogger,dict(operation=kind,**request)) as trace:
+            trace_type=CloneTrace if kind in ('clone','clone_bound','clone_state') else SkillTrace
+            with trace_type(self,Win10ReadLogger,dict(operation=kind,**request)) as trace:
                 trace.bind_engine(self)
                 result=self._execute(kind,names,builder,decoder,request)
-                trace.finish(dict(result))
+                trace.finish(result if kind in ('clone','clone_bound','clone_state') else dict(result))
                 return result
         from war3_operations import OPERATIONS,is_read_query
         operation=OPERATIONS.get(kind)
@@ -330,6 +331,9 @@ class Engine24268(UnitsService, AbilitiesService, ItemsService, ExtensionsServic
                             business_status=failure_status(raw_result)
                         elif kind == 'clone':
                             from war3_clone_protocol import failure_status
+                            business_status=failure_status(raw_result)
+                        elif kind == 'clone_state':
+                            from war3_clone_state_protocol import failure_status
                             business_status=failure_status(raw_result)
                         elif kind == 'clone_bound':
                             from war3_clone_bound_protocol import failure_status

@@ -23,6 +23,23 @@ BUSINESS_REASONS = {
     ('unit_bindings',6): ('读取到的单位对象已失效或与对象表不一致，未执行后续修改；请刷新单位列表。','The read unit is stale or differs from the object registry. No subsequent write was performed; refresh the unit list.'),
     ('unit_bindings',7): ('目标单位未在当前原生选中列表中匹配，未执行后续修改；请在游戏中选中该单位后重新读取。','The target did not match the current native selection. No subsequent write was performed; select it in the game and refresh.'),
     ('unit_bindings',8): ('目标单位的原生句柄对应关系不唯一，未执行后续修改；请重新选择目标并保留日志。','The target-to-native-handle mapping is ambiguous. No subsequent write was performed; reselect the target and keep the log.'),
+    ('clone',780): ('复制所需的装备或天赋接口未通过检查，未开始创建副本。', 'The inventory or talent interfaces failed validation before creation.'),
+    ('clone',781): ('原单位的物品栏容量异常，未开始复制。', 'Source inventory capacity is invalid.'),
+    ('clone',782): ('原单位的物品位置或数量未通过检查，已停止复制。', 'Source item location or charges failed validation.'),
+    ('clone',783): ('原单位的技能身份未通过检查，已停止复制。', 'Source ability identity failed validation.'),
+    ('clone',784): ('原单位的天赋控制器或选择记录异常，已停止复制。', 'Source talent controller or records failed validation.'),
+    ('clone',785): ('复制期间原单位的物品发生变化，已停止复制。', 'Source inventory changed during copying.'),
+    ('clone',786): ('游戏返回了已有物品实例，已停止复制并保留原物品。', 'The game returned an existing item; the original is preserved.'),
+    ('clone',787): ('副本的经典物品栏容量与原单位不同，复制未完成。', 'Clone classic inventory capacity differs from the source.'),
+    ('clone',788): ('地图在副本创建时额外生成了物品，与原单位布局冲突，复制未完成。', 'Creation triggers supplied conflicting items.'),
+    ('clone',789): ('复制的物品未进入对应经典栏，已停止并清理本次副本。', 'A copied item did not enter the requested classic slot.'),
+    ('clone',790): ('副本的扩展背包容量与原单位不同，复制未完成。', 'Extended inventory capacities differ.'),
+    ('clone',791): ('复制的装备未进入对应部位，复制未完成。', 'A copied item did not enter its equipment slot.'),
+    ('clone',792): ('复制的物品未进入对应扩展背包格，复制未完成。', 'A copied item did not enter its extended bag slot.'),
+    ('clone',793): ('副本的天赋控制器身份不匹配，复制未完成。', 'Clone talent controller identity differs.'),
+    ('clone',794): ('副本天赋选择未找到对应的新技能实例，复制未完成。', 'A clone talent record has no matching new ability instance.'),
+    ('clone',795): ('副本天赋点数或选择记录读回不同，复制未完成。', 'Clone talent points or records failed readback.'),
+    ('clone',796): ('复制结束后的物品位置或数量与原单位不同，复制未完成。', 'Final copied inventory differs from the source.'),
     ('clone',60): ('复制单位所需的游戏接口未通过校验，未开始复制。','The required clone interfaces failed validation; no copy began.'),
     ('clone',61): ('没有读到完整的选中单位列表，未开始复制；请重新选择单位后重试。','The selection could not be fully read; reselect the units and retry.'),
     ('clone',62): ('选中单位的身份、归属或位置已失效，未开始复制；请重新选择单位后重试。','The selected unit identity, owner or position is invalid; no copy began.'),
@@ -146,7 +163,7 @@ def describe_error(exc, language='zh'):
         elif stage in ('owner_handle','owner_unit','unit_handle','identity_unreadable','unit_changed'):
             reason=('选中单位的身份已变化或读取不完整，未修改游戏。请重新选中单位后重试。','The selected unit identity changed or could not be fully read. No game write occurred. Reselect the unit and retry.')
             category='selection_identity';confirmed=True
-    business_operation='clone' if operation=='clone_bound' else operation
+    business_operation='clone' if operation in ('clone_bound','clone_state') else operation
     if (business_operation,code) in BUSINESS_REASONS:
         reason=BUSINESS_REASONS[(business_operation,code)];category='business';confirmed=True
     if report.get('batch_failures'):

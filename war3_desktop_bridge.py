@@ -624,7 +624,11 @@ class DesktopBridgeApi:
             "status": self.port.value("extension_status").get(),
             "bag": bag_tree.to_list_of_dicts(),
             "equipment": equip_tree.to_list_of_dicts(),
-            "talents": talent_tree.to_list_of_dicts(),
+            "talents": [dict(row, choiceCodes=list(self.port.value('state').get(
+                'extension_talent_choices', {}).get(row['_iid'], ())))
+                for row in talent_tree.to_list_of_dicts()],
+            "selectedTalentIid": next(iter(talent_tree.selection()), ''),
+            "currentTalentChoice": self.port.value('extension_talent_choice').get(),
             "officialBackpacks": backpack_options,
             "currentBackpackChoice": self.port.value("extension_backpack_choice").get(),
             "loadoutName": self.port.value("extension_loadout_name").get(),
@@ -721,17 +725,25 @@ class DesktopBridgeApi:
     def extension_talent_action(self, action: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         params = params or {}
         try:
+            if action in ('select_tier', 'add_choice'):
+                iid = params.get('row_iid', '')
+                tree = self.port.value('extension_talent_tree')
+                if not isinstance(iid, str) or not tree.exists(iid):
+                    raise ValueError('天赋层已变化，请重新读取并选择')
+                tree.selection_set(iid)
+                self.app.extension_talent_tree_selected()
             if action == "add_choice":
                 choice = params.get("choice", "")
-                if choice:
-                    self.port.value("extension_talent_choice").set(choice)
+                if not isinstance(choice, str) or not choice:
+                    raise ValueError('请先选择一个天赋选项')
+                self.port.value("extension_talent_choice").set(choice)
                 self.app.extension_add_talent_choice()
             elif action == "grant_point":
                 self.app.extension_grant_talent_point()
             elif action == "reset_talents":
                 self.app.extension_reset_talents_clicked()
-            elif action == "refresh_icons":
-                self.app.extension_refresh_talent_icons()
+            elif action == 'select_tier':
+                pass
             else:
                 raise ValueError(f'Unknown talent action: {action}')
             return {"success": True, "data": self.refresh_extension_status(False)}

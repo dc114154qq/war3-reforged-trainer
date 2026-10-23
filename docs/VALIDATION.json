@@ -1,7 +1,7 @@
 {
   "version": "2.1.17",
-  "exe_sha256": "3DD6BB5DBD9863D32DB9E572871F87135B4F96277C71050C75F288C6952C622A",
-  "source_parent": "eb9bef12cf320fb701d9e7d92e4e8c6cb0e9c058",
+  "exe_sha256": "623C6175AF5A0768F0F96CC8509A7322906F540F5542B8EE7B6362E7B0C83C18",
+  "source_parent": "3d865472d490737ec719ff76db17c610b589323e",
   "production_source_sha256": {
     "ADAPTER_NOTES_3.0.1.24360.md": "B97D2B6AE47BD15F5539FC2B86B9ECE0F53D21EEDA5CE9D365A53A84B3CFE9EE",
     "ADAPTER_NOTES_3.0.1.24365.md": "785E41F08760EC4765A93C581249B3A02B36A7F6AC742C72FE1686C63FEF5243",
@@ -15,10 +15,10 @@
     "docs/EXTENSION_DEFINITIONS.md": "E38B22832F872CCA75E462F47F93B08795F4ACAF226BAD66A56BC7680F726850",
     "docs/MOUSE_PROJECTION.md": "F7D6DD0A072E94F673AE16B152A6AA65AE1FF100854BA1BDEBA924622F3DB075",
     "frontend/dist/assets/index-BhMHjlKe.css": "269F7553E6AC661CAB56AD9099CA5E55FE5D38F92CD3BB7F71A24AC4C3043FE5",
-    "frontend/dist/assets/index-BScyyi8O.js": "57F3CEA3F4AF55B6A769EF8C7785A581FFC57D9424BE7878F68B23CFED303BA7",
+    "frontend/dist/assets/index-HQy_dXP0.js": "3F78D91D3B5A5E9837EBC1365AD70D030F94665460A91177255680E48AA87F4C",
     "frontend/dist/favicon.svg": "61BC9A161DE58248288E6905425D7180F0624C2865007B97D763FDAC12043A66",
     "frontend/dist/icons.svg": "B45FA506195CFCDEF406BA9F0C77B36DDC1A7C224040926EC70ABC2FDEA7B93A",
-    "frontend/dist/index.html": "F0CD3A52E1D20D3881392722C368640709929FC4F9CBAF68C124BFD2E7D707FF",
+    "frontend/dist/index.html": "2E71E752D3FF8795FC7D7AF579656A4214D2801178F1839909DC8A713D83159E",
     "frontend/index.html": "44FD4343796CDF861D23B09CDE3A6A15E9E2792B96003E7F035C32B20A8F07C6",
     "frontend/package-lock.json": "D5FBC411200B1C40CBBC3A7A8400D0453F882FE31BBEF1EE955C2470DD09EC03",
     "frontend/package.json": "6C42372FE3D3C8F51F3E4F2526F6153E8E5370DFD03C73EF6FF236DF5C8E449F",
@@ -39,7 +39,7 @@
     "frontend/src/lib/components/ElephantPanel.svelte": "3106C118475ECCA13597DACA585B3431A63DA9664FE7A4413AB4D69BA66008D8",
     "frontend/src/lib/components/Equipment3CatalogPanel.svelte": "4C6B1A5189797F270BBB3C417C0B994215419C44BD4D54850C87E654985EB3DF",
     "frontend/src/lib/components/ErrorDialog.svelte": "FB14FE0D9D868ED9C1D0B3E596FB6715BB14FC72252FAC42CA406B1DD213A15A",
-    "frontend/src/lib/components/ExtensionsPanel.svelte": "D91C72BECD256171D0F884B84F42F2FEE7D83036D14F8A34588CCB8C55C0E5E4",
+    "frontend/src/lib/components/ExtensionsPanel.svelte": "1F656BC1ADB2E643B3E85FF43A6A4F4D486E2C3C33B0B0F074E5BE826EC4919A",
     "frontend/src/lib/components/Header.svelte": "BE7BF322811708BD1B3A50A6AEA3952871A763CC14FA89B4F4D7EB6746FA165E",
     "frontend/src/lib/components/HeroSkillsCatalogPanel.svelte": "A0AF480A302B3B5998B0377EB1C414CD590FB8A73779EDB56F12BA3CC9A90A27",
     "frontend/src/lib/components/ItemFieldsPanel.svelte": "37B6688E03804503901A3AD1E2E8565B5FEAE124F43162311A99C48B48EC418E",
@@ -48,8 +48,8 @@
     "frontend/src/lib/components/Sidebar.svelte": "919ACEDE887104B8BA66E6E9767DE16F963F3E8D3BB90515B1F23E121DEAEE43",
     "frontend/src/lib/components/UnitPanel.svelte": "E49098FA5D6ACC80ACA95165C0B35E72455598B1A33A6CCBDDC5F06A30843D1C",
     "frontend/src/lib/Counter.svelte": "92ADD5416E628029CC5EB7E3C5DC473D0C4BB48A8E11D242AA570543DBC910FB",
-    "frontend/src/lib/types.ts": "94A6E028FA9FAC23E296036AC0ADD23F067247573E3CEF750D13AB4A9855FF81",
-    "frontend/src/lib/ui_text.ts": "0534CB6C89B0A44628BAD95CCA63BED68973C4E12FCD6BB1F4289E3657BFF977",
+    "frontend/src/lib/types.ts": "5634B45487BECF5FAA3DD2DC75C7DFF190C9D649D363224B67F8B20027E0EA4D",
+    "frontend/src/lib/ui_text.ts": "B95E3FB00F7BECFC0436473276959EF587AF2A9D67A3A7F21E7782FBA46CE47B",
     "frontend/src/main.ts": "8A1AE10A20356240343D2055B72362A269E3130FA1C308916F6EB1A93DE6503E",
     "frontend/tsconfig.app.json": "A01CF7EE6CA3D384F3248AE2198E5ECB87D6A62C4164F288C395DA36B7ACB588",
     "frontend/tsconfig.json": "770B4140BBB581E2DFD9EA9946FFC9C75A1D86BA7D2DB5F77C83E37CBDF9D808",
@@ -64,7 +64,7 @@
     "profiles/3.0.1.24371.json": "0333EE38CEAB395567E32C61800D5F0DD7D993E0EE7FCD82162DA6B4FF2F9391",
     "profiles/discovery/references.json": "740C0282E9238EB63E1EAC5B7C78988515B68980973E55E1074A28475032D3E7",
     "profiles/discovery/semantics.json": "8E2B0042CADFB14A359F0F8F906E5BE13AF654296C33B7F159CE866DA5C4DE36",
-    "RELEASE_NOTES_v2.1.17.md": "06E8FBE055B4ED5FF7ED8447B78F7C242980745BC1AB9779C82310F1F4AF488F",
+    "RELEASE_NOTES_v2.1.17.md": "EC97161C4B981182818EE52E6C501AF60452029AE08A09943AE8AA598577D4B2",
     "third_party/minhook/include/MinHook.h": "62DFF05E63155C6BF8135C36A0D79DEDBDCAAEDE9DA26FE38DAF0BEA34323E38",
     "third_party/minhook/LICENSE.txt": "D5C2224982B0B95A16B098A561335FA93F3EAF4D0AA964B7843EDB986DF78DC8",
     "third_party/minhook/src/buffer.c": "0AB484D7870C3A8E7A3A1EE61E2070072CF445ED85B619D4C4207FED34356D99",
@@ -78,7 +78,7 @@
     "third_party/minhook/src/trampoline.h": "53ED9934492320617A27BFD952FFE7F5B7A4A1D09963D4512447082FE7B727B4",
     "third_party/stormlib/StormLib-LICENSE.txt": "50B128E6750ED9D887E7A5748A6021238BB2F3BF34A5DD2768C410D932069E35",
     "tools/build_engine_bridge.ps1": "5B7AA22AC9D3EA23969B7EB95175C0A1D2126B84BE1D5CBA676F80A3F65EDBF6",
-    "tools/build_modern_release.py": "03F30A8392A576BC7F5B97EBF41A8D3A1E87DEE558E9B8F32BC1CCD75F23D745",
+    "tools/build_modern_release.py": "313CD88F7621D28C3668B12EC3C5BFF7C04B3D7E8820EAC0394816069CED877A",
     "tools/build_release_2117.py": "96774FE2CF1FADBF4CF2DFE99C599FD1F8F19775341CDE863A4AC7D122A98B5D",
     "tools/build_speed_clock.ps1": "11812D83606B9C42FAEFDA10645DA277620B81D347233A3D44DC8733695BA491",
     "tools/build_talent_icon_display.ps1": "8926A26D4CE76272CDFAB366B99D592DBE9C081ACEC4219AA4CB9BA400C906CA",
@@ -87,7 +87,7 @@
     "tools/generate_extension_definitions.py": "427C68A8BCD00E25DE7692722A79930A64FECF322D083B9591F39BEBE2799785",
     "tools/generate_war3_id_descriptions.py": "46770E64E49D29DAF2EF9D97CCBBCB6BB8252ED8B15C69613810F194AD4B2E77",
     "tools/prepare_mpq_dependency.py": "AE5DFC4462E9720EE4CF360C33FFC7541552CBB9A0AEC0A6E18ACA1960AB4587",
-    "tools/verify_engine_bridge.py": "3D87E6B34DB1C905EC1C3B86E831F1002A9C50E43AB8393BBE9C1FF5B742221F",
+    "tools/verify_engine_bridge.py": "A2DFAF35370ED11707471B8003B36303C7FFC53BAB7E85A7AB9B3D4758F59FB6",
     "tools/verify_speed_clock.py": "462CEB73E186D384F844F11AF0FFEE2E75864984AFF929505E7BE0C8367839C2",
     "tools/verify_talent_icon_display.py": "0B29F5BC5252402ED9029B02C5952BF0C1D9EA80415871C42E0934375A665E5F",
     "tools/war3-2.1.17-version-info.txt": "9BDD21A93503651E6BAF4DD188553E27070EC3D7DDD68436DDF70BB1FC036B5A",
@@ -97,7 +97,8 @@
     "tools/war3_bridge_attack_speed.h": "B233880877125DC6A0B71E6A2555BC90EF42481000F96F21DD4FCBCB4B3D8A95",
     "tools/war3_bridge_bulk.h": "00AE33CA551A1214F3E9FC19A65B1F1131C385B60075488F71BB1AF06406EF50",
     "tools/war3_bridge_camera.h": "63A5A54A78B7F9422DB62CE8974D61D1BB7EEB14E845B1CF5729A1E8BCF1DB87",
-    "tools/war3_bridge_clone.h": "DF73CCAC9E670022D227E08EBA64E9300BFA7604CEDA90FEE865F1BDCB36FD54",
+    "tools/war3_bridge_clone.h": "ED7BBAD09B8E797AB961B9585718F025DCD76C9ABF49F63A35826F1D7FF42E1C",
+    "tools/war3_bridge_clone_state.h": "ED1CB1E966D8EC8DF86C97FDA657C105507A76B681376C639CAF272539BE6CBD",
     "tools/war3_bridge_direct_cast.h": "06C4B3487395B7D53E055743CE0BDDB6DC622ECB2FB5AC20D60FA0BEBA5217F2",
     "tools/war3_bridge_effect.h": "B3C48EC7A502F04BE65B7E4AF0F184470950558E5342BED24AD9C16B9E0BD6A2",
     "tools/war3_bridge_equipment.h": "6CC12089CAA5C28579E067B8E7BB26D00371B66A14FF6F21C4D8F48A857AC208",
@@ -143,11 +144,11 @@
     "war3_ability_protocol.py": "23AC43AB9B28434C6E5F33BF2FB82BD002832ED85D81B202D4A1107210371401",
     "war3_adapter_24332.py": "4DE499909B3B5163301EF21E3369B5E04DAC6FFEDFD9EE7DCB058AAC8F3C48B2",
     "war3_adapter_legacy.py": "7E6773467E83306DB8D6794126373A9ED9A8405256D24D1757C47DFAE3CE1CEC",
-    "war3_adapter_modules.py": "AAFC2072261289012666F34E50E1472F1AA762A3E8A0796880D687683D18CB75",
+    "war3_adapter_modules.py": "E17EE7F28FC2E7467C6E50796392C7B89A0D639EA63EC942B400499947333D35",
     "war3_adapter_properties.py": "3F8DCEE762565D1F61B0E32CB849FA097B2E211099A4F8439868C04BE56746C2",
     "war3_adapter_state.py": "CD27EF323933AFA9B21AE690398AA81D73E2536A22C8EDB2503BD8F69EFCC78D",
     "war3_app.py": "7081F5115D47659CAD341B8F47FCCD745D0F322E677B62E3FCCD487DC1FAB628",
-    "war3_application.py": "BE386877783AD6B1445C1BA869A33C343C82E1A189C805981A08070D791023E0",
+    "war3_application.py": "6F16B0162E14E648B1E246583AD1104752654C841310DCD022D7C7FFA304C899",
     "war3_archive_fields_ui.py": "601C4CD31ABBB470BFFF810B20C5F04D6E84D29DF1270DAF5216736FF4A1720D",
     "war3_artifact_plan.py": "6F4C20E91E72F61B46B805DA47103579D25F65097FF2E6E82E0F4C1CC0909CC7",
     "war3_artifact_plan_ui.py": "A625B10D8C4431C8AE87679480D4F6ADE5C37B2C6B26CC717598D7FE0F6AE504",
@@ -157,15 +158,16 @@
     "war3_batch_edit_ui.py": "0A31478B7CBF198082AA2A817D8EB8225B018DE6A376962887D2CFA806DF7FC6",
     "war3_bulk_protocol.py": "E0B42194F7FD8A826D167DF3951F3D09B907DEFDE66D232E1AEDBB981FCDAA76",
     "war3_camera_protocol.py": "07C23C49DE65F32D7461EA5F51D6685598A355308B4D506F278877A9E1111D50",
-    "war3_capabilities.py": "D940D0697150AE9848A95F3E1EDD89F2304B90AF3537DA93271B4B29752F9824",
+    "war3_capabilities.py": "73D4DDB063877536311B34F4CC9AA8813F947D856220B08DB491C4FE7DF24250",
     "war3_casc_catalog_24268.py": "3D42DBB67591178074A487AB624C2D0AC664AEBBE020447EDC7C4061F90219F2",
     "war3_classic_selection.py": "6D4AB91083FCA587FF0F0CA5D9464990EA0E373D0A78AD285F7658234E42BF6D",
     "war3_cli.py": "5A9043393535E2740B619C5A305679B288F492BAEA439D9DA261F8FDB2CBD2F5",
-    "war3_clone_bound_protocol.py": "6F1AA80936019073CF2792E291336E2C58D0BA05F7E30A9AFBD16B99F1AB6027",
-    "war3_clone_protocol.py": "AD96DB2EDED2BB217B4D76CA5677CB707D39A24AEBBCCF634AEC5B68BCBAD3CC",
+    "war3_clone_bound_protocol.py": "76AE5CDCA85F130EC5C685C86883F5AF4281FB2AAD03503620C728BE376C4F4D",
+    "war3_clone_protocol.py": "1532C3B07AF61539D4643DC921D64A9FD4A998F1E0A0482C53F85EC5CD400BA8",
+    "war3_clone_state_protocol.py": "FD5A2581E3383D361AB3D4C15E044A662F8512FA2D76B04FA967999414286178",
     "war3_contracts.py": "917424AB48DFB4663F5E7112F4BD6DEFC485E107911E0782756183C6832E21BD",
     "war3_definition_jobs.py": "FB0083A11D820D01BFEC5B5CC68298AD5265E17495F9A1C3157648AAE898C763",
-    "war3_desktop_bridge.py": "250565A6C3D5F1808A622FA8A439F4A2A69440604DC3F33CC7F357883E93BF32",
+    "war3_desktop_bridge.py": "F5D5C64F6BDCA872B8A7FBDA416598F8799F453B1F59736CC4FDB8AC9F007386",
     "war3_desktop_runtime.py": "8B7BBD690B0A79B148BC62C5DCFD21CC69C62FFF2BEBA981969F0EF12EF9303B",
     "war3_direct_cast_protocol.py": "BA5FBA0A1D7AB511BD74904334EE565BC732F1B86701799776FD4F1153F88EDE",
     "war3_discovery_abi.py": "6FB333A528D9701E00CD63AC26B9CA75C443E9B105CED49BC37CBE9D6012ADEB",
@@ -173,7 +175,7 @@
     "war3_discovery_call_abi.py": "AD6C5109190AE0DED8A95B871CC81C7CB34F367C71FC8CD4D2786C7DFC04BA46",
     "war3_discovery_components.py": "705322AA818614736E77D878426580CFE92108134724A9E4A2C92691C6092D3F",
     "war3_discovery_decoder_flow.py": "9B2FAA8085C82F2703433620DE23A75440D7330F219B05F6337168F4EB967CBD",
-    "war3_discovery_dependencies.py": "9907AFC7522D2A3E3D379BBEC14742A5A118D42888A41E075B85E2466BBCE502",
+    "war3_discovery_dependencies.py": "1E57F76B31FDF1FD573743045E93A0E2C4CA21213C6AF5453A2B90687298D9EB",
     "war3_discovery_fields.py": "693D39D173FA644596D951FB9FCB17C81B39B084C05DA8A2444D569C1C256E04",
     "war3_discovery_image.py": "51DF102DEDEFDD7371ADBF09AF794F340E22073DC6CD2296F7E079B9D99EC365",
     "war3_discovery_locators.py": "96F7AFCCBA0D3D647A18A94C95777FCE562915AD5A63E14ABFDDC0A822BFA3AE",
@@ -184,12 +186,12 @@
     "war3_discovery_stats.py": "314C8262D593F15A1051B5770D6E0FDB8E050173775BC024D7DF3E79E1873922",
     "war3_discovery_validation.py": "B737B4548F68CF07948B96727746A32427906948B4D0C95059AA8C53E5B2A998",
     "war3_effect_protocol.py": "416527476D3B0F5C100C8968138CB3D127C5BD5E7E68B8FDADD06D5AE4115E68",
-    "war3_engine_24268.py": "7441B79F51D9CBC80CB3530582E57D9F29771892210FE593A5051086DE809A8F",
+    "war3_engine_24268.py": "140D8B218395ED51E863C1D697C9BE168933A7C313335D27C6F7EE7F1C6D06EA",
     "war3_engine_continuation.py": "EADF2EDB0308C9BA35FB8FDD3D485198135CB15941F05E1AAF3D97074032717C",
     "war3_engine_transport.py": "0A364714A196E09D3F1834122568866C2BAD9E9CEFBB50C7992E90762530A067",
     "war3_equipment_effect_protocol.py": "0D5C09529E8476909D0E2A102B06DD6202629DE5C857A1245E85D1D3AD808DDB",
     "war3_equipment_protocol.py": "67EC65B86A6455C54165803CA94885AEE3C965EDB218C8EE162A9F63046916C0",
-    "war3_error_messages.py": "055C62745BC6D7D8BC9AE912634B16A713AD049301CE2412DB909E659D63F397",
+    "war3_error_messages.py": "618D317AA006DE7A05988C6CF70A3B594BD0EB8E386FB0823F1572E5E1CA5548",
     "war3_extension_definition_ui.py": "7DC73C4F5E77035A96F6503BA9121E9008422BD2D5662BF04050380E1291418B",
     "war3_extension_protocol.py": "829DEB127087F2399A58893001A5BF9AD7AAF95B9667BE04CB08C8ADA7B4981D",
     "war3_external_backend.py": "2B549670256DD46B60A5D83F9660F3044EF547D2783916765EE3831C42ED749C",
@@ -220,7 +222,7 @@
     "war3_loadout_restore.py": "CFE9972586CF88BFEC98C66995B9DACB5AAF653EA38F35614F357F1346D356B7",
     "war3_loadout_storage.py": "2DD38350941A2B6D059B348E345ECA959BC2F4EECFC6BC499C447F516607B700",
     "war3_map_bounds_protocol.py": "CF3EE6FE82CF2CAC8EE3FAAD23A5C0FC454B26CF4D55D76C94EB32E2C1C85693",
-    "war3_metadata.py": "DCD81CEB764D97A8D0D97740074AF4C8276119E07B48C4B116EF763947F6EFF6",
+    "war3_metadata.py": "4F8EE41CBE3A30086883787F91EB31FE7623B7116AE06F6D77E0508A8E086EBE",
     "war3_mouse_protocol.py": "46555086E6FD3AAEADEE05261351D80D93A4881C4150EDAFC00F533F488E2E24",
     "war3_mpq.py": "158A1B0C897BD0F947CF61C70D8EF371B5A17E9648037E808B6A6CDEA5F987E2",
     "war3_native_journal.py": "F2E3D426C6EF705D02E498E853AB9EF4563B463D3B1026C90B64E65DC7630C7E",
@@ -230,8 +232,8 @@
     "war3_new_equipment_ui.py": "2194872D5CFDDC8EF2EED652D83274A095939F6E8870826382AB94154348F1BA",
     "war3_object_registry.py": "E663C245C4D72C704F52035409D0E237071256A1C3BAB27CC3C4D383AFC4DB05",
     "war3_object_tables.py": "6E9F6B81CBD903922B1FD5499FDD5B31AD2B66DF9A0EACC1DE84959A12C8974B",
-    "war3_operation_reports.py": "2B2C57CB91EB780B672C438FE481CA96D5515B94E0F60540345BA6D0ED462939",
-    "war3_operations.py": "88CF4EFEB24A507818483D73088DD391D81EC3D30A57A5F2801F6757B6565640",
+    "war3_operation_reports.py": "C19B4831C421E4D1B2D6AB2D0F3B5BD23BABF61F1BD725036105E5D4C49C99BF",
+    "war3_operations.py": "A07ED74532EE9899DF65D57992BBCA51F24EADC76F3B82C2F713EDBA6BC49CF7",
     "war3_player_resources.py": "0FA6DBBAB66B1A5C65ABB56FDE2BB453C15679D7B3F1405CD6096DC17BEFEC0D",
     "war3_position_protocol.py": "916F3C4B4D69EA1DD1078B64D0183DAB4F84B35B82411FE0180E8B46D90C6FCF",
     "war3_position_target_protocol.py": "04EAAF56CE8466B7EED801F76445A84C57C65BF84BECBAA1BDB8C9960028F2D1",
@@ -260,12 +262,12 @@
     "war3_services/equipment_slots.py": "F42BB8A677CADCF56DA4FD312E8E7579A3DDA89F0AEB6F25EFE1122D27DC00A2",
     "war3_services/extension_definitions.py": "9796F900CA79C67641655F2006D73A199AC27BF9D40702AA983634C151553F97",
     "war3_services/extensions.py": "58DB46D3698D2B49C92CEFEF306026EB28F6D804AE78AE45AAE649C6FE68AAFD",
-    "war3_services/facade_abilities.py": "7FDF9C0D8E62368ED44FE423596D36921FD60F5BB143B69F5546E2ED3E88E08F",
+    "war3_services/facade_abilities.py": "43A62507221B026B58C560B62F61BF4454F88FD18BB442A68BC1D1453FADBE29",
     "war3_services/facade_binding.py": "68FCF5F82DD3E32951FE86BEBC9378F2C2592C751DB7BCF5FD136D5F71CE5180",
     "war3_services/facade_extensions.py": "8B601A861CD2A85020121E01BFB8940DA0AA8E96AE8716B7AC6F5F937BC50B81",
     "war3_services/facade_fields.py": "552E0767BEBD78AD546C75B3EF77ABE8777C9D9EF70D7DECA7F3CF484251B04E",
     "war3_services/facade_items.py": "123E361310356AB35C30749111CC5AA1908C9D7FE9A6BE2438FA4D82415BCB9E",
-    "war3_services/facade_native.py": "BE2D5C1B85DCB881563E8A2AAAD9CD5F4EECC2D7E9033F1ABB57A39A4398BDCE",
+    "war3_services/facade_native.py": "78CECB9D53166B148A43256D0CDC6DDA968C5EAC61AA8C2E858DCB298B749F33",
     "war3_services/facade_resources.py": "7324A58A7E38A5FDD0C0CB3CCFFAB95231410972626254E4EC59DD2BAEB1A071",
     "war3_services/facade_selection.py": "35D1F62A40B7B3EDB56691DA0BE04164F9413A7D59DDC43621AFAEBC3EA3AB8B",
     "war3_services/facade_units.py": "18CD8BAC497CE151E84307574FD4CFE48C05F1AA48D57FE3020936709B90B711",
@@ -274,12 +276,12 @@
     "war3_services/items.py": "FDE23E3D2D6A8A50B4DC8694FC1B3F45DD4326DF0B39F547243549DE346C9962",
     "war3_services/loadout_runtime.py": "779AF613720FB3EFD9BB52FADB69629565EC6D65B33BD3583EDFCC18D8A01D78",
     "war3_services/mouse_terrain.py": "12DBEE2276C356CCE9297D9684B68F2A57134B5AEE5CCF2B76F4466C056F4296",
-    "war3_services/operation_trace.py": "E2C00ECD00273DCAB493E9D410212E8968DCA6F18329DEA721B2A1002E041FE1",
+    "war3_services/operation_trace.py": "1781CB1ECA54A8D57718B33BE93641940F68C824452183F3779E04DD87083251",
     "war3_services/save_extraction.py": "0E2F5F74677D6DE8E6922813D2CB27C0FF78F743D477859D426EE3FDB6A69A10",
     "war3_services/speed.py": "A7EC8B52FFB93C3807AF6CAA2323C2AE7640B34D82A0D594AF7356BFB90436B3",
     "war3_services/talent_definitions.py": "02905291B22B47D7B29A9BA8A75256C9BC215FD93B5DFBFCC09D580D2610A043",
     "war3_services/talent_points.py": "AC9E9F5F77B192289F8466654D4E27FF2185D7AA5C0FEAEC88FCD0569A520B84",
-    "war3_services/units.py": "49F14A14E2A1EEAFDD7DEA9E409A423B0C97D34BA9C0B610D3E8B3274A57AA7E",
+    "war3_services/units.py": "C453BAC217CAF1ADBEEAFB6C7E482ED0C473AE9BB34C296EB3BE9513D8227E08",
     "war3_services/world.py": "87CC2FE1CA7909BDF87C585506B3D2335F6724D4B1B059E2BD4C47FF0D713485",
     "war3_spawn_protocol.py": "4171C9E4BF9D1A2AF67A305756629C348F6563E9DDF5D95E0D871740E0B6B01A",
     "war3_speed_clock_backend.py": "35B83642664FB809BC6AA598600596CB76AF6AC2EA178A0781B9238DAFB8C379",
@@ -307,10 +309,10 @@
     "war3_world_protocol.py": "5DD8CD892BE17EBA23A578864253FB1868DCE5BDF1E874964D45BD24FC00C7BF",
     "War3ReforgedTrainer-Web-2.1.17.spec": "8D9D3C2D847FB126534E06F0AF13B8E0659DD5753F6B2AFF18EA443F2A5066FC"
   },
-  "production_inputs": 303,
-  "packaged_modules": 168,
+  "production_inputs": 305,
+  "packaged_modules": 169,
   "native_dlls_sha256": {
-    "tools\\war3_bridge_24268.dll": "6EF5BA6045F038133EE2F0D55EDB17C13152CFC1BA30D9C7B6402C1E87BA433E",
+    "tools\\war3_bridge_24268.dll": "18C9DC63B0AD8BEADA297FB7CF0F6DA44666AB37CC8E64DF15B36D09B9CFC6BC",
     "tools\\war3_mpq.dll": "6CD644F3C091C2FFF6430CBF612DBBF6657D8508941FBA2E925CAADFA7A04DA6",
     "tools\\war3_speed_clock.dll": "91FB4F87344EBA12EB21759EF426437601EFB93C256F6F82ADB22B92BCC2685E",
     "tools\\war3_talent_icon_display.dll": "54C0EDD2D639EB4AFD203D5A4222F13814A3ABD27BD694AACBA52545586DE386"
@@ -318,19 +320,19 @@
   "runtime_checks": {
     "ok": true,
     "version": "2.1.17",
-    "exe": "E:\\xiugai\\work\\reforged-modular-adapters\\dist-2.1.17-modern-verified\\3DD6BB5DBD98\\War3ReforgedTrainer-v2.1.17-Web.exe",
-    "sha256": "3DD6BB5DBD9863D32DB9E572871F87135B4F96277C71050C75F288C6952C622A",
-    "bytes": 30191911,
+    "exe": "E:\\xiugai\\work\\reforged-modular-adapters\\dist-2.1.17-clone-state-preview\\623C6175AF5A\\War3ReforgedTrainer-v2.1.17-Web.exe",
+    "sha256": "623C6175AF5A0768F0F96CC8509A7322906F540F5542B8EE7B6362E7B0C83C18",
+    "bytes": 30211038,
     "single_exe_only_directory": true,
     "without_python_node_on_path": true,
     "checks": {
       "runtime": {
         "ok": true,
         "frozen": true,
-        "decoder": "C:\\Users\\14186\\AppData\\Local\\Temp\\_MEI340882\\capstone\\lib\\capstone.dll",
+        "decoder": "C:\\Users\\14186\\AppData\\Local\\Temp\\_MEI271762\\capstone\\lib\\capstone.dll",
         "decoder_sha256": "76958e18380023a68fd1714fa2e01c594cc6db1955a07ad6937b66e66dc5d6c3",
-        "bridge": "C:\\Users\\14186\\AppData\\Local\\Temp\\_MEI340882\\tools\\war3_bridge_24268.dll",
-        "bridge_sha256": "6ef5ba6045f038133ee2f0d55edb17c13152cfc1ba30d9c7b6402c1e87ba433e",
+        "bridge": "C:\\Users\\14186\\AppData\\Local\\Temp\\_MEI271762\\tools\\war3_bridge_24268.dll",
+        "bridge_sha256": "18c9dc63b0ad8beada297fb7cf0f6da44666ab37cc8e64df15b36d09b9cfc6bc",
         "instructions": [
           "mov",
           "mov",
@@ -426,7 +428,7 @@
           },
           {
             "label": "3.0 扩展功能",
-            "controls": 30,
+            "controls": 29,
             "bodyWidth": 1266,
             "viewportWidth": 1266
           },
@@ -469,827 +471,460 @@
         ]
       }
     },
-    "source_modules": 168,
-    "production_inputs": 303,
+    "source_modules": 169,
+    "production_inputs": 305,
     "game_launched": false
   },
   "code_verification": {
     "ok": true,
-    "tests_passed": 124,
-    "test_files": [
-      "test_custom_talents.py",
-      "test_talent_point_controller.py",
-      "test_3_extension_talents.py",
-      "test_talent_reset_transaction.py",
-      "test_backpack_interface.py",
-      "test_talent_effect_without_icon.py",
-      "test_24268_extension_protocol.py",
-      "test_3_extension_trainer.py",
-      "test_loadout_regeneration.py",
-      "tests/test_loadout_performance.py"
-    ],
-    "changed_existing_inputs": [
-      "RELEASE_NOTES_v2.1.17.md",
-      "tools/build_modern_release.py",
-      "war3_adapter_modules.py",
-      "war3_metadata.py",
-      "war3_services/facade_extensions.py",
-      "war3_services/talent_points.py"
-    ],
-    "seven_profiles_unchanged": true,
-    "mouse_projection_unchanged": true,
-    "frontend_unchanged": true,
-    "native_sources_and_four_dlls_unchanged": true,
-    "live_custom_controller": "TalR",
-    "live_tiers": 4,
-    "live_choices": 12,
-    "live_reads_and_point_grant_and_choice_addition_passed": true,
-    "game_test_changes_restored": true,
-    "game_started": false
+    "tests_passed": 961,
+    "failed": 0,
+    "skipped": 0,
+    "junit": "build\\clone-state-20261023\\final-regression.xml",
+    "native_state_test": {
+      "ok": true,
+      "production_c_callback_used": true,
+      "supported_profiles": 7,
+      "tests_passed": 14,
+      "coverage": [
+        "classic slot membership",
+        "bag holes preserved",
+        "both rings in distinct slots",
+        "new talent instance references",
+        "remaining points",
+        "controller setter initialization ordering",
+        "ground-item rejection and cleanup",
+        "equipment rejection and cleanup",
+        "product default route",
+        "corrupt result rejection"
+      ],
+      "actual_live_clone_tested": false,
+      "game_closed_before_clone": true
+    },
+    "adapter_frontend_and_dependency_audits_passed": true
   },
-  "custom_talent_reading": {
-    "pid": 45464,
+  "live_talent_reading": {
     "game_started": false,
-    "gameplay_writes": false,
+    "game_writes": 0,
+    "pid": 45464,
     "snapshot": {
-      "selection": {
-        "player": 1048584,
-        "count": 1,
-        "rows": [
-          {
-            "handle": 1056025,
-            "rawcode": 1383626834,
-            "level": 1
-          }
-        ],
-        "temporary_group_destroyed": true
-      },
-      "target_unit": 1056025,
-      "action": 0,
-      "item_rawcode": 0,
-      "slot": 0,
-      "changed": 0,
-      "removed_rawcode": 0,
-      "bag_size": 30,
-      "item_handle": 0,
+      "status": "扩展背包 0/30；装备 0/9；自定义天赋 TalR TalR/1；点数 1/4",
       "bag": [
         {
-          "slot": 0,
-          "handle": 0,
-          "rawcode": 0,
-          "charges": 0,
-          "equipment_type": 0
-        },
-        {
+          "_iid": "bag:0",
           "slot": 1,
-          "handle": 0,
-          "rawcode": 0,
-          "charges": 0,
-          "equipment_type": 0
+          "rawcode": "",
+          "charges": "",
+          "handle": ""
         },
         {
+          "_iid": "bag:1",
           "slot": 2,
-          "handle": 0,
-          "rawcode": 0,
-          "charges": 0,
-          "equipment_type": 0
+          "rawcode": "",
+          "charges": "",
+          "handle": ""
         },
         {
+          "_iid": "bag:2",
           "slot": 3,
-          "handle": 0,
-          "rawcode": 0,
-          "charges": 0,
-          "equipment_type": 0
+          "rawcode": "",
+          "charges": "",
+          "handle": ""
         },
         {
+          "_iid": "bag:3",
           "slot": 4,
-          "handle": 0,
-          "rawcode": 0,
-          "charges": 0,
-          "equipment_type": 0
+          "rawcode": "",
+          "charges": "",
+          "handle": ""
         },
         {
+          "_iid": "bag:4",
           "slot": 5,
-          "handle": 0,
-          "rawcode": 0,
-          "charges": 0,
-          "equipment_type": 0
+          "rawcode": "",
+          "charges": "",
+          "handle": ""
         },
         {
+          "_iid": "bag:5",
           "slot": 6,
-          "handle": 0,
-          "rawcode": 0,
-          "charges": 0,
-          "equipment_type": 0
+          "rawcode": "",
+          "charges": "",
+          "handle": ""
         },
         {
+          "_iid": "bag:6",
           "slot": 7,
-          "handle": 0,
-          "rawcode": 0,
-          "charges": 0,
-          "equipment_type": 0
+          "rawcode": "",
+          "charges": "",
+          "handle": ""
         },
         {
+          "_iid": "bag:7",
           "slot": 8,
-          "handle": 0,
-          "rawcode": 0,
-          "charges": 0,
-          "equipment_type": 0
+          "rawcode": "",
+          "charges": "",
+          "handle": ""
         },
         {
+          "_iid": "bag:8",
           "slot": 9,
-          "handle": 0,
-          "rawcode": 0,
-          "charges": 0,
-          "equipment_type": 0
+          "rawcode": "",
+          "charges": "",
+          "handle": ""
         },
         {
+          "_iid": "bag:9",
           "slot": 10,
-          "handle": 0,
-          "rawcode": 0,
-          "charges": 0,
-          "equipment_type": 0
+          "rawcode": "",
+          "charges": "",
+          "handle": ""
         },
         {
+          "_iid": "bag:10",
           "slot": 11,
-          "handle": 0,
-          "rawcode": 0,
-          "charges": 0,
-          "equipment_type": 0
+          "rawcode": "",
+          "charges": "",
+          "handle": ""
         },
         {
+          "_iid": "bag:11",
           "slot": 12,
-          "handle": 0,
-          "rawcode": 0,
-          "charges": 0,
-          "equipment_type": 0
+          "rawcode": "",
+          "charges": "",
+          "handle": ""
         },
         {
+          "_iid": "bag:12",
           "slot": 13,
-          "handle": 0,
-          "rawcode": 0,
-          "charges": 0,
-          "equipment_type": 0
+          "rawcode": "",
+          "charges": "",
+          "handle": ""
         },
         {
+          "_iid": "bag:13",
           "slot": 14,
-          "handle": 0,
-          "rawcode": 0,
-          "charges": 0,
-          "equipment_type": 0
+          "rawcode": "",
+          "charges": "",
+          "handle": ""
         },
         {
+          "_iid": "bag:14",
           "slot": 15,
-          "handle": 0,
-          "rawcode": 0,
-          "charges": 0,
-          "equipment_type": 0
+          "rawcode": "",
+          "charges": "",
+          "handle": ""
         },
         {
+          "_iid": "bag:15",
           "slot": 16,
-          "handle": 0,
-          "rawcode": 0,
-          "charges": 0,
-          "equipment_type": 0
+          "rawcode": "",
+          "charges": "",
+          "handle": ""
         },
         {
+          "_iid": "bag:16",
           "slot": 17,
-          "handle": 0,
-          "rawcode": 0,
-          "charges": 0,
-          "equipment_type": 0
+          "rawcode": "",
+          "charges": "",
+          "handle": ""
         },
         {
+          "_iid": "bag:17",
           "slot": 18,
-          "handle": 0,
-          "rawcode": 0,
-          "charges": 0,
-          "equipment_type": 0
+          "rawcode": "",
+          "charges": "",
+          "handle": ""
         },
         {
+          "_iid": "bag:18",
           "slot": 19,
-          "handle": 0,
-          "rawcode": 0,
-          "charges": 0,
-          "equipment_type": 0
+          "rawcode": "",
+          "charges": "",
+          "handle": ""
         },
         {
+          "_iid": "bag:19",
           "slot": 20,
-          "handle": 0,
-          "rawcode": 0,
-          "charges": 0,
-          "equipment_type": 0
+          "rawcode": "",
+          "charges": "",
+          "handle": ""
         },
         {
+          "_iid": "bag:20",
           "slot": 21,
-          "handle": 0,
-          "rawcode": 0,
-          "charges": 0,
-          "equipment_type": 0
+          "rawcode": "",
+          "charges": "",
+          "handle": ""
         },
         {
+          "_iid": "bag:21",
           "slot": 22,
-          "handle": 0,
-          "rawcode": 0,
-          "charges": 0,
-          "equipment_type": 0
+          "rawcode": "",
+          "charges": "",
+          "handle": ""
         },
         {
+          "_iid": "bag:22",
           "slot": 23,
-          "handle": 0,
-          "rawcode": 0,
-          "charges": 0,
-          "equipment_type": 0
+          "rawcode": "",
+          "charges": "",
+          "handle": ""
         },
         {
+          "_iid": "bag:23",
           "slot": 24,
-          "handle": 0,
-          "rawcode": 0,
-          "charges": 0,
-          "equipment_type": 0
+          "rawcode": "",
+          "charges": "",
+          "handle": ""
         },
         {
+          "_iid": "bag:24",
           "slot": 25,
-          "handle": 0,
-          "rawcode": 0,
-          "charges": 0,
-          "equipment_type": 0
+          "rawcode": "",
+          "charges": "",
+          "handle": ""
         },
         {
+          "_iid": "bag:25",
           "slot": 26,
-          "handle": 0,
-          "rawcode": 0,
-          "charges": 0,
-          "equipment_type": 0
+          "rawcode": "",
+          "charges": "",
+          "handle": ""
         },
         {
+          "_iid": "bag:26",
           "slot": 27,
-          "handle": 0,
-          "rawcode": 0,
-          "charges": 0,
-          "equipment_type": 0
+          "rawcode": "",
+          "charges": "",
+          "handle": ""
         },
         {
+          "_iid": "bag:27",
           "slot": 28,
-          "handle": 0,
-          "rawcode": 0,
-          "charges": 0,
-          "equipment_type": 0
+          "rawcode": "",
+          "charges": "",
+          "handle": ""
         },
         {
+          "_iid": "bag:28",
           "slot": 29,
-          "handle": 0,
-          "rawcode": 0,
-          "charges": 0,
-          "equipment_type": 0
+          "rawcode": "",
+          "charges": "",
+          "handle": ""
+        },
+        {
+          "_iid": "bag:29",
+          "slot": 30,
+          "rawcode": "",
+          "charges": "",
+          "handle": ""
         }
       ],
       "equipment": [
         {
-          "slot": 0,
-          "handle": 0,
-          "rawcode": 0,
-          "charges": 0,
-          "equipment_type": 0
+          "_iid": "equipment:0",
+          "slot": "头部",
+          "rawcode": "",
+          "type": "",
+          "charges": "",
+          "handle": ""
         },
         {
-          "slot": 1,
-          "handle": 0,
-          "rawcode": 0,
-          "charges": 0,
-          "equipment_type": 0
+          "_iid": "equipment:1",
+          "slot": "胸部",
+          "rawcode": "",
+          "type": "",
+          "charges": "",
+          "handle": ""
         },
         {
-          "slot": 2,
-          "handle": 0,
-          "rawcode": 0,
-          "charges": 0,
-          "equipment_type": 0
+          "_iid": "equipment:2",
+          "slot": "手套",
+          "rawcode": "",
+          "type": "",
+          "charges": "",
+          "handle": ""
         },
         {
-          "slot": 3,
-          "handle": 0,
-          "rawcode": 0,
-          "charges": 0,
-          "equipment_type": 0
+          "_iid": "equipment:3",
+          "slot": "靴子",
+          "rawcode": "",
+          "type": "",
+          "charges": "",
+          "handle": ""
         },
         {
-          "slot": 4,
-          "handle": 0,
-          "rawcode": 0,
-          "charges": 0,
-          "equipment_type": 0
+          "_iid": "equipment:4",
+          "slot": "戒指",
+          "rawcode": "",
+          "type": "",
+          "charges": "",
+          "handle": ""
         },
         {
-          "slot": 5,
-          "handle": 0,
-          "rawcode": 0,
-          "charges": 0,
-          "equipment_type": 0
+          "_iid": "equipment:5",
+          "slot": "戒指 2",
+          "rawcode": "",
+          "type": "",
+          "charges": "",
+          "handle": ""
         },
         {
-          "slot": 6,
-          "handle": 0,
-          "rawcode": 0,
-          "charges": 0,
-          "equipment_type": 0
+          "_iid": "equipment:6",
+          "slot": "主手",
+          "rawcode": "",
+          "type": "",
+          "charges": "",
+          "handle": ""
         },
         {
-          "slot": 7,
-          "handle": 0,
-          "rawcode": 0,
-          "charges": 0,
-          "equipment_type": 0
+          "_iid": "equipment:7",
+          "slot": "副手",
+          "rawcode": "",
+          "type": "",
+          "charges": "",
+          "handle": ""
         },
         {
-          "slot": 8,
-          "handle": 0,
-          "rawcode": 0,
-          "charges": 0,
-          "equipment_type": 0
+          "_iid": "equipment:8",
+          "slot": "饰品",
+          "rawcode": "",
+          "type": "",
+          "charges": "",
+          "handle": ""
         }
       ],
-      "abilities": {
-        "1096050791": 0,
-        "1096050796": 0,
-        "1096050793": 0,
-        "1096054119": 0,
-        "1096054113": 0,
-        "1096054124": 0,
-        "1415670866": 1,
-        "1131246440": 0,
-        "1181578088": 0,
-        "1416459112": 0,
-        "1299475505": 0,
-        "1299475506": 0,
-        "1299475507": 0,
-        "1381266225": 0,
-        "1381266226": 0,
-        "1381266227": 0,
-        "1381332017": 0,
-        "1381332018": 0,
-        "1381332019": 0
-      },
-      "talent_definitions": {
-        "TalR": {
-          "name": "自定义天赋 TalR",
-          "tiers": [
-            [
-              "Cmsh",
-              "Fmsh",
-              "Tmsh"
-            ],
-            [
-              "Mtl1",
-              "Mtl2",
-              "Mtl3"
-            ],
-            [
-              "RTs1",
-              "RTs2",
-              "RTs3"
-            ],
-            [
-              "RUt1",
-              "RUt2",
-              "RUt3"
-            ]
-          ],
-          "instance_full": 157316062154516
-        }
-      },
-      "loadout_names": []
-    },
-    "state": {
-      "controller": "TalR",
-      "name": "自定义天赋 TalR",
-      "tier_count": 4,
-      "controller_level": 1,
-      "controller_instance_full": 157316062154516,
-      "total_points": 0,
-      "used_points": 0,
-      "selected_count": 0,
-      "remaining_points": 0,
-      "point_source": "ATal+0x11c",
-      "tiers": [
+      "talents": [
         {
-          "index": 0,
-          "choices": [
+          "_iid": "talent:TalR:0",
+          "hero": "自定义天赋 TalR",
+          "tier": 1,
+          "choices": "[原生已选] Cmsh / Fmsh / Tmsh",
+          "selected": "原生选择：Cmsh；能力：Cmsh",
+          "choiceCodes": [
             "Cmsh",
             "Fmsh",
             "Tmsh"
-          ],
-          "selected": [],
-          "native_record_handle": 18446744073709551615,
-          "native_record_flags": 0,
-          "native_record_present": false,
-          "native_choice": ""
+          ]
         },
         {
-          "index": 1,
-          "choices": [
+          "_iid": "talent:TalR:1",
+          "hero": "自定义天赋 TalR",
+          "tier": 2,
+          "choices": "[原生已选] Mtl1 / Mtl2 / Mtl3",
+          "selected": "原生选择：Mtl1；能力：Mtl1",
+          "choiceCodes": [
             "Mtl1",
             "Mtl2",
             "Mtl3"
-          ],
-          "selected": [],
-          "native_record_handle": 18446744073709551615,
-          "native_record_flags": 0,
-          "native_record_present": false,
-          "native_choice": ""
+          ]
         },
         {
-          "index": 2,
-          "choices": [
+          "_iid": "talent:TalR:2",
+          "hero": "自定义天赋 TalR",
+          "tier": 3,
+          "choices": "[原生已选] RTs1 / RTs2 / RTs3",
+          "selected": "原生选择：RTs1；能力：RTs1",
+          "choiceCodes": [
             "RTs1",
             "RTs2",
             "RTs3"
-          ],
-          "selected": [],
-          "native_record_handle": 18446744073709551615,
-          "native_record_flags": 0,
-          "native_record_present": false,
-          "native_choice": ""
+          ]
         },
         {
-          "index": 3,
-          "choices": [
+          "_iid": "talent:TalR:3",
+          "hero": "自定义天赋 TalR",
+          "tier": 4,
+          "choices": "RUt1 / RUt2 / RUt3",
+          "selected": "",
+          "choiceCodes": [
             "RUt1",
             "RUt2",
             "RUt3"
-          ],
-          "selected": [],
-          "native_record_handle": 18446744073709551615,
-          "native_record_flags": 0,
-          "native_record_present": false,
-          "native_choice": ""
+          ]
         }
       ],
-      "anomalies": []
-    },
-    "ok": true
-  },
-  "custom_point_grant": {
-    "pid": 45464,
-    "game_started": false,
-    "grant_calls": 1,
-    "before_state": {
-      "controller": "TalR",
-      "name": "自定义天赋 TalR",
-      "tier_count": 4,
-      "controller_level": 1,
-      "controller_instance_full": 157316062154516,
-      "total_points": 0,
-      "used_points": 0,
-      "selected_count": 0,
-      "remaining_points": 0,
-      "point_source": "ATal+0x11c",
-      "tiers": [
-        {
-          "index": 0,
-          "choices": [
-            "Cmsh",
-            "Fmsh",
-            "Tmsh"
-          ],
-          "selected": [],
-          "native_record_handle": 18446744073709551615,
-          "native_record_flags": 0,
-          "native_record_present": false,
-          "native_choice": ""
-        },
-        {
-          "index": 1,
-          "choices": [
-            "Mtl1",
-            "Mtl2",
-            "Mtl3"
-          ],
-          "selected": [],
-          "native_record_handle": 18446744073709551615,
-          "native_record_flags": 0,
-          "native_record_present": false,
-          "native_choice": ""
-        },
-        {
-          "index": 2,
-          "choices": [
-            "RTs1",
-            "RTs2",
-            "RTs3"
-          ],
-          "selected": [],
-          "native_record_handle": 18446744073709551615,
-          "native_record_flags": 0,
-          "native_record_present": false,
-          "native_choice": ""
-        },
-        {
-          "index": 3,
-          "choices": [
-            "RUt1",
-            "RUt2",
-            "RUt3"
-          ],
-          "selected": [],
-          "native_record_handle": 18446744073709551615,
-          "native_record_flags": 0,
-          "native_record_present": false,
-          "native_choice": ""
-        }
+      "selectedTalentIid": "talent:TalR:0",
+      "currentTalentChoice": "Cmsh",
+      "officialBackpacks": [
+        "人类加雷克 (ebhg)",
+        "人类兰登 (ebhl)",
+        "人类伊拉斯塔 (ebhi)",
+        "亡灵加雷克 (ebug)",
+        "亡灵安雅 (ebua)",
+        "亡灵列奥尼德 (ebul)"
       ],
-      "anomalies": []
-    },
-    "after_state": {
-      "controller": "TalR",
-      "name": "自定义天赋 TalR",
-      "tier_count": 4,
-      "controller_level": 1,
-      "controller_instance_full": 157316062154516,
-      "total_points": 1,
-      "used_points": 0,
-      "selected_count": 0,
-      "remaining_points": 1,
-      "point_source": "ATal+0x11c",
-      "tiers": [
-        {
-          "index": 0,
-          "choices": [
-            "Cmsh",
-            "Fmsh",
-            "Tmsh"
-          ],
-          "selected": [],
-          "native_record_handle": 18446744073709551615,
-          "native_record_flags": 0,
-          "native_record_present": false,
-          "native_choice": ""
-        },
-        {
-          "index": 1,
-          "choices": [
-            "Mtl1",
-            "Mtl2",
-            "Mtl3"
-          ],
-          "selected": [],
-          "native_record_handle": 18446744073709551615,
-          "native_record_flags": 0,
-          "native_record_present": false,
-          "native_choice": ""
-        },
-        {
-          "index": 2,
-          "choices": [
-            "RTs1",
-            "RTs2",
-            "RTs3"
-          ],
-          "selected": [],
-          "native_record_handle": 18446744073709551615,
-          "native_record_flags": 0,
-          "native_record_present": false,
-          "native_choice": ""
-        },
-        {
-          "index": 3,
-          "choices": [
-            "RUt1",
-            "RUt2",
-            "RUt3"
-          ],
-          "selected": [],
-          "native_record_handle": 18446744073709551615,
-          "native_record_flags": 0,
-          "native_record_present": false,
-          "native_choice": ""
-        }
+      "currentBackpackChoice": "亡灵加雷克 (ebug)",
+      "loadoutName": "套装1",
+      "loadoutNames": [],
+      "talentChoices": [
+        "Cmsh",
+        "Fmsh",
+        "Tmsh"
       ],
-      "anomalies": []
+      "loadoutWarnings": {}
     },
     "ok": true,
-    "exactly_one_point_read_back": true,
-    "selection_records_preserved": true,
-    "point_counter_restored": true,
-    "inventory_preserved": true,
-    "final_state": {
-      "controller": "TalR",
-      "name": "自定义天赋 TalR",
-      "tier_count": 4,
-      "controller_level": 1,
-      "controller_instance_full": 157316062154516,
-      "total_points": 0,
-      "used_points": 0,
-      "selected_count": 0,
-      "remaining_points": 0,
-      "point_source": "ATal+0x11c",
-      "tiers": [
-        {
-          "index": 0,
-          "choices": [
-            "Cmsh",
-            "Fmsh",
-            "Tmsh"
-          ],
-          "selected": [],
-          "native_record_handle": 18446744073709551615,
-          "native_record_flags": 0,
-          "native_record_present": false,
-          "native_choice": ""
-        },
-        {
-          "index": 1,
-          "choices": [
-            "Mtl1",
-            "Mtl2",
-            "Mtl3"
-          ],
-          "selected": [],
-          "native_record_handle": 18446744073709551615,
-          "native_record_flags": 0,
-          "native_record_present": false,
-          "native_choice": ""
-        },
-        {
-          "index": 2,
-          "choices": [
-            "RTs1",
-            "RTs2",
-            "RTs3"
-          ],
-          "selected": [],
-          "native_record_handle": 18446744073709551615,
-          "native_record_flags": 0,
-          "native_record_present": false,
-          "native_choice": ""
-        },
-        {
-          "index": 3,
-          "choices": [
-            "RUt1",
-            "RUt2",
-            "RUt3"
-          ],
-          "selected": [],
-          "native_record_handle": 18446744073709551615,
-          "native_record_flags": 0,
-          "native_record_present": false,
-          "native_choice": ""
-        }
-      ],
-      "anomalies": []
-    }
+    "checks": [
+      {
+        "iid": "talent:TalR:0",
+        "choices": [
+          "Cmsh",
+          "Fmsh",
+          "Tmsh"
+        ]
+      },
+      {
+        "iid": "talent:TalR:1",
+        "choices": [
+          "Mtl1",
+          "Mtl2",
+          "Mtl3"
+        ]
+      },
+      {
+        "iid": "talent:TalR:2",
+        "choices": [
+          "RTs1",
+          "RTs2",
+          "RTs3"
+        ]
+      },
+      {
+        "iid": "talent:TalR:3",
+        "choices": [
+          "RUt1",
+          "RUt2",
+          "RUt3"
+        ]
+      }
+    ],
+    "profile": "war3-3.0.1.24371-r2"
   },
-  "custom_talent_addition": {
-    "pid": 45464,
-    "game_started": false,
-    "choice_calls": 1,
-    "after_state": {
-      "controller": "TalR",
-      "name": "自定义天赋 TalR",
-      "tier_count": 4,
-      "controller_level": 1,
-      "controller_instance_full": 157316062154516,
-      "total_points": 0,
-      "used_points": 0,
-      "selected_count": 1,
-      "remaining_points": 0,
-      "point_source": "ATal+0x11c",
-      "tiers": [
-        {
-          "index": 0,
-          "choices": [
-            "Cmsh",
-            "Fmsh",
-            "Tmsh"
-          ],
-          "selected": [
-            "Cmsh"
-          ],
-          "native_record_handle": 18446744073709551615,
-          "native_record_flags": 0,
-          "native_record_present": false,
-          "native_choice": ""
-        },
-        {
-          "index": 1,
-          "choices": [
-            "Mtl1",
-            "Mtl2",
-            "Mtl3"
-          ],
-          "selected": [],
-          "native_record_handle": 18446744073709551615,
-          "native_record_flags": 0,
-          "native_record_present": false,
-          "native_choice": ""
-        },
-        {
-          "index": 2,
-          "choices": [
-            "RTs1",
-            "RTs2",
-            "RTs3"
-          ],
-          "selected": [],
-          "native_record_handle": 18446744073709551615,
-          "native_record_flags": 0,
-          "native_record_present": false,
-          "native_choice": ""
-        },
-        {
-          "index": 3,
-          "choices": [
-            "RUt1",
-            "RUt2",
-            "RUt3"
-          ],
-          "selected": [],
-          "native_record_handle": 18446744073709551615,
-          "native_record_flags": 0,
-          "native_record_present": false,
-          "native_choice": ""
-        }
-      ],
-      "anomalies": [
-        "第 1 层存在天赋技能，但原生选择记录为空"
-      ]
-    },
+  "native_clone_runtime_state_fixture": {
     "ok": true,
-    "custom_choice_added_and_read_back": true,
-    "only_new_instance_removed": true,
-    "talent_records_and_points_preserved": true,
-    "inventory_preserved": true,
-    "final_state": {
-      "controller": "TalR",
-      "name": "自定义天赋 TalR",
-      "tier_count": 4,
-      "controller_level": 1,
-      "controller_instance_full": 157316062154516,
-      "total_points": 0,
-      "used_points": 0,
-      "selected_count": 0,
-      "remaining_points": 0,
-      "point_source": "ATal+0x11c",
-      "tiers": [
-        {
-          "index": 0,
-          "choices": [
-            "Cmsh",
-            "Fmsh",
-            "Tmsh"
-          ],
-          "selected": [],
-          "native_record_handle": 18446744073709551615,
-          "native_record_flags": 0,
-          "native_record_present": false,
-          "native_choice": ""
-        },
-        {
-          "index": 1,
-          "choices": [
-            "Mtl1",
-            "Mtl2",
-            "Mtl3"
-          ],
-          "selected": [],
-          "native_record_handle": 18446744073709551615,
-          "native_record_flags": 0,
-          "native_record_present": false,
-          "native_choice": ""
-        },
-        {
-          "index": 2,
-          "choices": [
-            "RTs1",
-            "RTs2",
-            "RTs3"
-          ],
-          "selected": [],
-          "native_record_handle": 18446744073709551615,
-          "native_record_flags": 0,
-          "native_record_present": false,
-          "native_choice": ""
-        },
-        {
-          "index": 3,
-          "choices": [
-            "RUt1",
-            "RUt2",
-            "RUt3"
-          ],
-          "selected": [],
-          "native_record_handle": 18446744073709551615,
-          "native_record_flags": 0,
-          "native_record_present": false,
-          "native_choice": ""
-        }
-      ],
-      "anomalies": []
-    }
+    "production_c_callback_used": true,
+    "supported_profiles": 7,
+    "tests_passed": 14,
+    "coverage": [
+      "classic slot membership",
+      "bag holes preserved",
+      "both rings in distinct slots",
+      "new talent instance references",
+      "remaining points",
+      "controller setter initialization ordering",
+      "ground-item rejection and cleanup",
+      "equipment rejection and cleanup",
+      "product default route",
+      "corrupt result rejection"
+    ],
+    "actual_live_clone_tested": false,
+    "game_closed_before_clone": true
   },
+  "current_session_clone_test": "game closed before a clone transaction was issued",
   "same_version_replacement": true,
   "original_release_tag_preserved": true,
-  "source_build_tag": "v2.1.17-build-3DD6BB5DBD98",
+  "source_build_tag": "v2.1.17-build-623C6175AF5A",
   "notifications_resent": false
 }

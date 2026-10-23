@@ -3,6 +3,30 @@ from war3_selection_protocol import SIGNATURES
 from war3_hero_protocol import SIGNATURES as HERO_SIGNATURES, build_work, decode_work
 
 class UnitsService:
+    def clone_state(self, *, expected_sources, **options):
+        from war3_clone_state_protocol import SIGNATURES as STATE_SIGNATURES, build_work, decode_work
+        from war3_clone_protocol import SIGNATURES as CLONE_SIGNATURES, CLONE_KEEP, CLONE_COPY_ABILITIES, CLONE_COPY_ITEMS, CLONE_PRESERVE_OWNER, CLONE_USE_SPAWN, CLONE_ALLOW_PARTIAL_ABILITIES
+        from war3_clone_bound_protocol import validate_expected_sources
+        validate_expected_sources(expected_sources)
+        flags=CLONE_COPY_ABILITIES|CLONE_COPY_ITEMS
+        if options.get('keep'):flags|=CLONE_KEEP
+        if options.get('preserve_owner'):flags|=CLONE_PRESERVE_OWNER
+        if options.get('spawn'):flags|=CLONE_USE_SPAWN
+        if options.get('allow_partial_abilities'):flags|=CLONE_ALLOW_PARTIAL_ABILITIES
+        names=tuple(dict.fromkeys(name for name,_ in SIGNATURES+CLONE_SIGNATURES+STATE_SIGNATURES))
+        def builder(entries,tls):
+            with self.memory_factory(self.pid) as memory:
+                registry,_,_=self.session.prepare(memory);self.session.require_write()
+                for _,ref in expected_sources:self.session.resolve(memory,registry,ref)
+                return build_work(entries,tls,base=registry.base,
+                    unit_resolver=registry.base+self.session.profile.section('addresses')['unit_resolver'],
+                    expected_sources=expected_sources,layout=self.session.profile.adapter.talents.clone_layout(),flags=flags,
+                    spawn_x_bits=options.get('spawn_x_bits',0),spawn_y_bits=options.get('spawn_y_bits',0))
+        request=dict(options,expected_sources=tuple(dict(native_handle=n.value,full_handle=r.handle.value,
+            object_address=r.address.value,rawcode=r.rawcode) for n,r in expected_sources))
+        return self._execute('clone_state',names,builder,
+            lambda payload,count:decode_work(payload,count,expected_sources=expected_sources),request)
+
     def hero_progress(self,target=0):
         if isinstance(target,bool) or not isinstance(target,int) or not 0<=target<=100000:
             raise ValueError('Hero level must be integer 1..100000; 0 means read-only query')
@@ -109,11 +133,11 @@ class UnitsService:
     def clone_batch(self, *, keep=False, preserve_owner=False,
                     copy_abilities=True, copy_items=True,
                     spawn=False, spawn_x_bits=0, spawn_y_bits=0,
-                    expected_sources=None):
+                    expected_sources=None, allow_partial_abilities=False):
         from war3_clone_protocol import (
             SIGNATURES as CLONE_SIGNATURES,
             CLONE_COPY_ABILITIES, CLONE_COPY_ITEMS, CLONE_KEEP,
-            CLONE_PRESERVE_OWNER, CLONE_USE_SPAWN,
+            CLONE_PRESERVE_OWNER, CLONE_USE_SPAWN, CLONE_ALLOW_PARTIAL_ABILITIES,
             build_work as build, decode_work as decode,
         )
         flags = 0
@@ -122,10 +146,12 @@ class UnitsService:
         if copy_abilities: flags |= CLONE_COPY_ABILITIES
         if copy_items: flags |= CLONE_COPY_ITEMS
         if spawn: flags |= CLONE_USE_SPAWN
+        if allow_partial_abilities: flags |= CLONE_ALLOW_PARTIAL_ABILITIES
         names = tuple(n for n, _ in SIGNATURES + CLONE_SIGNATURES)
         request = dict(keep=keep, preserve_owner=preserve_owner,
                        copy_abilities=copy_abilities, copy_items=copy_items,
-                       spawn=spawn, spawn_x_bits=spawn_x_bits, spawn_y_bits=spawn_y_bits)
+                       spawn=spawn, spawn_x_bits=spawn_x_bits, spawn_y_bits=spawn_y_bits,
+                       allow_partial_abilities=allow_partial_abilities)
         if expected_sources is None:
             return self._execute(
                 'clone', names,

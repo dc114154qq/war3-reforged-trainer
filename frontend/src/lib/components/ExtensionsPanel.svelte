@@ -29,6 +29,25 @@
     return selectedLoadoutName || ((snapshot.loadoutNames || []).includes(loadoutNameInput) ? loadoutNameInput : '');
   }
   let talentChoiceInput = $state('');
+  let talentBusy = $state(false);
+  const selectedTalent = $derived(snapshot.talents.find(row => row._iid === selectedTalentIid));
+  const talentChoices = $derived(selectedTalent?.choiceCodes || []);
+
+  function acceptSnapshot(value: ExtensionsSnapshot) {
+    snapshot = value;
+    if (!value.talents.some(row => row._iid === selectedTalentIid)) {
+      selectedTalentIid = value.selectedTalentIid || value.talents[0]?._iid || '';
+    }
+    const choices = value.talents.find(row => row._iid === selectedTalentIid)?.choiceCodes || [];
+    if (!choices.includes(talentChoiceInput)) talentChoiceInput = choices[0] || '';
+  }
+
+  function selectTalent(row: TalentRow) {
+    if (talentBusy) return;
+    selectedTalentIid = row._iid;
+    const choices = row.choiceCodes || [];
+    talentChoiceInput = choices.includes(talentChoiceInput) ? talentChoiceInput : choices[0] || '';
+  }
 
   let loading = $state(false);
   let equipmentBusy = $state(false);
@@ -42,7 +61,7 @@
   async function loadData() {
     loading = true;
     try {
-      snapshot = await api.refreshExtensionStatus();
+      acceptSnapshot(await api.refreshExtensionStatus());
       if (!backpackChoice && snapshot.officialBackpacks.length > 0) {
         backpackChoice = snapshot.currentBackpackChoice || snapshot.officialBackpacks[0];
       }
@@ -61,7 +80,7 @@
     try {
       const res = await api.extensionBagAction(action, { row_iid: selectedBagIid, ...params });
       if (res.success && res.data) {
-        snapshot = res.data;
+        acceptSnapshot(res.data);
         actionMessage = `背包操作 [${action}] 执行完成`;
         setTimeout(() => (actionMessage = ''), 5000);
       } else {
@@ -82,7 +101,7 @@
     try {
       const res = await api.extensionEquipmentAction(action, { row_iid: selectedEquipIid, bag_row_iid: selectedBagIid, ...params });
       if (res.success && res.data) {
-        snapshot = res.data;
+        acceptSnapshot(res.data);
         actionMessage = res.message || `装备操作 [${action}] 执行完成`;
         setTimeout(() => (actionMessage = ''), 5000);
       } else {
@@ -97,10 +116,12 @@
   }
 
   async function handleTalentAction(action: string, params: Record<string, any> = {}) {
+    if (talentBusy) return;
+    talentBusy = true;
     try {
       const res = await api.extensionTalentAction(action, { row_iid: selectedTalentIid, ...params });
       if (res.success && res.data) {
-        snapshot = res.data;
+        acceptSnapshot(res.data);
         actionMessage = `天赋操作 [${action}] 执行完成`;
         setTimeout(() => (actionMessage = ''), 5000);
       } else {
@@ -108,6 +129,8 @@
       }
     } catch (err: any) {
       actionMessage = `错误: ${err.message || err}`;
+    } finally {
+      talentBusy = false;
     }
   }
 
@@ -301,20 +324,24 @@
     </div>
   </div>
 
-  <div class="control-row"><select class="input-sm" bind:value={talentChoiceInput}><option value="">选择天赋</option>{#each snapshot.talentChoices || [] as choice}<option value={choice}>{choice}</option>{/each}</select><button class="btn btn-primary btn-sm" onclick={() => handleTalentAction('add_choice', {choice: talentChoiceInput})}>添加所选天赋</button></div>
+  <div class="control-row">
+    <span class="hint">{selectedTalent ? `${selectedTalent.hero} · T${selectedTalent.tier}` : '先读取扩展状态，再选择下方天赋层'}</span>
+    <select class="input-sm" bind:value={talentChoiceInput} disabled={talentBusy || !talentChoices.length} aria-label="选择天赋">
+      <option value="">选择天赋</option>
+      {#each talentChoices as choice}<option value={choice}>{choice}</option>{/each}
+    </select>
+    <button class="btn btn-primary btn-sm" disabled={talentBusy || !talentChoices.includes(talentChoiceInput)} onclick={() => handleTalentAction('add_choice', {choice: talentChoiceInput})}>添加所选天赋</button>
+  </div>
   <!-- Lower Section: Talents Tree -->
   <div class="ext-card talents-card">
     <div class="card-header">
-      <span class="card-title">3.0 官方战役天赋树 ({snapshot.talents.length} 层记录)</span>
+      <span class="card-title">3.0 天赋树 ({snapshot.talents.length} 层记录)</span>
       <div class="header-actions">
-        <button class="btn btn-secondary btn-sm" onclick={() => handleTalentAction('grant_point')}>
+        <button class="btn btn-secondary btn-sm" disabled={talentBusy} onclick={() => handleTalentAction('grant_point')}>
           +1 天赋点
         </button>
-        <button class="btn btn-danger btn-sm" onclick={() => handleTalentAction('reset_talents')}>
+        <button class="btn btn-danger btn-sm" disabled={talentBusy} onclick={() => handleTalentAction('reset_talents')}>
           重置天赋 (洗点)
-        </button>
-        <button class="btn btn-secondary btn-sm" onclick={() => handleTalentAction('refresh_icons')}>
-          刷新天赋图标
         </button>
       </div>
     </div>
@@ -337,7 +364,7 @@
             {#each snapshot.talents as t}
               <tr
                 class={selectedTalentIid === t._iid ? 'selected' : ''}
-                onclick={() => (selectedTalentIid = t._iid)}
+                onclick={() => selectTalent(t)}
               >
                 <td><strong>{t.hero}</strong></td>
                 <td class="font-mono text-cyan">T{t.tier}</td>

@@ -13,6 +13,7 @@ class Capability:
 
 # Modules with instruction/layout semantics remain pinned to a compiled adapter.
 MODULES = {
+    'clone_state': ('equipment','talents'),
     "direct_cast": ("direct_effect",),
     "extension": ("talents", "equipment"),
     "equipment": ("equipment",),
@@ -45,7 +46,7 @@ class CapabilitySet:
                 self.profile.require_dependencies(name, request)
             except ProfileError as exc:
                 missing.append(str(exc))
-        if name in ('clone_bound','unit_bindings') and not self.profile.section('addresses')['unit_resolver']:
+        if name in ('clone_state','clone_bound','unit_bindings') and not self.profile.section('addresses')['unit_resolver']:
             missing.append('Bound clone unit resolver has not been adapted for this build')
         if name=='world' and request is not None and request.get('action') in (3,4):
             recovery=self.profile.section('fog_recovery')

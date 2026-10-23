@@ -4,13 +4,13 @@ import struct
 import war3_clone_protocol as clone
 from war3_game_session import FullHandle, NativeHandle, ObjectAddress, SessionIdentity, UnitRef
 
-PREFIX_SIZE = 1888
+PREFIX_SIZE = clone.WORK_SIZE
 HEADER_SIZE = 24
 SOURCES_OFFSET = PREFIX_SIZE + HEADER_SIZE
 SOURCE_SIZE = 32
 MAX_SOURCES = 24
-WORK_SIZE = 2680
-ABI = struct.pack("<3I", 0x24268064, 216, WORK_SIZE)
+WORK_SIZE = SOURCES_OFFSET + MAX_SOURCES * SOURCE_SIZE
+ABI = struct.pack("<3I", 0x2426807B, 216, WORK_SIZE)
 SIGNATURES = clone.SIGNATURES
 
 
@@ -52,7 +52,7 @@ def _source_values(expected_sources):
 
 def _binding(payload):
     if len(payload) != WORK_SIZE:
-        raise ValueError("CloneBoundWork must contain exactly 2680 bytes")
+        raise ValueError(f"CloneBoundWork must contain exactly {WORK_SIZE} bytes")
     base, resolver, count, reserved = struct.unpack_from("<2Q2I", payload, PREFIX_SIZE)
     if (not 0x10000 <= base < 0x800000000000 or base % 8
             or not base < resolver < 0x800000000000
@@ -94,13 +94,13 @@ def validate_work(payload):
     clone.validate_work(payload[:PREFIX_SIZE])
 
 
-def decode_work(payload, expected_count, *, expected_sources=None):
+def decode_work(payload, expected_count, *, expected_sources=None, max_items=clone.MAX_ITEMS):
     sources = _binding(payload)
     if type(expected_count) is not int or expected_count != len(sources):
         raise ValueError("Bound clone result source count differs from request")
     if expected_sources is not None and sources != _source_values(expected_sources):
         raise ValueError("Bound clone result binding differs from request")
-    result = clone.decode_work(payload[:PREFIX_SIZE], expected_count)
+    result = clone.decode_work(payload[:PREFIX_SIZE], expected_count, max_items=max_items)
     for row, source in zip(result["rows"], sources):
         if (row["handle"], row["rawcode"]) != (source[0], source[3]):
             raise ValueError("Bound clone result selection differs from initial sources")

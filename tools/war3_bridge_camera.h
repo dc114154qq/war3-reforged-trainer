@@ -9,10 +9,11 @@ typedef struct CameraWork {
     void *expected_tls;
     float target[3], eye[3], fields[8], margins[4];
     uint32_t screen[2], changed, error, completed, reserved;
-    uint8_t padding[64];
+    float local_fields[3];
+    uint8_t padding[52];
 } CameraWork;
 _Static_assert(sizeof(CameraWork) == 256, "CameraWork ABI");
-__declspec(dllexport) const uint32_t camera_batch_abi[3] = {0x2426801Bu, 216u, 256u};
+__declspec(dllexport) const uint32_t camera_batch_abi[3] = {0x24268079u, 216u, 256u};
 static float CameraReal(uint32_t bits){union{uint32_t bits;float value;}v;v.bits=bits;return v.value;}
 
 __declspec(dllexport) uint64_t BridgeCameraQuery(void) {
@@ -33,6 +34,9 @@ __declspec(dllexport) uint64_t BridgeCameraQuery(void) {
             /* Zero is a valid camera-field enum, not an absent handle. */
             w->fields[index] = CameraReal(w->get_field(field));
         }
+        /* 8/9/10 are local pitch/yaw/roll; 7 is the near clipping plane. */
+        for (index = 0; index < 3; ++index)
+            w->local_fields[index] = CameraReal(w->get_field(w->convert_field(index+8)));
         for (index = 0; index < 4; ++index) w->margins[index] = CameraReal(w->get_margin(index));
         w->screen[0] = (uint32_t)w->screen_x();
         w->screen[1] = (uint32_t)w->screen_y();

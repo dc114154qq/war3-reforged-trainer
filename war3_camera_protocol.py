@@ -4,7 +4,7 @@ import struct
 
 
 WORK_SIZE = 256
-ABI = struct.pack("<3I", 0x2426801B, 216, WORK_SIZE)
+ABI = struct.pack("<3I", 0x24268079, 216, WORK_SIZE)
 SIGNATURES = (
     ("GetCameraTargetPositionX", "()R"),
     ("GetCameraTargetPositionY", "()R"),
@@ -58,13 +58,15 @@ def decode_work(payload, _expected_count=None):
         raise ValueError("Incomplete camera snapshot")
     floats = struct.unpack_from("<18f", payload, 96)
     target_x, target_y, target_z, eye_x, eye_y, eye_z = floats[:6]
-    fields = tuple(floats[6:14])
+    local_fields=struct.unpack_from('<3f',payload,192)
+    fields = tuple(floats[6:14])+local_fields
     margins = tuple(floats[14:18])
     screen_x, screen_y, changed, error, completed, reserved = struct.unpack_from(
         "<6I", payload, 168,
     )
     if (error or reserved or completed != 1 or changed != 1
-            or not all(_finite(value) for value in floats)):
+            or any(payload[204:])
+            or not all(_finite(value) for value in (*floats,*local_fields))):
         raise ValueError(
             f"Camera snapshot incomplete: error={error}, completed={completed}, changed={changed}"
         )

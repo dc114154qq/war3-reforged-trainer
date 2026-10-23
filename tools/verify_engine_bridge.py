@@ -113,7 +113,7 @@ def main() -> None:
     marker(b"spawn_batch_abi", (0x24268018, 216, 128))
     marker(b"mouse_batch_abi", (0x24268019, 216, 128))
     marker(b"screen_mouse_batch_abi", (0x2426801A, 216, 128))
-    marker(b"camera_batch_abi", (0x2426801B, 216, 256))
+    marker(b"camera_batch_abi", (0x24268079, 216, 256))
     marker(b"position_batch_abi", (0x24268020, 216, 1312))
     marker(b"terrain_batch_abi", (0x2426802A, 216, 128))
     marker(b"map_bounds_batch_abi", (0x2426802C, 216, 128))

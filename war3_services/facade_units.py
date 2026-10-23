@@ -264,18 +264,23 @@ class UnitsFacade:
             else:
                 client_size = self._client_size_24268()
                 screen_scale = self._screen_scale_24268()
-            initial = self._mouse_world_from_camera_24268(
-                snapshot, *client_size, screen_scale,
-            )
             from war3_services.mouse_terrain import intersect_mouse_terrain
+            from war3_services.camera_projection import mouse_plane_point
             projection = dict(camera=snapshot, client_size=client_size,
-                              screen_scale=screen_scale, initial=initial)
+                              screen_scale=screen_scale)
             try:
+                initial=mouse_plane_point(snapshot,*client_size,screen_scale,diagnostics=projection)
+                projection['initial']=initial
                 point = intersect_mouse_terrain(
                     snapshot["eye"], initial, snapshot["target"][2],
                     self.terrain_height_24268, diagnostics=projection,
                 )
-                return self._clamp_mouse_world_point_24268(point)
+                result=self._clamp_mouse_world_point_24268(point)
+                projection.update(unclamped_point=point,landing_point=result,map_edge_clamped=result!=point)
+                from war3_services.operation_trace import active_trace
+                trace=active_trace()
+                if trace is not None:trace.record('mouse_projection',**projection)
+                return result
             except Exception as exc:
                 # Preserve cancellation, native reports and cleanup evidence.
                 # Diagnostics never turn an interrupted read into a game write.

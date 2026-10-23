@@ -355,68 +355,8 @@ class NativeFacade:
         snapshot: dict, client_width: int, client_height: int, screen_scale: float = 1.0,
         plane_z: float | None = None,
     ) -> tuple[float, float]:
-        if client_width <= 0 or client_height <= 0:
-            raise RuntimeError("3.0 游戏客户区尺寸无效")
-        target = tuple(float(value) for value in snapshot["target"])
-        eye = tuple(float(value) for value in snapshot["eye"])
-        screen_x, screen_y = (int(value) for value in snapshot["screen"])
-        fields = tuple(float(value) for value in snapshot.get("fields", ()))
-        # Camera field 2 is angle of attack; field 3 is field of view.
-        # The angle can also look like a valid FOV, so never infer the field
-        # from its numeric range.
-        if len(fields) > 3 and 0.1 < fields[3] < math.pi - 0.1:
-            fov = fields[3]
-        else:
-            fov = math.radians(70.0)
-        forward = tuple(target[index] - eye[index] for index in range(3))
-        forward_length = math.sqrt(sum(value * value for value in forward))
-        if not math.isfinite(forward_length) or forward_length <= 1e-5:
-            raise RuntimeError("3.0 相机眼点和目标点重合")
-        forward = tuple(value / forward_length for value in forward)
-        world_up = (0.0, 0.0, 1.0)
-        up_projection = sum(forward[index] * world_up[index] for index in range(3))
-        up = tuple(world_up[index] - forward[index] * up_projection for index in range(3))
-        up_length = math.sqrt(sum(value * value for value in up))
-        if up_length <= 1e-5:
-            raise RuntimeError("3.0 相机上方向无效")
-        up = tuple(value / up_length for value in up)
-        right = (
-            forward[1] * up[2] - forward[2] * up[1],
-            forward[2] * up[0] - forward[0] * up[2],
-            forward[0] * up[1] - forward[1] * up[0],
-        )
-        aspect = float(client_width) / float(client_height)
-        if snapshot.get('screen_space')!='client_pixels' and (screen_x > client_width * 2 or screen_y > client_height * 2):
-            screen_width = screen_height = 65535.0
-        else:
-            if not math.isfinite(screen_scale) or not 0.5 <= screen_scale <= 4.0:
-                raise RuntimeError("3.0 鼠标 DPI 缩放无效")
-            screen_width = client_width * screen_scale
-            screen_height = client_height * screen_scale
-        ndc_x = (screen_x / screen_width) * 2.0 - 1.0
-        ndc_y = 1.0 - (screen_y / screen_height) * 2.0
-        spread = math.tan(fov * 0.5)
-        direction = tuple(
-            forward[index]
-            + right[index] * ndc_x * spread * aspect
-            + up[index] * ndc_y * spread
-            for index in range(3)
-        )
-        direction_length = math.sqrt(sum(value * value for value in direction))
-        direction = tuple(value / direction_length for value in direction)
-        if abs(direction[2]) <= 1e-6:
-            raise RuntimeError("3.0 鼠标射线没有命中地图平面")
-        ground_z = target[2] if plane_z is None else float(plane_z)
-        if not math.isfinite(ground_z) or abs(ground_z) > 1_000_000.0:
-            raise RuntimeError("3.0 鼠标投影平面高度无效")
-        distance = (ground_z - eye[2]) / direction[2]
-        if not math.isfinite(distance) or distance <= 0.0:
-            raise RuntimeError("3.0 鼠标射线命中点无效")
-        x = eye[0] + direction[0] * distance
-        y = eye[1] + direction[1] * distance
-        if not math.isfinite(x) or not math.isfinite(y) or abs(x) > 1_000_000.0 or abs(y) > 1_000_000.0:
-            raise RuntimeError("3.0 鼠标世界坐标超出范围")
-        return x, y
+        from war3_services.camera_projection import mouse_plane_point
+        return mouse_plane_point(snapshot,client_width,client_height,screen_scale,plane_z)
 
 
     def _client_size_24268(self) -> tuple[int, int]:

@@ -1,16 +1,16 @@
 [中文](README.md) | [English](README.en.md)
 
-# 魔兽 3.0 修改器 · 2.1.16
+# 魔兽 3.0 修改器 · 2.1.17
 
 读取和修改单位、技能、物品与资源，支持批量修改、扩展背包、装备套装和存档提取。
 
 ## 下载使用
 
-从[个人网站](https://twomengxi.xyz/trainer/)或[GitHub Release](https://github.com/dc114154qq/war3-reforged-trainer/releases/tag/v2.1.16)下载 EXE，直接打开。进入地图并选中单位后连接。
+从[个人网站](https://twomengxi.xyz/trainer/)或[GitHub Release](https://github.com/dc114154qq/war3-reforged-trainer/releases/tag/v2.1.17)下载 EXE，直接打开。进入地图并选中单位后连接。
 
 Windows 10/11 x64。无需安装 Python、Node.js 或另行启动前端；缺少微软 WebView2 时，首次启动会询问是否联网安装。
 
-本次在“玩家资源”页新增金矿剩余金币修改，支持当前选中和全图批量操作，逐座显示修改前后金额和结果。
+本次修正共用的鼠标坐标换算，让 Ctrl+X 瞬间移动、Ctrl+A 复制单位及其他共用鼠标坐标功能的落点更准确。测试版的 Ctrl+X 和 Ctrl+A 已由用户实测确认。
 
 ## 从源码构建
 
@@ -18,13 +18,13 @@ Windows 10/11 x64。无需安装 Python、Node.js 或另行启动前端；缺少
 
 ```powershell
 python -m pip install -r requirements-build.txt
-python tools/prepare_build_baseline_2116.py
+python tools/prepare_build_baseline_2117.py
 npm ci --prefix frontend
 npm run build --prefix frontend
 python tools/build_modern_release.py
 python tools/build_modern_release.py --verify-only
 ```
 
-输出：`dist-2.1.16-modern-verified/<哈希前缀>/War3ReforgedTrainer-v2.1.16-Web.exe`。
+输出：`dist-2.1.17-modern-verified/<哈希前缀>/War3ReforgedTrainer-v2.1.17-Web.exe`。
 
-[更新说明](docs/RELEASE_NOTES_v2.1.16.zh.md) · [历史更新](docs/HISTORY.md) · [验证记录](docs/VALIDATION.json)
+[更新说明](docs/RELEASE_NOTES_v2.1.17.zh.md) · [历史更新](docs/HISTORY.md) · [验证记录](docs/VALIDATION.json)

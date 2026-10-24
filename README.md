@@ -10,8 +10,6 @@
 
 Windows 10/11 x64。无需安装 Python、Node.js 或另行启动前端；缺少微软 WebView2 时，首次启动会询问是否联网安装。
 
-本次修订完善补齐背包定义的脚本检查、归档旧数据清理和原资源复核，保留背包物品复制、装备位置及原生天赋进度等改进。当前修订源码在 main 分支和 Release 附带的 source ZIP；v2.1.18 标签保留首次发布快照。
-
 ## 从源码构建
 
 准备 Windows x64、Python 3.12 和 Node.js 22。构建助手会下载并校验固定版本的原生组件和微软安装程序。
@@ -27,4 +25,4 @@ python tools/build_modern_release.py --verify-only
 
 输出：`dist-2.1.18-loadability-algorithm-preview/<哈希前缀>/War3ReforgedTrainer-v2.1.18-Web.exe`。
 
-[更新说明](docs/RELEASE_NOTES_v2.1.18.zh.md) · [历史更新](docs/HISTORY.md) · [验证记录](docs/VALIDATION.json)
+[验证记录](docs/VALIDATION.json)

@@ -69,7 +69,6 @@ def source_paths() -> tuple[Path, ...]:
             "tools/verify_speed_clock.py",
             "third_party/minhook/LICENSE.txt",
             "tools/build_release_2118.py",
-            "RELEASE_NOTES_v2.1.18.md",
             "tools/war3-2.1.18-version-info.txt",
             "assets/app_icon.ico",
         "assets/extension-definitions-v1.zip",

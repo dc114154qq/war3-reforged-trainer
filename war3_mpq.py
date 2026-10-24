@@ -57,6 +57,7 @@ class Member:
     flags: int
     locale: int = 0
     block_index: int = 0
+    compressed_size: int = 0
 
 
 @lru_cache(1)
@@ -82,6 +83,8 @@ def library():
         ('SFileWriteFile', [H, H, U, U], B), ('SFileFinishFile', [H], B),
         ('SFileFlushArchive', [H], B),
         ('SFileGetMaxFileCount', [H], U), ('SFileSetMaxFileCount', [H, U], B),
+        ('SFileCompactArchive', [H, c.c_wchar_p, B], B),
+        ('SFileGetFileInfo', [H, U, H, U, c.POINTER(U)], B),
     )
     for name, args, result in definitions:
         function = getattr(dll, name); function.argtypes, function.restype = args, result
@@ -149,7 +152,7 @@ class Archive:
                 while True:
                     try: name = data.name.decode('utf8')
                     except UnicodeDecodeError: name = data.name.decode('cp1252')
-                    result.append(Member(name, data.size, data.flags, data.locale, data.block_index))
+                    result.append(Member(name, data.size, data.flags, data.locale, data.block_index, data.compressed_size))
                     if len(result) > 100000:
                         raise MpqError('地图内文件数量超出处理范围，已停止处理。')
                     if not self.dll.SFileFindNextFile(found, c.byref(data)):
@@ -203,6 +206,44 @@ class Archive:
     def flush(self):
         with LOCK:
             if not self.dll.SFileFlushArchive(self.handle): raise MpqError('地图数据保存失败。')
+
+    def compact(self, *, progress=None, force=False):
+        """Remove obsolete storage through StormLib, keeping live data and flags.
+
+        Replacing files appends data. A readable archive can otherwise retain
+        gigabytes of earlier chapter copies. The estimate is a trigger only;
+        caller re-extraction remains the integrity gate after compaction.
+        """
+        if not self.writable:raise MpqError('归档仅以只读方式打开。')
+        with LOCK:
+            self.flush();members=self.members();offset=c.c_uint64();returned=U()
+            if not self.dll.SFileGetFileInfo(self.handle,5,c.byref(offset),c.sizeof(offset),c.byref(returned)):
+                raise MpqError(f'地图归档位置读取失败（错误 {c.get_last_error()}）。')
+            unique={m.block_index:m for m in members}
+            capacity=self.dll.SFileGetMaxFileCount(self.handle)
+            estimate=offset.value+512+capacity*16+(max(unique,default=-1)+1)*16+sum(m.compressed_size for m in unique.values())
+            before=self.path.stat().st_size;reclaimable=max(0,before-estimate)
+            evidence=dict(archive=self.path.name,bytes_before=before,live_stored_bytes=sum(m.compressed_size for m in unique.values()),
+                estimated_reclaimable_bytes=reclaimable,header_offset=offset.value,member_count=len(members))
+            if not force and reclaimable<=max(64*1024,before//20):
+                evidence.update(performed=False,bytes_after=before,reason='already_dense')
+                if progress:progress('archive_compaction_skipped',evidence)
+                return evidence
+            unknown=[m.name for m in members if unknown_member_name(m.name)]
+            if unknown:
+                evidence.update(error_code=10007,unknown_member_count=len(unknown),unknown_member_examples=unknown[:16])
+                if progress:progress('archive_compaction_failed',evidence)
+                raise MpqError('归档整理前仍有资源文件名未识别，已保留原文件。',details=evidence)
+            if progress:progress('archive_compaction_begin',evidence)
+            c.set_last_error(0)
+            if not self.dll.SFileCompactArchive(self.handle,None,False):
+                error=c.get_last_error();evidence.update(error_code=error,performed=False)
+                if progress:progress('archive_compaction_failed',evidence)
+                raise MpqError(f'地图归档整理失败（错误 {error}），已保留原文件。',details=evidence)
+            self.flush();evidence.update(performed=True,bytes_after=self.path.stat().st_size)
+            evidence['bytes_reclaimed']=before-evidence['bytes_after']
+            if progress:progress('archive_compaction_complete',evidence)
+            return evidence
 
     def reserve(self, additional, *, progress=None):
         if not self.writable or not 0 <= additional <= 4096:

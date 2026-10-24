@@ -10,6 +10,7 @@
   let disposed=false;
   const busy=$derived(starting || ['running','cancelling'].includes(progress.status));
   const stages:Record<string,string>={queued:'准备处理',custom_object_begin:'检查地图对象',custom_object_verified:'对象检查完成',custom_object_failed:'发现对象结构异常',source_hash_begin:'核对输入文件',start:'读取定义资料',copy_begin:'复制原文件',source_copied:'复制校验完成',scan_archive:'检查归档文件',chapter_begin:'处理章节',table_layout_verified:'检查数据表格式',write_table:'写入背包定义',archive_verify:'复查归档',verify_member:'核对原有文件',chapter_verified:'章节校验完成',replace_chapter:'保存战役章节',output_verify:'核对最终输出',verified:'准备完成输出',complete:'处理完成'};
+  Object.assign(stages,{script_function_order_verified:'章节脚本顺序检查完成',script_validation_failed:'发现章节脚本错误',archive_compaction_begin:'整理归档中的旧数据',archive_compaction_complete:'归档整理完成',archive_compaction_skipped:'归档无需整理',archive_compaction_failed:'归档整理出错'});
   async function poll(id='') {
     try {
       progress=await api.getBackpackDefinitionProgress(id);

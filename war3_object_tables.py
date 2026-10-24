@@ -341,7 +341,7 @@ def map_data_mode(raw):
         for _ in range(3): reader.string()
         reader.take(4)
         return dict(format=version,game_version=game_version,data_set=0,data_version=None,flags=flags,
-                    mode='reference' if flags & 4 else 'Custom_V1')
+                    mode='reference' if flags & 4 else 'Custom_V1',script_language=0)
     if version >= 39: reader.take(4)
     for _ in range(4): reader.string()
     data_set = reader.integer()
@@ -350,7 +350,7 @@ def map_data_mode(raw):
     if version >= 39: reader.take(24)
     if version >= 25: reader.take(4)
     reader.string(); reader.take(1 + 4)
-    if version >= 28: reader.take(4)
+    script_language=reader.integer() if version>=28 else 0
     data_version = None
     if version >= 31:
         reader.take(4); data_version = reader.integer()
@@ -362,7 +362,7 @@ def map_data_mode(raw):
     melee = data_set == 2 or (data_set in (-1, 0) and flags & 4)
     mode = ('reference' if effective_version == 2 or melee and effective_version == 1 else
             'Melee_V0' if melee else 'Custom_V'+str(effective_version))
-    return dict(format=version,game_version=game_version,data_set=data_set,data_version=data_version,flags=flags,mode=mode)
+    return dict(format=version,game_version=game_version,data_set=data_set,data_version=data_version,flags=flags,mode=mode,script_language=script_language)
 
 
 def campaign_maps(raw):

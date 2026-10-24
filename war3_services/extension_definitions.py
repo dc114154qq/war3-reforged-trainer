@@ -5,12 +5,13 @@ from functools import lru_cache
 from pathlib import Path
 import hashlib, json, os, re, shutil, sys, tempfile, time, traceback, uuid, zipfile
 from war3_mpq import Archive, MpqError, STORAGE_FLAGS, canonical_name, unknown_member_name
+from war3_jass_validation import check_function_order
 from war3_object_tables import (DefinitionError, parse_slk, parse_profile, merge_slk,
                                 merge_profile, map_data_mode, campaign_maps, object_ids, _value,
                                 validate_game_slk, make_extension_versions_compatible)
 
 PACK_SHA256='92fb7ef32f24d0b218124034c42642490a1c251b843e9511ab531a12bd7c03f1'
-PROCESSING_REVISION='extension-mpq-known-names-v4-20261023'
+PROCESSING_REVISION='extension-script-order-compact-v5-20261024'
 META={'(listfile)','(attributes)'}
 OBJECT_FILES=(('w3a',True),('w3t',False),('w3u',False),('w3h',False),('w3q',True))
 
@@ -281,24 +282,37 @@ def _patch_map(path,inherited,parent_custom,manifest,files,journal):
         archive.identify_names('Units\\'+name for name in manifest['required'])
         _identify_archive_names(archive,journal)
         members=_members(archive,journal);metadata=map_data_mode(archive.read('war3map.w3i'))
+        script_checks=[]
+        if metadata['script_language']==0:
+            for script in ('war3map.j','scripts\\war3map.j'):
+                payload=archive.read(script,optional=True)
+                if payload is None:continue
+                try:validation=check_function_order(payload)
+                except DefinitionError as exc:
+                    journal.event('script_validation_failed',path=script,**getattr(exc,'script_diagnostics',{}));raise
+                journal.event('script_function_order_verified',path=script,**validation)
+                script_checks.append(dict(path=script,sha256=hashlib.sha256(payload).hexdigest(),**validation))
+        else:journal.event('script_validation_skipped',language=metadata['script_language'],reason='JASS order check does not validate Lua')
         journal.event('archive_names_identified',archive=path.name,member_count=len(members),
             known_warcraft_names=list(archive.identified_names))
         custom=parent_custom|_custom_ids(archive,'war3map',journal)
         before=_fingerprints(archive,members,journal)
         plan,details=_plan(archive,members,metadata['mode'],inherited,custom,manifest,files,journal)
-    if plan:
-        with Archive(path,writable=True) as archive:
-            archive.identify_names('Units\\'+name for name in manifest['required'])
-            _identify_archive_names(archive,journal)
+    with Archive(path,writable=True) as archive:
+        archive.identify_names('Units\\'+name for name in manifest['required'])
+        _identify_archive_names(archive,journal)
+        if plan:
             archive.reserve(sum(member is None for raw,member in plan.values()),
                 progress=lambda stage,data:journal.event(stage,**data))
             for name,(raw,member) in plan.items():
                 journal.event('write_table',map=path.name,path=name,bytes=len(raw),original_flags=member.flags if member else None)
                 archive.write(name,raw,original=member)
             archive.flush()
+        compaction=archive.compact(progress=lambda stage,data:journal.event(stage,**data))
     expected={(name.casefold(),0):hashlib.sha256(raw).hexdigest() for name,(raw,member) in plan.items()}
     _verify(path,before,expected,journal)
-    return dict(metadata=metadata,tables=details,changed=bool(plan),
+    return dict(metadata=metadata,tables=details,script_checks=script_checks,
+                changed=bool(plan) or compaction['performed'],archive_compaction=compaction,
                 added_entries=sum(len(row['added']) for row in details))
 
 
@@ -359,12 +373,13 @@ def prepare_extension_definitions(source,output_folder,*,progress=None,cancel=No
                     if report['changed']:
                         member=members[(report['name'].casefold(),0)]
                         changes.append((member,chapter));expected[(member.name.casefold(),0)]=file_hash(chapter)
-                if changes:
-                    with Archive(staged,writable=True) as archive:
+                with Archive(staged,writable=True) as archive:
+                    if changes:
                         for member,chapter in changes:
                             journal.event('replace_chapter',name=member.name,original_flags=member.flags)
                             archive.write(member.name,chapter.read_bytes(),original=member)
                         archive.flush()
+                    archive.compact(progress=lambda stage,data:journal.event(stage,**data))
                 _verify(staged,before,expected,journal)
             else:
                 current_chapter=source.name
@@ -398,10 +413,13 @@ def prepare_extension_definitions(source,output_folder,*,progress=None,cancel=No
         try:
             journal.stream.write(json.dumps(dict(stage='failed',exception=repr(exc),traceback=traceback.format_exc(),
                                                  source=str(source),chapter=current_chapter,
-                                                 archive_details=getattr(exc,'mpq_details',{}),output_published=False),ensure_ascii=False)+'\n')
+                                                 archive_details=getattr(exc,'mpq_details',{}),
+                                                 script_details=getattr(exc,'script_diagnostics',{}),output_published=False),ensure_ascii=False)+'\n')
             journal.stream.flush()
         except (OSError,ValueError):pass
-        if not isinstance(exc,DefinitionError):
+        if isinstance(exc,DefinitionError) and current_chapter:
+            error=DefinitionError(f'处理章节“{current_chapter}”时：'+str(exc));error.__cause__=exc;exc=error
+        elif not isinstance(exc,DefinitionError):
             error=DefinitionError((f'处理章节“{current_chapter}”时：' if current_chapter else '')+str(exc)
                 if isinstance(exc,MpqError) else '处理战役或地图时出错，原文件已保留。详细原因已记录在处理日志中。')
             error.__cause__=exc;exc=error

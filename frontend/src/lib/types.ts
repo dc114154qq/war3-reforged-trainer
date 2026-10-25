@@ -113,6 +113,7 @@ export interface LockItem {
 }
 
 export interface AbilityFieldRow {
+  searchText?: string;
   _iid: string;
   field: string;
   type: string;
@@ -129,6 +130,7 @@ export interface AbilityFieldsData {
 }
 
 export interface ItemFieldRow {
+  searchText?: string;
   editable?: boolean;
   ability?: string;
   effectClass?: string;

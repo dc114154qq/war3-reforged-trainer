@@ -14,6 +14,8 @@ from war3_metadata import APP_VERSION,PRODUCT_READ_MODE,PRODUCT_EDITION_LABEL
 from war3_3_extension_catalog import EQUIPMENT_SLOT_NAMES,EQUIPMENT_TYPE_NAMES,OFFICIAL_BACKPACKS
 from war3_3_stats import STAT_DETAIL_SPECS
 from war3_id_catalog import CATALOG_COUNTS,search_id_entries
+from war3_field_labels import (ability_field_name, ability_field_search_text,
+                              item_field_name, item_field_search_text)
 
 class TrainerApplication:
     required_ports = frozenset((
@@ -1053,15 +1055,13 @@ class TrainerApplication:
                 continue
             if not show_zero and field_value.value is not None and (field_value.value is False or field_value.value == 0 or field_value.value == 0.0):
                 continue
-            searchable = ' '.join((spec.rawcode, spec.constant_name, spec.field_name, spec.category, spec.metadata_type, field_value.note)).lower()
+            searchable = ' '.join((ability_field_search_text(spec), field_value.note, field_value.value_text())).casefold()
             if query and query not in searchable:
                 continue
             iid = f'ability-field-{index}'
             rows[iid] = field_value
-            label = spec.constant_name
-            if label.startswith('METADATA_'):
-                label = spec.field_name or spec.display_name or label
-            self.view.value('ability_field_tree').insert('', 'end', iid=iid, values=(spec.rawcode, self.view.value('ui_text')(type_labels.get(spec.value_kind, spec.value_kind)), self.view.value('ui_text')(scope_labels.get(spec.scope, spec.scope)), self.view.value('ui_text')(label), self.view.value('ui_text')(field_value.value_text()), self.view.value('ui_text')(field_value.status)))
+            label = ability_field_name(spec, self.view.value('ui_language')['code'])
+            self.view.value('ability_field_tree').insert('', 'end', iid=iid, values=(spec.rawcode, self.view.value('ui_text')(type_labels.get(spec.value_kind, spec.value_kind)), self.view.value('ui_text')(scope_labels.get(spec.scope, spec.scope)), label, self.view.value('ui_text')(field_value.value_text()), self.view.value('ui_text')(field_value.status)))
         self.view.value('state')['ability_field_rows'] = rows
 
     def apply_ability_field_snapshot(self, snapshot: AbilityFieldSnapshot) -> None:
@@ -1106,7 +1106,8 @@ class TrainerApplication:
         specific = ''
         if spec.use_specific:
             specific = '；适用 ' + ','.join(spec.use_specific)
-        self.view.value('ability_field_detail').set(f'{spec.rawcode} | {spec.constant_name} | {spec.metadata_type or spec.value_kind} | {spec.field_name or '-'}{bounds}{specific}' + (f'；{field_value.note}' if field_value.note else ''))
+        label = ability_field_name(spec, self.view.value('ui_language')['code'])
+        self.view.value('ability_field_detail').set(f'{label} | {spec.rawcode} | {spec.constant_name} | {spec.metadata_type or spec.value_kind} | {spec.field_name or '-'}{bounds}{specific}' + (f'；{field_value.note}' if field_value.note else ''))
         if field_value.value is not None and spec.writable:
             self.view.value('ability_field_write_button').state(['!disabled'])
         else:
@@ -1165,12 +1166,13 @@ class TrainerApplication:
                 continue
             if not show_zero and field_value.value is not None and (field_value.value in (False, 0, 0.0)):
                 continue
-            searchable = ' '.join((spec.rawcode, spec.value_kind, spec.name, field_value.note)).lower()
+            searchable = ' '.join((item_field_search_text(spec), field_value.note, field_value.value_text())).casefold()
             if query and query not in searchable:
                 continue
             iid = f'item-field-{index}'
             rows[iid] = field_value
-            self.view.value('item_field_tree').insert('', 'end', iid=iid, values=(spec.rawcode, self.view.value('ui_text')(type_labels.get(spec.value_kind, spec.value_kind)), self.view.value('ui_text')(spec.name), self.view.value('ui_text')(field_value.value_text()), self.view.value('ui_text')(field_value.status)))
+            label = item_field_name(spec, self.view.value('ui_language')['code'])
+            self.view.value('item_field_tree').insert('', 'end', iid=iid, values=(spec.rawcode, self.view.value('ui_text')(type_labels.get(spec.value_kind, spec.value_kind)), label, self.view.value('ui_text')(field_value.value_text()), self.view.value('ui_text')(field_value.status)))
         self.view.value('state')['item_field_rows'] = rows
 
     def apply_item_field_snapshot(self, snapshot: ItemFieldSnapshot) -> None:
@@ -1204,7 +1206,8 @@ class TrainerApplication:
             return
         spec = field_value.spec
         self.view.value('item_field_value').set(field_value.value_text())
-        self.view.value('item_field_detail').set(f'{spec.rawcode} | {spec.value_kind} | {spec.name}' + (f'；{field_value.note}' if field_value.note else ''))
+        label = item_field_name(spec, self.view.value('ui_language')['code'])
+        self.view.value('item_field_detail').set(f'{label} | {spec.rawcode} | {spec.value_kind}' + (f'；{field_value.note}' if field_value.note else ''))
         if field_value.value is not None and spec.writable:
             self.view.value('item_field_write_button').state(['!disabled'])
         else:
@@ -1235,10 +1238,11 @@ class TrainerApplication:
             spec = field.spec if field is not None else None
             rows.append(dict(_iid=f'{snapshot.generation}:{index}',
                 field=spec.rawcode if spec else '—', type=spec.value_kind if spec else '组件',
-                scope=spec.scope if spec else '', name=({'Iatt':'攻击加成','Idef':'护甲加成','Iagi':'敏捷加成','Iint':'智力加成','Istr':'力量加成','Imvb':'移动速度加成','Ilif':'生命值加成','Iman':'魔法值加成','Isib':'视野加成','acas':'施法时间','acdn':'冷却时间','adur':'持续时间','amcs':'魔法消耗','aare':'影响范围'}.get(spec.rawcode, spec.constant_name if not spec.constant_name.startswith('METADATA_') else spec.field_name or spec.display_name)) if spec else note,
+                scope=spec.scope if spec else '', name=ability_field_name(spec, self.view.value('ui_language')['code']) if spec else note,
                 value=field.value_text() if field else '—', status=field.status if field else '只读',
                 editable=bool(field and field.value is not None and spec.writable and spec.runtime_supported),
-                ability=ability_code, effectClass=effect, note=field.note if field else note))
+                ability=ability_code, effectClass=effect, note=field.note if field else note,
+                searchText=ability_field_search_text(spec) if spec else note))
         return dict(summary=f"{labels[source.area]}第 {source.slot+1} 格；物品 {format_rawcode(source.rawcode)}；附带技能 {len(snapshot.abilities)} 个；字段 {len(rows)} 项；字段等级 {snapshot.level}",
             detail='修改当前这件物品的技能数值；地图脚本另行计算的加成未必属于这里。实际战斗效果请在游戏中核对。', rows=rows)
 

@@ -100,6 +100,7 @@
       return (
         r.field.toLowerCase().includes(q) ||
         r.name.toLowerCase().includes(q) ||
+        (r.searchText || '').toLowerCase().includes(q) ||
         r.value.toLowerCase().includes(q)
       );
     })
@@ -220,7 +221,7 @@
           {#each filteredRows as row}
             <tr class={editingRowId === row._iid ? 'editing-row' : ''}>
               <td class="mono font-semibold text-bright">{row.field}</td>
-              <td class="text-gold">{row.name || '-'}</td>
+              <td class="text-gold field-name">{row.name || '-'}</td>
               <td><span class="type-badge">{row.type}</span></td>
               <td class="text-muted">{row.scope || '-'}</td>
               <td>
@@ -276,6 +277,14 @@
 </div>
 
 <style>
+  .field-name {
+    min-width: 160px;
+    max-width: 280px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.5;
+  }
+
   .fields-container {
     display: flex;
     flex-direction: column;

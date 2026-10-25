@@ -3,6 +3,10 @@ from __future__ import annotations
 from contextlib import contextmanager
 
 class UnitsFacade:
+    def set_unit_type_code(self, code, *, unit_identity, expected_code):
+        from war3_services.unit_type import set_type_code
+        return set_type_code(self,code,unit_identity,expected_code,Win10ReadLogger)
+
     def get_selected_hero_level(self) -> int:
         if uses_indexed_backend(self):
             result = self.hero_progress_24268()

@@ -456,6 +456,18 @@ class ItemAdapter(LayoutProvider):
 
 
 class UnitAdapter(LayoutProvider):
+    def type_code_addresses(self, address):
+        """The runtime type is one ID, as read by GetUnitTypeId."""
+        offset = self.layout['rawcode']
+        if type(offset) is not int or offset <= 0 or offset % 4:
+            raise RuntimeError('当前适配包的单位类型代码布局不完整')
+        return (address + offset,)
+
+    def skin_code_address(self, address):
+        # The existing profile key predates native semantic verification.
+        # BlzGetUnitSkin reads this separate value; it is not a type-ID mirror.
+        return address + self.layout['rawcode_mirror']
+
     @cached_property
     def layout(self):
         return self.profile.section("layouts")["unit"]

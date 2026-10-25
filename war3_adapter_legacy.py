@@ -835,8 +835,9 @@ class LegacyAdapterMethods:
         if not candidate.unit_address:
             return 0
         primary = pm.read_u32(candidate.unit_address + _al["unit"]["rawcode"])
-        mirror = pm.read_u32(candidate.unit_address + _al["unit"]["rawcode_mirror"])
-        if primary != mirror or not self._looks_like_item_rawcode(primary):
+        # A unit's skin ID can differ from its runtime type ID, including after
+        # a type edit or a skin selection. GetUnitTypeId reads only the latter.
+        if not self._looks_like_item_rawcode(primary):
             return 0
         return primary
 

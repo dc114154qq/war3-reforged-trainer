@@ -21,6 +21,7 @@ from war3_artifact_plan import (
     ArtifactPlanError,
 )
 from war3_id_catalog import CATALOG_COUNTS, search_id_entries
+from war3_field_labels import ability_field_search_text, item_field_search_text
 from war3_new_equipment_catalog import EQUIPMENT
 
 def search_equipment(query: str, entries=EQUIPMENT):
@@ -514,7 +515,9 @@ class DesktopBridgeApi:
         return {
             "summary": self.port.value("ability_field_summary").get(),
             "detail": self.port.value("ability_field_detail").get(),
-            "rows": tree.to_list_of_dicts(),
+            "rows": [dict(row, searchText=ability_field_search_text(field.spec) if
+                          (field := self.port.value('state')['ability_field_rows'].get(row['_iid'])) else '')
+                     for row in tree.to_list_of_dicts()],
         }
 
     def write_ability_field(self, row_iid: str, new_value: str) -> dict[str, Any]:
@@ -559,7 +562,7 @@ class DesktopBridgeApi:
         return {
             "summary": self.port.value("item_field_summary").get(),
             "detail": self.port.value("item_field_detail").get(),
-            "rows": [dict(row, editable=bool((field := self.port.value("state")["item_field_rows"].get(row["_iid"])) and field.value is not None and field.spec.writable)) for row in tree.to_list_of_dicts()],
+            "rows": [dict(row, editable=bool((field := self.port.value("state")["item_field_rows"].get(row["_iid"])) and field.value is not None and field.spec.writable), searchText=item_field_search_text(field.spec) if field else '') for row in tree.to_list_of_dicts()],
         }
 
     def write_item_field(self, row_iid: str, new_value: str) -> dict[str, Any]:

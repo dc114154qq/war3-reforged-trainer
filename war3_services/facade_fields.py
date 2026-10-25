@@ -542,6 +542,9 @@ class FieldsFacade:
         fields: list[UnitMemoryField] = []
         from war3_game_profile import current_profile
         adapter = current_profile().adapter
+        if candidate.unit_type_id:
+            from war3_services.unit_type import type_code_field
+            fields.append(type_code_field(candidate.unit_type_id))
         unit_layout = adapter.units.layout
         hero_layout = adapter.units.hero_layout
         ability_layout = current_profile().section("layouts")["ability"]
@@ -2462,6 +2465,18 @@ class FieldsFacade:
         specs = list(specs)
         if not specs:
             return []
+        # Type changes keep the object but invalidate its previously bound type.
+        # Route this through the guarded type-code service before generic/native
+        # field batching; never mix it with writes using the old field snapshot.
+        if any(spec.label in ('unit_type_code', '单位类型代码') for spec in specs):
+            if len(specs) != 1:
+                raise ValueError('单位类型代码请单独写入，其他字段请重新读取后再修改')
+            from war3_services.unit_type import type_code_field
+            rawcode = int(self._coerce_memory_value('rawcode',specs[0].value))
+            result = self.set_unit_type_code(format_rawcode(rawcode),
+                unit_identity=(candidate.handle,candidate.owner_address,candidate.unit_address),
+                expected_code=candidate.unit_type_id)
+            return [type_code_field(result['after'])]
         if pm is None and uses_indexed_backend(self):
             with self._process_memory(write=True) as memory:
                 return self._write_unit_fields_to_candidate(memory, candidate, specs)

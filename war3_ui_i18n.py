@@ -1879,6 +1879,14 @@ _EN_TRANSLATIONS.update({
     "批量属性目标与单位身份不一致": "The batch stat target differs from the unit identity",
 })
 
+_EN_TRANSLATIONS.update({
+    '单位类型代码': 'Unit type ID',
+    '区分大小写的 4 位单位代码，并非中文名称；填写当前地图中存在的代码。只改单个选中单位；不会立即更换模型，变身结束后的效果取决于技能和地图。':
+        'A case-sensitive four-character type ID, not a display name. Use an ID defined in the current map. Select one unit. Editing the ID does not immediately change its model; the result after morphing depends on the ability and map.',
+    '单位类型代码请单独写入，其他字段请重新读取后再修改':
+        'Write the unit type ID separately, then read the unit again before editing other fields.',
+})
+
 _EN_REPLACEMENTS = tuple(
     sorted(_EN_TRANSLATIONS.items(), key=lambda item: len(item[0]), reverse=True)
 )

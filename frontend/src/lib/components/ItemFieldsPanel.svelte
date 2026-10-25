@@ -105,6 +105,7 @@
       return (
         r.field.toLowerCase().includes(q) ||
         r.name.toLowerCase().includes(q) ||
+        (r.searchText || '').toLowerCase().includes(q) ||
         r.value.toLowerCase().includes(q)
       );
     })
@@ -237,7 +238,7 @@
           {#each filteredRows as row}
             <tr class={editingRowId === row._iid ? 'editing-row' : ''}>
               <td class="mono font-semibold text-bright">{row.field}</td>
-              <td class="text-gold">{row.name || '-'}{#if row.ability}<div class="field-source mono">{row.ability} / {row.effectClass} · {row.scope === 'level' ? `等级 ${level ?? 1}` : '通用'}</div>{/if}{#if row.note}<div class="field-source">{row.note}</div>{/if}</td>
+              <td class="text-gold field-name">{row.name || '-'}{#if row.ability}<div class="field-source mono">{row.ability} / {row.effectClass} · {row.scope === 'level' ? `等级 ${level ?? 1}` : '通用'}</div>{/if}{#if row.note}<div class="field-source">{row.note}</div>{/if}</td>
               <td><span class="type-badge">{row.type}</span></td>
               <td>
                 {#if editingRowId === row._iid}
@@ -292,6 +293,14 @@
 </div>
 
 <style>
+  .field-name {
+    min-width: 180px;
+    max-width: 280px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.5;
+  }
+
   .mode-controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; color: var(--text-normal); font-size: 12px; }
   .mode-controls label { display: flex; gap: 6px; align-items: center; }
   .input-field { background: var(--bg-surface); color: var(--text-bright); border: 1px solid var(--border-normal); border-radius: 4px; padding: 5px; }

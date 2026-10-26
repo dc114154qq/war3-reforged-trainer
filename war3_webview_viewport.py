@@ -458,6 +458,16 @@ class WebStateViewPort:
                 return paths[0] if paths else ''
 
             @staticmethod
+            def askopenfilenames(**kwargs):
+                if not port.window:
+                    return ()
+                import webview
+                paths = port.window.create_file_dialog(webview.FileDialog.OPEN,
+                    allow_multiple=True,
+                    file_types=kwargs.get('file_types', ('JSON (*.json)', 'All files (*.*)')))
+                return tuple(paths or ())
+
+            @staticmethod
             def askdirectory(**kwargs):
                 if not port.window:return ''
                 import webview

@@ -28,7 +28,7 @@
   function selectTab(tabId: string) { currentTab = tabId; if (!visitedTabs.includes(tabId)) visitedTabs = [...visitedTabs, tabId]; }
 
   let systemStatus = $state<SystemStatus>({
-    appVersion: '2.1.19',
+    appVersion: '2.1.20',
     edition: '正在读取版本信息',
     connected: false,
     pid: null,

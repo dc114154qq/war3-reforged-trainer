@@ -1,5 +1,21 @@
 // Presentation text for the desktop view. Game object names remain catalogue data.
 export const UI_EN: Record<string, string> = {
+  '选择文件（可多选）…':'Choose files…',
+  '支持 .w3n / .w3x / .w3m，每行一个完整路径':'Supports .w3n / .w3x / .w3m; one full path per line',
+  '可一次选择多个文件，也可以每行粘贴一个完整路径。已填入 ':'Select multiple files, or paste one full path per line. Files entered: ',
+  ' 个文件；相同路径会自动去重。':' files; duplicate paths are removed automatically.',
+  '文件进度：':'Files completed: ',
+  '；成功 ':'; successful: ', '，失败 ':', failed: ',
+  '当前第 ':'Current file: ', ' 个文件':' files',
+  '批量补齐定义（':'Add definitions in batch (', ' 个文件）':' files)',
+  '等待处理':'Queued', '处理成功':'Succeeded', '处理失败':'Failed',
+  '已停止':'Stopped', '尚未处理':'Not processed',
+  '部分文件处理失败':'Some files failed',
+  '逐个文件的处理结果':'Per-file results',
+  '复制全部输出路径':'Copy all output paths',
+  '批量处理结束：成功 ':'Batch finished: successful ',
+  ' 个，失败 ':'; failed ', ' 个，未完成 ':'; unfinished ',
+  ' 个。成功的副本已保留，请查看下方输出路径。':'. Completed copies are preserved. See their output paths below.',
   '金矿剩余金币':'Gold remaining in mines',
   '设置的是每座金矿剩余可采的金币。全图操作包含其他玩家和中立金矿；非金矿、已移除的矿点会跳过。':'Sets the remaining gold of each mine. Map-wide actions include other players and neutral mines; other units and removed mines are skipped.',
   '每座金矿的目标剩余金币':'Target gold remaining per mine',
@@ -146,6 +162,14 @@ export const UI_EN: Record<string, string> = {
 };
 
 export function translateDynamic(source: string): string | undefined {
+  let batch = /^批量补齐定义（(\d+) 个文件）$/.exec(source);
+  if (batch) return `Process ${batch[1]} files`;
+  batch = /^当前第 (\d+) 个文件$/.exec(source);
+  if (batch) return `Current file: ${batch[1]}`;
+  batch = /^文件进度：(\d+) \/ (\d+)；成功 (\d+)，失败 (\d+)$/.exec(source);
+  if (batch) return `Files completed: ${batch[1]} / ${batch[2]}; successful: ${batch[3]}, failed: ${batch[4]}`;
+  batch = /^批量处理结束：成功 (\d+) 个，失败 (\d+) 个，未完成 (\d+) 个。成功的副本已保留，请查看下方输出路径。$/.exec(source);
+  if (batch) return `Batch finished: successful ${batch[1]}, failed ${batch[2]}, unfinished ${batch[3]}. Completed copies are preserved. See their output paths below.`;
   const mineProgress = /^正在处理金矿… (\d+) s$/.exec(source);
   if (mineProgress) return `Processing mines… ${mineProgress[1]} s`;
   const mineCounts = /^(金矿数量|已修改|已符合目标|跳过或失败)：(\d+)$/.exec(source);

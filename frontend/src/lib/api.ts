@@ -121,9 +121,11 @@ export const api = {
   getElephantParameters: () => callApi<Record<string,string>>('get_elephant_parameters'),
   setElephantParameter: (key:string,value:string) => callApi<{success:boolean;changedParameters:Record<string,string>}>('set_elephant_parameter',key,value),
   startBackpackDefinitions: (path:string,folder='') => callApi<{success:boolean;jobId:string}>('start_backpack_definitions',path,folder),
+  startBackpackDefinitionsBatch: (paths:string[],folder='') => callApi<{success:boolean;jobId:string}>('start_backpack_definitions_batch',paths,folder),
   getBackpackDefinitionProgress: (id='') => callApi<DefinitionProgress>('get_backpack_definition_progress',id),
   cancelBackpackDefinitions: (id='') => callApi<{success:boolean}>('cancel_backpack_definitions',id),
   chooseDefinitionFile: () => callApi<{success:boolean;path:string;cancelled:boolean}>('choose_definition_file'),
+  chooseDefinitionFiles: () => callApi<{success:boolean;paths:string[];cancelled:boolean}>('choose_definition_files'),
   chooseDefinitionFolder: () => callApi<{success:boolean;path:string;cancelled:boolean}>('choose_definition_folder'),
   prewarmElephant: () => callApi<{ success: boolean; message?: string; error?: string }>('prewarm_elephant'),
   executeElephantAction: (actionName: string, params?: Record<string, any>) =>
@@ -159,5 +161,6 @@ export const api = {
 };
 
 export interface UiNotice { id?:number;title?:string;message:string;logPath?:string;kind?:string;unit?:SelectedUnitData;candidates?:CandidateUnit[];parameters?:Record<string,string>; }
-export interface DefinitionResult {success?:boolean;destination?:string;report?:{report_path:string;log_path:string};message?:string;error?:string;logPath?:string;}
-export interface DefinitionProgress {jobId:string;status:string;stage?:string;chapter?:string;index?:number;total?:number;completed?:number;currentFile?:string;elapsed:number;result?:DefinitionResult;error?:string;logPath?:string;}
+export interface DefinitionFileResult {source:string;status:string;destination:string;message:string;error:string;logPath:string;reportPath:string;}
+export interface DefinitionResult {success?:boolean;batch?:boolean;cancelled?:boolean;files?:DefinitionFileResult[];destination?:string;report?:{report_path:string;log_path:string};message?:string;error?:string;logPath?:string;}
+export interface DefinitionProgress {jobId:string;status:string;stage?:string;chapter?:string;index?:number;total?:number;completed?:number;currentFile?:string;elapsed:number;result?:DefinitionResult;error?:string;logPath?:string;batchMode?:boolean;outputFolder?:string;fileTotal?:number;fileIndex?:number;fileCompleted?:number;fileSucceeded?:number;fileFailed?:number;fileSkipped?:number;files?:DefinitionFileResult[];}

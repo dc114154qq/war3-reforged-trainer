@@ -770,6 +770,9 @@ class DesktopBridgeApi:
     def start_backpack_definitions(self,map_path: str,output_folder: str=''):
         return self._definition_jobs.start(map_path,output_folder)
 
+    def start_backpack_definitions_batch(self,map_paths: list[str],output_folder: str=''):
+        return self._definition_jobs.start_batch(map_paths,output_folder)
+
     def get_backpack_definition_progress(self,job_id: str=''):
         return self._definition_jobs.snapshot(job_id)
 
@@ -787,6 +790,13 @@ class DesktopBridgeApi:
         if not self.port.window:raise ValueError('请在修改器桌面窗口内选择文件夹。')
         path=self.port.value('filedialog').askdirectory()
         return dict(success=True,path=path,cancelled=not bool(path))
+
+    def choose_definition_files(self):
+        if not self.port.window:raise ValueError('请在修改器桌面窗口内选择文件。')
+        paths=self.port.value('filedialog').askopenfilenames(file_types=(
+            'Warcraft campaigns and maps (*.w3n;*.w3x;*.w3m)',
+            'Warcraft campaigns (*.w3n)','Warcraft maps (*.w3x;*.w3m)'))
+        return dict(success=True,paths=list(paths),cancelled=not bool(paths))
 
     # =========================================================================
     # 8. Elephant Features & Direct Actions
@@ -1282,6 +1292,7 @@ def _serialized_api(method):
                     'get_resource_snapshot', 'get_selected_unit_snapshot', 'get_unit_candidates_snapshot', 'get_locks', 'set_ui_language',
                     'search_id_catalog', 'search_3_equipment', 'search_3_hero_skills',
                     'prepare_backpack_definitions', 'start_backpack_definitions', 'choose_definition_file',
+                    'start_backpack_definitions_batch', 'choose_definition_files',
                     'choose_definition_folder', 'save_artifact_plan', 'restore_default_artifact_plan',
                     'get_elephant_parameters', 'set_elephant_parameter', 'close'}:
                     raise RuntimeError('离线界面验收：未连接游戏')

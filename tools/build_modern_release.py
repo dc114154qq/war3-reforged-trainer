@@ -15,10 +15,10 @@ from PyInstaller.archive.readers import CArchiveReader
 import pefile
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / 'dist-2.1.20-modern-verified'
-CASE = ROOT / 'build/release-2.1.20-20261026/exe-build'
-SPEC = 'War3ReforgedTrainer-Web-2.1.20.spec'
-EXE = 'War3ReforgedTrainer-v2.1.20-Web.exe'
+OUT = ROOT / 'dist-2.1.21-modern-verified'
+CASE = ROOT / 'build/release-2.1.21-20261027/exe-build'
+SPEC = 'War3ReforgedTrainer-Web-2.1.21.spec'
+EXE = 'War3ReforgedTrainer-v2.1.21-Web.exe'
 BRIDGE_IMAGE = None
 
 
@@ -27,7 +27,7 @@ def digest(raw):
 
 
 def inputs():
-    loader = importlib.util.spec_from_file_location('modern_legacy_inputs', ROOT / 'tools/build_release_2120.py')
+    loader = importlib.util.spec_from_file_location('modern_legacy_inputs', ROOT / 'tools/build_release_2121.py')
     module = importlib.util.module_from_spec(loader)
     loader.loader.exec_module(module)
     paths = set(module.source_paths())
@@ -45,7 +45,7 @@ def inputs():
 def inspect(exe, source_root, source_hashes, baseline):
     pe = pefile.PE(str(exe), fast_load=False)
     fixed = pe.VS_FIXEDFILEINFO[0]
-    assert (fixed.FileVersionMS, fixed.FileVersionLS) == ((2 << 16) | 1, 20 << 16)
+    assert (fixed.FileVersionMS, fixed.FileVersionLS) == ((2 << 16) | 1, 21 << 16)
     archive = CArchiveReader(str(exe))
     pyz = archive.open_embedded_archive('PYZ-00.pyz')
     modules = {}
@@ -125,7 +125,7 @@ def build():
         for name in archive.toc:
             if '\\' not in name and (name.lower().startswith('api-ms-win-') or name.lower() == 'ucrtbase.dll'):
                 (runtime / name).write_bytes(archive.extract(name))
-        environment = dict(os.environ, RELEASE_2120_RUNTIME_DIR=str(runtime),
+        environment = dict(os.environ, RELEASE_2121_RUNTIME_DIR=str(runtime),
             RELEASE_210_BRIDGE_DLL=str(native / 'war3_bridge_24268.dll'),
             RELEASE_210_ICON_DLL=str(native / 'war3_talent_icon_display.dll'),
             RELEASE_210_SPEED_DLL=str(native / 'war3_speed_clock.dll'))
@@ -145,7 +145,7 @@ def build():
             assert digest(destination.read_bytes()) == sha
         else:
             shutil.copy2(exe, destination)
-        manifest = dict(ok=True, version='2.1.20', kind='reviewed_modern_frontend',
+        manifest = dict(ok=True, version='2.1.21', kind='reviewed_modern_frontend',
             status='built_not_published', artifact=artifact.as_posix(), exe_sha256=sha,
             exe_bytes=exe.stat().st_size, source_sha256=source_hashes,
             head=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),

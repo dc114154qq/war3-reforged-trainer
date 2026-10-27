@@ -59,6 +59,9 @@ class DesktopBridgeApi:
         from war3_definition_jobs import DefinitionJobs
         self._definition_jobs=DefinitionJobs(self.services.prepare_extension_definitions,self.app.start_operation_thread,
             lambda exc:self._failure(exc,'prepare_backpack_definitions'))
+        from war3_map_catalog_jobs import MapCatalogJobs
+        self._map_catalog_jobs=MapCatalogJobs(self.app.start_operation_thread,
+            lambda exc:self._failure(exc,'map_object_catalog'))
         self._original_set_status=self.app.set_status
         self.app.set_status=self._set_status
         self._original_finish_connect=self.app.finish_initial_connect
@@ -109,6 +112,7 @@ class DesktopBridgeApi:
 
     def close(self):
         self._definition_jobs.cancel()
+        self._map_catalog_jobs.cancel()
         with self.port.dispatch_lock:
             self.app.close_gui()
 
@@ -131,7 +135,9 @@ class DesktopBridgeApi:
             try:exc.diagnostic_log_path=path
             except Exception:pass
         message=format_error(exc,self.port.value('ui_language')['code'])
-        notice=self.port.publish_error(message,log_path=getattr(exc,'diagnostic_log_path',''))
+        details=getattr(exc,'user_details',None) if operation=='map_object_catalog' else None
+        notice=self.port.publish_error(message,title=getattr(exc,'user_title','操作未完成') if details else '操作未完成',
+            log_path=getattr(exc,'diagnostic_log_path',''),details=details)
         payload=dict(success=False,error=message,logPath=notice['logPath'],notificationId=notice['id'])
         try:exc._desktop_failure=payload
         except Exception:pass
@@ -1126,6 +1132,30 @@ class DesktopBridgeApi:
     # 11-14. Search Catalogs
     # =========================================================================
 
+    def start_map_catalog(self, path: str):
+        return self._map_catalog_jobs.start(path)
+
+    def get_map_catalog_progress(self, job_id: str = ''):
+        return self._map_catalog_jobs.snapshot(job_id)
+
+    def cancel_map_catalog(self, job_id: str = ''):
+        return self._map_catalog_jobs.cancel(job_id)
+
+    def search_map_catalog(self, job_id: str, kind: str = '', query: str = '', scope: str = '', change_type: str = '', offset: int = 0):
+        return self._map_catalog_jobs.search(job_id,kind,query,scope,change_type,offset)
+
+    def get_map_catalog_entry(self, job_id: str, row_id: str):
+        return self._map_catalog_jobs.detail(job_id,row_id)
+
+    def export_map_catalog(self, job_id: str, format: str = 'csv', kind: str = '', query: str = '', scope: str = '', change_type: str = ''):
+        if format not in ('csv','json'):raise ValueError('请选择 CSV 或 JSON 导出格式。')
+        self._map_catalog_jobs.snapshot(job_id)
+        path=self.port.value('filedialog').asksaveasfilename(initialfile='地图自定义数据目录.'+format,
+            file_types=('CSV (*.csv)',) if format=='csv' else ('JSON (*.json)',))
+        if not path:return dict(success=False,cancelled=True)
+        if not Path(path).suffix:path+='.'+format
+        return self._map_catalog_jobs.export(job_id,path,kind,query,scope,change_type)
+
     def search_id_catalog(self, kind: str, query: str = "") -> dict[str, Any]:
         if kind not in ("item", "ability", "unit"):
             return {"success": False, "error": f"Invalid catalog kind: {kind}"}
@@ -1293,6 +1323,7 @@ def _serialized_api(method):
                     'search_id_catalog', 'search_3_equipment', 'search_3_hero_skills',
                     'prepare_backpack_definitions', 'start_backpack_definitions', 'choose_definition_file',
                     'start_backpack_definitions_batch', 'choose_definition_files',
+                    'start_map_catalog','export_map_catalog',
                     'choose_definition_folder', 'save_artifact_plan', 'restore_default_artifact_plan',
                     'get_elephant_parameters', 'set_elephant_parameter', 'close'}:
                     raise RuntimeError('离线界面验收：未连接游戏')
@@ -1327,7 +1358,8 @@ def _serialized_api(method):
 
 for _name, _method in tuple(vars(DesktopBridgeApi).items()):
     if not _name.startswith('_') and callable(_method) and _name not in {
-        'cancel_discovery','get_ui_notifications','get_backpack_definition_progress','cancel_backpack_definitions'} and not isinstance(_method, staticmethod):
+        'cancel_discovery','get_ui_notifications','get_backpack_definition_progress','cancel_backpack_definitions',
+        'get_map_catalog_progress','cancel_map_catalog','search_map_catalog','get_map_catalog_entry'} and not isinstance(_method, staticmethod):
         setattr(DesktopBridgeApi, _name, _serialized_api(_method))
 
 

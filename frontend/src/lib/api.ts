@@ -1,3 +1,8 @@
+export interface MapCatalogChange {field:string;label:string;labelEn?:string;level:number;index:number;value:unknown;rawValue:unknown;baseValue:unknown;baseKnown:boolean;file:string;storage:string;}
+export interface MapCatalogRow {heroNames?:string[];isHero?:boolean;id:string;kind:string;rawcode:string;base:string;name:string;description:string;scope:string;changeType:string;changeCount:number;files:string[];changes?:MapCatalogChange[];}
+export interface CatalogDiagnostic {scope:string;file:string;message:string;impact?:string;severity?:string;stringId?:string;byteOffset?:number;usedBy?:string[];}
+export interface MapCatalogProgress {diagnostics?:CatalogDiagnostic[];jobId:string;status:string;elapsed:number;stage?:string;source?:string;scope?:string;file?:string;index?:number;total?:number;rowCount?:number;counts?:Record<string,number>;scopes?:string[];warnings?:{scope:string;file:string;message:string}[];error?:string;notice?:string;}
+
 import type {
   SystemStatus,
   ResourceSnapshot,
@@ -55,6 +60,12 @@ async function callApi<T>(method: string, ...args: any[]): Promise<T> {
 }
 
 export const api = {
+  startMapCatalog: (path:string) => callApi<{success:boolean;jobId:string}>('start_map_catalog',path),
+  getMapCatalogProgress: (id='') => callApi<MapCatalogProgress>('get_map_catalog_progress',id),
+  cancelMapCatalog: (id='') => callApi<{success:boolean}>('cancel_map_catalog',id),
+  searchMapCatalog: (id:string,kind='',query='',scope='',changeType='',offset=0) => callApi<{success:boolean;rows:MapCatalogRow[];matchCount:number;totalCount:number}>('search_map_catalog',id,kind,query,scope,changeType,offset),
+  getMapCatalogEntry: (id:string,row:string) => callApi<MapCatalogRow>('get_map_catalog_entry',id,row),
+  exportMapCatalog: (id:string,format='csv',kind='',query='',scope='',changeType='') => callApi<{success:boolean;cancelled?:boolean;path?:string;count?:number}>('export_map_catalog',id,format,kind,query,scope,changeType),
   goldMines: (scope: 'selected' | 'world', amount?: string) =>
     callApi<{success: boolean; data?: GoldMineData; error?: string; reports?: GoldMineData['rows']}>('gold_mines', scope, amount ?? null),
   // 1. System
@@ -160,7 +171,7 @@ export const api = {
   parseRpgCodesText: (text: string, prefix?: string) => callApi<{ success: boolean; rows?: RpgCodeRow[]; error?: string }>('parse_rpg_codes_text', text, prefix ?? '-load'),
 };
 
-export interface UiNotice { id?:number;title?:string;message:string;logPath?:string;kind?:string;unit?:SelectedUnitData;candidates?:CandidateUnit[];parameters?:Record<string,string>; }
+export interface UiNotice { details?:CatalogDiagnostic[];context?:string;id?:number;title?:string;message:string;logPath?:string;kind?:string;unit?:SelectedUnitData;candidates?:CandidateUnit[];parameters?:Record<string,string>; }
 export interface DefinitionFileResult {source:string;status:string;destination:string;message:string;error:string;logPath:string;reportPath:string;}
 export interface DefinitionResult {success?:boolean;batch?:boolean;cancelled?:boolean;files?:DefinitionFileResult[];destination?:string;report?:{report_path:string;log_path:string};message?:string;error?:string;logPath?:string;}
 export interface DefinitionProgress {jobId:string;status:string;stage?:string;chapter?:string;index?:number;total?:number;completed?:number;currentFile?:string;elapsed:number;result?:DefinitionResult;error?:string;logPath?:string;batchMode?:boolean;outputFolder?:string;fileTotal?:number;fileIndex?:number;fileCompleted?:number;fileSucceeded?:number;fileFailed?:number;fileSkipped?:number;files?:DefinitionFileResult[];}

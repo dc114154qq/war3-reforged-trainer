@@ -445,7 +445,7 @@ class WebStateViewPort:
                     return ''
                 import webview
                 paths = port.window.create_file_dialog(webview.FileDialog.SAVE,
-                    save_filename=kwargs.get('initialfile', ''), file_types=('JSON (*.json)', 'All files (*.*)'))
+                    save_filename=kwargs.get('initialfile', ''), file_types=kwargs.get('file_types',('JSON (*.json)', 'All files (*.*)')))
                 return paths[0] if paths else ''
 
             @staticmethod
@@ -482,10 +482,11 @@ class WebStateViewPort:
             raise KeyError(f"Undeclared port requested: {name}")
         return self._values[name]
 
-    def publish_error(self,message,title='操作未完成',log_path=''):
+    def publish_error(self,message,title='操作未完成',log_path='',details=None):
         with self._notice_lock:
             self._notice_sequence+=1
             notice=dict(id=self._notice_sequence,title=title,message=message,logPath=str(log_path))
+            if details:notice.update(details=details,context='map_catalog')
             self._notices.append(notice)
         return notice
 

@@ -49,6 +49,7 @@
       group: '资料检索',
       items: [
         { id: 'catalogs', label: 'ID 检索目录', icon: Search },
+        { id: 'map_catalog', label: '地图自定义数据目录', icon: BookOpen },
         { id: 'equipment3', label: '3.0 新增装备', icon: Swords },
         { id: 'hero_skills', label: '3.0 英雄技能', icon: BookOpen },
       ],

@@ -5,7 +5,7 @@ ROOT=Path(__file__).resolve().parents[1]
 parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--from-file',type=Path);parser.add_argument('--webview-from-file',type=Path);args=parser.parse_args()
 def sha(b):return hashlib.sha256(b).hexdigest().lower()
 def fetch(url,limit):
-    with urllib.request.urlopen(urllib.request.Request(url,headers={'User-Agent':'War3Trainer-build/2.1.20'}),timeout=120) as r:
+    with urllib.request.urlopen(urllib.request.Request(url,headers={'User-Agent':'War3Trainer-build/2.1.21'}),timeout=120) as r:
         data=r.read(limit+1)
     if len(data)>limit:raise ValueError('Dependency download exceeds its limit')
     return data

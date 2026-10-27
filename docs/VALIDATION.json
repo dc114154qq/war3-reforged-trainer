@@ -1,6 +1,6 @@
 {
-  "version": "2.1.20",
-  "exe_sha256": "213F512FD188C47AD62C4C16A40D956F75B86F20AB669D9338D93360FCD57F1C",
+  "version": "2.1.21",
+  "exe_sha256": "BD7983C77EEC4199E58AEA8D42B3C046D6E76892ADEC71BF3FBB7164F453043E",
   "production_source_sha256": {
     "ADAPTER_NOTES_3.0.1.24360.md": "B97D2B6AE47BD15F5539FC2B86B9ECE0F53D21EEDA5CE9D365A53A84B3CFE9EE",
     "ADAPTER_NOTES_3.0.1.24365.md": "785E41F08760EC4765A93C581249B3A02B36A7F6AC742C72FE1686C63FEF5243",
@@ -14,22 +14,22 @@
     "docs/EXTENSION_DEFINITIONS.md": "BA09755219B6D4DDD2D349C9230AA9EB0FB84704DDFB230581E992968065BAB6",
     "docs/MOUSE_PROJECTION.md": "F7D6DD0A072E94F673AE16B152A6AA65AE1FF100854BA1BDEBA924622F3DB075",
     "docs/MPQ_MEMBER_RECOVERY.md": "D4476A68E5277E91D170429335E83EA8403461BDBA1CDC96EC062A07DD291698",
-    "frontend/dist/assets/index-DNMyXMVf.js": "94E454953671969B99E979DF044C8678C66605D776783D56A763EBC1220D425E",
-    "frontend/dist/assets/index-qhuvohcn.css": "8EF81FF276AFAE971ED510625A708D8F13C1AF29D6E36BD9498602BFEBCA9260",
+    "frontend/dist/assets/index-DJcHf4Cn.css": "3ABCC626242427C241395E5AF76F22843F878CC0CA367478B7CD07B4C8CA9824",
+    "frontend/dist/assets/index-OJ9UTcXP.js": "59DAF9B43E23161B1070A90C937F69FC12747BABD6B5ABD0FC786A41853AD07B",
     "frontend/dist/favicon.svg": "61BC9A161DE58248288E6905425D7180F0624C2865007B97D763FDAC12043A66",
     "frontend/dist/icons.svg": "B45FA506195CFCDEF406BA9F0C77B36DDC1A7C224040926EC70ABC2FDEA7B93A",
-    "frontend/dist/index.html": "05B6CC82474D3E1BA824A0BF6F8364473D6C8AA615245617D16C00FD12BB0CB0",
+    "frontend/dist/index.html": "B38715F0FCE88285BE3100670ECDDEC303017C146E9DB815507BFFEA1E4A2653",
     "frontend/index.html": "44FD4343796CDF861D23B09CDE3A6A15E9E2792B96003E7F035C32B20A8F07C6",
     "frontend/package-lock.json": "D5FBC411200B1C40CBBC3A7A8400D0453F882FE31BBEF1EE955C2470DD09EC03",
     "frontend/package.json": "6C42372FE3D3C8F51F3E4F2526F6153E8E5370DFD03C73EF6FF236DF5C8E449F",
     "frontend/public/favicon.svg": "61BC9A161DE58248288E6905425D7180F0624C2865007B97D763FDAC12043A66",
     "frontend/public/icons.svg": "B45FA506195CFCDEF406BA9F0C77B36DDC1A7C224040926EC70ABC2FDEA7B93A",
     "frontend/src/app.css": "6F7EF0C1ACB2F76E6D61BA220045A9E2987F2C50D907938050F33200A56405E8",
-    "frontend/src/App.svelte": "115A4F06DEBDA699002393D7D12284321144049CF5AD64E9C495093D378F8492",
+    "frontend/src/App.svelte": "DC6B20C4F8AD58B7E2819AAD63229932C4354833C8DC3AFFDA226EEE3B88F343",
     "frontend/src/assets/hero.png": "881FFBCAAFC212E49ADDAD08846A5B82761355FA20624253AF3477BA33262C5C",
     "frontend/src/assets/svelte.svg": "A39F39B75032527099AA1EDE54FF2A507065E32E7329A1460A35A3A4D6EA88FE",
     "frontend/src/assets/vite.svg": "5BE21ACD42EB7B896E517F4E0F0F11EB5C5D9E54FBBCEBE9453F033008FCCA6F",
-    "frontend/src/lib/api.ts": "6B8BD1F519A2E850C0BA4ABD43BA31321C58CF950F37ED790C6F84151DE25C13",
+    "frontend/src/lib/api.ts": "02575827D62FCF923965AA76A384D0A5866AD92B3907D63427D8F1BE0E4E4CF7",
     "frontend/src/lib/components/AbilityFieldsPanel.svelte": "4FFC08B10C8C23E6810EEC4D7B7C211C05CEEF2E703BF7CF65DCBAACFB3D1CEE",
     "frontend/src/lib/components/ArchiveExtractionPanel.svelte": "40A4314E1E517A6C97E16B09B18EE364AA31D0ABBE37085A4E1F294AB6C30C1B",
     "frontend/src/lib/components/BatchEditPanel.svelte": "EA28472D791338F20B8461E9368A9DCEE8E3B448AFF5A1F13A309B5F96FE036D",
@@ -38,18 +38,20 @@
     "frontend/src/lib/components/ElephantHotkeysPanel.svelte": "D3BBA626D9CAE903CF4BBDED098313B816887C14A6C6F6F4C54CF6B46E23BBEE",
     "frontend/src/lib/components/ElephantPanel.svelte": "3106C118475ECCA13597DACA585B3431A63DA9664FE7A4413AB4D69BA66008D8",
     "frontend/src/lib/components/Equipment3CatalogPanel.svelte": "4C6B1A5189797F270BBB3C417C0B994215419C44BD4D54850C87E654985EB3DF",
-    "frontend/src/lib/components/ErrorDialog.svelte": "FB14FE0D9D868ED9C1D0B3E596FB6715BB14FC72252FAC42CA406B1DD213A15A",
+    "frontend/src/lib/components/ErrorDialog.svelte": "D03D1DBAAFC17E7D303E8AB17D4D45619B154ABFAA4FF6259DBB1AF0F86751D7",
     "frontend/src/lib/components/ExtensionsPanel.svelte": "1F656BC1ADB2E643B3E85FF43A6A4F4D486E2C3C33B0B0F074E5BE826EC4919A",
     "frontend/src/lib/components/Header.svelte": "BE7BF322811708BD1B3A50A6AEA3952871A763CC14FA89B4F4D7EB6746FA165E",
     "frontend/src/lib/components/HeroSkillsCatalogPanel.svelte": "A0AF480A302B3B5998B0377EB1C414CD590FB8A73779EDB56F12BA3CC9A90A27",
     "frontend/src/lib/components/ItemFieldsPanel.svelte": "5D761CFF7845020271EEBDCE9A3BA791C5D6A4E56330F17BFF5E9DF835873199",
     "frontend/src/lib/components/LocksPanel.svelte": "42CA4987767D6634D891A38E311E1CC14F0E5CDE49A97856E9DE95443939BF0B",
+    "frontend/src/lib/components/MapCatalogEntryDialog.svelte": "978CA7BA5A38CA519FD670397F1B73B40A537EEE7F4B600E98EA35F52D0B2B94",
+    "frontend/src/lib/components/MapCatalogPanel.svelte": "B24985439F5177FE648898CD436C1D9FB95884C191D256525BCCF7D80B7ACD2A",
     "frontend/src/lib/components/ResourcesPanel.svelte": "B95CFFC21951FB64CE9A37327BB8009BE1F10D9551240E19114141F1AA7CF52B",
-    "frontend/src/lib/components/Sidebar.svelte": "919ACEDE887104B8BA66E6E9767DE16F963F3E8D3BB90515B1F23E121DEAEE43",
+    "frontend/src/lib/components/Sidebar.svelte": "21CE6863FE50D1E692615E55499E681E621C8EA49BEFF5B24DAD178B7121CC28",
     "frontend/src/lib/components/UnitPanel.svelte": "E49098FA5D6ACC80ACA95165C0B35E72455598B1A33A6CCBDDC5F06A30843D1C",
     "frontend/src/lib/Counter.svelte": "92ADD5416E628029CC5EB7E3C5DC473D0C4BB48A8E11D242AA570543DBC910FB",
     "frontend/src/lib/types.ts": "63DC11280723B6825141340F8835F12423C7F5647A9868A54EE7444D1DCBE2DD",
-    "frontend/src/lib/ui_text.ts": "4706B490C802A9B78EBE3B808ACF92868E68E0258C75BD14F6DEE3C37EEA74E1",
+    "frontend/src/lib/ui_text.ts": "7A07DE5CE113EAE7C0887B9FF9658ABEE1E9233164116656D161BC066324F298",
     "frontend/src/main.ts": "8A1AE10A20356240343D2055B72362A269E3130FA1C308916F6EB1A93DE6503E",
     "frontend/tsconfig.app.json": "A01CF7EE6CA3D384F3248AE2198E5ECB87D6A62C4164F288C395DA36B7ACB588",
     "frontend/tsconfig.json": "770B4140BBB581E2DFD9EA9946FFC9C75A1D86BA7D2DB5F77C83E37CBDF9D808",
@@ -77,19 +79,20 @@
     "third_party/minhook/src/trampoline.h": "53ED9934492320617A27BFD952FFE7F5B7A4A1D09963D4512447082FE7B727B4",
     "third_party/stormlib/StormLib-LICENSE.txt": "50B128E6750ED9D887E7A5748A6021238BB2F3BF34A5DD2768C410D932069E35",
     "tools/build_engine_bridge.ps1": "5B7AA22AC9D3EA23969B7EB95175C0A1D2126B84BE1D5CBA676F80A3F65EDBF6",
-    "tools/build_modern_release.py": "EBD314F8FC3210314E32F7F46A6C4E449C3762C8CCD8B08893D03F1D1B71088A",
-    "tools/build_release_2120.py": "9911822514DE1D75A0DFAA8AB8CB8C115703EC20142B62439266032836E041FD",
+    "tools/build_modern_release.py": "9898AAD2595CFC83AD669AA8CF73EF40BDEA17A2950C40C93AD8B78ACD6017D9",
+    "tools/build_release_2121.py": "F7FDF48B786648AE01C925BFF7E8310CA70DAA67D7EF706ABCCE10E0BBA3337A",
     "tools/build_speed_clock.ps1": "11812D83606B9C42FAEFDA10645DA277620B81D347233A3D44DC8733695BA491",
     "tools/build_talent_icon_display.ps1": "8926A26D4CE76272CDFAB366B99D592DBE9C081ACEC4219AA4CB9BA400C906CA",
     "tools/generate_bridge_profile.py": "53BF6762E9843D26902F332FDB24ECAFFBD8C46C10137010B4DD7C04752F2F18",
     "tools/generate_discovery_references.py": "A0DB729C7BECACE1313318C0DB2FACC0C6CF609F5EA7063574F7E6E74C9EE4C0",
     "tools/generate_extension_definitions.py": "427C68A8BCD00E25DE7692722A79930A64FECF322D083B9591F39BEBE2799785",
+    "tools/generate_map_catalog_reference.py": "5010A9D5DDD719D5E6F74D77753AB2881962FB450F9E5C5113071C038BFB3E98",
     "tools/generate_war3_id_descriptions.py": "46770E64E49D29DAF2EF9D97CCBBCB6BB8252ED8B15C69613810F194AD4B2E77",
     "tools/prepare_mpq_dependency.py": "AE5DFC4462E9720EE4CF360C33FFC7541552CBB9A0AEC0A6E18ACA1960AB4587",
     "tools/verify_engine_bridge.py": "8E0FF7C41F771668AEE3B03160A404A3A8E956683A14D8A7394C555A7DE2B086",
     "tools/verify_speed_clock.py": "462CEB73E186D384F844F11AF0FFEE2E75864984AFF929505E7BE0C8367839C2",
     "tools/verify_talent_icon_display.py": "0B29F5BC5252402ED9029B02C5952BF0C1D9EA80415871C42E0934375A665E5F",
-    "tools/war3-2.1.20-version-info.txt": "AC63EFB3D4EA0FA557D925265866B8206B4F76264FE5A04F04486786C35C9ACD",
+    "tools/war3-2.1.21-version-info.txt": "F2EFE6D9D8B1157F0B98E5AE016E1E65E434D5F56E55C92EDF9DB3FAD038ABDE",
     "tools/war3_bridge_24268.c": "C72BF48DB37BF47E41FBE9053D326870637BD94A4EB43F2C708DA0368962CBB1",
     "tools/war3_bridge_ability.h": "AF2022C7B1DC3E31B7B4B8D176A06C93A2A17D5120B318398358C97821BF1D5D",
     "tools/war3_bridge_ability_field.h": "AAB7E02A8EE343FA8BEA76257DEF6AA10762DB08919BCACFC441124B4BB07A6B",
@@ -166,7 +169,7 @@
     "war3_clone_state_protocol.py": "BC80305088E4B670BEF6493D0FCA1CFDC763EFA810B413D553730193DFC55883",
     "war3_contracts.py": "917424AB48DFB4663F5E7112F4BD6DEFC485E107911E0782756183C6832E21BD",
     "war3_definition_jobs.py": "0ACF8D2D4F5C2EBBFD661BB1F60F6944D11D63732BC57B3F367685A65C2EFDE2",
-    "war3_desktop_bridge.py": "19FCCF806732BA59FEA612072C9148E211752A17FDF3A34C6924E005FE28E6C3",
+    "war3_desktop_bridge.py": "B5F2A3FCF3FD37744A26D2606167508AF6420CDB1D90C8192A55CFB9AD1092A6",
     "war3_desktop_runtime.py": "8B7BBD690B0A79B148BC62C5DCFD21CC69C62FFF2BEBA981969F0EF12EF9303B",
     "war3_direct_cast_protocol.py": "BA5FBA0A1D7AB511BD74904334EE565BC732F1B86701799776FD4F1153F88EDE",
     "war3_discovery_abi.py": "6FB333A528D9701E00CD63AC26B9CA75C443E9B105CED49BC37CBE9D6012ADEB",
@@ -223,7 +226,10 @@
     "war3_loadout_restore.py": "CFE9972586CF88BFEC98C66995B9DACB5AAF653EA38F35614F357F1346D356B7",
     "war3_loadout_storage.py": "2DD38350941A2B6D059B348E345ECA959BC2F4EECFC6BC499C447F516607B700",
     "war3_map_bounds_protocol.py": "CF3EE6FE82CF2CAC8EE3FAAD23A5C0FC454B26CF4D55D76C94EB32E2C1C85693",
-    "war3_metadata.py": "DC316DDD6A394C5A987A15ADE618D036BE1F2A0E9AE91A8850E6EB6A7F7E7D2C",
+    "war3_map_catalog_jobs.py": "2371F07AD6C2010D26D8FD2761903C64815205DFAAF229AC79FAE61BFC5A47ED",
+    "war3_map_catalog_reference.py": "DDB5B5FD4324754D3E9B7D409F1B30DC3920F0CCFB63C1B7BB2CEC8B48D12988",
+    "war3_map_objects.py": "F40D98B721DAABC5B086B2E1889CCA8D2B2BCBE24B32B6073D4C9F91408C3EBF",
+    "war3_metadata.py": "0FBA25E2C92F248A2D7DC69CE10BF63A634789C5BD9275C9FE261763BA52EA07",
     "war3_mouse_protocol.py": "46555086E6FD3AAEADEE05261351D80D93A4881C4150EDAFC00F533F488E2E24",
     "war3_mpq.py": "C83C3DAA6552559CAC423C393E488ADEC4970870D37ABD284D53F9885E4E6C41",
     "war3_mpq_names.py": "ADEAF732C55C11929DC8E5E59D69F4A699E89F80E529FAF3A7E27A1357AB1AC9",
@@ -277,6 +283,7 @@
     "war3_services/item_effect_fields.py": "69A577A82F40379FE206F4BF3F53E7156966720E5BE7AF0D5B7EE44B05E38267",
     "war3_services/items.py": "FDE23E3D2D6A8A50B4DC8694FC1B3F45DD4326DF0B39F547243549DE346C9962",
     "war3_services/loadout_runtime.py": "779AF613720FB3EFD9BB52FADB69629565EC6D65B33BD3583EDFCC18D8A01D78",
+    "war3_services/map_catalog.py": "4A8025F91599B1B7ECC6E92D30DA2D80B5962C63E9B11E7B3AF2B05537F1241E",
     "war3_services/mouse_terrain.py": "12DBEE2276C356CCE9297D9684B68F2A57134B5AEE5CCF2B76F4466C056F4296",
     "war3_services/operation_trace.py": "1781CB1ECA54A8D57718B33BE93641940F68C824452183F3779E04DD87083251",
     "war3_services/save_extraction.py": "0E2F5F74677D6DE8E6922813D2CB27C0FF78F743D477859D426EE3FDB6A69A10",
@@ -305,45 +312,191 @@
     "war3_unit_stats_protocol.py": "DB33B3201024297044121FCD5D2B5681DE78F2641D6A1673B813561C4164EF2A",
     "war3_version_modules.py": "A32AD556A8326E10964FC86B28486B2939FB4C9064AF6318B8CD1541809D7187",
     "war3_view_contract.py": "80F463B96B282CB24F7B4A43535272F432C40C1F7D94A2DF8338265891C55F9E",
-    "war3_web_gui.py": "3F7D101C9B435F8D5356642A1CAABFAD5F3969016D6B47FB9D9AB7E0CD33EDD3",
-    "war3_webview_viewport.py": "EAB1AFE513C1696E0C178F4390B81F2CD517E72EA03FB6C810C1E3FA4E17AD0A",
+    "war3_web_gui.py": "A6AB41333A5612AAAB89316FBCE4B371C104CA042A9093652E484E35345F013A",
+    "war3_webview_viewport.py": "E6658DFBB4FCBF126403ED657598E0F8CF872489DA7A7F8EF8610442AAAA2A34",
     "war3_world_cast_protocol.py": "840646A619F95B810D75AD127D538FFFAB446C8F9B09CC9805C2954186A30A55",
     "war3_world_effect_protocol.py": "390D96810633D6E4DAC350AC14FF49D576DDCA60E5C6816B179A65FBFD7168CA",
     "war3_world_protocol.py": "5DD8CD892BE17EBA23A578864253FB1868DCE5BDF1E874964D45BD24FC00C7BF",
-    "War3ReforgedTrainer-Web-2.1.20.spec": "8BA7A940C4EC990B70B248BCE98DA6FC40D783D28928A7BB9D8A7FA8F993644C"
+    "War3ReforgedTrainer-Web-2.1.21.spec": "D574A13197B199A86C80E34375B9187D23B186A23A37CA113A06587BACCF02D1"
   },
-  "production_inputs": 309,
-  "packaged_modules": 173,
+  "production_inputs": 316,
+  "packaged_modules": 177,
   "native_dlls_sha256": {
     "tools\\war3_bridge_24268.dll": "E959610CEEB15880DDE185C68EEFDAFD378A2C8D8513A6FD69912870B779ADF4",
     "tools\\war3_mpq.dll": "6CD644F3C091C2FFF6430CBF612DBBF6657D8508941FBA2E925CAADFA7A04DA6",
     "tools\\war3_speed_clock.dll": "91FB4F87344EBA12EB21759EF426437601EFB93C256F6F82ADB22B92BCC2685E",
     "tools\\war3_talent_icon_display.dll": "54C0EDD2D639EB4AFD203D5A4222F13814A3ABD27BD694AACBA52545586DE386"
   },
-  "source_parent": "e4090ce5a008b7734e0447bf8316ad7fec0ad5fc",
-  "related_tests_passed": 60,
-  "batch_definitions": {
-    "multi_file_picker_routing_verified": true,
-    "duplicate_paths_deduplicated": true,
-    "same_filenames_in_different_directories_preserved": true,
-    "individual_failure_continues": true,
-    "real_archive_pipeline_verified": true,
-    "two_chapter_campaign_verified": true,
+  "source_parent": "939f560671c643d8eb3c9c5f80acf9d658e092eb",
+  "related_tests_passed": 70,
+  "related_test_scope": "Previously verified implementation; release differs in version metadata, frontend version placeholder and current build files only.",
+  "map_catalogue": {
+    "read_only": true,
+    "item_ability_unit": true,
+    "campaign_and_chapter_scopes": true,
+    "csv_and_json_all_matching_rows": true,
+    "hero_proper_names": true,
+    "large_field_dialog": true,
+    "per_string_text_recovery": true,
+    "affected_field_diagnostics": true,
+    "full_popup_reasons": true,
     "source_hashes_preserved": true,
-    "completed_outputs_survive_stop": true,
-    "one_failure_summary_popup": true,
-    "file_and_chapter_progress_visible": true,
-    "copy_all_full_output_paths_verified": true,
-    "close_and_reopen_progress_verified": true,
-    "dark_light_narrow_wide_layouts_verified": 4
+    "real_campaigns": 12,
+    "chapters": 141,
+    "catalogue_rows": 66311,
+    "hero_rows": 4053,
+    "hero_rows_with_proper_names": 4013,
+    "hero_without_proper_names_not_invented": true,
+    "campaigns": [
+      {
+        "name": "爱尔兰之魂3《圣炎同盟》1.17正式版.w3n",
+        "source_sha256": "186dd7e4ed67e587caa02e980dc0551c217d09e6383cee76a8cdd94d0696b668",
+        "chapters": 12,
+        "counts": {
+          "item": 1292,
+          "ability": 3525,
+          "unit": 610
+        },
+        "complete": true
+      },
+      {
+        "name": "爱尔兰之魂1《战争浩劫》1.12.w3n",
+        "source_sha256": "6d5f3b0733cee83186607414132ac376080f75e440589a12b9f1dc1c545d7130",
+        "chapters": 10,
+        "counts": {
+          "item": 1295,
+          "ability": 3135,
+          "unit": 2473
+        },
+        "complete": true
+      },
+      {
+        "name": "爱尔兰之魂2《荣耀狂歌》1.34完结版.w3n",
+        "source_sha256": "d10c927792d7ea6fb19b891440e1b2c5e24c86c3dcf056c02efbc5d48d44a02c",
+        "chapters": 12,
+        "counts": {
+          "item": 2203,
+          "ability": 8304,
+          "unit": 5679
+        },
+        "complete": true
+      },
+      {
+        "name": "亡者编年史1_寻觅力量_ChatGPT汉化版.w3n",
+        "source_sha256": "8196fa51271896acd10697468506126c46ce735421795a80cd833cf20b165652",
+        "chapters": 11,
+        "counts": {
+          "item": 65,
+          "ability": 73,
+          "unit": 116
+        },
+        "complete": true
+      },
+      {
+        "name": "LordaeronsDestiny.w3n",
+        "source_sha256": "1f953a8deff5b47197128d6cc48528f0d44b2c03d99ecc052bc2ef9a16f6a3a6",
+        "chapters": 14,
+        "counts": {
+          "item": 191,
+          "ability": 922,
+          "unit": 1877
+        },
+        "complete": true
+      },
+      {
+        "name": "RotD v1.0.6 简体中文（含过场修复）.w3n",
+        "source_sha256": "574409629a6ff7ed0765c4587b3b29965324245919d84b8c18f82f323c839893",
+        "chapters": 8,
+        "counts": {
+          "item": 3,
+          "ability": 18,
+          "unit": 147
+        },
+        "complete": true
+      },
+      {
+        "name": "诅咒者的遗物：命运之缚（需1.31）.w3n",
+        "source_sha256": "a2e28d01283efbebe9e2d86e7e53a640c05190985b3d1f9188175bbb1d7e2177",
+        "chapters": 15,
+        "counts": {
+          "item": 182,
+          "ability": 446,
+          "unit": 707
+        },
+        "complete": true
+      },
+      {
+        "name": "FoD RPG.w3n",
+        "source_sha256": "a515e5eec9ff1a8a27bea66a89b3e5cf0bae58966a7e00b7a553114529473b8d",
+        "chapters": 17,
+        "counts": {
+          "item": 3261,
+          "ability": 371,
+          "unit": 1411
+        },
+        "complete": true
+      },
+      {
+        "name": "LordaeronsLegacyReforged.w3n",
+        "source_sha256": "b24a3dc4d1fa5e0dda2f0f37300bb6125cbb889bd119a811635f71bc67328319",
+        "chapters": 7,
+        "counts": {
+          "item": 16,
+          "ability": 25,
+          "unit": 124
+        },
+        "complete": true
+      },
+      {
+        "name": "Tides of Darkness Orc v2.0(修正2).w3n",
+        "source_sha256": "c52bb7aa527f2f5e1311a7998b2ac3df14cfa42c047c2f3c4a0ca0733b244d22",
+        "chapters": 12,
+        "counts": {
+          "item": 148,
+          "ability": 222,
+          "unit": 412
+        },
+        "complete": true
+      },
+      {
+        "name": "Path of the Damned Reborn PART II.w3n",
+        "source_sha256": "0e4c3e00bfeb332925b21a852971d6b52d131677bebb0097acee1e89bdb284e7",
+        "chapters": 10,
+        "counts": {
+          "item": 52,
+          "ability": 220,
+          "unit": 671
+        },
+        "complete": true
+      },
+      {
+        "name": "猩红狂热II v2.41.w3n",
+        "source_sha256": "c0b836f93e7351642fb2135de06262802980328bcd7d230c491d6c813f3355bd",
+        "chapters": 13,
+        "counts": {
+          "item": 4988,
+          "ability": 8708,
+          "unit": 12419
+        },
+        "complete": true
+      }
+    ],
+    "reported_hero": {
+      "rawcode": "H007",
+      "title": "圣炎帝国元帅",
+      "proper_names": [
+        "龙啸"
+      ]
+    },
+    "runtime_script_changes_included": false
   },
   "archive_algorithm_unchanged": true,
   "game_accessed": false,
   "chapters_loaded_in_game": false,
   "single_exe_runtime_verified": true,
-  "desktop_pages_verified": 13,
+  "desktop_pages_verified": 14,
   "seven_profiles_preserved": true,
   "four_native_dlls_preserved": true,
-  "previous_preview_sha256": "C752739B700026311DEBDE4E6792220782021BAE02C70FAA93B47B4490302692",
-  "batch_implementation_matches_verified_preview": true
+  "previous_preview_sha256": "002DC69FF1AC1788AA2D81F75D6FC20CB0EF23A29BDC81CA1352BC7086BFD658",
+  "implementation_matches_verified_preview": true
 }

@@ -11,10 +11,11 @@ from war3_map_objects import object_records,strings,resolve_string,profile,plain
 from war3_map_catalog_reference import reference
 from war3_services.extension_definitions import definition_pack,file_hash
 
-KINDS=('item','ability','unit')
+KINDS=('item','ability','unit','upgrade')
 TABLES={'item':('ItemData.slk',),'ability':('AbilityData.slk',),
-        'unit':('UnitData.slk','UnitBalance.slk','UnitAbilities.slk','unitUI.slk','UnitWeapons.slk')}
-SUFFIX={'item':'w3t','ability':'w3a','unit':'w3u'}
+        'unit':('UnitData.slk','UnitBalance.slk','UnitAbilities.slk','unitUI.slk','UnitWeapons.slk'),
+        'upgrade':('UpgradeData.slk',)}
+SUFFIX={'item':'w3t','ability':'w3a','unit':'w3u','upgrade':'w3q'}
 MAX_ROWS=50000
 
 
@@ -23,6 +24,7 @@ def table_kind(name):
     for kind,names in TABLES.items():
         if name in {n.casefold() for n in names}:return kind
     if not name.endswith('.txt'):return None
+    if 'upgrade' in name and not any(t in name for t in ('metadata','effect')):return 'upgrade'
     if 'ability' in name and not any(t in name for t in ('buff','metadata')):return 'ability'
     if name.startswith('item'):return 'item'
     if 'unit' in name and not any(t in name for t in ('global','metadata','command')):return 'unit'
@@ -58,6 +60,9 @@ def baseline(mode):
     for kind in KINDS:
         for code,fields in reference()['profiles']['zhCN'][kind].items():
             if code in result[kind]:result[kind][code].update(fields)
+    suffix=':'+mode.lower().replace('_',',')
+    for fields in result['upgrade'].values():
+        fields.update({key[:-len(suffix)]:value for key,value in list(fields.items()) if key.endswith(suffix)})
     return result
 
 
@@ -158,7 +163,7 @@ def scan_map_catalog(source,*,progress=None,cancel=None):
                 try:
                     raw=read_optional(archive,name,scope)
                     if raw is not None:
-                        for record in object_records(raw,extended=kind=='ability'):
+                        for record in object_records(raw,extended=kind in ('ability','upgrade')):
                             for change in record['changes']:
                                 change['rawValue']=change['value'];change['value']=resolve(change['value'],record['rawcode']+' / '+change['field'])
                             records[kind].append((name,record))
@@ -202,7 +207,10 @@ def scan_map_catalog(source,*,progress=None,cancel=None):
                     if native_table is not None and equal(value,native_value):continue
                     previous=deepcopy(old.get(field))
                     # A localized stock string is native data too.
-                    stock_variants=[reference()['profiles'][locale][kind].get(code,{}).get(field) for locale in ('zhCN','enUS')]
+                    stock_variants=[]
+                    for locale in ('zhCN','enUS'):
+                        localized=reference()['profiles'][locale][kind].get(code,{})
+                        stock_variants.append(localized.get(field+':'+mode.lower().replace('_',','),localized.get(field)))
                     if equal(value,previous) or any(value==v for v in stock_variants if v is not None):continue
                     old[field]=value
                     row=row_for(kind,code,code)
@@ -244,14 +252,22 @@ def scan_map_catalog(source,*,progress=None,cancel=None):
         if not emit:return
         for (kind,code),row in changed.items():
             attrs=state[kind][code]
+            upgrade_levels=None
+            if kind=='upgrade':
+                try:upgrade_levels=max(1,min(100000,int(get_value(attrs,'maxlevel') or 1)))
+                except (TypeError,ValueError):pass
             name=get_value(attrs,'name',0) or get_value(attrs,'editorsuffix',0) or code
+            if kind=='upgrade' and isinstance(attrs.get('name'),list):
+                name=' / '.join(dict.fromkeys(str(v) for v in attrs['name'][:upgrade_levels] if v)) or name
             desc=[]
+            if upgrade_levels is not None:desc.append('最高等级：'+str(upgrade_levels))
             for field in ('ubertip','description','tip'):
                 value=attrs.get(field)
                 if value:
                     values=value if isinstance(value,list) else [value]
+                    if kind=='upgrade':values=values[:upgrade_levels]
                     def expand(match):
-                        target=state[kind].get(match[1]) or next((state[k].get(match[1]) for k in ('ability','item','unit') if match[1] in state[k]),{})
+                        target=state[kind].get(match[1]) or next((state[k].get(match[1]) for k in KINDS if match[1] in state[k]),{})
                         value=get_value(target,match[2].casefold())
                         if value is None:return match[0]
                         if match[3]:
@@ -318,7 +334,7 @@ def scan_map_catalog(source,*,progress=None,cancel=None):
     for issue in text_issues:
         affected=bool(issue['usedBy']) or issue.get('stringId') is None
         diagnostic={**issue,'severity':'warning' if affected else 'info',
-            'impact':'关联目录字段：'+'、'.join(issue['usedBy']) if issue['usedBy'] else '未被本次目录的对象字段引用，不影响已读取的物品、技能和单位。'}
+            'impact':'关联目录字段：'+'、'.join(issue['usedBy']) if issue['usedBy'] else '未被本次目录的对象字段引用，不影响已读取的物品、技能、单位和科技。'}
         diagnostics.append(diagnostic)
         if affected:warnings.append(diagnostic)
     diagnostics.extend({**w,'severity':'warning'} for w in warnings if w not in diagnostics)
@@ -357,7 +373,7 @@ def export_catalog(path,result,*,kind='',query='',scope='',change_type=''):
         stream=io.StringIO(newline='');writer=csv.writer(stream)
         writer.writerow(('分类','改动类型','对象代码','原型代码','名称','英雄本名','描述／效果／单位介绍','来源章节','修改字段数','具体修改','物编文件'))
         for row in selected:
-            cells=[{'item':'物品','ability':'技能','unit':'单位'}[row['kind']], '新增' if row['changeType']=='added' else '修改',
+            cells=[{'item':'物品','ability':'技能','unit':'单位','upgrade':'科技'}[row['kind']], '新增' if row['changeType']=='added' else '修改',
                 row['rawcode'],row['base'],row['name'],'、'.join(row.get('heroNames',[])),row['description'],row['scope'],row['changeCount'],json.dumps(row['changes'],ensure_ascii=False),'；'.join(row['files'])]
             writer.writerow(["'"+str(v) if str(v).lstrip().startswith(('=','+','-','@','\t','\r')) else v for v in cells])
         raw=stream.getvalue().encode('utf-8-sig')

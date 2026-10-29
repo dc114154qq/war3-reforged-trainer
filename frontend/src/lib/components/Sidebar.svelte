@@ -49,9 +49,16 @@
       group: '资料检索',
       items: [
         { id: 'catalogs', label: 'ID 检索目录', icon: Search },
+        { id: 'upgrade_catalog', label: '科技目录', icon: BookOpen },
         { id: 'map_catalog', label: '地图自定义数据目录', icon: BookOpen },
         { id: 'equipment3', label: '3.0 新增装备', icon: Swords },
         { id: 'hero_skills', label: '3.0 英雄技能', icon: BookOpen },
+      ],
+    },
+    {
+      group: '经典版火龙修改器',
+      items: [
+        { id: 'map_scripts', label: '火龙脚本注入', icon: BookOpen },
       ],
     },
     {

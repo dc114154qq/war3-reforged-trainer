@@ -12,7 +12,7 @@
   let timer:ReturnType<typeof setTimeout>,searchTimer:ReturnType<typeof setTimeout>;
   const busy=$derived(starting || ['running','cancelling'].includes(progress.status));
   const ready=$derived(['succeeded','partial'].includes(progress.status));
-  const kinds=[['item','物品'],['ability','技能'],['unit','单位']];
+  const kinds=[['item','物品'],['ability','技能'],['unit','单位'],['upgrade','科技']];
   const phases:Record<string,string>={queued:'准备读取',hash:'核对输入文件',chapter:'读取章节',objects:'读取物编对象',tables:'检查数据表',chapter_complete:'章节读取完成',verify:'复核原文件',complete:'读取完成'};
   const statuses:Record<string,string>={succeeded:'读取完成',partial:'部分内容未能读取',failed:'读取失败',cancelled:'读取已停止'};
   const diagnostics=$derived(progress.diagnostics || progress.warnings || []);
@@ -62,7 +62,7 @@
 <div class="map-catalog">
   <header><h2>地图自定义数据目录</h2><span>无需启动游戏</span></header>
   <details class="source-settings" open={!ready}><summary>选择或更换战役／地图</summary>
-  <p class="help">选择一张战役或地图，列出它新增或修改的物品、技能和单位。原生且未修改的对象不列入目录，原文件不会被修改。</p>
+  <p class="help">选择一张战役或地图，列出它新增或修改的物品、技能、单位和科技。原生且未修改的对象不列入目录，原文件不会被修改。</p>
   <div class="source-controls">
     <label for="map-catalog-path">战役／地图完整路径</label>
     <textarea id="map-catalog-path" bind:value={path} rows="2" disabled={busy || exporting} placeholder="支持 .w3n / .w3x / .w3m"></textarea>
@@ -105,7 +105,7 @@
     <span>匹配：{matches} / {progress.rowCount || 0}</span>
     <select aria-label="导出格式" bind:value={format} disabled={exporting}><option value="csv">CSV（Excel 可打开）</option><option value="json">JSON（含完整字段）</option></select>
     <button class="btn btn-secondary" onclick={()=>exportData(false)} disabled={!ready || exporting || loading}>导出当前筛选</button>
-    <button class="btn btn-secondary" onclick={()=>exportData(true)} disabled={!ready || exporting}>导出全部三类数据</button>
+    <button class="btn btn-secondary" onclick={()=>exportData(true)} disabled={!ready || exporting}>导出全部四类数据</button>
     {#if exporting}<span>正在导出…</span>{/if}
   </div>
   {#if exportedPath}<div class="export-result"><strong>导出完成：</strong>{exportCount}<div class="full-path">{exportedPath}</div><button class="btn btn-secondary btn-sm" onclick={()=>copy(exportedPath)}>复制完整路径</button></div>{/if}

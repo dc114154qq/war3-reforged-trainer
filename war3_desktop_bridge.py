@@ -62,6 +62,11 @@ class DesktopBridgeApi:
         from war3_map_catalog_jobs import MapCatalogJobs
         self._map_catalog_jobs=MapCatalogJobs(self.app.start_operation_thread,
             lambda exc:self._failure(exc,'map_object_catalog'))
+        from war3_script_features import ScriptOptionStore
+        from war3_map_script_jobs import MapScriptJobs
+        self._script_option_store = ScriptOptionStore()
+        self._map_script_jobs = MapScriptJobs(self.app.start_operation_thread,
+            lambda exc:self._failure(exc,'map_script_tools'))
         self._original_set_status=self.app.set_status
         self.app.set_status=self._set_status
         self._original_finish_connect=self.app.finish_initial_connect
@@ -113,6 +118,7 @@ class DesktopBridgeApi:
     def close(self):
         self._definition_jobs.cancel()
         self._map_catalog_jobs.cancel()
+        self._map_script_jobs.cancel()
         with self.port.dispatch_lock:
             self.app.close_gui()
 
@@ -135,7 +141,7 @@ class DesktopBridgeApi:
             try:exc.diagnostic_log_path=path
             except Exception:pass
         message=format_error(exc,self.port.value('ui_language')['code'])
-        details=getattr(exc,'user_details',None) if operation=='map_object_catalog' else None
+        details=getattr(exc,'user_details',None) if operation in ('map_object_catalog','map_script_tools') else None
         notice=self.port.publish_error(message,title=getattr(exc,'user_title','操作未完成') if details else '操作未完成',
             log_path=getattr(exc,'diagnostic_log_path',''),details=details)
         payload=dict(success=False,error=message,logPath=notice['logPath'],notificationId=notice['id'])
@@ -1135,6 +1141,27 @@ class DesktopBridgeApi:
     def start_map_catalog(self, path: str):
         return self._map_catalog_jobs.start(path)
 
+    def get_map_script_options(self):
+        from war3_script_features import FEATURES
+        return dict(success=True, options=self._script_option_store.load().data(), features=FEATURES)
+
+    def save_map_script_options(self, options: dict):
+        from war3_script_features import ScriptOptions
+        saved = self._script_option_store.save(ScriptOptions.parse(options))
+        return dict(success=True, options=saved.data())
+
+    def start_map_scripts(self, paths: list[str], output_folder: str='', options: dict | None=None, combined: bool=False):
+        from war3_script_features import ScriptOptions
+        config = self._script_option_store.load() if options is None else ScriptOptions.parse(options)
+        self._script_option_store.save(config)
+        return self._map_script_jobs.start(paths, output_folder, config.data(), combined)
+
+    def get_map_script_progress(self, job_id: str=''):
+        return self._map_script_jobs.snapshot(job_id)
+
+    def cancel_map_scripts(self, job_id: str=''):
+        return self._map_script_jobs.cancel(job_id)
+
     def get_map_catalog_progress(self, job_id: str = ''):
         return self._map_catalog_jobs.snapshot(job_id)
 
@@ -1157,7 +1184,7 @@ class DesktopBridgeApi:
         return self._map_catalog_jobs.export(job_id,path,kind,query,scope,change_type)
 
     def search_id_catalog(self, kind: str, query: str = "") -> dict[str, Any]:
-        if kind not in ("item", "ability", "unit"):
+        if kind not in ("item", "ability", "unit", "upgrade"):
             return {"success": False, "error": f"Invalid catalog kind: {kind}"}
         matches = search_id_entries(kind, query)
         # Limit matches to 200 for fast serialization
@@ -1324,6 +1351,7 @@ def _serialized_api(method):
                     'prepare_backpack_definitions', 'start_backpack_definitions', 'choose_definition_file',
                     'start_backpack_definitions_batch', 'choose_definition_files',
                     'start_map_catalog','export_map_catalog',
+                    'get_map_script_options','save_map_script_options','start_map_scripts',
                     'choose_definition_folder', 'save_artifact_plan', 'restore_default_artifact_plan',
                     'get_elephant_parameters', 'set_elephant_parameter', 'close'}:
                     raise RuntimeError('离线界面验收：未连接游戏')
@@ -1359,7 +1387,8 @@ def _serialized_api(method):
 for _name, _method in tuple(vars(DesktopBridgeApi).items()):
     if not _name.startswith('_') and callable(_method) and _name not in {
         'cancel_discovery','get_ui_notifications','get_backpack_definition_progress','cancel_backpack_definitions',
-        'get_map_catalog_progress','cancel_map_catalog','search_map_catalog','get_map_catalog_entry'} and not isinstance(_method, staticmethod):
+        'get_map_catalog_progress','cancel_map_catalog','search_map_catalog','get_map_catalog_entry',
+        'get_map_script_progress','cancel_map_scripts'} and not isinstance(_method, staticmethod):
         setattr(DesktopBridgeApi, _name, _serialized_api(_method))
 
 

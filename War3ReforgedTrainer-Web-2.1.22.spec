@@ -24,6 +24,9 @@ a = Analysis(
     datas=[
         ('assets/app_icon.png', 'assets'),
         ('assets/extension-definitions-v1.zip', 'assets'),
+        ('assets/map-script-validation-v1.zip', 'assets'),
+        ('tools/map-script-pjass.exe', 'tools'),
+        ('third_party/pjass/LICENSE', 'licenses/pjass'),
         ('assets/webview2-bootstrapper.exe', 'assets'),
         ('third_party/stormlib/StormLib-LICENSE.txt', 'licenses'),
         ('profiles/*.json', 'profiles'),
@@ -115,7 +118,7 @@ a = Analysis(
     noarchive=False, optimize=0,
 )
 
-runtime_root = Path(os.environ['RELEASE_2121_RUNTIME_DIR'])
+runtime_root = Path(os.environ['RELEASE_2122_RUNTIME_DIR'])
 runtime_entries = [row for row in a.binaries if row[0].lower().startswith('api-ms-win-') or row[0].lower() == 'ucrtbase.dll']
 if runtime_entries:
     pinned = sorted(runtime_root.glob('*.dll'))
@@ -127,10 +130,10 @@ if runtime_entries:
 pyz = PYZ(a.pure)
 exe = EXE(
     pyz, a.scripts, a.binaries, a.datas, [],
-    name='War3ReforgedTrainer-v2.1.21-Web',
+    name='War3ReforgedTrainer-v2.1.22-Web',
     debug=False, bootloader_ignore_signals=False, strip=False, upx=True,
     upx_exclude=[], runtime_tmpdir=None, console=False,
     disable_windowed_traceback=False, uac_admin=False, argv_emulation=False,
     target_arch=None, codesign_identity=None, entitlements_file=None,
-    icon='assets/app_icon.ico', version='tools/war3-2.1.21-version-info.txt',
+    icon='assets/app_icon.ico', version='tools/war3-2.1.22-version-info.txt',
 )

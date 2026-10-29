@@ -1,12 +1,12 @@
 [中文](README.md) | [English](README.en.md)
 
-# 魔兽 3.0 修改器 · 2.1.21
+# 魔兽 3.0 修改器 · 2.1.22
 
-读取和修改单位、技能、物品与资源，支持批量修改、扩展背包、装备套装、批量补齐地图定义和存档提取。自定义数据目录可查找地图新增或修改的对象，查看英雄本名与字段详情，并导出 CSV／JSON。
+读取和修改单位、技能、物品与资源，支持批量修改、扩展背包、装备套装、补齐地图定义和存档提取。可检索与导出地图自定义数据和科技，并将经典火龙菜单写进地图副本，在游戏内独立使用。
 
 ## 下载使用
 
-从[个人网站](https://twomengxi.xyz/trainer/)或[GitHub Release](https://github.com/dc114154qq/war3-reforged-trainer/releases/tag/v2.1.21)下载 EXE，直接打开。进入地图并选中单位后连接。
+从[个人网站](https://twomengxi.xyz/trainer/)或[GitHub Release](https://github.com/dc114154qq/war3-reforged-trainer/releases/tag/v2.1.22)下载 EXE，直接打开。进入地图并选中单位后连接。
 
 Windows 10/11 x64。无需安装 Python、Node.js 或另行启动前端；缺少微软 WebView2 时，首次启动会询问是否联网安装。
 
@@ -16,13 +16,13 @@ Windows 10/11 x64。无需安装 Python、Node.js 或另行启动前端；缺少
 
 ```powershell
 python -m pip install -r requirements-build.txt
-python tools/prepare_build_baseline_2121.py
+python tools/prepare_build_baseline_2122.py
 npm ci --prefix frontend
 npm run build --prefix frontend
 python tools/build_modern_release.py
 python tools/build_modern_release.py --verify-only
 ```
 
-输出：`dist-2.1.21-modern-verified/<哈希前缀>/War3ReforgedTrainer-v2.1.21-Web.exe`。
+输出：`dist-2.1.22-modern-verified/<哈希前缀>/War3ReforgedTrainer-v2.1.22-Web.exe`。
 
 [验证记录](docs/VALIDATION.json)

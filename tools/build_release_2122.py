@@ -1,10 +1,10 @@
-"""Current 2.1.21 production source inventory for the desktop builder."""
+"""Current 2.1.22 production source inventory for the desktop builder."""
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def source_paths() -> tuple[Path, ...]:
-    # Keep this list aligned with the actual 2.1.21 build closure.  In
+    # Keep this list aligned with the actual 2.1.22 build closure.  In
     # particular, the separate hotkey product and diagnostics probes must not
     # silently become part of the trainer source hash or package inputs.
     excluded_runtime = {
@@ -58,7 +58,7 @@ def source_paths() -> tuple[Path, ...]:
     )
     files.update(
         ROOT / name for name in (
-            "War3ReforgedTrainer-Web-2.1.21.spec",
+            "War3ReforgedTrainer-Web-2.1.22.spec",
             "tools/war3_bridge_24268.c",
             "tools/build_engine_bridge.ps1",
             "tools/build_talent_icon_display.ps1",
@@ -68,14 +68,20 @@ def source_paths() -> tuple[Path, ...]:
             "tools/verify_talent_icon_display.py",
             "tools/verify_speed_clock.py",
             "third_party/minhook/LICENSE.txt",
-            "tools/build_release_2121.py",
-            "tools/war3-2.1.21-version-info.txt",
+            "tools/build_release_2122.py",
+            "tools/war3-2.1.22-version-info.txt",
             "assets/app_icon.ico",
         "assets/extension-definitions-v1.zip",
         "third_party/stormlib/StormLib-LICENSE.txt",
         "tools/prepare_mpq_dependency.py",
         "tools/generate_extension_definitions.py",
         "tools/generate_map_catalog_reference.py",
+        "tools/generate_upgrade_catalog.py",
+        "tools/prepare_huolong_classic.py",
+        "docs/CLASSIC_HKE.md",
+        "tools/prepare_map_script_dependency.py",
+        "assets/map-script-validation-v1.zip",
+        "third_party/pjass/LICENSE",
         "docs/EXTENSION_DEFINITIONS.md",
         "docs/MPQ_MEMBER_RECOVERY.md",
         "docs/MOUSE_PROJECTION.md",

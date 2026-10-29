@@ -2,9 +2,11 @@
   import { onMount } from 'svelte';
   import { api } from '../api';
   import type { CatalogItemRow, CatalogSearchData } from '../types';
-  import { Search, Copy, Check, Package, Sparkles, User, RefreshCw } from 'lucide-svelte';
+  import { Search, Copy, Check, Package, Sparkles, User, RefreshCw, BookOpen } from 'lucide-svelte';
 
-  let currentKind = $state<'item' | 'ability' | 'unit'>('item');
+  type CatalogKind = 'item' | 'ability' | 'unit' | 'upgrade';
+  let { initialKind = 'item' }: {initialKind?: CatalogKind} = $props();
+  let currentKind = $state<CatalogKind>('item');
   let searchQuery = $state('');
   let isLoading = $state(false);
   let rows = $state<CatalogItemRow[]>([]);
@@ -19,9 +21,10 @@
     { id: 'item', label: '物品目录 (Items)', icon: Package },
     { id: 'ability', label: '技能目录 (Abilities)', icon: Sparkles },
     { id: 'unit', label: '单位目录 (Units)', icon: User },
+    { id: 'upgrade', label: '科技目录 (Upgrades)', icon: BookOpen },
   ] as const;
 
-  async function performSearch(kind: 'item' | 'ability' | 'unit' = currentKind, query: string = searchQuery) {
+  async function performSearch(kind: CatalogKind = currentKind, query: string = searchQuery) {
     const revision = ++searchRevision;
     isLoading = true;
     try {
@@ -37,7 +40,7 @@
     }
   }
 
-  function handleKindChange(kind: 'item' | 'ability' | 'unit') {
+  function handleKindChange(kind: CatalogKind) {
     clearTimeout(searchTimeout);
     rows = [];
     currentKind = kind;
@@ -68,7 +71,8 @@
   onMount(() => {
     const refreshLanguage = () => performSearch(currentKind, searchQuery);
     window.addEventListener('war3-language', refreshLanguage);
-    performSearch('item', '');
+    currentKind = initialKind;
+    performSearch(initialKind, '');
     return () => { ++searchRevision; clearTimeout(searchTimeout); window.removeEventListener('war3-language', refreshLanguage); };
   });
 </script>
@@ -205,6 +209,7 @@
 
   .kind-tabs {
     display: flex;
+    flex-wrap: wrap;
     gap: 6px;
   }
 

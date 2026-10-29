@@ -60,6 +60,11 @@ async function callApi<T>(method: string, ...args: any[]): Promise<T> {
 }
 
 export const api = {
+  getMapScriptOptions: () => callApi<{success:boolean;options:MapScriptOptions;features:Record<string,string>}>('get_map_script_options'),
+  saveMapScriptOptions: (options:MapScriptOptions) => callApi<{success:boolean;options:MapScriptOptions}>('save_map_script_options',options),
+  startMapScripts: (paths:string[],folder:string,options:MapScriptOptions,combined=false) => callApi<{success:boolean;jobId:string}>('start_map_scripts',paths,folder,options,combined),
+  getMapScriptProgress: (id='') => callApi<MapScriptProgress>('get_map_script_progress',id),
+  cancelMapScripts: (id='') => callApi<{success:boolean}>('cancel_map_scripts',id),
   startMapCatalog: (path:string) => callApi<{success:boolean;jobId:string}>('start_map_catalog',path),
   getMapCatalogProgress: (id='') => callApi<MapCatalogProgress>('get_map_catalog_progress',id),
   cancelMapCatalog: (id='') => callApi<{success:boolean}>('cancel_map_catalog',id),
@@ -156,7 +161,7 @@ export const api = {
   triggerHotkey: (name: string) => callApi<{ success: boolean; name?: string; message?: string; error?: string }>('trigger_hotkey', name),
 
   // 11-14. Catalogs
-  searchIdCatalog: (kind: 'item' | 'ability' | 'unit', query?: string) => callApi<CatalogSearchData>('search_id_catalog', kind, query ?? ''),
+  searchIdCatalog: (kind: 'item' | 'ability' | 'unit' | 'upgrade', query?: string) => callApi<CatalogSearchData>('search_id_catalog', kind, query ?? ''),
   search3Equipment: (query?: string) => callApi<Equipment3SearchData>('search_3_equipment', query ?? ''),
   search3HeroSkills: (hero?: string, query?: string) => callApi<HeroSkillsSearchData>('search_3_hero_skills', hero ?? '', query ?? ''),
 
@@ -175,3 +180,5 @@ export interface UiNotice { details?:CatalogDiagnostic[];context?:string;id?:num
 export interface DefinitionFileResult {source:string;status:string;destination:string;message:string;error:string;logPath:string;reportPath:string;}
 export interface DefinitionResult {success?:boolean;batch?:boolean;cancelled?:boolean;files?:DefinitionFileResult[];destination?:string;report?:{report_path:string;log_path:string};message?:string;error?:string;logPath?:string;}
 export interface DefinitionProgress {jobId:string;status:string;stage?:string;chapter?:string;index?:number;total?:number;completed?:number;currentFile?:string;elapsed:number;result?:DefinitionResult;error?:string;logPath?:string;batchMode?:boolean;outputFolder?:string;fileTotal?:number;fileIndex?:number;fileCompleted?:number;fileSucceeded?:number;fileFailed?:number;fileSkipped?:number;files?:DefinitionFileResult[];}
+export interface MapScriptOptions {prefix:string;features:string[];artifact_codes:string[];resource_amount:number;}
+export interface MapScriptProgress extends DefinitionProgress {files?:(DefinitionFileResult & {usagePath?:string})[];failures?:{source:string;reason:string;logPath:string}[];}

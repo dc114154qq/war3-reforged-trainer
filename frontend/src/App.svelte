@@ -20,6 +20,7 @@
   import ElephantHotkeysPanel from './lib/components/ElephantHotkeysPanel.svelte';
   import CatalogSearchPanel from './lib/components/CatalogSearchPanel.svelte';
   import MapCatalogPanel from './lib/components/MapCatalogPanel.svelte';
+  import MapScriptsPanel from './lib/components/MapScriptsPanel.svelte';
   import Equipment3CatalogPanel from './lib/components/Equipment3CatalogPanel.svelte';
   import HeroSkillsCatalogPanel from './lib/components/HeroSkillsCatalogPanel.svelte';
   import ArchiveExtractionPanel from './lib/components/ArchiveExtractionPanel.svelte';
@@ -29,7 +30,7 @@
   function selectTab(tabId: string) { currentTab = tabId; if (!visitedTabs.includes(tabId)) visitedTabs = [...visitedTabs, tabId]; }
 
   let systemStatus = $state<SystemStatus>({
-    appVersion: '2.1.21',
+    appVersion: '2.1.22',
     edition: '正在读取版本信息',
     connected: false,
     pid: null,
@@ -130,8 +131,12 @@
         <ElephantHotkeysPanel />
       {:else if tabId === 'catalogs'}
         <CatalogSearchPanel />
+      {:else if tabId === 'upgrade_catalog'}
+        <CatalogSearchPanel initialKind="upgrade" />
       {:else if tabId === 'map_catalog'}
         <MapCatalogPanel />
+      {:else if tabId === 'map_scripts'}
+        <MapScriptsPanel />
       {:else if tabId === 'equipment3'}
         <Equipment3CatalogPanel />
       {:else if tabId === 'hero_skills'}

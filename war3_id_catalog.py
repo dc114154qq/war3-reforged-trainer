@@ -462,10 +462,13 @@ def get_id_catalog() -> dict[str, tuple[War3IdEntry, ...]]:
     raw = zlib.decompress(base64.b85decode("".join(_CATALOG_B85)))
     decoded = json.loads(raw.decode("utf-8"))
     from war3_id_descriptions import description_for
-    return {
+    catalog = {
         kind: tuple(War3IdEntry(**entry, **description_for(kind, entry["rawcode"])) for entry in entries)
         for kind, entries in decoded.items()
     }
+    from war3_upgrade_catalog import entries
+    catalog['upgrade'] = tuple(War3IdEntry(**entry) for entry in entries())
+    return catalog
 
 
 ID_CATALOG = get_id_catalog()

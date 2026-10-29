@@ -15,7 +15,7 @@ def generate(source,destination):
             while key.startswith('WESTRING_') and key in labels and key not in seen:
                 seen.add(key);key=labels[key].strip('"')
             return key
-        for kind,name in [('ability','AbilityMetaData.slk'),('unit','UnitMetaData.slk'),('item','UnitMetaData.slk')]:
+        for kind,name in [('ability','AbilityMetaData.slk'),('unit','UnitMetaData.slk'),('item','UnitMetaData.slk'),('upgrade','UpgradeMetaData.slk')]:
             rows=slk(folder/name)
             if kind=='item':rows=[r for r in rows if r.get('useItem')=='1']
             elif kind=='unit':rows=[r for r in rows if any(r.get(k)=='1' for k in ('useUnit','useHero','useBuilding'))]
@@ -24,10 +24,10 @@ def generate(source,destination):
                 if not field:continue
                 stored=data['metadata'].setdefault(kind,{}).setdefault(field,{k:v for k,v in row.items() if k not in ('ID','displayName')})
                 stored[locale]=label(row.get('displayName',field))
-        kinds={k:{} for k in ('item','ability','unit')}
+        kinds={k:{} for k in ('item','ability','unit','upgrade')}
         for path in sorted(folder.glob('*Strings.txt')):
             name=path.name
-            kind=('ability' if 'Ability' in name else 'unit' if 'Unit' in name else 'item' if name.startswith('Item') else None)
+            kind=('ability' if 'Ability' in name else 'unit' if 'Unit' in name else 'item' if name.startswith('Item') else 'upgrade' if 'Upgrade' in name else None)
             if not kind:continue
             parsed=profile(path.read_bytes())
             for code,fields in parsed.items():

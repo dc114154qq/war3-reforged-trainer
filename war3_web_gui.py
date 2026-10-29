@@ -132,7 +132,7 @@ def main() -> int:
                     bodyWidth: document.body.scrollWidth, viewportWidth: innerWidth
                 }))()"""))
             report['panels'] = panels
-            assert len(panels) == 14 and all(p['controls'] > 0 for p in panels)
+            assert len(panels) == 16 and all(p['controls'] > 0 for p in panels)
             report['ok'] = bool(report['dom']['bridgeReady'] and report['dom']['controls'] > 10)
         except Exception as exc:
             import traceback

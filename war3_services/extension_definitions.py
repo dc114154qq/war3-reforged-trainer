@@ -4,7 +4,7 @@ from dataclasses import dataclass, asdict
 from functools import lru_cache
 from pathlib import Path
 import hashlib, json, os, re, shutil, sys, tempfile, time, traceback, uuid, zipfile
-from war3_mpq import Archive, MpqError, STORAGE_FLAGS, canonical_name, unknown_member_name
+from war3_mpq import Archive, MpqError, STORAGE_FLAGS, canonical_name, unknown_member_name, normalize_classic_header
 from war3_jass_validation import check_function_order
 from war3_object_tables import (DefinitionError, parse_slk, parse_profile, merge_slk,
                                 merge_profile, map_data_mode, campaign_maps, object_ids, _value,
@@ -118,6 +118,38 @@ def _reference_names(raw):
                 icon=re.fullmatch(r'ReplaceableTextures\\CommandButtons\\BTN([^\\]+)\.blp',name,re.I)
                 if icon:names.add('ReplaceableTextures\\CommandButtonsDisabled\\DISBTN'+icon.group(1)+'.blp')
                 if len(names)>10000:raise DefinitionError('地图资源路径数量超出处理范围，已停止处理。')
+    # MDX stores an internal model name without an extension in its MODL
+    # chunk. It is a hint only; identify_names still requires an exact hash.
+    if raw.startswith(b'MDLX'):
+        import struct
+        offset = 4
+        for _ in range(128):
+            if offset+8 > len(raw): break
+            chunk, length = struct.unpack_from('<4sI', raw, offset)
+            start = offset+8
+            if length > len(raw)-start: break
+            if chunk == b'MODL' and length >= 80:
+                value = raw[start:start+80].split(b'\0',1)[0]
+                try:
+                    name = canonical_name(value.decode('utf8'))
+                    names.add(name if name.lower().endswith(('.mdl','.mdx')) else name+'.mdx')
+                except (UnicodeError,MpqError): pass
+                break
+            offset = start+length
+    # The editor's default import directory is implicit in some object/model
+    # references. Probe both forms without renaming or creating a resource.
+    for name in tuple(names):
+        candidates = []
+        if name.lower().endswith('.mdl'): candidates.append(name[:-4]+'.mdx')
+        if name.lower().endswith(('.mdl','.mdx')) and not name[:-4].lower().endswith('_portrait'):
+            candidates.append(name[:-4]+'_Portrait.mdx')
+        for candidate in (name,*candidates):
+            try:
+                names.add(canonical_name(candidate))
+                if '\\' not in candidate:
+                    names.add(canonical_name('war3mapImported\\'+candidate))
+            except MpqError: pass
+        if len(names)>10000:raise DefinitionError('地图资源路径数量超出处理范围，已停止处理。')
     return names
 
 
@@ -298,12 +330,14 @@ def _patch_map(path,inherited,parent_custom,manifest,files,journal):
         custom=parent_custom|_custom_ids(archive,'war3map',journal)
         before=_fingerprints(archive,members,journal)
         plan,details=_plan(archive,members,metadata['mode'],inherited,custom,manifest,files,journal)
+    header_repair=normalize_classic_header(path,names=(key[0] for key in before),
+        progress=lambda stage,data:journal.event(stage,**data),check=journal.check)
     with Archive(path,writable=True) as archive:
         archive.identify_names('Units\\'+name for name in manifest['required'])
         _identify_archive_names(archive,journal)
         if plan:
             archive.reserve(sum(member is None for raw,member in plan.values()),
-                progress=lambda stage,data:journal.event(stage,**data))
+                progress=lambda stage,data:journal.event(stage,**data),check=journal.check)
             for name,(raw,member) in plan.items():
                 journal.event('write_table',map=path.name,path=name,bytes=len(raw),original_flags=member.flags if member else None)
                 archive.write(name,raw,original=member)
@@ -312,7 +346,8 @@ def _patch_map(path,inherited,parent_custom,manifest,files,journal):
     expected={(name.casefold(),0):hashlib.sha256(raw).hexdigest() for name,(raw,member) in plan.items()}
     _verify(path,before,expected,journal)
     return dict(metadata=metadata,tables=details,script_checks=script_checks,
-                changed=bool(plan) or compaction['performed'],archive_compaction=compaction,
+                changed=bool(plan) or compaction['performed'] or header_repair['performed'],archive_compaction=compaction,
+                archive_header_repair=header_repair,
                 added_entries=sum(len(row['added']) for row in details))
 
 
@@ -373,6 +408,8 @@ def prepare_extension_definitions(source,output_folder,*,progress=None,cancel=No
                     if report['changed']:
                         member=members[(report['name'].casefold(),0)]
                         changes.append((member,chapter));expected[(member.name.casefold(),0)]=file_hash(chapter)
+                normalize_classic_header(staged,names=(key[0] for key in before),
+                    progress=lambda stage,data:journal.event(stage,**data),check=journal.check)
                 with Archive(staged,writable=True) as archive:
                     if changes:
                         for member,chapter in changes:

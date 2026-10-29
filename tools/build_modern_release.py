@@ -15,10 +15,10 @@ from PyInstaller.archive.readers import CArchiveReader
 import pefile
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / 'dist-2.1.21-modern-verified'
-CASE = ROOT / 'build/release-2.1.21-20261027/exe-build'
-SPEC = 'War3ReforgedTrainer-Web-2.1.21.spec'
-EXE = 'War3ReforgedTrainer-v2.1.21-Web.exe'
+OUT = ROOT / 'dist-2.1.22-modern-verified'
+CASE = ROOT / 'build/release-2.1.22-20261029/exe-build'
+SPEC = 'War3ReforgedTrainer-Web-2.1.22.spec'
+EXE = 'War3ReforgedTrainer-v2.1.22-Web.exe'
 BRIDGE_IMAGE = None
 
 
@@ -27,12 +27,13 @@ def digest(raw):
 
 
 def inputs():
-    loader = importlib.util.spec_from_file_location('modern_legacy_inputs', ROOT / 'tools/build_release_2121.py')
+    loader = importlib.util.spec_from_file_location('modern_legacy_inputs', ROOT / 'tools/build_release_2122.py')
     module = importlib.util.module_from_spec(loader)
     loader.loader.exec_module(module)
     paths = set(module.source_paths())
     paths.update({ROOT / SPEC, Path(__file__)})
     paths.add(ROOT / 'assets/webview2-bootstrapper.exe')
+    paths.add(ROOT / 'tools/map-script-pjass.exe')
     paths.add(ROOT / 'tools/generate_war3_id_descriptions.py')
     paths.update(path for path in (ROOT / 'frontend/src').rglob('*') if path.is_file())
     paths.update(path for path in (ROOT / 'frontend/public').rglob('*') if path.is_file())
@@ -45,7 +46,7 @@ def inputs():
 def inspect(exe, source_root, source_hashes, baseline):
     pe = pefile.PE(str(exe), fast_load=False)
     fixed = pe.VS_FIXEDFILEINFO[0]
-    assert (fixed.FileVersionMS, fixed.FileVersionLS) == ((2 << 16) | 1, 21 << 16)
+    assert (fixed.FileVersionMS, fixed.FileVersionLS) == ((2 << 16) | 1, 22 << 16)
     archive = CArchiveReader(str(exe))
     pyz = archive.open_embedded_archive('PYZ-00.pyz')
     modules = {}
@@ -64,6 +65,9 @@ def inspect(exe, source_root, source_hashes, baseline):
         assert digest(archive.extract(name)) == expected, name
     installer = 'assets/webview2-bootstrapper.exe'
     assert digest(archive.extract(installer.replace('/', '\\'))) == source_hashes[installer]
+    for asset in ('assets/map-script-validation-v1.zip', 'tools/map-script-pjass.exe'):
+        assert digest(archive.extract(asset.replace('/', '\\'))) == source_hashes[asset], asset
+    assert digest(archive.extract('licenses\\pjass\\LICENSE')) == source_hashes['third_party/pjass/LICENSE']
     data = {}
     for name in source_hashes:
         if name.startswith(('profiles/', 'frontend/dist/')):
@@ -93,6 +97,10 @@ def native_baseline(baseline, bridge_image=None, expected_native=None):
 
 
 def build():
+    dependency = importlib.util.spec_from_file_location('map_script_dependency', ROOT/'tools/prepare_map_script_dependency.py')
+    dependency_module = importlib.util.module_from_spec(dependency)
+    dependency.loader.exec_module(dependency_module)
+    dependency_module.prepare()
     top = subprocess.check_output(['git', 'rev-parse', '--show-toplevel'], cwd=ROOT, text=True).strip()
     assert Path(top).resolve() == ROOT.resolve()
     source_hashes = inputs()
@@ -125,7 +133,7 @@ def build():
         for name in archive.toc:
             if '\\' not in name and (name.lower().startswith('api-ms-win-') or name.lower() == 'ucrtbase.dll'):
                 (runtime / name).write_bytes(archive.extract(name))
-        environment = dict(os.environ, RELEASE_2121_RUNTIME_DIR=str(runtime),
+        environment = dict(os.environ, RELEASE_2122_RUNTIME_DIR=str(runtime),
             RELEASE_210_BRIDGE_DLL=str(native / 'war3_bridge_24268.dll'),
             RELEASE_210_ICON_DLL=str(native / 'war3_talent_icon_display.dll'),
             RELEASE_210_SPEED_DLL=str(native / 'war3_speed_clock.dll'))
@@ -145,7 +153,7 @@ def build():
             assert digest(destination.read_bytes()) == sha
         else:
             shutil.copy2(exe, destination)
-        manifest = dict(ok=True, version='2.1.21', kind='reviewed_modern_frontend',
+        manifest = dict(ok=True, version='2.1.22', kind='reviewed_modern_frontend',
             status='built_not_published', artifact=artifact.as_posix(), exe_sha256=sha,
             exe_bytes=exe.stat().st_size, source_sha256=source_hashes,
             head=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),

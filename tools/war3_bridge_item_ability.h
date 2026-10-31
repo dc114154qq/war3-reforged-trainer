@@ -20,17 +20,26 @@ __declspec(dllexport) const uint32_t item_ability_abi[3]={0x24268070u,216u,58632
 static int ItemAbilityIdentity(ItemAbilityWork*w,uint32_t unit_rawcode) {
     uint64_t owner=BridgeProfileResolveOwner(w->base,w->unit_full,1);
     uint64_t item_owner=BridgeProfileResolveOwner(w->base,w->item_full,1);
-    if(!owner || !item_owner)return 0;
+    if(!owner){w->error=448;return 0;}
+    if(!item_owner){w->error=449;return 0;}
     uint64_t unit=*(uint64_t*)(uintptr_t)(owner+bridge_profile.owner_data);
     uint64_t item=*(uint64_t*)(uintptr_t)(item_owner+bridge_profile.owner_data);
-    return BridgeEffectReadable(unit,bridge_profile.object_rawcode+4u) &&
-        BridgeEffectReadable(item,bridge_profile.item_rawcode_mirror+4u) &&
-        *(uint64_t*)(uintptr_t)(unit+bridge_profile.object_handle)==w->unit_full &&
-        *(uint32_t*)(uintptr_t)(unit+bridge_profile.object_rawcode)==unit_rawcode &&
-        *(uint64_t*)(uintptr_t)(item+bridge_profile.object_handle)==w->item_full &&
-        *(uint32_t*)(uintptr_t)(item+bridge_profile.object_rawcode)==w->rawcode &&
-        *(uint32_t*)(uintptr_t)(item+bridge_profile.item_rawcode_mirror)==w->rawcode &&
-        BridgeObservedItemSlot(w->in_slot,w->target,(int32_t)w->slot)==w->item && BridgeObservedItemType(w->item_type,w->item)==w->rawcode;
+    /* Allocated objects can span adjacent committed regions with different
+       protection. Only the fields below are read: requiring the whole prefix
+       to fit one VirtualQuery region incorrectly rejects valid live objects. */
+    if(!unit || !BridgeEffectReadable(unit+bridge_profile.object_handle,8u) ||
+       !BridgeEffectReadable(unit+bridge_profile.object_rawcode,4u)){w->error=450;return 0;}
+    if(!item || !BridgeEffectReadable(item+bridge_profile.object_handle,8u) ||
+       !BridgeEffectReadable(item+bridge_profile.object_rawcode,4u) ||
+       !BridgeEffectReadable(item+bridge_profile.item_rawcode_mirror,4u)){w->error=451;return 0;}
+    if(*(uint64_t*)(uintptr_t)(unit+bridge_profile.object_handle)!=w->unit_full ||
+       *(uint32_t*)(uintptr_t)(unit+bridge_profile.object_rawcode)!=unit_rawcode){w->error=452;return 0;}
+    if(*(uint64_t*)(uintptr_t)(item+bridge_profile.object_handle)!=w->item_full ||
+       *(uint32_t*)(uintptr_t)(item+bridge_profile.object_rawcode)!=w->rawcode){w->error=453;return 0;}
+    if(*(uint32_t*)(uintptr_t)(item+bridge_profile.item_rawcode_mirror)!=w->rawcode){w->error=454;return 0;}
+    if(BridgeObservedItemSlot(w->in_slot,w->target,(int32_t)w->slot)!=w->item){w->error=455;return 0;}
+    if(BridgeObservedItemType(w->item_type,w->item)!=w->rawcode){w->error=456;return 0;}
+    return 1;
 }
 static int ItemAbilitySnapshot(ItemAbilityWork*w,ItemSlot*rows) {
     for(int32_t i=0;i<6;++i){
@@ -82,7 +91,8 @@ static uint64_t BridgeItemAbilityQueryBody(void) {
     if(w->selection.error || !w->selection.destroyed || matches!=1){w->error=441;return count;}
     __try {
         BridgeJournalPhase(10);
-        if(!ItemAbilityIdentity(w,unit_rawcode) || !ItemAbilitySnapshot(w,w->before)){w->error=442;return count;}
+        if(!ItemAbilityIdentity(w,unit_rawcode))return count;
+        if(!ItemAbilitySnapshot(w,w->before)){w->error=442;return count;}
         BridgeJournalPhase(11);
         if(!ItemAbilityEnumerate(w)){w->error=443;return count;}
         if(!ItemAbilityLookup(w,&w->before_handle,0)){w->error=444;return count;}
@@ -93,7 +103,8 @@ static uint64_t BridgeItemAbilityQueryBody(void) {
             w->add_return=BridgeObservedAddItemAbility(w->add,w->item,w->ability_rawcode)?1u:0u;
         }
         BridgeJournalPhase(13);
-        if(!ItemAbilityIdentity(w,unit_rawcode) || !ItemAbilitySnapshot(w,w->after) ||
+        if(!ItemAbilityIdentity(w,unit_rawcode))return count;
+        if(!ItemAbilitySnapshot(w,w->after) ||
            !BridgeItemSame(w->before,w->after)){w->error=446;return count;}
         if(!ItemAbilityEnumerate(w)){w->error=443;return count;}
         BridgeJournalPhase(14);

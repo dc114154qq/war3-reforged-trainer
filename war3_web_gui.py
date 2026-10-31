@@ -197,7 +197,7 @@ def main() -> int:
             report['panels'] = panels = _visit_pages(window)
             # Every page is rebuilt on the new frontend and must offer controls.
             report['pending_pages'] = [p['id'] for p in panels if not p['ready']]
-            assert len(panels) == 17 and len({p['id'] for p in panels}) == 17, [p['id'] for p in panels]
+            assert len(panels) == 16 and len({p['id'] for p in panels}) == 16, [p['id'] for p in panels]
             assert not report['pending_pages'], report['pending_pages']
             assert all(p['controls'] > 0 for p in panels), [p['id'] for p in panels if not p['controls']]
             assert all(p['bodyWidth'] <= p['viewportWidth'] for p in panels)

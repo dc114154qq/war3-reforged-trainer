@@ -53,7 +53,11 @@ def inspect_backpack_carrier(host,target,classic,controller,snapshot,trace):
         item=session.bind_item(memory,registry,FullHandle(items[0].handle))
         trace.record('backpack_bound_identity',unit_ref=unit,item_ref=item,
             candidate=candidate,classic_item=classic,classic_inventory=inventory,
-            matching_classic_items=len(items),session_epoch=session.epoch)
+            matching_classic_items=len(items),session_epoch=session.epoch,
+            item_identity_fields=dict(primary_address=item.address.value+registry.layout['object_rawcode'],
+                mirror_address=item.address.value+registry.layout['item_rawcode_mirror'],
+                primary=memory.read_u32(item.address.value+registry.layout['object_rawcode']),
+                mirror=memory.read_u32(item.address.value+registry.layout['item_rawcode_mirror'])))
     names=('AIni','AEqu',int(controller).to_bytes(4,'big').decode('ascii'),'ASde')
     codes=[int.from_bytes(name.encode('ascii'),'big') for name in names]
     from war3_3_extension_catalog import TALENT_CONTROLLERS
@@ -65,9 +69,32 @@ def inspect_backpack_carrier(host,target,classic,controller,snapshot,trace):
     snapshot.setdefault('abilities',{}).update(checked.get('abilities',{}))
     for key in ('bag','equipment','bag_size'):snapshot[key]=checked[key]
     trace.record('backpack_unit_components_before_item_repair',snapshot=checked)
+    # No repair can be needed when this exact, bound unit already has every
+    # required component and initialized storage. An additional item ability
+    # enumeration must not become a new failure dependency for that result.
+    if (int(checked.get('bag_size',0))==30 and
+            all(int(checked.get('abilities',{}).get(code,0))>0 for code in codes+[int.from_bytes(b'ASpc','big')])):
+        trace.record('backpack_item_inspection_not_needed',reason='all_required_unit_components_present',
+            unit_full=unit.handle.value,item_full=item.handle.value,bag_size=30,
+            required_components=names+('ASpc',),identity_verified=True,
+            repair_attempted=False,actual_open_effect_verified=False)
+        return dict(before=None,expected_components=names,added=[],skipped=[],readbacks=[],
+            status='unit_components_complete',identity_verified=True,bag_size=30,
+            item_enumeration_needed=False,actual_open_effect_verified=False)
     args=dict(native_target=int(target),native_item=int(classic['handle']),slot=0)
     trace.record('backpack_item_abilities_before',item_full=item.handle.value,unit_full=unit.handle.value,expected_components=names)
-    before=engine.item_abilities(unit,item,**args)
+    try:before=engine.item_abilities(unit,item,**args)
+    except Exception as exc:
+        report=dict(getattr(exc,'report',{}) or {})
+        status=report.get('item_ability_status') or {}
+        from war3_item_ability_protocol import ERROR_REASONS
+        reason=ERROR_REASONS.get(status.get('error'),'本次物品能力读回未完成')
+        trace.record('backpack_item_inspection_failed',item_full=item.handle.value,
+            unit_full=unit.handle.value,status=status,reason=reason,
+            existing_item_preserved=True,automatic_replay_performed=False)
+        error=RuntimeError('背包装备已在物品栏中，但附带能力检查未完成：'+reason+'。已保留现有背包，请勿重复添加。')
+        error.report=report
+        raise error from exc
     trace.record('backpack_item_abilities_before_result',result=before)
     present={row['rawcode'] for row in before['abilities']}
     result=dict(before=deepcopy(before),expected_components=names,added=[],skipped=[],readbacks=[])

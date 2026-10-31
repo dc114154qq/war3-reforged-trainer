@@ -6,6 +6,11 @@ const STORAGE_KEY = 'war3-page'
 function initialPage(): PageId {
   try {
     const saved = localStorage.getItem(STORAGE_KEY)
+    if (saved === 'upgrade_catalog') {
+      localStorage.setItem('war3-catalog-kind', 'upgrade')
+      localStorage.setItem(STORAGE_KEY, 'catalogs')
+      return 'catalogs'
+    }
     if (isPageId(saved)) return saved
   } catch { /* storage unavailable */ }
   return 'unit'

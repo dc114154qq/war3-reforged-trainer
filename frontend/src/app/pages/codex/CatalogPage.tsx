@@ -14,29 +14,40 @@ const KINDS: { value: CatalogKind; label: string }[] = [
   { value: 'item', label: '物品' }, { value: 'ability', label: '技能' }, { value: 'unit', label: '单位' }, { value: 'upgrade', label: '科技' },
 ]
 
-/** ID lookup in the bundled catalogue of stock objects; the tech page opens on upgrades. */
+const KIND_STORAGE = 'war3-catalog-kind'
+
+/** ID lookup in the bundled catalogue, including the technology directory. */
 export function CatalogSearch({ initialKind }: { initialKind: CatalogKind }) {
   const t = useT()
-  const [kind, setKind] = useState<CatalogKind>(initialKind)
+  const [kind, setKind] = useState<CatalogKind>(() => {
+    try {
+      const saved = localStorage.getItem(KIND_STORAGE)
+      return KINDS.find(k => k.value === saved)?.value ?? initialKind
+    } catch { return initialKind }
+  })
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<string | null>(null)
   const settled = useDebounced(query)
   const { data, loading } = useSearch(() => api.searchIdCatalog(kind, settled), [kind, settled])
   const rows = data?.rows ?? []
   const entry = rows.find(r => r.rawcode === selected) ?? null
+  const changeKind = (next: CatalogKind) => {
+    setKind(next); setSelected(null)
+    try { localStorage.setItem(KIND_STORAGE, next) } catch { /* storage unavailable */ }
+  }
 
   useCommandCard([
-    { key: 'Q', icon: 'catalog', title: t('物品'), description: t('切换到物品目录。'), active: kind === 'item', onPress: () => setKind('item') },
-    { key: 'W', icon: 'hero-skill', title: t('技能'), description: t('切换到技能目录。'), active: kind === 'ability', onPress: () => setKind('ability') },
-    { key: 'E', icon: 'unit-hero', title: t('单位'), description: t('切换到单位目录。'), active: kind === 'unit', onPress: () => setKind('unit') },
-    { key: 'R', icon: 'upgrade-catalog', title: t('科技'), description: t('切换到科技目录。'), active: kind === 'upgrade', onPress: () => setKind('upgrade') },
+    { key: 'Q', icon: 'catalog', title: t('物品'), description: t('切换到物品目录。'), active: kind === 'item', onPress: () => changeKind('item') },
+    { key: 'W', icon: 'hero-skill', title: t('技能'), description: t('切换到技能目录。'), active: kind === 'ability', onPress: () => changeKind('ability') },
+    { key: 'E', icon: 'unit-hero', title: t('单位'), description: t('切换到单位目录。'), active: kind === 'unit', onPress: () => changeKind('unit') },
+    { key: 'R', icon: 'upgrade-catalog', title: t('科技'), description: t('切换到科技目录。'), active: kind === 'upgrade', onPress: () => changeKind('upgrade') },
     { key: 'A', icon: 'copy', title: t('复制代码'), description: t('复制选中条目的四字符代码。'), disabled: !entry, onPress: () => entry && void copyCode(entry.rawcode) },
   ])
 
   return (
     <CodexLayout
       toolbar={<>
-        <PillGroup<CatalogKind> label={t('目录')} value={kind} onChange={k => { setKind(k); setSelected(null) }} options={KINDS.map(k => ({ value: k.value, label: t(k.label) }))} />
+        <PillGroup<CatalogKind> label={t('目录')} value={kind} onChange={changeKind} options={KINDS.map(k => ({ value: k.value, label: t(k.label) }))} />
         <TextField
           variant="search"
           className={s.search}

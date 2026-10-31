@@ -2,7 +2,7 @@
 
 React 19 + TypeScript + Vite + Motion，跑在 pywebview（WebView2）里。重做方案见仓库外的 `output/frontend-rebuild-plan-20261028/前端重做方案.md`。
 
-**当前进度：阶段 4 验收完成。** 6 个章节、17 个页面全部在新前端上，功能对齐 2.1.22（提交 `39ddabe`）。对照旧实现可用 `git show 39ddabe:frontend/src/lib/components/UnitPanel.svelte`。
+**当前进度：阶段 4 验收完成。** 7 个章节、16 个页面全部在新前端上，功能对齐 2.1.22（提交 `39ddabe`）。对照旧实现可用 `git show 39ddabe:frontend/src/lib/components/UnitPanel.svelte`。
 
 ## 命令
 
@@ -15,7 +15,7 @@ npm run assets             # 改了界面文字或图标清单后：重新生成
 npm run build:styleguide   # 设计系统样式指南，输出到 dist-styleguide/（不进程序）
 npm run dev                # 开发服务器；浏览器打开 http://localhost:5173/?mock 用假后端
 node scripts/shoot-app.mjs <目录>      # 用本机 Edge 和假后端截取外壳的几个场景
-node scripts/shoot-pages.mjs <目录>    # 截取全部 17 页（先 npm run build）
+node scripts/shoot-pages.mjs <目录>    # 截取全部 16 页（先 npm run build）
 ```
 
 `shoot-pages.mjs` 的环境变量：`SHOT_SIZE=800x480` 设窗口大小，`SHOT_QUERY=&lang=en` 追加地址参数（英文界面），`SHOT_NO_ACT=1` 只截默认状态。默认每页再做一次典型操作，截一张 `-b` 图。
@@ -28,7 +28,7 @@ node scripts/shoot-pages.mjs <目录>    # 截取全部 17 页（先 npm run bui
 python war3_web_gui.py --offline --ui-check ui-check.json
 ```
 
-它会打开窗口，逐个点开 6 个章节和 17 个页面（等每页的分包渲染完），检查 68 个全局快捷键都在、页面没有横向滚动条、每一页都有控件，结果写进 json。
+它会打开窗口，逐个点开 7 个章节和 16 个页面（等每页的分包渲染完），检查 68 个全局快捷键都在、页面没有横向滚动条、每一页都有控件，结果写进 json。
 
 ## 目录
 
@@ -36,7 +36,7 @@ python war3_web_gui.py --offline --ui-check ui-check.json
 src/app/            外壳和页面
   main.tsx          入口；带 ?mock 且没有真后端时加载假后端
   App.tsx           顶带、舞台、操作台三行布局
-  routes.ts         6 个章节、17 个页面 ID（和 --ui-check 约定，不能改）
+  routes.ts         7 个章节、16 个页面 ID（和 --ui-check 约定，不能改）
   state/            zustand 状态：system 连接与语言、unit 选中单位、resources 金木人口、
                     locks 锁定、commands 命令卡、catalog ID 目录名称、params 大象参数、
                     notices 错误、nav 当前页面、mapIssues 地图目录原因；sync.ts 负责轮询和事件
@@ -47,7 +47,7 @@ src/app/            外壳和页面
     battle/         玩家资源、选中单位、批量修改、锁定列表
     fields/         单位字段、技能字段、物品字段、3.0 扩展
     elephant/       经典功能、全局快捷键
-    codex/          ID 检索、科技目录、地图数据、3.0 装备、3.0 英雄技能（列表加羊皮纸详情）
+    codex/          ID 检索（含科技）、自定义地图数据、3.0 装备、3.0 英雄技能（列表加羊皮纸详情）
     huolong/        脚本注入
     archive/        代码提取
   i18n/             t() 和 fill()：中文原文作键，查 en/*.ts、2.1.22 的 UI_EN 和后端翻译表
@@ -93,3 +93,5 @@ scripts/            字体、图标、对比度、英文覆盖检查，截图
 思源宋体：SIL Open Font License 1.1。部分图标来自 game-icons.net，CC BY 3.0。两者都显示在系统菜单底部。火龙脚本来自 HkeW3mModifier 2.06 附带的原版 HKE 1.25B，原作者火龙 / WuHansen。
 
 本地增量验证（2026-10-31）：以 `4d2aafb` 为界面基线，批量栏增加搜索、分类、只看已填写、可折叠的单位和结果，以及独立滚动的紧凑字段区。字段章节新增单位字段；使用独立 RPC 和服务，沿用现有设计系统。桌面交互与构建记录见 `build/unit-fields-next-20261031/`。
+
+导航调整（2026-10-31）：3.0 扩展为独立顶栏；移除重复的科技目录页，科技查询统一在 ID 检索中选择。旧科技目录页面记录迁移到 ID 检索的科技分类；窗口内 Alt+1 至 Alt+7 对应七个栏目。

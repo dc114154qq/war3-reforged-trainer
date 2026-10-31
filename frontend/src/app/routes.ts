@@ -1,14 +1,14 @@
-// Page ids regrouped into six chapters; shared with --ui-check and persisted navigation.
+// Page ids regrouped into seven chapters; shared with --ui-check and persisted navigation.
 // Ids are a contract: the Python --ui-check and saved navigation state refer to them.
 
 export type PageId =
   | 'resources' | 'unit' | 'batch' | 'locks'
   | 'unit_fields' | 'ability_fields' | 'item_fields' | 'extensions'
   | 'elephant' | 'hotkeys'
-  | 'catalogs' | 'upgrade_catalog' | 'map_catalog' | 'equipment3' | 'hero_skills'
+  | 'catalogs' | 'map_catalog' | 'equipment3' | 'hero_skills'
   | 'map_scripts' | 'archive'
 
-export type ChapterId = 'battle' | 'fields' | 'elephant' | 'codex' | 'huolong' | 'archive'
+export type ChapterId = 'battle' | 'fields' | 'extensions' | 'elephant' | 'codex' | 'huolong' | 'archive'
 
 export interface PageMeta {
   id: PageId
@@ -35,6 +35,10 @@ export const CHAPTERS: Chapter[] = [
       { id: 'unit_fields', label: '单位字段' },
       { id: 'ability_fields', label: '技能字段' },
       { id: 'item_fields', label: '物品字段' },
+    ],
+  },
+  {
+    id: 'extensions', label: '3.0 扩展', pages: [
       { id: 'extensions', label: '3.0 扩展' },
     ],
   },
@@ -47,7 +51,6 @@ export const CHAPTERS: Chapter[] = [
   {
     id: 'codex', label: '典籍', pages: [
       { id: 'catalogs', label: 'ID 检索' },
-      { id: 'upgrade_catalog', label: '科技目录' },
       { id: 'map_catalog', label: '自定义地图数据' },
       { id: 'equipment3', label: '3.0 装备' },
       { id: 'hero_skills', label: '3.0 英雄技能' },

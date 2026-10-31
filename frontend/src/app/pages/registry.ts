@@ -17,7 +17,6 @@ export const PAGES: Record<PageId, LazyExoticComponent<ComponentType>> = {
   elephant: lazy(() => import('./elephant/ElephantPage')),
   hotkeys: lazy(() => import('./elephant/HotkeysPage')),
   catalogs: lazy(() => import('./codex/CatalogPage')),
-  upgrade_catalog: lazy(() => import('./codex/UpgradeCatalogPage')),
   map_catalog: lazy(() => import('./codex/MapCatalogPage')),
   equipment3: lazy(() => import('./codex/Equipment3Page')),
   hero_skills: lazy(() => import('./codex/HeroSkillsPage')),

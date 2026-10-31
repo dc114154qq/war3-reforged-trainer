@@ -6,6 +6,14 @@ from war3_native_journal import WORK_SIZE as JOURNAL_SIZE,build_work as journal_
 JOURNAL_OFFSET=1216
 WORK_SIZE=JOURNAL_OFFSET+JOURNAL_SIZE
 ABI=struct.pack('<3I',0x24268070,216,WORK_SIZE)
+ERROR_REASONS={
+    440:'请求参数无效',441:'当前选择与目标不一致',442:'经典物品栏快照无效',
+    443:'物品附带能力列表无效',444:'物品能力查询结果不一致',445:'新增能力未生效',
+    446:'检查期间物品栏发生变化',447:'原有物品能力发生变化',
+    448:'单位完整身份已失效',449:'物品完整身份已失效',450:'单位身份字段不可读',
+    451:'物品身份字段不可读',452:'单位身份发生变化',453:'物品身份发生变化',
+    454:'物品编号副本不一致',455:'物品已离开原槽位',456:'原生物品编号不一致',
+}
 SIGNATURES=(
     ('UnitItemInSlot','(Hunit;I)Hitem;'),('GetItemTypeId','(Hitem;)I'),
     ('GetItemCharges','(Hitem;)I'),('BlzGetItemAbility','(Hitem;I)Hability;'),
@@ -46,7 +54,7 @@ def status(payload):
     slots=lambda offset:[dict(handle=h,rawcode=r,charges=c) for h,r,c in
         (struct.unpack_from('<QIi',payload,offset+16*i) for i in range(6))]
     return dict(rawcode=rawcode,action=action,slot=slot,ability_rawcode=ability_rawcode,
-        error=error,completed=completed,changed=changed,add_return=add_return,
+        error=error,error_reason=ERROR_REASONS.get(error,''),completed=completed,changed=changed,add_return=add_return,
         lookup_evidence=dict(before=dict(direct=bool(reserved&1),indexed=bool(reserved&2)),
                              after=dict(direct=bool(reserved&4),indexed=bool(reserved&8))),
         before_handle=before,after_handle=after,ability_count=count,
@@ -64,6 +72,8 @@ def decode_work(payload,count):
         sum(r['handle']==target for r in selection['rows'])!=1 or
         row['classic_after'][row['slot']]['handle']!=item or
         (row['action']==1 and not row['after_handle'])):
-        raise ValueError(f"物品能力挂载未通过读回：error={row['error']}, component={row['ability_rawcode']}")
+        operation='物品能力检查' if row['action']==0 else '物品能力挂载'
+        reason=row['error_reason'] or '结果未通过一致性检查'
+        raise ValueError(f"{operation}未通过读回：{reason}（错误 {row['error']}，能力 {row['ability_rawcode']}）")
     return dict(row,target_unit=target,item_handle=item,unit_full=unit_full,item_full=item_full,
                 selection=selection,identity_verified=True)

@@ -521,6 +521,7 @@ BOOL WINAPI DllMain(HINSTANCE module,DWORD reason,LPVOID reserved) {
 #include "war3_gold_mine_fixture.h"
 #include "war3_stat_flat_fixture.h"
 #include "war3_unit_bindings_fixture.h"
+#include "war3_item_ability_fixture.h"
 #include "war3_camera_fixture.h"
 #include "war3_ability_compat_fixture.h"
 #include "war3_recovery_instruction_fixture.h"

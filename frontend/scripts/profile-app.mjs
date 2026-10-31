@@ -102,7 +102,7 @@ try {
   const stagePage = id => `() => document.querySelector('[data-testid="stage"]')?.dataset.page === '${id}' && document.querySelector('[data-testid="stage"] button')`
   await step('hotkeys switch on', '[data-testid="hotkeys-switch"]', () => document.querySelector('[data-testid="hotkeys-switch"]').getAttribute('aria-pressed') === 'true')
   await step('hotkeys switch off', '[data-testid="hotkeys-switch"]', () => document.querySelector('[data-testid="hotkeys-switch"]').getAttribute('aria-pressed') === 'false')
-  for (const [chapter, first] of [['battle', 'resources'], ['fields', 'ability_fields'], ['elephant', 'elephant'], ['codex', 'catalogs'], ['huolong', 'map_scripts'], ['archive', 'archive']]) {
+  for (const [chapter, first] of [['battle', 'resources'], ['fields', 'unit_fields'], ['extensions', 'extensions'], ['elephant', 'elephant'], ['codex', 'catalogs'], ['huolong', 'map_scripts'], ['archive', 'archive']]) {
     await step(`chapter ${chapter}`, `[data-testid="chapter-${chapter}"]`, new Function(`return ${stagePage(first)}`)(), { profile: chapter === 'codex' })
   }
   await page.locator('[data-testid="chapter-codex"]').evaluate(el => el.click())
@@ -114,7 +114,7 @@ try {
       new Function(`return () => { const v = document.querySelector('[data-testid="stage"] [role="row"][tabindex] span')?.textContent; return v && v !== ${JSON.stringify(before)} }`)(),
       { profile: kind === '单位' })
   }
-  for (const id of ['upgrade_catalog', 'map_catalog', 'equipment3', 'hero_skills']) {
+  for (const id of ['map_catalog', 'equipment3', 'hero_skills']) {
     await step(`page ${id}`, `[data-testid="page-${id}"]`, new Function(`return ${stagePage(id)}`)())
   }
   await page.locator('[data-testid="chapter-elephant"]').evaluate(el => el.click())

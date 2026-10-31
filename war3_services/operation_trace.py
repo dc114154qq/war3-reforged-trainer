@@ -258,6 +258,19 @@ class CloneTrace(SkillTrace):
                         self.request.get('operation')=='clone_bound' else ABI)[0]))
 
 
+class UnitFieldTrace(SkillTrace):
+    prefix='unit-fields'
+    event_name='unit_field_phase'
+    source_inputs=('unit_fields.py','units.py','facade_native.py')
+
+    def bind_engine(self,engine):
+        import struct
+        from war3_unit_field_protocol import ABI
+        self.engine=engine
+        self.record('engine_context',bridge=_artifact(engine.image),
+                    expected_bridge_protocol=hex(struct.unpack_from('<I',ABI)[0]))
+
+
 def record_engine_execution(engine, report):
     trace = _ACTIVE_TRACE.get()
     if trace is None or (trace.engine is not None and trace.engine is not engine):

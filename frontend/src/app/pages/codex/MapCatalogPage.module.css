@@ -1,0 +1,246 @@
+.top {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.source {
+  border-bottom: 1px solid var(--line-soft);
+  padding-bottom: 10px;
+}
+
+.source summary {
+  cursor: pointer;
+  font: 600 var(--fs-label) var(--font-serif);
+  color: var(--text-label);
+  overflow-wrap: anywhere;
+}
+
+.help {
+  max-width: 90ch;
+  margin: 8px 0;
+  font-size: var(--fs-sm);
+  line-height: 1.7;
+  color: var(--text-tertiary);
+}
+
+.sourceRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.path {
+  flex: 1;
+  min-width: 260px;
+}
+
+.sourceActions {
+  display: flex;
+  gap: 8px;
+}
+
+.scan {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px;
+  background: var(--surface-sunken);
+  box-shadow: inset 0 0 0 1px var(--line-soft);
+}
+
+.scan strong {
+  font: 600 var(--fs-label) var(--font-serif);
+}
+
+.scan span {
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+
+.mono {
+  font: 12px / 1.5 var(--font-mono);
+  color: var(--text-tertiary);
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.error {
+  color: var(--text-danger);
+  overflow-wrap: anywhere;
+}
+
+.issues {
+  padding: 10px 14px;
+  border-left: 2px solid var(--line);
+  background: rgba(7, 10, 18, 0.5);
+}
+
+.issues[data-warning] {
+  border-left-color: var(--select-neutral);
+}
+
+.issuesHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.issuesHead strong {
+  flex: 1;
+  font: 600 var(--fs-base) var(--font-serif);
+}
+
+.issueList {
+  max-height: 180px;
+  margin-top: 8px;
+  overflow-y: auto;
+}
+
+.issueList article {
+  padding: 6px 0;
+  border-top: 1px solid var(--line-faint);
+}
+
+.issueList p {
+  margin: 4px 0 0;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.filters,
+.exports {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.exports {
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.select {
+  min-width: 140px;
+}
+
+.query {
+  flex: 1;
+  min-width: 200px;
+}
+
+.exported {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  font-size: var(--fs-sm);
+}
+
+.name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.35;
+}
+
+.name small {
+  overflow: hidden;
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text-label);
+}
+
+.desc {
+  display: block;
+  overflow: hidden;
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text-secondary);
+}
+
+.change {
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+
+.change[data-type='added'] {
+  color: var(--bonus);
+}
+
+.pages {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding-top: 8px;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+
+/* Changes on the vellum sheet: stacked, so they fit the narrow page. */
+.changes {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.changeCount {
+  padding-bottom: 6px;
+  font: var(--fs-xs) var(--font-sans);
+  color: rgba(43, 33, 23, 0.7);
+}
+
+.changeItem {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 0;
+  border-top: 1px solid rgba(80, 60, 30, 0.22);
+}
+
+.changeLabel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  font-weight: 600;
+}
+
+.changeLabel code,
+.changeLabel span {
+  font: 11.5px var(--font-mono);
+  color: rgba(43, 33, 23, 0.66);
+}
+
+.changeValues {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  font-family: var(--font-sans);
+  font-weight: 400;
+}
+
+.before {
+  color: rgba(43, 33, 23, 0.6);
+  text-decoration: line-through;
+  text-decoration-color: rgba(43, 33, 23, 0.35);
+}
+
+.after {
+  font-weight: 600;
+  color: #6b2a10;
+}

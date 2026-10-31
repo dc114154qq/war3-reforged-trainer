@@ -7,7 +7,7 @@ import sys,threading,time
 from war3_view_contract import ViewPort,ViewControl
 from war3_backend import (War3Trainer,Win10ReadLogger,ResourceCache,UnitMemoryField,
     UnitSelectionSummary,AbilityFieldSnapshot,AbilityFieldValue,ItemFieldSnapshot,ItemFieldValue,
-    GlobalHotkeyManager,ELEPHANT_HOTKEY_SPECS,record_operation_failure,resolve_requested_war3_pid,
+    GlobalHotkeyManager,ELEPHANT_HOTKEY_SPECS,record_operation_failure,resolve_requested_war3_pid,find_war3_with_retry,
     call_with_read_success_sound,format_rawcode,parse_int,parse_float,parse_changed_coordinate,
     selection_confidence_text)
 from war3_metadata import APP_VERSION,PRODUCT_READ_MODE,PRODUCT_EDITION_LABEL
@@ -2012,6 +2012,11 @@ class TrainerApplication:
 
         def worker() -> None:
             try:
+                # Waiting for the game window sleeps for up to four seconds per attempt. Wait
+                # before taking the operation lock: every desktop call needs that lock, so
+                # holding it while the game is closed froze the whole window every few seconds.
+                requested = self.view.value('pid_var').get().strip()
+                find_war3_with_retry(resolve_requested_war3_pid(int(requested) if requested else None))
                 with self.view.value('operation_lock'):
                     message = self.connect()
                     try:

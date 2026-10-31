@@ -1,0 +1,104 @@
+.paths {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pathHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.pathLabel {
+  font: 600 var(--fs-sm) var(--font-serif);
+  letter-spacing: 0.06em;
+  color: var(--text-label);
+}
+
+.help {
+  margin: 0;
+  font-size: var(--fs-xs);
+  line-height: 1.6;
+  color: var(--text-tertiary);
+}
+
+.progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  background: var(--surface-sunken);
+  box-shadow: inset 0 0 0 1px var(--line-soft);
+}
+
+.headline {
+  margin: 0;
+  font: 600 var(--fs-label) var(--font-serif);
+  color: var(--text-primary);
+}
+
+.line {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+
+.path {
+  display: block;
+  margin: 0;
+  font: 12px / 1.5 var(--font-mono);
+  color: var(--text-tertiary);
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.files {
+  margin-top: 14px;
+}
+
+.fileList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.file {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 12px;
+  border-left: 2px solid var(--line);
+  background: rgba(7, 10, 18, 0.5);
+}
+
+.file[data-status='succeeded'] {
+  border-left-color: var(--bonus);
+}
+
+.file[data-status='failed'] {
+  border-left-color: var(--text-danger);
+}
+
+.fileState {
+  font: 600 var(--fs-sm) var(--font-serif);
+}
+
+.output {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.error {
+  font-size: var(--fs-sm);
+  color: var(--text-danger);
+  overflow-wrap: anywhere;
+}

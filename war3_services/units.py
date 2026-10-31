@@ -3,6 +3,13 @@ from war3_selection_protocol import SIGNATURES
 from war3_hero_protocol import SIGNATURES as HERO_SIGNATURES, build_work, decode_work
 
 class UnitsService:
+    def unit_fields(self,fields,action=0,target_unit=0,rawcode=0):
+        from war3_unit_field_protocol import SIGNATURES as FIELD_SIGNATURES,build_work,decode_work,handler_indices
+        fields=tuple(fields)
+        names=tuple(n for n,_ in SIGNATURES)+tuple(FIELD_SIGNATURES[i][0] for i in sorted(handler_indices(fields,action)))
+        return self._execute('unit_field',names,lambda entries,tls:build_work(entries,tls,fields,action,target_unit,rawcode),
+            decode_work,dict(fields=fields,action=action,target_unit=target_unit,rawcode=rawcode))
+
     def clone_state(self, *, expected_sources, **options):
         from war3_clone_state_protocol import SIGNATURES as STATE_SIGNATURES, build_work, decode_work
         from war3_clone_protocol import SIGNATURES as CLONE_SIGNATURES, CLONE_KEEP, CLONE_COPY_ABILITIES, CLONE_COPY_ITEMS, CLONE_PRESERVE_OWNER, CLONE_USE_SPAWN, CLONE_ALLOW_PARTIAL_ABILITIES

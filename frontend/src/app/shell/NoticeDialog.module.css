@@ -1,0 +1,40 @@
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 52vh;
+  user-select: text;
+}
+
+.reason {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.heading {
+  margin: 4px 0 0;
+  font: 600 var(--fs-base) var(--font-serif);
+}
+
+.detail {
+  margin-top: 8px;
+  padding: 8px 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: rgba(255, 255, 255, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(80, 60, 30, 0.35);
+}
+
+.detail p {
+  margin: 4px 0 0;
+}
+
+.log {
+  margin: 0;
+}
+
+.path {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}

@@ -1,0 +1,87 @@
+/*
+ * Nine-slice frames, painted by an overlay pseudo-element so they sit above the host's
+ * own content and backgrounds (a header bar must not hide the corners).
+ * Ornament lives only in the corners; edges are hairlines that stretch.
+ * :where() keeps the position rule at zero specificity, so a host that is fixed or
+ * absolute keeps its own positioning.
+ */
+:where(.ds-frame-ornate, .ds-frame-grand) {
+  position: relative;
+}
+
+.ds-frame-ornate::after,
+.ds-frame-grand::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  border-style: solid;
+  border-color: transparent;
+  border-image-repeat: stretch;
+}
+
+.ds-frame-ornate::after {
+  border-width: 12px;
+  border-image-source: url('./frames/ornate.svg');
+  border-image-slice: 12;
+}
+
+.ds-frame-grand::after {
+  border-width: 20px;
+  border-image-source: url('./frames/grand.svg');
+  border-image-slice: 20;
+}
+
+/* Recessed well: command grid, inputs, bar tracks. */
+.ds-well {
+  background: var(--surface-socket);
+  border: 1px solid #04060a;
+  box-shadow: inset 0 0 0 1px var(--line-soft), inset 0 2px 6px rgba(0, 0, 0, 0.8);
+}
+
+/* Brushed iron with noise: top band and console. */
+.ds-metal {
+  background:
+    var(--noise),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.012) 0 1px, transparent 1px 3px),
+    linear-gradient(180deg, #302a24 0%, #221e19 45%, #171411 100%);
+  background-size: 180px 180px, auto, auto;
+  background-blend-mode: soft-light, normal, normal;
+}
+
+/* Cast bronze rim along the top edge of a metal surface. */
+.ds-rim-top {
+  position: relative;
+}
+
+.ds-rim-top::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #4f3d22, var(--bronze) 10%, var(--bronze-hi) 50%, var(--bronze) 90%, #4f3d22);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.75);
+  pointer-events: none;
+}
+
+/* The stage: tooltip navy, lit from where the clock hangs. */
+.ds-stage {
+  position: relative;
+  background:
+    radial-gradient(110% 70% at 50% -12%, #1d2a45 0%, rgba(29, 42, 69, 0) 62%),
+    radial-gradient(70% 60% at 100% 110%, rgba(0, 0, 0, 0.38), transparent 70%),
+    var(--surface-stage);
+}
+
+.ds-stage::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: var(--noise);
+  background-size: 180px 180px;
+  opacity: 0.05;
+  pointer-events: none;
+}

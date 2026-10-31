@@ -1,7 +1,7 @@
 """Batch unit fields through the shared session and the existing field backends."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from contextlib import contextmanager
 from contextvars import ContextVar
 import struct
@@ -12,18 +12,32 @@ from war3_game_session import GameSession, NativeHandle, ObjectAddress, SessionI
 from war3_services.operation_trace import BackpackTrace
 
 _FIELD_TARGET = ContextVar("batch_field_target", default=None)
+_FIELD_KEYS = ContextVar("batch_field_keys", default=None)
+_FIELD_BINDINGS = ContextVar("batch_field_bindings", default=None)
 
 
 def active_field_target():
     return _FIELD_TARGET.get()
 
 
+def active_field_keys():
+    return _FIELD_KEYS.get()
+
+
+def active_field_bindings():
+    return _FIELD_BINDINGS.get()
+
+
 @contextmanager
-def field_target(ref):
+def field_target(ref, keys=None, bindings=None):
     token = _FIELD_TARGET.set(ref)
+    key_token = _FIELD_KEYS.set(None if keys is None else frozenset(keys))
+    binding_token = _FIELD_BINDINGS.set(bindings)
     try:
         yield
     finally:
+        _FIELD_BINDINGS.reset(binding_token)
+        _FIELD_KEYS.reset(key_token)
         _FIELD_TARGET.reset(token)
 
 
@@ -126,6 +140,7 @@ class _BatchFieldReader:
         self.binding_error = None
         self.stats = None
         self.stats_error = None
+        self.range_rows = None
 
     def __getattr__(self, name):
         return getattr(self.host, name)
@@ -202,9 +217,76 @@ class _BatchFieldReader:
         from war3_services.facade_extensions import ExtensionsFacade
         return ExtensionsFacade.stat_details_24268(self, candidate)
 
+    def _unit_ranges_for_candidate_24268(self,candidate):
+        from war3_services.unit_fields import RANGE_FIELDS
+        _,native=self._stat_target_24268(candidate)
+        if self.range_rows is None:
+            result=self.host._engine_instance_24268().unit_fields(RANGE_FIELDS)
+            expected={value:ref.rawcode for ref,value in self.bindings.items()}
+            rows=result['rows']
+            if len(rows)!=len(expected) or {r['unit']:r['rawcode'] for r in rows}!=expected:
+                raise RuntimeError('批量武器范围读回的选择与单位身份不一致')
+            self.range_rows={r['unit']:tuple(f['value'] for f in r['fields']) for r in rows}
+        self._check(self.targets[id(candidate)])
+        return native,self.range_rows[native]
+
     def fields(self, candidate):
         from war3_services.facade_fields import FieldsFacade
         return FieldsFacade._unit_fields_from_candidate(self, self.memory, candidate)
+
+
+class _BatchRangeWriter:
+    """One fresh native binding group, then one verified range setter per unit.
+
+    The setter already reads both old weapon ranges and verifies its write in
+    the game callback. Rebuilding every unrelated panel field adds no check to
+    that transaction. References, ownership and the attack component stay live.
+    """
+    def __init__(self, host, session, memory, units, bindings, trace):
+        self.host,self.session,self.memory=host,session,memory
+        self.units,self.bindings,self.trace=units,bindings,trace
+        self.prepared=False
+
+    def write(self, unit, field, target):
+        from war3_unit_field_protocol import value_bits
+        from war3_services.unit_fields import write_range_verified
+        value=float(target)
+        bits=value_bits(2,value)
+        if not 0<=value<=1000000:raise ValueError('攻击范围必须在 0 到 1000000 之间')
+        registry,_,_=self.session.prepare(self.memory)
+        self.session.resolve(self.memory,registry,unit.ref)
+        if registry.resolve_unit(self.memory,unit.ref.address.value)!=(unit.ref.handle.value,unit.owner):
+            raise RuntimeError('批量射程目标的所属对象已变化')
+        candidate=self.host._candidate_from_display_identity(self.memory,*unit.identity,'batch_range_write',850)
+        if candidate is None or candidate.unit_type_id!=unit.ref.rawcode:
+            raise RuntimeError('批量射程目标已失效，请重新读取')
+        if 'attack' not in self.host._selected_components(self.memory,unit.owner):
+            raise ValueError('该单位当前没有可修改的攻击组件')
+        engine=self.host._engine_instance_24268()
+        if not self.prepared:
+            refs=[]
+            for source in self.units:
+                try:self.session.resolve(self.memory,registry,source.ref)
+                except Exception:continue  # The regular per-unit validation reports it.
+                refs.append(source.ref)
+            started=time.perf_counter()
+            result=engine.bind_unit_refs(tuple(refs),strict_selection=False)
+            if (type(result) is not tuple or len(result)!=len(refs)
+                    or any(type(row) is not tuple or len(row)!=2 or type(row[0]) is not NativeHandle
+                           or row[1]!=ref for row,ref in zip(result,refs))
+                    or len({row[0].value for row in result})!=len(refs)):
+                raise RuntimeError('批量射程原生绑定与完整单位身份不一致')
+            for native,ref in result:
+                self.session.resolve(self.memory,registry,ref)
+                self.bindings[ref]=native
+            self.prepared=True
+            self.trace.record('write_native_bindings',count=len(refs),elapsed_ms=(time.perf_counter()-started)*1000)
+        native=self.bindings.get(unit.ref)
+        if native is None:raise RuntimeError('批量射程目标缺少本次原生绑定')
+        self.session.resolve(self.memory,registry,unit.ref)
+        actual=write_range_verified(engine,native.value,unit.ref.rawcode,1,bits)
+        self.session.resolve(self.memory,registry,unit.ref)
+        return replace(field,value=actual,native_component_identity=(native.value,unit.ref.rawcode))
 
 
 class BatchEditService:
@@ -285,11 +367,16 @@ class BatchEditService:
         pairs = tuple((unit, key, value) for unit in units for key, value in targets.items())
         results, stopped = [], ""
         capabilities = {}
+        bindings = {}
         with session.lock, session_scope(session), BatchTrace(
             self.host, self.logger_factory,
             dict(action="write_fields", targets=targets,
                  units=[dict(ref=unit.ref, owner=unit.owner) for unit in units]),
         ) as trace, self.host._process_memory() as memory:
+            from war3_backend import uses_indexed_backend
+            range_writer = (_BatchRangeWriter(self.host,session,memory,units,bindings,trace)
+                if isinstance(session,GameSession) and uses_indexed_backend(self.host)
+                and 'attack1_range' in targets else None)
             def ensure_session():
                 if session is not snapshot.session or self.host._game_session is not session:
                     raise RuntimeError("游戏会话已变化，请重新读取批量单位")
@@ -315,13 +402,27 @@ class BatchEditService:
                 trace.record("field_begin", **context)
                 try:
                     session.resolve(memory, registry, unit.ref)
+                    original = next((f for f in unit.fields if f.key==key),None)
+                    if (range_writer is not None and key=='attack1_range'
+                            and original is not None and original.native_write):
+                        expected = self.host._coerce_memory_value('f32',target)
+                        trace.record('field_validated',**context,field=original,expected=expected,route='verified_batch_range')
+                        trace.checkpoint()
+                        started=time.perf_counter()
+                        written=range_writer.write(unit,original,target)
+                        if written.value!=expected:raise RuntimeError('批量射程写入读回与目标值不一致')
+                        result=FieldResult(unit,key,target,'success',actual=written.value_text())
+                        results.append(result)
+                        trace.record('field_write_timing',**context,elapsed_ms=(time.perf_counter()-started)*1000,requested_only=True,route='verified_batch_range')
+                        trace.record('field_result',**context,status=result.status,reason='',actual=result.actual,replayed=False)
+                        continue
                     # Cache capabilities within this request, never write
                     # addresses. The setter resolves its own current fields.
                     # Inventory/skill replacement invalidates this capability
                     # view before the next field is considered.
                     fields = capabilities.get(unit.identity)
                     if fields is None:
-                        with field_target(unit.ref):
+                        with field_target(unit.ref, targets, bindings):
                             _panel, _candidate, fields = self.host.read_unit_fields_by_identity(*unit.identity)
                         capabilities[unit.identity] = fields
                     field = next((field for field in fields if field.key == key), None)
@@ -338,8 +439,12 @@ class BatchEditService:
                         registry = ensure_session()
                         session.resolve(memory, registry, unit.ref)
                         trace.checkpoint()
-                        with field_target(unit.ref):
+                        started = time.perf_counter()
+                        with field_target(unit.ref, (key,), bindings):
                             written = self.host.write_unit_field_by_identity(*unit.identity, key, target)
+                        trace.record("field_write_timing", **context,
+                                     elapsed_ms=(time.perf_counter() - started) * 1000,
+                                     requested_only=True)
                         if key.startswith("inventory_slot_") or (key.startswith("skill") and key.endswith("_name")):
                             capabilities.pop(unit.identity, None)
                         session.resolve(memory, registry, unit.ref)
@@ -353,6 +458,7 @@ class BatchEditService:
                                      actual=written, effect_verified=False)
                 except Exception as exc:
                     capabilities.pop(unit.identity, None)
+                    bindings.pop(unit.ref, None)
                     result = FieldResult(unit, key, target, "failed", str(exc))
                     trace.record("field_exception", **context, exception=repr(exc),
                                  traceback=traceback.format_exc(),

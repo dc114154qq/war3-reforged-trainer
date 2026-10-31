@@ -1,0 +1,85 @@
+.stage {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 14px 22px 10px;
+  overflow: hidden;
+}
+
+.content {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.header {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 18px;
+  padding-bottom: 8px;
+  margin-bottom: 12px;
+}
+
+.header::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(90deg, var(--line), rgba(176, 138, 78, 0.18) 60%, transparent);
+}
+
+.title {
+  margin: 0;
+  font: 900 var(--fs-lg) / var(--lh-tight) var(--font-serif);
+  letter-spacing: var(--tracking-heading);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.6);
+  white-space: nowrap;
+}
+
+/* Page tabs: plates that read as buttons, the open page cast in bronze like a chosen pill. */
+.tabs {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 14px;
+  font: 600 var(--fs-base) var(--font-serif);
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  background: linear-gradient(180deg, #2d2822, #1a1713);
+  border: 1px solid #0a0907;
+  box-shadow: inset 0 0 0 1px var(--line), inset 0 1px 0 rgba(255, 236, 200, 0.08);
+  transition: color var(--dur-press) var(--ease-out), box-shadow var(--dur-press) var(--ease-out);
+}
+
+.tab:hover {
+  color: var(--text-primary);
+  box-shadow: inset 0 0 0 1px var(--bronze-hi), inset 0 1px 0 rgba(255, 236, 200, 0.12);
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.tab[data-active] {
+  color: var(--text-on-bronze);
+  background: linear-gradient(180deg, #e4c482 0%, #b58f50 55%, #8a6832 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 240, 200, 0.35),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.22),
+    0 0 10px rgba(217, 182, 118, 0.25);
+}

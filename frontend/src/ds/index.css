@@ -1,0 +1,5 @@
+/* Global entry for the design system. Import once from each page's main.tsx. */
+@import './tokens.css';
+@import './fonts/fonts.css';
+@import './base.css';
+@import './frames.css';

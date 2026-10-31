@@ -1,0 +1,134 @@
+.bar {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.bare {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.label {
+  font-size: var(--fs-xs);
+  color: var(--text-tertiary);
+}
+
+.track {
+  position: relative;
+  height: 16px;
+  overflow: hidden;
+  background: #04060a;
+  border: 1px solid #000;
+  box-shadow: inset 0 0 0 1px rgba(176, 138, 78, 0.28), inset 0 2px 4px rgba(0, 0, 0, 0.8);
+}
+
+.ghost,
+.fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+}
+
+.ghost {
+  background: rgba(255, 236, 190, 0.55);
+}
+
+.fill {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), inset 0 -2px 3px rgba(0, 0, 0, 0.35);
+}
+
+.bar[data-kind='mana'] .fill {
+  background: linear-gradient(180deg, #78a2ff 0%, #2f6bff 50%, #1a3caa 100%);
+}
+
+.bar[data-frozen] .fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(118deg, rgba(240, 250, 255, 0.18) 0 1px, transparent 1px 7px),
+    linear-gradient(180deg, rgba(225, 246, 255, 0.6), rgba(154, 216, 245, 0.28));
+  mix-blend-mode: screen;
+}
+
+.frozenIcon {
+  position: absolute;
+  left: 5px;
+  top: 2px;
+  font-size: 11px;
+  color: #fff;
+}
+
+.text {
+  position: absolute;
+  right: 8px;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  font: 600 var(--fs-xs) / 1 var(--font-sans);
+  color: #fff;
+  text-shadow: 0 1px 1px #000, 0 0 3px #000;
+}
+
+.xp {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.xpTrack {
+  flex: 1;
+  height: 5px;
+  background: #04060a;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.85), inset 0 0 0 1px rgba(154, 107, 216, 0.25);
+}
+
+.xpTrack i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(180deg, #c8a1f4, #7647be);
+  transition: width var(--dur-base) var(--ease-out);
+}
+
+.xpText {
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.progress {
+  position: relative;
+  height: 8px;
+  overflow: hidden;
+  background: var(--surface-socket);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.85), inset 0 0 0 1px var(--line-soft), inset 0 2px 3px rgba(0, 0, 0, 0.9);
+}
+
+.progress i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(180deg, #ffe680 0%, #d9a83a 50%, #8a6420 100%);
+  box-shadow: 0 0 8px rgba(255, 210, 90, 0.45);
+  transition: width var(--dur-base) var(--ease-out);
+}
+
+.progress[data-indeterminate] i {
+  width: 30%;
+  animation: progress-sweep 1.4s var(--ease-in-out) infinite;
+}
+
+@keyframes progress-sweep {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(340%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress[data-indeterminate] i {
+    width: 100%;
+    opacity: 0.5;
+    animation: none;
+  }
+}

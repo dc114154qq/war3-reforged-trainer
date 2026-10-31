@@ -1,4 +1,4 @@
-"""Desktop launcher for Warcraft III Trainer with modern Svelte 5 / WebView2 GUI."""
+"""Desktop launcher for Warcraft III Trainer with React / WebView2 GUI."""
 from __future__ import annotations
 
 import argparse
@@ -28,6 +28,77 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--offline', action='store_true', help='Open UI without game initialization')
     parser.add_argument('--ui-check', help='Write an offline desktop UI verification report')
     return parser.parse_args()
+
+
+def apply_title_bar_colors(window, title: str) -> None:
+    """Match the native title bar to the console: dark mode, then Windows 11 caption colours.
+
+    Older systems ignore the attributes they do not know; nothing here is required.
+    """
+    if sys.platform != 'win32':
+        return
+    try:
+        import ctypes
+        from ctypes import wintypes
+        hwnd = 0
+        native = getattr(window, 'native', None)
+        if native is not None and hasattr(native, 'Handle'):
+            hwnd = int(native.Handle.ToInt64())
+        if not hwnd:
+            hwnd = ctypes.windll.user32.FindWindowW(None, title)
+        if not hwnd:
+            return
+        dwm = ctypes.windll.dwmapi
+
+        def set_attribute(attribute: int, value: int) -> int:
+            data = ctypes.c_int(value)
+            return dwm.DwmSetWindowAttribute(wintypes.HWND(hwnd), attribute, ctypes.byref(data), ctypes.sizeof(data))
+
+        # Immersive dark mode is attribute 20 from Windows 10 20H1, 19 before that.
+        if set_attribute(20, 1) != 0:
+            set_attribute(19, 1)
+        # Windows 11 only; COLORREF is 0x00BBGGRR.
+        set_attribute(35, 0x001E2226)  # caption: iron #26221E
+        set_attribute(36, 0x00D2E3EA)  # caption text: bone #EAE3D2
+        set_attribute(34, 0x004E8AB0)  # border: bronze #B08A4E
+    except Exception as exc:  # cosmetic only
+        logger.debug('Title bar colours not applied: %s', exc)
+
+
+def _visit_pages(window) -> list[dict]:
+    """Open every page through the real navigation: each chapter, then each of its page tabs."""
+    pages = []
+    chapters = int(window.evaluate_js("document.querySelectorAll('[data-testid^=\"chapter-\"]').length"))
+    for chapter in range(chapters):
+        window.evaluate_js(f"document.querySelectorAll('[data-testid^=\"chapter-\"]')[{chapter}].click()")
+        time.sleep(.25)
+        tabs = int(window.evaluate_js("document.querySelectorAll('[data-testid^=\"page-\"]').length"))
+        for tab in range(max(tabs, 1)):
+            if tabs:
+                window.evaluate_js(f"document.querySelectorAll('[data-testid^=\"page-\"]')[{tab}].click()")
+                time.sleep(.25)
+            # Pages load as separate chunks: wait for one to render before counting its controls.
+            deadline = time.monotonic() + 5
+            while True:
+                page = window.evaluate_js(_PAGE_PROBE)
+                if (page['ready'] and page['controls'] > 0) or time.monotonic() > deadline:
+                    break
+                time.sleep(.1)
+            pages.append(page)
+    return pages
+
+
+_PAGE_PROBE = """(() => {
+    const stage = document.querySelector('[data-testid="stage"]');
+    const content = stage.querySelector(`[data-page-view="${stage.dataset.page}"]`);
+    return {
+        id: stage.dataset.page,
+        label: stage.querySelector('h1')?.textContent.trim(),
+        ready: stage.dataset.ready === 'true' && !!content?.children.length,
+        controls: content?.querySelectorAll('button,input,select,textarea').length ?? 0,
+        bodyWidth: document.body.scrollWidth, viewportWidth: innerWidth
+    };
+})()"""
 
 
 def main() -> int:
@@ -69,7 +140,7 @@ def main() -> int:
         offline=bool(args.offline or args.ui_check),
     )
 
-    window_title = f"魔兽争霸 III 修改器 v{APP_VERSION} ({PRODUCT_EDITION_LABEL}) by B站两杯沈梦溪"
+    window_title = f"魔兽争霸 III 修改器 v{APP_VERSION} by B站两杯沈梦溪、chatgpt和claude"
 
     # Create native WebView2 window
     window = webview.create_window(
@@ -79,10 +150,12 @@ def main() -> int:
         width=1280,
         height=820,
         min_size=(800, 480),
-        background_color="#07090D",
+        # The stage colour of the new frontend, so the window does not flash before it paints.
+        background_color="#121A2B",
     )
     bridge_api.port.window = window
     bridge_api.port.on_destroy = window.destroy
+    window.events.shown += lambda: apply_title_bar_colors(window, window_title)
     shutdown_started = threading.Event()
 
     def closing():
@@ -102,7 +175,7 @@ def main() -> int:
         try:
             deadline = time.monotonic() + 30
             while time.monotonic() < deadline:
-                ready = window.evaluate_js("Boolean(document.querySelector('.app-layout') && window.pywebview && window.pywebview.api)")
+                ready = window.evaluate_js("Boolean(document.querySelector('[data-testid=\"app\"]') && window.pywebview && window.pywebview.api)")
                 if ready:
                     break
                 time.sleep(.1)
@@ -110,10 +183,10 @@ def main() -> int:
                 raise RuntimeError('Desktop frontend did not become ready')
             report['dom'] = window.evaluate_js("""(() => ({
                 title: document.title,
-                navigation: Array.from(document.querySelectorAll('.sidebar .nav-item')).map(x => x.textContent.trim()),
+                chapters: Array.from(document.querySelectorAll('[data-testid^="chapter-"]')).map(x => x.textContent.trim()),
                 controls: document.querySelectorAll('button,input,select,textarea').length,
                 viewportWidth: innerWidth, bodyWidth: document.body.scrollWidth,
-                status: document.querySelector('.status-indicator')?.textContent.trim(),
+                status: document.querySelector('[data-testid="clock"]')?.getAttribute('aria-label'),
                 bridgeReady: Boolean(window.pywebview.api.read_ability_fields)
             }))()""")
             hotkeys = bridge_api.get_all_hotkeys()
@@ -121,18 +194,13 @@ def main() -> int:
             assert len([h for h in hotkeys if h['category'] == 'stats']) == 17
             report['hotkeys'] = len(hotkeys)
             report['parameters'] = 17
-            panels = []
-            count = int(window.evaluate_js("document.querySelectorAll('.sidebar .nav-item').length"))
-            for index in range(count):
-                window.evaluate_js(f"document.querySelectorAll('.sidebar .nav-item')[{index}].click()")
-                time.sleep(.2)
-                panels.append(window.evaluate_js("""(() => ({
-                    label: document.querySelector('.sidebar .nav-item.active')?.textContent.trim(),
-                    controls: document.querySelector('.panel-slot:not([hidden])')?.querySelectorAll('button,input,select,textarea').length || 0,
-                    bodyWidth: document.body.scrollWidth, viewportWidth: innerWidth
-                }))()"""))
-            report['panels'] = panels
-            assert len(panels) == 16 and all(p['controls'] > 0 for p in panels)
+            report['panels'] = panels = _visit_pages(window)
+            # Every page is rebuilt on the new frontend and must offer controls.
+            report['pending_pages'] = [p['id'] for p in panels if not p['ready']]
+            assert len(panels) == 17 and len({p['id'] for p in panels}) == 17, [p['id'] for p in panels]
+            assert not report['pending_pages'], report['pending_pages']
+            assert all(p['controls'] > 0 for p in panels), [p['id'] for p in panels if not p['controls']]
+            assert all(p['bodyWidth'] <= p['viewportWidth'] for p in panels)
             report['ok'] = bool(report['dom']['bridgeReady'] and report['dom']['controls'] > 10)
         except Exception as exc:
             import traceback

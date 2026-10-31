@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="36" height="36" viewBox="0 0 36 36">
+  <!-- Nine-slice source, slice 12: a hairline edge with bronze brackets on the corners only. -->
+  <defs>
+    <g id="c">
+      <path d="M1.2 11V4.6L4.6 1.2H11" fill="none" stroke="#d9b676" stroke-width="1.2"/>
+      <circle cx="4.7" cy="4.7" r="1.05" fill="#d9b676"/>
+    </g>
+  </defs>
+  <rect x="0.5" y="0.5" width="35" height="35" fill="none" stroke="#b08a4e" stroke-opacity="0.6"/>
+  <use xlink:href="#c"/>
+  <use xlink:href="#c" transform="matrix(-1 0 0 1 36 0)"/>
+  <use xlink:href="#c" transform="matrix(1 0 0 -1 0 36)"/>
+  <use xlink:href="#c" transform="matrix(-1 0 0 -1 36 36)"/>
+</svg>

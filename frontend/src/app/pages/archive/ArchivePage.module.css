@@ -1,0 +1,94 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+  min-height: 0;
+}
+
+.tabs {
+  display: flex;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 12px;
+}
+
+.grow {
+  flex: 1;
+  min-width: 260px;
+}
+
+.prefix input {
+  width: 9ch;
+  font: 600 14px var(--font-mono);
+}
+
+.scanning {
+  flex: none;
+}
+
+.filter {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+
+.search {
+  width: min(320px, 100%);
+}
+
+.empty {
+  margin: 0;
+  padding: 18px 0;
+  color: var(--text-tertiary);
+}
+
+.codes {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0 4px 12px 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+/* A strip of vellum per code: the only light surface on the page, ink for the code. */
+.strip {
+  margin-bottom: 10px;
+  padding: 10px 14px 12px;
+  color: var(--text-on-document);
+  background:
+    radial-gradient(140% 120% at 50% 30%, transparent 55%, rgba(120, 90, 40, 0.3)),
+    var(--surface-document);
+  box-shadow: inset 0 0 0 1px rgba(80, 60, 30, 0.45), 0 6px 16px rgba(0, 0, 0, 0.45);
+}
+
+.stripHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.kind {
+  font: 600 var(--fs-sm) var(--font-serif);
+}
+
+.source {
+  flex: 1;
+  font-size: var(--fs-xs);
+  color: rgba(43, 33, 23, 0.68);
+}
+
+.code {
+  margin: 8px 0 0;
+  font: 600 15px / 1.6 var(--font-mono);
+  letter-spacing: 0.04em;
+  word-break: break-all;
+  user-select: all;
+}

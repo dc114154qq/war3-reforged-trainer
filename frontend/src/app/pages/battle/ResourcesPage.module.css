@@ -1,0 +1,167 @@
+/* The treasury: three large numbers where the page's attention goes. */
+.treasury {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+  margin: 0 0 12px;
+}
+
+.treasure {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.caption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 600 var(--fs-label) var(--font-serif);
+  letter-spacing: 0.1em;
+  color: var(--text-label);
+}
+
+.caption svg {
+  font-size: 20px;
+}
+
+.big {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-height: 64px;
+  font: 600 56px / 1.1 var(--font-serif);
+  color: var(--text-value);
+  text-shadow: 0 2px 0 #000, 0 0 18px rgba(0, 0, 0, 0.7);
+}
+
+.slash {
+  font-size: var(--fs-2xl);
+  color: rgba(255, 220, 0, 0.45);
+}
+
+.amount {
+  transition: color var(--dur-slow) var(--ease-out), text-shadow var(--dur-slow) var(--ease-out);
+}
+
+.amount[data-locked] {
+  color: var(--frost);
+  text-shadow: 0 2px 0 #000, 0 0 16px rgba(154, 216, 245, 0.55);
+}
+
+.unknown {
+  color: var(--text-tertiary);
+}
+
+.locks {
+  display: flex;
+  gap: 8px;
+}
+
+.lockButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px 0 8px;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  border-radius: var(--radius-xs);
+  box-shadow: inset 0 0 0 1px var(--line-soft);
+  transition: background-color var(--dur-press) var(--ease-out), color var(--dur-press) var(--ease-out);
+}
+
+.lockButton:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: rgba(234, 227, 210, 0.06);
+}
+
+.lockButton[aria-pressed='true'] {
+  color: var(--frost);
+  background: rgba(154, 216, 245, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(154, 216, 245, 0.45);
+}
+
+.lockButton:disabled {
+  opacity: 0.45;
+}
+
+.delta {
+  align-items: flex-end;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line-faint);
+}
+
+.deltaField {
+  width: 130px;
+}
+
+.deltaHint {
+  align-self: center;
+  font-size: var(--fs-xs);
+  color: var(--text-tertiary);
+}
+
+.group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.goldText {
+  font: 600 var(--fs-base) var(--font-serif);
+  color: var(--text-value);
+}
+
+.lumberText {
+  font: 600 var(--fs-base) var(--font-serif);
+  color: var(--lumber);
+}
+
+.dim {
+  color: var(--text-tertiary);
+}
+
+.mineField {
+  width: 200px;
+}
+
+.mineTable {
+  margin-top: 12px;
+}
+
+.remaining {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Remaining gold as a draining bar, relative to the fullest mine in the result. */
+.remainingBar {
+  flex: 1;
+  max-width: 90px;
+  height: 6px;
+  background: #04060a;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.8), inset 0 0 0 1px rgba(176, 138, 78, 0.25);
+}
+
+.remainingBar i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(180deg, #ffe58a, #c89a1c);
+  transition: width var(--dur-slow) var(--ease-out);
+}
+
+@media (max-width: 1099px) {
+  .big {
+    min-height: 52px;
+    font-size: var(--fs-2xl);
+  }
+
+  .treasury {
+    gap: 18px;
+  }
+}

@@ -265,3 +265,25 @@ export interface RpgCodeRow {
   code: string;
   source: string;
 }
+/** Editor unit fields read through the identity-bound native service. */
+export interface NativeUnitField {
+  key: string
+  code: string
+  constant: string
+  kind: 'integer' | 'real' | 'boolean' | 'string'
+  weapon: number
+  label: string
+  labelEn: string
+  category: string
+  writable: boolean
+  value: number | boolean | string | null
+  note: string
+}
+
+export interface NativeUnitFieldsData {
+  success: boolean
+  rawcode: number
+  unitCode: string
+  identity: string
+  rows: NativeUnitField[]
+}

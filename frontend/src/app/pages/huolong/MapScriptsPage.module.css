@@ -1,0 +1,251 @@
+.intro {
+  max-width: 86ch;
+  margin-bottom: 16px;
+}
+
+.lead {
+  margin: 0 0 6px;
+  font-size: var(--fs-base);
+  line-height: 1.7;
+}
+
+.note {
+  max-width: 90ch;
+  margin: 8px 0 0;
+  font-size: var(--fs-sm);
+  line-height: 1.7;
+  color: var(--text-tertiary);
+}
+
+/* The activation combo, written the way the game prints key prompts. */
+.activation {
+  margin-bottom: 22px;
+  padding: 14px 18px;
+  background: linear-gradient(180deg, rgba(38, 34, 30, 0.75), rgba(23, 21, 18, 0.75));
+  box-shadow: inset 0 0 0 1px var(--line-soft);
+}
+
+.combo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.comboLabel {
+  font: 600 var(--fs-label) var(--font-serif);
+  color: var(--text-heading);
+}
+
+.activation p {
+  margin: 4px 0 0;
+  font-size: var(--fs-sm);
+  line-height: 1.7;
+  color: var(--text-secondary);
+}
+
+.commands {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 22px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+
+.commands li {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.activation code {
+  padding: 1px 6px;
+  font: 600 13px var(--font-mono);
+  color: var(--gold);
+  background: var(--surface-sunken);
+  box-shadow: inset 0 0 0 1px var(--line-soft);
+}
+
+/* The loading screen: map name in large serif, a long gold bar, the step underneath. */
+.loading {
+  position: relative;
+  margin-bottom: 22px;
+  padding: 26px 28px 18px;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 140% at 50% 0%, rgba(176, 138, 78, 0.18), transparent 60%),
+    linear-gradient(180deg, #0b101c, #070a12);
+  box-shadow: inset 0 0 0 1px var(--line), 0 12px 30px rgba(0, 0, 0, 0.45);
+}
+
+.mapName {
+  margin: 0 0 18px;
+  font: 900 var(--fs-xl) / var(--lh-tight) var(--font-serif);
+  letter-spacing: 0.05em;
+  color: var(--text-heading);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.7), 0 0 24px rgba(217, 182, 118, 0.25);
+  overflow-wrap: anywhere;
+}
+
+.bar {
+  height: 12px;
+}
+
+.tipLine {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 6px 20px;
+  margin-top: 12px;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+
+.tip {
+  font: 600 var(--fs-base) var(--font-serif);
+  color: var(--gold);
+}
+
+.loading[data-state='failed'] .tip,
+.loading[data-state='partial'] .tip {
+  color: var(--text-danger);
+}
+
+.loading[data-state='succeeded'] .tip {
+  color: var(--bonus);
+}
+
+.path {
+  margin: 8px 0 0;
+  font: 12px / 1.5 var(--font-mono);
+  color: var(--text-tertiary);
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.stop {
+  position: absolute;
+  top: 22px;
+  right: 24px;
+}
+
+.resultNote {
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+
+.usage {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.usage .path {
+  margin: 0;
+}
+
+.fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.artifacts {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+
+@media (max-width: 1099px) {
+  .artifacts {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.artifact {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.artifactLabel {
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+}
+
+.artifactCode input {
+  font: 600 14px var(--font-mono);
+  letter-spacing: 0.06em;
+}
+
+.artifactName {
+  min-height: 1.4em;
+  overflow: hidden;
+  font: 600 var(--fs-xs) var(--font-serif);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text-label);
+}
+
+.menus {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 36px;
+  margin: 0;
+}
+
+@media (max-width: 899px) {
+  .menus {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.menu {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line-faint);
+}
+
+.menu dt {
+  font: 600 var(--fs-label) var(--font-serif);
+  color: var(--text-primary);
+}
+
+.menu dd {
+  margin: 4px 0 0;
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  color: var(--text-tertiary);
+}
+
+.details {
+  margin-bottom: 12px;
+}
+
+.details summary {
+  cursor: pointer;
+  font: 600 var(--fs-label) var(--font-serif);
+  color: var(--text-label);
+}
+
+.details p {
+  max-width: 90ch;
+  margin: 10px 0 0;
+  font-size: var(--fs-sm);
+  line-height: 1.75;
+  color: var(--text-secondary);
+}

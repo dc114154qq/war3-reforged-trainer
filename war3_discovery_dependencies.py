@@ -25,6 +25,7 @@ PROPERTY_FIELDS = {"hp_current": "value", "mp_current": "value", "hp_max": "maxi
 SELECTED_READ = COMMON | {"players.count", "players.array", "players.max_count",
                           "selection.read_only", "modules.legacy_layout"}
 DEPENDENCIES = {
+    'unit_field': NATIVE,
     'clone_state': EQUIPMENT_RUNTIME | TALENTS | {'addresses.unit_resolver','bridge_layout.ability_level_tail'},
     "gold_mine": NATIVE,
     "item_safety": NATIVE, "equipment_effect": EQUIPMENT_RUNTIME,

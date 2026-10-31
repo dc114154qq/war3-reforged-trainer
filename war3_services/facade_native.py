@@ -78,6 +78,9 @@ class NativeFacade:
     def _write_unit_stat_field_24268(
         self, candidate: UnitCandidate, field: UnitMemoryField, value: int | float | str,
     ) -> UnitMemoryField:
+        if field.key in ('attack1_range','attack2_range'):
+            from war3_services.unit_fields import set_weapon_range
+            return set_weapon_range(self,candidate,field,value)
         from war3_unit_stats_protocol import (
             ACTION_SET_ARMOR, ACTION_SET_DEFENSE_TYPE, ACTION_SET_INTELLIGENCE,
         )
@@ -171,6 +174,17 @@ class NativeFacade:
             with session.lock:
                 if candidate is None:
                     candidate, _full_handle = self._direct_selected_context()
+                from war3_services.batch_edit import active_field_bindings, active_field_target
+                cache, target = active_field_bindings(), active_field_target()
+                if cache is not None and target is not None:
+                    if (candidate.handle,candidate.unit_address,candidate.unit_type_id) != (
+                            target.handle.value,target.address.value,target.rawcode):
+                        raise RuntimeError('批量属性目标与完整单位身份不一致')
+                    with self._process_memory() as memory:
+                        registry,_,_=session.prepare(memory)
+                        session.resolve(memory,registry,target)
+                    if target in cache:
+                        return candidate,cache[target].value
                 refs = self._capture_unit_refs_24268((candidate,))
                 bindings = engine.bind_unit_refs(refs, strict_selection=False)
                 if (type(bindings) is not tuple or len(bindings) != 1
@@ -179,6 +193,10 @@ class NativeFacade:
                         or type(bindings[0][1]) is not UnitRef
                         or bindings[0][1] != refs[0]):
                     raise RuntimeError("属性目标的原生绑定与完整单位身份不一致")
+                if cache is not None and target is not None:
+                    if refs[0] != target:
+                        raise RuntimeError('批量属性目标在原生绑定期间变化')
+                    cache[target]=bindings[0][0]
                 return candidate, bindings[0][0].value
         # Preserve the compatibility path used by hosts without GameSession.
         if candidate is None:

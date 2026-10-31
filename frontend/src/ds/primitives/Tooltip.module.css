@@ -1,0 +1,42 @@
+.card {
+  width: max-content;
+  max-width: 300px;
+  padding: 10px 14px 11px;
+  background: rgba(5, 8, 14, 0.95);
+  box-shadow: var(--shadow-pop);
+}
+
+.title {
+  margin: 0;
+  font: 600 var(--fs-label) / 1.4 var(--font-serif);
+  color: var(--text-heading);
+}
+
+.hotkey {
+  color: var(--gold);
+}
+
+.body {
+  margin-top: var(--space-3);
+  font-size: var(--fs-sm);
+  line-height: 1.65;
+  color: var(--text-secondary);
+}
+
+.footer {
+  margin: var(--space-3) 0 0;
+  font-size: var(--fs-xs);
+  color: var(--text-label);
+}
+
+.floating {
+  z-index: var(--z-tooltip);
+  animation: show var(--dur-press) var(--ease-out);
+}
+
+@keyframes show {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+}

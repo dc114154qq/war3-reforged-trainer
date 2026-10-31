@@ -1,0 +1,44 @@
+.bountyLayer {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-bounty);
+  pointer-events: none;
+}
+
+.bounty {
+  position: absolute;
+  font: 900 17px / 1 var(--font-serif);
+  white-space: nowrap;
+  color: #fff;
+  text-shadow: var(--shadow-text-outline);
+}
+
+.bounty[data-tone='gold'] {
+  color: var(--gold);
+}
+
+.bounty[data-tone='lumber'] {
+  color: var(--lumber);
+}
+
+.announcer {
+  position: fixed;
+  z-index: var(--z-announce);
+  left: 0;
+  right: 0;
+  /* Sits just above the console; pages without a console can override --announce-bottom. */
+  bottom: var(--announce-bottom, calc(var(--console-h) + 64px));
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.announcement {
+  margin: 0;
+  padding: 0 24px;
+  font: 600 17px / 1.4 var(--font-serif);
+  letter-spacing: 0.04em;
+  color: var(--gold);
+  text-align: center;
+  text-shadow: var(--shadow-text-outline);
+}

@@ -9,11 +9,12 @@ def desktop_services():
     from war3_save_codes import SaveExtractionError, extract_text, validate_prefix
     from war3_services import save_extraction, archive_fields
     from war3_services.batch_edit import BatchEditModel, BatchEditService
+    from war3_services.unit_fields import UnitFieldsService
     from war3_services.extension_definitions import prepare_extension_definitions
     services = dict(hotkeys=ELEPHANT_HOTKEY_SPECS, hotkey_manager=GlobalHotkeyManager,
                     logger_factory=Win10ReadLogger, artifact_settings=ArtifactPlanSettings,
                     SaveExtractionError=SaveExtractionError,extract_text=extract_text,validate_prefix=validate_prefix,
-                    BatchEditModel=BatchEditModel,BatchEditService=BatchEditService,
+                    BatchEditModel=BatchEditModel,BatchEditService=BatchEditService,UnitFieldsService=UnitFieldsService,
                     prepare_extension_definitions=prepare_extension_definitions)
     for module,names in ((save_extraction,('default_save_roots','documents_directory','export_codes',
             'log_extraction_failure','read_code_file','read_live_codes','scan_code_directory')),

@@ -1874,8 +1874,17 @@ _EN_TRANSLATIONS.update({
     "该单位没有此字段": "This unit does not have this field",
     "请先连接游戏再读取批量单位": "Connect to the game before reading batch units",
     "请至少勾选一个批量单位": "Check at least one batch unit",
+    "攻击范围必须在 0 到 1000000 之间": "Attack range must be between 0 and 1000000",
+    "批量射程目标的所属对象已变化": "The batch range target's owning object changed",
+    "批量射程目标已失效，请重新读取": "The batch range target is stale. Read again.",
+    "该单位当前没有可修改的攻击组件": "This unit currently has no writable attack component",
+    "批量射程原生绑定与完整单位身份不一致": "Batch range native bindings do not match the complete unit identities",
+    "批量射程目标缺少本次原生绑定": "This batch range target has no native binding for this request",
+    "批量射程写入读回与目标值不一致": "Batch range readback does not match the target value",
+    "批量属性目标在原生绑定期间变化": "The batch stat target changed during native binding",
     "请至少填写一个批量字段目标值": "Enter at least one field target",
     "批量单位原生属性读回身份不一致": "The batch unit's native stat readback identity differs",
+    "批量武器范围读回的选择与单位身份不一致": "The batch weapon-range readback does not match the selected unit identities",
     "批量属性目标与单位身份不一致": "The batch stat target differs from the unit identity",
 })
 

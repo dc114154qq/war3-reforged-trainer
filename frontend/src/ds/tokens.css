@@ -1,0 +1,149 @@
+/*
+ * Design tokens. This file is the single source of truth for colour, type, spacing,
+ * motion and layering; scripts/check-contrast.mjs reads the colour values from here.
+ * Components use the semantic names (--text-*, --surface-*, --line-*), not the palette.
+ */
+:root {
+  /* ---- Core palette (redesign plan, section 3.1) ---- */
+  --nightfall: #121a2b;     /* stage; the in-game tooltip navy, not grey-black */
+  --nightfall-hi: #1a2539;
+  --nightfall-lo: #0c1220;
+  --iron: #26221e;          /* top band, console, button bodies */
+  --iron-hi: #37312a;
+  --iron-lo: #171512;
+  --bronze: #b08a4e;        /* frames, dividers, focus */
+  --bronze-hi: #d9b676;
+  --gold: #ffdc00;          /* numbers only: resources, changed values, hotkey letters */
+  --vellum: #e4d3aa;        /* document surfaces: dialog body, detail sheets */
+  --bone: #eae3d2;          /* text on dark */
+  --ink: #2b2117;           /* text on vellum */
+
+  /* ---- Semantic colours taken from the game ---- */
+  --lumber: #00c850;
+  --mana: #2f6bff;
+  --frost: #9ad8f5;
+  --blood: #c8261e;
+  --xp: #9a6bd8;
+  --bonus: #3bd16f;
+  --select-ally: #46e05a;
+  --select-neutral: #f1d54a;
+  --select-enemy: #e04a3a;
+
+  /* Item quality, as in World of Warcraft */
+  --quality-poor: #9d9d9d;
+  --quality-common: #ffffff;
+  --quality-uncommon: #1eff00;
+  --quality-rare: #0070dd;
+  --quality-epic: #a335ee;
+  --quality-legendary: #ff8000;
+
+  /* ---- Semantic roles ---- */
+  --surface-stage: var(--nightfall);
+  --surface-raised: var(--nightfall-hi);
+  --surface-sunken: #070a12;
+  --surface-socket: #05070c;
+  --surface-metal: var(--iron);
+  --surface-document: var(--vellum);
+
+  --text-primary: var(--bone);
+  --text-secondary: rgba(234, 227, 210, 0.66);
+  /* 0.56 is the lowest alpha that keeps 4.5:1 on both the stage and the console. */
+  --text-tertiary: rgba(234, 227, 210, 0.56);
+  --text-on-bronze: #1d150b;
+  --text-on-document: var(--ink);
+  --text-heading: var(--bone);
+  --text-label: var(--bronze-hi);
+  --text-value: var(--gold);
+  --text-danger: #ef6a52;
+
+  --line-faint: rgba(234, 227, 210, 0.06);
+  --line-soft: rgba(176, 138, 78, 0.24);
+  --line: rgba(176, 138, 78, 0.42);
+  --line-strong: var(--bronze);
+  --focus: var(--bronze-hi);
+
+  --tint-hover: rgba(26, 37, 57, 0.75);
+  --tint-selected: rgba(176, 138, 78, 0.16);
+
+  /* ---- Type ---- */
+  --font-serif: 'W3 Serif', 'Source Han Serif SC', 'Noto Serif SC', 'SimSun', serif;
+  --font-sans: 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', sans-serif;
+  --font-mono: Consolas, 'Cascadia Mono', monospace;
+
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-base: 14px;
+  --fs-label: 15px;
+  --fs-md: 16px;
+  --fs-lg: 21px;
+  --fs-xl: 28px;
+  --fs-2xl: 48px;
+  --fs-3xl: 72px;
+
+  --lh-tight: 1.2;
+  --lh-base: 1.6;
+  --lh-serif: 1.7;
+
+  --tracking-heading: 0.06em;
+  --tracking-nav: 0.1em;
+
+  /* ---- Space, shape, depth ---- */
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 6px;
+  --space-4: 8px;
+  --space-5: 12px;
+  --space-6: 16px;
+  --space-7: 20px;
+  --space-8: 24px;
+  --space-9: 32px;
+  --space-10: 40px;
+
+  --radius-none: 0;
+  --radius-xs: 2px;
+  --radius-pill: 999px;
+
+  --shadow-pop: 0 10px 28px rgba(0, 0, 0, 0.55);
+  --shadow-band: 0 6px 16px rgba(0, 0, 0, 0.4);
+  --shadow-console: 0 -14px 30px rgba(0, 0, 0, 0.45);
+  --shadow-text: 0 1px 0 #000, 0 0 6px rgba(0, 0, 0, 0.8);
+  --shadow-text-outline: 0 1px 0 #000, 1px 0 0 #000, -1px 0 0 #000, 0 -1px 0 #000, 0 0 6px rgba(0, 0, 0, 0.9);
+
+  /* ---- Layout ---- */
+  --band-h: 38px;
+  --console-h: 164px;
+  --cmd: 41px;
+  --control-h: 30px;
+  --row-h: 32px;
+
+  /* ---- Motion (mirrored in tokens.ts for JS) ---- */
+  --dur-press: 120ms;
+  --dur-fast: 160ms;
+  --dur-base: 240ms;
+  --dur-slow: 380ms;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.45, 0, 0.55, 1);
+  --ease-snap: cubic-bezier(0.2, 0.9, 0.25, 1.15);
+
+  /* ---- Layers ---- */
+  --z-console: 10;
+  --z-fog: 20;
+  --z-band: 30;
+  --z-announce: 45;
+  --z-bounty: 50;
+  --z-dialog: 60;
+  --z-tooltip: 70;
+
+  /* ---- Texture ---- */
+  --noise: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .6 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+/* Short windows: the console collapses to a single strip. */
+@media (max-height: 620px) {
+  :root {
+    --band-h: 34px;
+    --console-h: 60px;
+    --cmd: 34px;
+    --row-h: 28px;
+  }
+}

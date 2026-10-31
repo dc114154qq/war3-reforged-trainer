@@ -1,0 +1,159 @@
+.status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.statusText {
+  flex: 1;
+  min-width: 0;
+  font: 600 var(--fs-label) var(--font-serif);
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.upper {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: 0 36px;
+  margin-top: 10px;
+}
+
+@media (max-width: 1099px) {
+  .upper {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.block {
+  min-width: 0;
+}
+
+.empty {
+  margin: 0;
+  padding: 18px 0;
+  color: var(--text-tertiary);
+}
+
+/* The bag: ten sockets a row, as the 3.0 backpack draws it. */
+.bag {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 46px));
+  gap: 5px;
+}
+
+/* The paper doll: nine named slots in a 3 × 3 block. */
+.doll {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 92px));
+  gap: 6px;
+}
+
+.socket {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  min-width: 0;
+  background: radial-gradient(circle at 50% 35%, #1d273b, var(--surface-socket) 78%);
+  border: 1px solid #03050a;
+  box-shadow: inset 0 0 0 1px var(--line), inset 0 2px 8px rgba(0, 0, 0, 0.85);
+  transition: box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.doll .socket {
+  aspect-ratio: auto;
+  height: 62px;
+}
+
+.socket[data-empty] {
+  background: var(--surface-socket);
+  box-shadow: inset 0 0 0 1px var(--line-faint), inset 0 2px 8px rgba(0, 0, 0, 0.9);
+}
+
+.socket:hover {
+  box-shadow: inset 0 0 0 1px var(--bronze-hi), inset 0 2px 8px rgba(0, 0, 0, 0.85);
+}
+
+.socket[aria-selected='true'] {
+  box-shadow: inset 0 0 0 2px var(--gold), 0 0 12px rgba(255, 220, 0, 0.3);
+}
+
+.socketCode {
+  font: 600 12px var(--font-mono);
+  color: var(--text-primary);
+  text-shadow: 0 1px 2px #000;
+}
+
+.charges {
+  position: absolute;
+  right: 3px;
+  bottom: 1px;
+  font: 600 11px var(--font-sans);
+  color: #fff;
+  text-shadow: 0 0 2px #000, 0 1px 1px #000;
+}
+
+.slotName {
+  position: absolute;
+  top: 3px;
+  left: 6px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.tip {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.picked {
+  min-height: 1.6em;
+  margin: 10px 0 6px;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.controls {
+  margin-top: 10px;
+}
+
+.fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.code input {
+  width: 5.2ch;
+  font: 600 14px var(--font-mono);
+}
+
+.count input {
+  width: 5ch;
+}
+
+.backpack {
+  min-width: 200px;
+}
+
+.loadout {
+  min-width: 180px;
+}
+
+.loadoutName input {
+  width: 9ch;
+}
+
+.talentPick {
+  align-items: center;
+  margin-top: 12px;
+}
+
+.tierLabel {
+  font: 600 var(--fs-sm) var(--font-serif);
+  color: var(--text-label);
+}

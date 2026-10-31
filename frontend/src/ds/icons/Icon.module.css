@@ -1,0 +1,15 @@
+.icon {
+  display: inline-block;
+  flex: none;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.15em;
+}
+
+.bone path { fill: url(#ds-ig-bone); }
+.gold path { fill: url(#ds-ig-gold); }
+.frost path { fill: url(#ds-ig-frost); }
+.lumber path { fill: url(#ds-ig-lumber); }
+.wheat path { fill: url(#ds-ig-wheat); }
+.muted path { fill: var(--text-tertiary); }
+.current path { fill: currentColor; }

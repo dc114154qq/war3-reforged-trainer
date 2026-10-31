@@ -94,6 +94,9 @@ export const api = {
 
   // 3. Unit
   readSelectedUnit: () => callApi<SelectedUnitData>('read_selected_unit'),
+  readUnitFields: () => callApi<import('./types').NativeUnitFieldsData>('read_unit_fields'),
+  writeUnitFieldValue: (key: string, value: string) =>
+    callApi<{ success: boolean; key: string; value: import('./types').NativeUnitField['value'] }>('write_unit_field_value', key, value),
   writeSelectedUnit: (targets: Record<string, string>) => callApi<{ success: boolean; data?: SelectedUnitData; error?: string }>('write_selected_unit', targets),
   writeUnitField: (rowIid: string, value: string) => callApi<{ success: boolean; data?: SelectedUnitData; error?: string }>('write_unit_field', rowIid, value),
   addUnitFieldLock: (rowIid: string, value: string) => callApi<{ success: boolean; locks?: LockItem[]; error?: string }>('add_unit_field_lock', rowIid, value),

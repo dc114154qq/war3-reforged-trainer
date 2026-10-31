@@ -1,0 +1,67 @@
+{
+  "$comment": "Semantic icon name -> glyph. 'game-icons:<id>' comes from @iconify-json/game-icons; 'custom:<file>' from assets-src/icons/custom (512x512 viewBox). Run `npm run icons` after editing.",
+  "groups": {
+    "命令": {
+      "read": "game-icons:spyglass",
+      "write": "game-icons:quill-ink",
+      "refresh": "game-icons:cycle",
+      "lock": "game-icons:snowflake-2",
+      "candidates": "game-icons:meeple-group",
+      "locate": "game-icons:crosshair",
+      "invulnerable": "game-icons:checked-shield",
+      "reset-cooldown": "game-icons:sands-of-time",
+      "copy": "game-icons:scroll-quill",
+      "cancel": "game-icons:cancel",
+      "search": "game-icons:magnifying-glass",
+      "chat": "game-icons:talk",
+      "save": "game-icons:save",
+      "export": "game-icons:scroll-unfurled",
+      "open-file": "game-icons:open-folder",
+      "settings": "game-icons:cog",
+      "hotkey": "custom:keycap.svg"
+    },
+    "资源": {
+      "gold": "game-icons:two-coins",
+      "lumber": "game-icons:wood-pile",
+      "food": "game-icons:wheat",
+      "gold-mine": "game-icons:gold-mine"
+    },
+    "单位": {
+      "unit-hero": "game-icons:heavy-helm",
+      "unit-melee": "game-icons:closed-barbute",
+      "unit-ranged": "game-icons:dwarf-helmet",
+      "unit-air": "game-icons:griffin-symbol",
+      "unit-caster": "game-icons:hood",
+      "unit-siege": "game-icons:cannon"
+    },
+    "大象": {
+      "reveal-map": "game-icons:all-seeing-eye",
+      "hide-map": "game-icons:fog",
+      "pause": "game-icons:pause-button",
+      "resume": "game-icons:play-button",
+      "peace": "game-icons:dove",
+      "end-game": "game-icons:flying-flag",
+      "level-up": "game-icons:upgrade",
+      "collision-off": "game-icons:ghost",
+      "scale": "game-icons:resize",
+      "take-control": "game-icons:puppet",
+      "kill": "game-icons:death-skull",
+      "explode": "game-icons:explosion-rays",
+      "remove": "game-icons:trash-can",
+      "summon": "game-icons:magic-portal",
+      "add-item": "game-icons:knapsack",
+      "add-ability": "game-icons:spell-book",
+      "tech": "game-icons:anvil",
+      "xp-rate": "game-icons:sparkles"
+    },
+    "典籍": {
+      "catalog": "game-icons:book-pile",
+      "upgrade-catalog": "game-icons:gears",
+      "map-data": "game-icons:treasure-map",
+      "equipment": "game-icons:breastplate",
+      "hero-skill": "game-icons:magic-swirl",
+      "scripts": "game-icons:tied-scroll",
+      "archive": "game-icons:locked-chest"
+    }
+  }
+}

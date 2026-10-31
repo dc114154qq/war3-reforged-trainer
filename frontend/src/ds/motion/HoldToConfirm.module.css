@@ -1,0 +1,38 @@
+.button {
+  touch-action: none;
+  user-select: none;
+}
+
+.rim {
+  position: absolute;
+  inset: -1px;
+  width: calc(100% + 2px);
+  height: calc(100% + 2px);
+  overflow: visible;
+  pointer-events: none;
+}
+
+.rim rect {
+  width: calc(100% - 2px);
+  height: calc(100% - 2px);
+  fill: none;
+  stroke: #ff8a6a;
+  stroke-width: 2;
+  stroke-dasharray: 1;
+  /* Resting value; the fill and drain run as Web Animations from HoldToConfirm.tsx. */
+  stroke-dashoffset: 1;
+  filter: drop-shadow(0 0 4px rgba(255, 110, 80, 0.75));
+}
+
+.flash {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 120, 90, 0.35);
+  box-shadow: 0 0 18px rgba(255, 110, 80, 0.7);
+  animation: flash 0.5s var(--ease-out) forwards;
+  pointer-events: none;
+}
+
+@keyframes flash {
+  to { opacity: 0; }
+}

@@ -1,0 +1,222 @@
+.top {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 10px;
+}
+
+.lead {
+  flex: 1;
+  max-width: 72ch;
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.7;
+  color: var(--text-tertiary);
+}
+
+.prewarm {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 14px;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  border-radius: var(--radius-xs);
+  box-shadow: inset 0 0 0 1px var(--line-soft);
+  transition: color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.prewarm:hover:not(:disabled) {
+  color: var(--text-primary);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.prewarm:disabled {
+  opacity: 0.5;
+}
+
+.groups {
+  /* Columns, not grid rows: groups of different heights stack without gaps between them. */
+  column-count: 2;
+  column-gap: 32px;
+}
+
+@media (max-width: 1099px) {
+  .groups {
+    column-count: 1;
+  }
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  margin-bottom: 14px;
+  break-inside: avoid;
+}
+
+.groupTitle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  font: 600 var(--fs-label) var(--font-serif);
+  letter-spacing: 0.1em;
+  color: var(--text-label);
+}
+
+.groupTitle::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(176, 138, 78, 0.4), transparent);
+}
+
+.tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* A command button on a plate: the icon in a bronze-rimmed socket, the name on iron. */
+.tile {
+  display: grid;
+  grid-template-rows: 40px auto;
+  justify-items: center;
+  align-content: start;
+  gap: 6px;
+  width: 80px;
+  padding: 5px 3px 6px;
+  text-align: center;
+  background: linear-gradient(180deg, #2a251f, #18150f);
+  border: 1px solid #08070a;
+  box-shadow: inset 0 0 0 1px rgba(176, 138, 78, 0.22), inset 0 1px 0 rgba(255, 236, 200, 0.06);
+  transition: box-shadow var(--dur-fast) var(--ease-out), transform var(--dur-press) var(--ease-out);
+}
+
+.tileIcon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  font-size: 26px;
+  background: radial-gradient(circle at 50% 28%, #36415b, #121827 80%);
+  border: 1px solid #04060a;
+  box-shadow: inset 0 0 0 1px rgba(176, 138, 78, 0.62), inset 0 1px 0 rgba(255, 255, 255, 0.1), inset 0 -4px 8px rgba(0, 0, 0, 0.55);
+}
+
+.tileIcon svg {
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.9));
+}
+
+.tileLabel {
+  font-size: var(--fs-xs);
+  line-height: 1.35;
+  color: var(--text-secondary);
+}
+
+.tile:hover:not(:disabled) {
+  box-shadow: inset 0 0 0 1px var(--bronze-hi), inset 0 0 14px rgba(217, 182, 118, 0.14);
+}
+
+.tile:hover:not(:disabled) .tileLabel {
+  color: var(--text-primary);
+}
+
+.tile:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.tile:disabled {
+  filter: grayscale(1) brightness(0.6);
+}
+
+/* While the backend runs the action the socket breathes, like a channelled spell. */
+.tile[data-pending] {
+  cursor: progress;
+}
+
+.tile[data-pending] .tileIcon {
+  animation: channel 0.9s var(--ease-in-out) infinite alternate;
+}
+
+@keyframes channel {
+  to {
+    box-shadow: inset 0 0 0 1px var(--gold), inset 0 0 14px rgba(255, 220, 0, 0.45), inset 0 -4px 8px rgba(0, 0, 0, 0.55);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tile[data-pending] .tileIcon {
+    animation: none;
+    box-shadow: inset 0 0 0 1px var(--gold);
+  }
+}
+
+/* Compact tiles sit in a row with their parameter fields. */
+.compact {
+  grid-template-rows: none;
+  grid-template-columns: 28px auto;
+  align-items: center;
+  align-self: flex-end;
+  width: auto;
+  height: var(--control-h);
+  padding: 0 12px 0 4px;
+  gap: 8px;
+}
+
+.compact .tileIcon {
+  width: 28px;
+  height: 28px;
+  font-size: 19px;
+}
+
+.compact .tileLabel {
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+
+.params {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 12px;
+}
+
+.param {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.code input {
+  width: 5.2ch;
+  font: 600 14px var(--font-mono);
+  letter-spacing: 0.06em;
+}
+
+.narrow input {
+  width: 5ch;
+}
+
+.known {
+  min-width: 0;
+  max-width: 12em;
+  padding-bottom: 9px;
+  overflow: hidden;
+  font: 600 var(--fs-sm) var(--font-serif);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text-label);
+}
+
+.known:empty {
+  display: none;
+}
+
+.danger {
+  display: flex;
+  gap: 10px;
+}

@@ -28,6 +28,7 @@ class DesktopServices:
     find_archive_files: Callable[..., Any]
     read_archive_file: Callable[..., Any]
     read_current_heroes: Callable[..., Any]
+    UnitFieldsService: Callable[..., Any] | None = None
 
 
 def get_ui_services(widget, services=None) -> DesktopServices:

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- A single stone keycap seen slightly from above; the face is cut out. -->
+  <path fill="#000" fill-rule="evenodd" d="M120 88H392Q424 88 424 120V352Q424 384 392 392L120 392Q88 384 88 352V120Q88 88 120 88ZM152 132V316H360V132Z"/>
+  <path fill="#000" d="M72 404H440V436Q440 452 424 452H88Q72 452 72 436Z"/>
+</svg>

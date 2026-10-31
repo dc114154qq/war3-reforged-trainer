@@ -1,0 +1,2 @@
+fonttools>=4.50
+brotli>=1.1

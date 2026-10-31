@@ -1,0 +1,148 @@
+/* Shared layout of the ability and item field pages: a subject header, filters, the ledger. */
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.subject {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px 22px;
+  padding-bottom: 8px;
+}
+
+/* The icon socket that stands for the ability or item being inspected. */
+.socket {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  flex: none;
+  font-size: 30px;
+  background: radial-gradient(circle at 50% 35%, #1f2a40, var(--surface-socket) 75%);
+  border: 1px solid #03050a;
+  box-shadow: inset 0 0 0 1px var(--line), inset 0 0 14px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(176, 138, 78, 0.25);
+}
+
+.identity {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.name {
+  margin: 0;
+  font: 900 var(--fs-lg) / var(--lh-tight) var(--font-serif);
+  letter-spacing: 0.04em;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.55);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.name[data-empty] {
+  font-weight: 600;
+  color: var(--text-tertiary);
+}
+
+.code input {
+  width: 5.2ch;
+  font: 600 14px var(--font-mono);
+  letter-spacing: 0.08em;
+}
+
+.level input {
+  width: 5ch;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 20px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line-soft);
+}
+
+.search {
+  width: min(320px, 100%);
+}
+
+.summary {
+  margin-left: auto;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+
+.detail {
+  margin: 0 0 10px;
+  max-width: 96ch;
+  font-size: var(--fs-sm);
+  line-height: 1.7;
+  color: var(--text-tertiary);
+  overflow-wrap: anywhere;
+}
+
+.feedback {
+  margin: 0 0 10px;
+}
+
+/* Inventory: the hero's 2 × 3 item grid, the 30-cell bag and the 3 × 3 paper doll. */
+.slots {
+  display: grid;
+  grid-template-columns: repeat(var(--cols, 3), 46px);
+  gap: 6px;
+}
+
+.slot {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  font: 600 var(--fs-xs) var(--font-serif);
+  color: var(--text-tertiary);
+  background: var(--surface-socket);
+  border: 1px solid #03050a;
+  box-shadow: inset 0 0 0 1px var(--line-soft), inset 0 2px 8px rgba(0, 0, 0, 0.9);
+  transition: box-shadow var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+
+.slot:hover:not(:disabled) {
+  color: var(--text-primary);
+  box-shadow: inset 0 0 0 1px var(--line), inset 0 2px 8px rgba(0, 0, 0, 0.9);
+}
+
+.slot[aria-pressed='true'] {
+  color: var(--text-on-bronze);
+  background: linear-gradient(180deg, #e4c482 0%, #b58f50 55%, #8a6832 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 240, 200, 0.4), 0 0 12px rgba(217, 182, 118, 0.35);
+}
+
+.slot:disabled {
+  opacity: 0.5;
+}
+
+.slot[data-wide] {
+  width: 64px;
+}
+
+.slotsWide {
+  grid-template-columns: repeat(var(--cols, 3), 64px);
+}
+
+.modes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 18px;
+  padding-bottom: 12px;
+}

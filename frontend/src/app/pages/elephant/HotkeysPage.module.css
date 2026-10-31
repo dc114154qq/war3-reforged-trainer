@@ -1,0 +1,199 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-bottom: 8px;
+}
+
+.pills {
+  flex: 1;
+}
+
+.search {
+  width: 240px;
+  flex: none;
+}
+
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 6px 0;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  border-top: 1px solid var(--line-soft);
+}
+
+.off {
+  color: var(--text-danger);
+}
+
+.spacer {
+  flex: 1;
+}
+
+/* The bindings: plain hotkeys pack several to a row, valued ones get a wider card. */
+.list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 4px 8px 0;
+  border-top: 1px solid var(--line-soft);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(214px, 1fr));
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wideGrid {
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+}
+
+.groupTitle {
+  margin: 14px 0 8px;
+  font: 600 var(--fs-sm) var(--font-serif);
+  letter-spacing: 0.08em;
+  color: var(--text-label);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 5px 8px 6px;
+  background: rgba(7, 10, 18, 0.45);
+  box-shadow: inset 0 0 0 1px var(--line-faint);
+  transition: box-shadow var(--dur-press) var(--ease-out), background-color var(--dur-press) var(--ease-out);
+}
+
+.card:hover {
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.card[data-enabled] {
+  background: linear-gradient(180deg, rgba(176, 138, 78, 0.14), rgba(176, 138, 78, 0.05));
+  box-shadow: inset 0 0 0 1px var(--line-soft);
+}
+
+.card[data-wide] {
+  grid-column: 1 / -1;
+}
+
+.cardTop {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.cardBottom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 10px;
+  min-height: 26px;
+  padding-left: 24px;
+}
+
+.check {
+  gap: 0;
+  flex: none;
+}
+
+.labelText {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text-secondary);
+}
+
+.card[data-enabled] .labelText {
+  color: var(--text-primary);
+}
+
+.keys {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px;
+  opacity: 0.55;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+.card[data-enabled] .keys {
+  opacity: 1;
+}
+
+.dangerTag {
+  flex: none;
+  padding: 0 5px;
+  font-size: 11px;
+  line-height: 17px;
+  color: var(--text-danger);
+  border-radius: var(--radius-xs);
+  box-shadow: inset 0 0 0 1px rgba(239, 106, 82, 0.45);
+}
+
+.fire {
+  flex: none;
+}
+
+.paramField {
+  width: 140px;
+  height: 26px;
+}
+
+.paramField input {
+  font-family: var(--font-mono);
+}
+
+.artifacts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.artifact {
+  width: 62px;
+  height: 26px;
+  padding: 0 8px;
+}
+
+.artifact input {
+  font: 600 13px var(--font-mono);
+}
+
+.empty {
+  margin: 0;
+  padding: 24px 12px;
+  color: var(--text-tertiary);
+}
+
+@media (max-width: 899px) {
+  .toolbar {
+    flex-wrap: wrap;
+  }
+
+  .search {
+    width: 100%;
+  }
+}

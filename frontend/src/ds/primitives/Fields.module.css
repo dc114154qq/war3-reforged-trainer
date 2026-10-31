@@ -1,0 +1,219 @@
+/* Pills */
+.pills {
+  display: flex;
+  gap: var(--space-3);
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 13px;
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  background: linear-gradient(180deg, #2d2822, #1a1713);
+  border: 1px solid #0a0907;
+  box-shadow: inset 0 0 0 1px var(--line), inset 0 1px 0 rgba(255, 236, 200, 0.08);
+  transition: color var(--dur-press) var(--ease-out);
+}
+
+.pill:hover {
+  color: var(--text-primary);
+}
+
+.pill[aria-checked='true'] {
+  font-weight: 600;
+  color: var(--text-on-bronze);
+  background: linear-gradient(180deg, #e4c482 0%, #b58f50 55%, #8a6832 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 240, 200, 0.35),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.22),
+    0 1px 0 rgba(0, 0, 0, 0.5);
+}
+
+.count {
+  font-size: var(--fs-xs);
+  opacity: 0.7;
+}
+
+/* Text fields */
+.labelled {
+  display: inline-flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.label {
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+}
+
+.field {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  height: var(--control-h);
+  padding: 0 var(--space-5);
+  background: var(--surface-sunken);
+  border: 1px solid #05070c;
+  box-shadow: inset 0 0 0 1px var(--line), inset 0 2px 5px rgba(0, 0, 0, 0.7);
+  transition: box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.field:focus-within {
+  box-shadow:
+    inset 0 0 0 1px var(--bronze-hi),
+    inset 0 2px 5px rgba(0, 0, 0, 0.7),
+    0 0 0 3px rgba(176, 138, 78, 0.16);
+}
+
+.well {
+  border-radius: var(--radius-xs);
+}
+
+.search {
+  height: 30px;
+  border-radius: var(--radius-pill);
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: 0;
+  outline: none;
+  font-size: var(--fs-sm);
+  caret-color: var(--gold);
+}
+
+.input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.searchIcon {
+  font-size: 15px;
+}
+
+.suffix {
+  font-size: var(--fs-xs);
+  color: var(--text-tertiary);
+}
+
+/* Checkbox */
+.check {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  font-size: var(--fs-base);
+  cursor: pointer;
+}
+
+.checkInput {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+
+.box {
+  position: relative;
+  width: 18px;
+  height: 18px;
+  flex: none;
+  background: var(--surface-socket);
+  border: 1px solid #04060a;
+  box-shadow: inset 0 0 0 1px var(--line), inset 0 2px 4px rgba(0, 0, 0, 0.8);
+}
+
+.box::after {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M3 8.5l3.2 3.2L13 4.5' fill='none' stroke='%23ffdc00' stroke-width='2.4' stroke-linecap='square'/></svg>") center / 14px no-repeat;
+  filter: drop-shadow(0 1px 0 #000);
+  opacity: 0;
+  transform: scale(0.5);
+  transition: opacity var(--dur-press) var(--ease-out), transform var(--dur-fast) var(--ease-snap);
+}
+
+.checkInput:checked + .box::after {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.checkInput:focus-visible + .box {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.check:hover .box {
+  box-shadow: inset 0 0 0 1px var(--bronze-hi), inset 0 2px 4px rgba(0, 0, 0, 0.8);
+}
+
+.checkInput:disabled + .box,
+.checkInput:disabled ~ span {
+  opacity: 0.5;
+}
+
+/* Select */
+.selectWell {
+  position: relative;
+  padding: 0;
+}
+
+.selectWell::after {
+  content: '';
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid var(--bronze-hi);
+  border-bottom: 2px solid var(--bronze-hi);
+  transform: translateY(-70%) rotate(45deg);
+  pointer-events: none;
+}
+
+.select {
+  appearance: none;
+  height: 100%;
+  min-width: 0;
+  width: 100%;
+  padding: 0 34px 0 var(--space-5);
+  background: none;
+  border: 0;
+  outline: none;
+  font-size: var(--fs-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.select:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.select option {
+  color: var(--text-primary);
+  background: var(--surface-raised);
+}
+
+/* Text area */
+.areaWell {
+  height: auto;
+  padding: var(--space-3) var(--space-5);
+}
+
+.area {
+  resize: vertical;
+  min-height: 3.2em;
+  font-family: var(--font-mono);
+  line-height: 1.5;
+}

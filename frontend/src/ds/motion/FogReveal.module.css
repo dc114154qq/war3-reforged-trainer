@@ -1,0 +1,23 @@
+.fog {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-fog);
+  overflow: hidden;
+}
+
+/* Oversized and blurred so the low-resolution field reads as cloud, not pixels. */
+.canvas {
+  position: absolute;
+  inset: -24px;
+  width: calc(100% + 48px);
+  height: calc(100% + 48px);
+  filter: blur(7px);
+}
+
+.content {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}

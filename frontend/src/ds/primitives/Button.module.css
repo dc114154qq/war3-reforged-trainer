@@ -1,0 +1,74 @@
+.button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  white-space: nowrap;
+  transition:
+    filter var(--dur-press) var(--ease-out),
+    transform var(--dur-press) var(--ease-out),
+    box-shadow var(--dur-press) var(--ease-out);
+}
+
+.button:active:not(:disabled) {
+  transform: translateY(1px) scale(0.98);
+}
+
+.button:disabled {
+  filter: saturate(0.4) brightness(0.7);
+}
+
+.sm { height: 28px; padding: 0 var(--space-5); font-size: var(--fs-sm); }
+.md { height: var(--control-h); padding: 0 var(--space-6); font-size: var(--fs-base); }
+.lg { height: 40px; padding: 0 26px; font-size: var(--fs-md); }
+
+.icon {
+  font-size: 1.15em;
+}
+
+/* Cast bronze plate: serif, tracked, dark text. */
+.cast {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--text-on-bronze);
+  background: linear-gradient(180deg, #ecd08f 0%, #c39a55 48%, #93703a 100%);
+  border: 1px solid #2a1e0f;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 246, 220, 0.6),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.25),
+    0 2px 0 rgba(0, 0, 0, 0.6);
+}
+
+.cast.lg {
+  font-size: var(--fs-md);
+}
+
+.cast:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+/* Iron: dark metal with a bronze inner rim. */
+.iron {
+  color: var(--text-primary);
+  background: linear-gradient(180deg, #2d2822, #1a1713);
+  border: 1px solid #0a0907;
+  box-shadow: inset 0 0 0 1px var(--line), inset 0 1px 0 rgba(255, 236, 200, 0.08);
+}
+
+.iron:hover:not(:disabled) {
+  box-shadow: inset 0 0 0 1px var(--bronze-hi), inset 0 1px 0 rgba(255, 236, 200, 0.1);
+}
+
+/* Danger: oxblood body, blood rim, warm red text. */
+.danger {
+  color: var(--text-danger);
+  background: linear-gradient(180deg, #3a1714, #220c0a);
+  border: 1px solid #0d0403;
+  box-shadow: inset 0 0 0 1px rgba(200, 38, 30, 0.55), inset 0 1px 0 rgba(255, 200, 190, 0.06);
+}
+
+.danger:hover:not(:disabled) {
+  box-shadow: inset 0 0 0 1px rgba(239, 106, 82, 0.85), inset 0 1px 0 rgba(255, 200, 190, 0.08);
+}

@@ -726,7 +726,7 @@ NATIVE_COMPONENT_FIELD_SPECS = {
         ("base_agility", "hero", "i32"), ("move_speed", "move", "f32"),
     ))
 }
-CURRENT_ENGINE_UNIT_STAT_FIELDS = frozenset(("armor", "armor_type", "intelligence_total"))
+CURRENT_ENGINE_UNIT_STAT_FIELDS = frozenset(("armor", "armor_type", "intelligence_total", "attack1_range", "attack2_range"))
 for _attack_number in (1, 2):
     for _index, _name in enumerate(("multiplier", "multiplier_cache", "dice", "base1", "base2",
             "dice_cache", "internal_bonus1", "internal_bonus2", "sound", "type", "max_targets",

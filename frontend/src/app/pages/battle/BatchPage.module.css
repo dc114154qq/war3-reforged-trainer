@@ -1,0 +1,135 @@
+/* The in-game group selection: a grid of portraits, the checked ones standing in a circle. */
+.page { gap: 8px; }
+.selection { margin-bottom: 0; flex: none; }
+.fieldSection { display: flex; flex-direction: column; flex: 1; min-height: 0; margin-bottom: 0; }
+.fieldSection > :not(.targets) { flex-shrink: 0; }
+.results { flex: none; color: var(--text-secondary); font-size: var(--fs-sm); }
+.results summary { cursor: pointer; padding: 5px 0; color: var(--text-label); }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 14px 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 154px;
+  overflow-y: auto;
+}
+
+.unit {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 4px 0 12px;
+}
+
+.unit:focus-visible {
+  outline-offset: -2px;
+}
+
+.ring {
+  position: absolute;
+  z-index: 0;
+  left: 10%;
+  width: 80%;
+  top: 42px;
+  height: 24px;
+}
+
+.portrait {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  font-size: 38px;
+  background: radial-gradient(circle at 50% 32%, #2b3755, #0d1320 78%);
+  border: 1px solid #05070c;
+  box-shadow: inset 0 0 0 1px var(--line), inset 0 0 14px rgba(0, 0, 0, 0.75);
+  transition: box-shadow var(--dur-press) var(--ease-out), filter var(--dur-press) var(--ease-out);
+}
+
+.unit[aria-selected='false'] .portrait {
+  filter: saturate(0.5) brightness(0.75);
+}
+
+.unit:hover .portrait,
+.unit[aria-selected='true'] .portrait {
+  filter: none;
+  box-shadow: inset 0 0 0 1px var(--bronze-hi), inset 0 0 14px rgba(0, 0, 0, 0.6);
+}
+
+/* Above the selection ring, which is positioned. */
+.plate {
+  position: relative;
+  z-index: 1;
+}
+
+.vitals {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  gap: 6px;
+  font: 11.5px var(--font-mono);
+}
+
+.hp {
+  color: #6fe07d;
+}
+
+.mp {
+  color: #8fb0ff;
+}
+
+.targets {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(175px, 1fr));
+  align-items: end;
+  gap: 6px 12px;
+  flex: 1;
+  min-height: 0;
+  align-content: start;
+  overflow-y: auto;
+  padding: 4px 8px 8px 2px;
+}
+
+.target {
+  min-width: 0;
+  width: 100%;
+}
+
+.target > span:first-child {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.filters {
+  align-items: center;
+  margin: 8px 0;
+}
+
+.filters > span:first-child {
+  width: min(290px, 100%);
+}
+
+.count {
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+}
+
+@media (max-height: 650px) {
+  .fieldSection > p { display: none; }
+  .filters { gap: 6px 10px; margin: 4px 0; }
+  .page { gap: 4px; }
+}
+
+.empty {
+  margin: 0;
+  padding: 10px 0;
+  color: var(--text-tertiary);
+}

@@ -142,6 +142,10 @@ class FieldsFacade:
         note: str = "",
         extra_writes: tuple[tuple[int, str], ...] = (),
     ) -> None:
+        from war3_services.batch_edit import active_field_keys
+        requested = active_field_keys()
+        if requested is not None and key not in requested:
+            return
         if not address:
             return
         try:
@@ -529,12 +533,26 @@ class FieldsFacade:
         return memory
 
 
-    def _unit_fields_from_candidate(
+    def _unit_fields_from_candidate(self,pm,candidate):
+        from war3_services.batch_edit import active_field_keys
+        from war3_services.unit_fields import replace_range_fields
+        requested = active_field_keys()
+        fields=FieldsFacade._unit_fields_from_candidate_base(self,pm,candidate)
+        fields = replace_range_fields(self,candidate,fields) if requested is None or requested.intersection(('attack1_range','attack2_range')) else fields
+        return fields if requested is None else [field for field in fields if field.key in requested]
+
+    def _unit_fields_from_candidate_base(
         self,
         pm: ProcessMemory | None,
         candidate: UnitCandidate,
     ) -> list[UnitMemoryField]:
         from war3_game_profile import current_profile
+        from war3_services.batch_edit import active_field_keys
+        requested = active_field_keys()
+        needs = lambda *keys: requested is None or bool(requested.intersection(keys))
+        needs_skills = requested is None or any(key.startswith('ability_') or
+            (key.startswith('skill') and key[5:6].isdigit()) for key in requested)
+        needs_inventory = requested is None or any(key.startswith('inventory_slot_') for key in requested)
         _al = current_profile().section("layouts")
         if pm is None and self._native_snapshot_for_candidate(candidate) is None:
             with self._process_memory() as field_memory:
@@ -622,7 +640,7 @@ class FieldsFacade:
 
         current_unit_stats = None
         bridge_install_failed = False
-        if uses_indexed_backend(self):
+        if uses_indexed_backend(self) and needs('armor','armor_type','base_intelligence','intelligence_total'):
             try:
                 current_unit_stats = self._unit_stats_for_candidate_24268(candidate)
             except Exception as exc:
@@ -665,7 +683,8 @@ class FieldsFacade:
         # fixture and offline field paths independent from it; real trainer
         # instances always carry both process identifiers.
         stat_details = None
-        if getattr(self, "pid", 0) and getattr(self, "hwnd", 0):
+        if (getattr(self, "pid", 0) and getattr(self, "hwnd", 0)
+                and (requested is None or any(key.startswith('stat3_') for key in requested))):
             if bridge_install_failed:
                 self._unit_field_warnings.append("3.0 属性不可用")
                 fields.append(UnitMemoryField(
@@ -746,7 +765,7 @@ class FieldsFacade:
                 elif uses_indexed_backend(self):
                     # The indexed cache is not the 3.0 native intelligence value.
                     pass
-                else:
+                elif needs('intelligence_total'):
                     try:
                         base_intelligence, total_intelligence = self._get_hero_intelligence_pair_via_native_internal(pm, candidate)
                         fields.append(
@@ -788,14 +807,14 @@ class FieldsFacade:
             skill_requirement_offset = hero_layout["skill_requirement_native"] if current_24268 else hero_layout["skill_requirement_legacy"]
             skill_name_note = "英雄技能栏 rawcode；替换时由引擎从地图资源创建技能"
             skill_cache_note = "旧版候选/运行时缓存；单改这里通常不改变已学技能效果"
-            for index in range(self.HERO_SKILL_SLOT_COUNT):
+            for index in range(self.HERO_SKILL_SLOT_COUNT if needs_skills else 0):
                 name_address = data + skill_name_offset + index * 4
                 try:
                     current_config_rawcode = pm.read_u32(name_address)
                 except OSError:
                     current_config_rawcode = 0
                 hero_skill_config_rawcodes.append(current_config_rawcode)
-            if native is None:
+            if native is None and needs_skills:
                 ability_instances = self._ability_instances_from_candidate(pm, candidate)
             for index in range(self.HERO_SKILL_SLOT_COUNT):
                 number = index + 1
@@ -1018,7 +1037,9 @@ class FieldsFacade:
             except OSError:
                 pass
 
-        if native is None:
+        if not needs_inventory:
+            display_items = []
+        elif native is None:
             display_items = self._inventory_items_from_candidate(process_memory, candidate, components)
         else:
             if any(len(values) != 6 for values in (native.item_ids, native.item_charges,

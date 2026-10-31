@@ -1,0 +1,1 @@
+import{B as e}from"./index-C6_jXbbH.js";import{CatalogSearch as t}from"./CatalogPage-CfyUhI3U.js";var n=e();function r(){return(0,n.jsx)(t,{initialKind:`upgrade`})}export{r as default};

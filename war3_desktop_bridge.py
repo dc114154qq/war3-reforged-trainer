@@ -1234,6 +1234,20 @@ class DesktopBridgeApi:
     # 15. Batch Edit & Archive Extraction
     # =========================================================================
 
+    def read_unit_fields(self) -> dict[str, Any]:
+        trainer=self.port.value('state').get('trainer')
+        if not trainer:raise ValueError('尚未连接游戏，请先连接后选择单位')
+        service=self.services.UnitFieldsService(trainer,self.services.logger_factory)
+        result=service.read()
+        self._unit_field_service=service
+        return result
+
+    def write_unit_field_value(self,key: str,value: str) -> dict[str, Any]:
+        service=getattr(self,'_unit_field_service',None)
+        trainer=self.port.value('state').get('trainer')
+        if service is None or service.host is not trainer:raise ValueError('请先读取当前单位字段')
+        return service.write(key,value)
+
     def batch_read_units(self) -> dict[str, Any]:
         trainer = self.port.value("state").get("trainer")
         if not trainer:

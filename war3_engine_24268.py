@@ -126,11 +126,11 @@ class Engine24268(UnitsService, AbilitiesService, ItemsService, ExtensionsServic
 
 
     def _execute(self,kind,names,builder,decoder,request):
-        from war3_services.operation_trace import active_trace,SkillTrace,CloneTrace
+        from war3_services.operation_trace import active_trace,SkillTrace,CloneTrace,UnitFieldTrace
         if (active_trace() is None and
-                (kind in ('clone','clone_bound','clone_state','direct_cast','item_effect','gold_mine') or kind in ('ability','item_ability') and request.get('action',0)!=0)):
+                (kind in ('clone','clone_bound','clone_state','direct_cast','item_effect','gold_mine') or kind in ('unit_field','ability','item_ability') and request.get('action',0)!=0)):
             from war3_backend import Win10ReadLogger
-            trace_type=CloneTrace if kind in ('clone','clone_bound','clone_state') else SkillTrace
+            trace_type=UnitFieldTrace if kind=='unit_field' else CloneTrace if kind in ('clone','clone_bound','clone_state') else SkillTrace
             with trace_type(self,Win10ReadLogger,dict(operation=kind,**request)) as trace:
                 trace.bind_engine(self)
                 result=self._execute(kind,names,builder,decoder,request)

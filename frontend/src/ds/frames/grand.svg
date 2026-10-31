@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="60" height="60" viewBox="0 0 60 60">
+  <!-- Nine-slice source, slice 20: double rule with a larger cast corner. For dialogs. -->
+  <defs>
+    <g id="c">
+      <path d="M1.4 19V7.2L7.2 1.4H19" fill="none" stroke="#d9b676" stroke-width="1.6"/>
+      <path d="M5.5 15V9.4L9.4 5.5H15" fill="none" stroke="#b08a4e" stroke-width="1"/>
+      <path d="M10.2 7.4L13 10.2L10.2 13L7.4 10.2Z" fill="#d9b676"/>
+      <path d="M19 1.4H21.5M1.4 19V21.5" stroke="#d9b676" stroke-width="1.6"/>
+    </g>
+  </defs>
+  <rect x="0.5" y="0.5" width="59" height="59" fill="none" stroke="#b08a4e" stroke-opacity="0.75"/>
+  <rect x="3.5" y="3.5" width="53" height="53" fill="none" stroke="#b08a4e" stroke-opacity="0.28"/>
+  <use xlink:href="#c"/>
+  <use xlink:href="#c" transform="matrix(-1 0 0 1 60 0)"/>
+  <use xlink:href="#c" transform="matrix(1 0 0 -1 0 60)"/>
+  <use xlink:href="#c" transform="matrix(-1 0 0 -1 60 60)"/>
+</svg>

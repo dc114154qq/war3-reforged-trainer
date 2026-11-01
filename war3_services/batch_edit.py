@@ -140,7 +140,8 @@ class _BatchFieldReader:
         self.binding_error = None
         self.stats = None
         self.stats_error = None
-        self.range_rows = None
+        self.weapon_rows = None
+        self.weapon_error = None
 
     def __getattr__(self, name):
         return getattr(self.host, name)
@@ -217,26 +218,30 @@ class _BatchFieldReader:
         from war3_services.facade_extensions import ExtensionsFacade
         return ExtensionsFacade.stat_details_24268(self, candidate)
 
-    def _unit_ranges_for_candidate_24268(self,candidate):
-        from war3_services.unit_fields import RANGE_FIELDS
+    def _unit_weapon_fields_for_candidate_24268(self,candidate):
+        from war3_services.unit_fields import WEAPON_FIELDS, decode_weapon_fields
         _,native=self._stat_target_24268(candidate)
-        if self.range_rows is None:
-            result=self.host._engine_instance_24268().unit_fields(RANGE_FIELDS)
-            expected={value:ref.rawcode for ref,value in self.bindings.items()}
-            rows=result['rows']
-            if len(rows)!=len(expected) or {r['unit']:r['rawcode'] for r in rows}!=expected:
-                raise RuntimeError('批量武器范围读回的选择与单位身份不一致')
-            self.range_rows={r['unit']:tuple(f['value'] for f in r['fields']) for r in rows}
+        if self.weapon_error is not None:raise self.weapon_error
+        if self.weapon_rows is None:
+            try:
+                keys=tuple(WEAPON_FIELDS)
+                result=self.host._engine_instance_24268().unit_fields(tuple(WEAPON_FIELDS.values()))
+                expected={value:ref.rawcode for ref,value in self.bindings.items()}
+                rows=result['rows']
+                if len(rows)!=len(expected) or {r['unit']:r['rawcode'] for r in rows}!=expected:
+                    raise RuntimeError('批量武器字段读回的选择与单位身份不一致')
+                self.weapon_rows={r['unit']:decode_weapon_fields(r,keys) for r in rows}
+            except Exception as exc:self.weapon_error=exc;raise
         self._check(self.targets[id(candidate)])
-        return native,self.range_rows[native]
+        return native,self.weapon_rows[native]
 
     def fields(self, candidate):
         from war3_services.facade_fields import FieldsFacade
         return FieldsFacade._unit_fields_from_candidate(self, self.memory, candidate)
 
 
-class _BatchRangeWriter:
-    """One fresh native binding group, then one verified range setter per unit.
+class _BatchWeaponWriter:
+    """One fresh native binding group, then one verified weapon setter per unit.
 
     The setter already reads both old weapon ranges and verifies its write in
     the game callback. Rebuilding every unrelated panel field adds no check to
@@ -249,10 +254,14 @@ class _BatchRangeWriter:
 
     def write(self, unit, field, target):
         from war3_unit_field_protocol import value_bits
-        from war3_services.unit_fields import write_range_verified
-        value=float(target)
-        bits=value_bits(2,value)
-        if not 0<=value<=1000000:raise ValueError('攻击范围必须在 0 到 1000000 之间')
+        from war3_services.unit_fields import write_range_verified,write_attack_type_verified,attack_type_value
+        type_field=field.key in ('attack1_type','attack2_type')
+        if type_field:bits=attack_type_value(target)
+        else:
+            if field.key!='attack1_range':raise ValueError('此武器字段没有批量写入接口')
+            value=float(target)
+            bits=value_bits(2,value)
+            if not 0<=value<=1000000:raise ValueError('攻击范围必须在 0 到 1000000 之间')
         registry,_,_=self.session.prepare(self.memory)
         self.session.resolve(self.memory,registry,unit.ref)
         if registry.resolve_unit(self.memory,unit.ref.address.value)!=(unit.ref.handle.value,unit.owner):
@@ -284,7 +293,10 @@ class _BatchRangeWriter:
         native=self.bindings.get(unit.ref)
         if native is None:raise RuntimeError('批量射程目标缺少本次原生绑定')
         self.session.resolve(self.memory,registry,unit.ref)
-        actual=write_range_verified(engine,native.value,unit.ref.rawcode,1,bits)
+        if type_field:
+            actual=write_attack_type_verified(engine,native.value,unit.ref.rawcode,
+                1 if field.key=='attack1_type' else 2,bits)
+        else:actual=write_range_verified(engine,native.value,unit.ref.rawcode,1,bits)
         self.session.resolve(self.memory,registry,unit.ref)
         return replace(field,value=actual,native_component_identity=(native.value,unit.ref.rawcode))
 
@@ -374,9 +386,9 @@ class BatchEditService:
                  units=[dict(ref=unit.ref, owner=unit.owner) for unit in units]),
         ) as trace, self.host._process_memory() as memory:
             from war3_backend import uses_indexed_backend
-            range_writer = (_BatchRangeWriter(self.host,session,memory,units,bindings,trace)
+            weapon_writer = (_BatchWeaponWriter(self.host,session,memory,units,bindings,trace)
                 if isinstance(session,GameSession) and uses_indexed_backend(self.host)
-                and 'attack1_range' in targets else None)
+                and targets.keys() & {'attack1_range','attack1_type','attack2_type'} else None)
             def ensure_session():
                 if session is not snapshot.session or self.host._game_session is not session:
                     raise RuntimeError("游戏会话已变化，请重新读取批量单位")
@@ -403,17 +415,18 @@ class BatchEditService:
                 try:
                     session.resolve(memory, registry, unit.ref)
                     original = next((f for f in unit.fields if f.key==key),None)
-                    if (range_writer is not None and key=='attack1_range'
+                    if (weapon_writer is not None and key in ('attack1_range','attack1_type','attack2_type')
                             and original is not None and original.native_write):
-                        expected = self.host._coerce_memory_value('f32',target)
-                        trace.record('field_validated',**context,field=original,expected=expected,route='verified_batch_range')
+                        route='verified_batch_range' if key=='attack1_range' else 'verified_batch_attack_type'
+                        expected = self.host._coerce_memory_value('f32' if key=='attack1_range' else 'i32',target)
+                        trace.record('field_validated',**context,field=original,expected=expected,route=route)
                         trace.checkpoint()
                         started=time.perf_counter()
-                        written=range_writer.write(unit,original,target)
-                        if written.value!=expected:raise RuntimeError('批量射程写入读回与目标值不一致')
+                        written=weapon_writer.write(unit,original,target)
+                        if written.value!=expected:raise RuntimeError('批量武器字段写入读回与目标值不一致')
                         result=FieldResult(unit,key,target,'success',actual=written.value_text())
                         results.append(result)
-                        trace.record('field_write_timing',**context,elapsed_ms=(time.perf_counter()-started)*1000,requested_only=True,route='verified_batch_range')
+                        trace.record('field_write_timing',**context,elapsed_ms=(time.perf_counter()-started)*1000,requested_only=True,route=route)
                         trace.record('field_result',**context,status=result.status,reason='',actual=result.actual,replayed=False)
                         continue
                     # Cache capabilities within this request, never write

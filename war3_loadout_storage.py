@@ -36,7 +36,8 @@ def validate_records(records):
     return result
 
 
-def save_file(host, path):
+def portable_records(host):
+    """User plans outlive a game connection; live handles never do."""
     records = []
     for per_target in getattr(host, '_extension_saved_loadouts', {}).values():
         for record in per_target.values():
@@ -45,6 +46,22 @@ def save_file(host, path):
                 equipment_charges=list(record.get('equipment_charges', (0,) * 9)),
                 requires_any_slot=bool(record.get('requires_any_slot', False))))
     validate_records(records)
+    return records
+
+
+def install_records(host, records):
+    records=validate_records(records)
+    host._extension_saved_loadouts = {(int(host.pid), -index-1): {r['name']: r} for index, r in enumerate(records)}
+    host._extension_saved_loadout = None
+    return len(records)
+
+
+def transfer_plans(source, destination):
+    return install_records(destination, portable_records(source))
+
+
+def save_file(host, path):
+    records=portable_records(host)
     destination = Path(path)
     fd, pending = tempfile.mkstemp(prefix=destination.name + '.', suffix='.tmp', dir=destination.parent)
     try:
@@ -64,9 +81,6 @@ def load_file(host, path):
     value = json.loads(source.read_text(encoding='utf-8'))
     if not isinstance(value, dict) or set(value) != {'schema', 'records'} or type(value['schema']) is not int or value['schema'] != 1:
         raise ValueError('Unsupported equipment plan schema')
-    records = validate_records(value['records'])
     # Imported records contain no process or object identity. Bind only their
     # catalogue ownership to the current trainer; restore creates new items.
-    host._extension_saved_loadouts = {(int(host.pid), -index-1): {r['name']: r} for index, r in enumerate(records)}
-    host._extension_saved_loadout = None
-    return len(records)
+    return install_records(host,value['records'])

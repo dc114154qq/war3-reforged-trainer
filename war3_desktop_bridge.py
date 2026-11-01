@@ -192,6 +192,21 @@ class DesktopBridgeApi:
         if connected and getattr(trainer, 'hwnd', 0):
             from war3_backend import is_war3_window
             connected = is_war3_window(trainer.hwnd, trainer.pid)
+            if not connected and not self.offline:
+                # Chapter loads can replace a window. Poll without waiting for
+                # loading or discarding user plans; all game writes still bind
+                # and validate the actual process/map/unit before execution.
+                session=getattr(trainer,'_game_session',None)
+                lock=getattr(session,'lock',None)
+                acquired=lock is None or lock.acquire(blocking=False)
+                if acquired:
+                    try:
+                        trainer.refresh_window(allow_pid_change=True,attempts=1)
+                        connected=is_war3_window(trainer.hwnd,trainer.pid)
+                        if connected:self.port.value('pid_var').set(str(trainer.pid))
+                    except (RuntimeError,OSError):pass
+                    finally:
+                        if lock is not None:lock.release()
         pid = self.port.value("pid_var").get()
         pid_val = int(pid) if pid and pid.isdigit() else None
         game_version = "未知版本"
@@ -210,6 +225,7 @@ class DesktopBridgeApi:
             "appVersion": APP_VERSION,
             "edition": PRODUCT_EDITION_LABEL,
             "connected": connected,
+            "connectionId": f'{id(trainer):x}:{getattr(trainer,"pid",0)}:{getattr(trainer,"hwnd",0)}' if trainer else '',
             "pid": pid_val,
             "gameVersion": game_version if connected else None,
             "adapterProfile": adapter_profile if connected else None,
@@ -634,6 +650,15 @@ class DesktopBridgeApi:
 
         from war3_3_extension_catalog import OFFICIAL_BACKPACKS
         backpack_options = [f"{hero_name} ({rawcode})" for rawcode, (hero_name, _) in OFFICIAL_BACKPACKS.items()]
+        from war3_loadout_restore import plan_choices
+        trainer=self.port.value('state').get('trainer')
+        saved_names=list(plan_choices(trainer)) if trainer is not None else []
+        self.port.value('extension_loadout_box')['values']=tuple(saved_names)
+        choice=self.port.value('extension_loadout_choice').get()
+        if choice not in saved_names:
+            typed=self.port.value('extension_loadout_name').get()
+            choice=typed if typed in saved_names else (saved_names[-1] if saved_names else '')
+            self.port.value('extension_loadout_choice').set(choice)
 
         return {
             "status": self.port.value("extension_status").get(),
@@ -647,7 +672,8 @@ class DesktopBridgeApi:
             "officialBackpacks": backpack_options,
             "currentBackpackChoice": self.port.value("extension_backpack_choice").get(),
             "loadoutName": self.port.value("extension_loadout_name").get(),
-            'loadoutNames': list(getattr(self.port.value('extension_loadout_box'), 'values', ())),
+            'loadoutNames': saved_names,
+            'currentLoadoutChoice': choice,
             'talentChoices': list(getattr(self.port.value('extension_talent_choice_box'), 'values', ())),
             'loadoutWarnings': {key: value for key, value in (self.port.value('state').get('extension_snapshot') or {}).items()
                                 if key in ('loadout_charge_mismatches', 'loadout_postcondition_warning')},

@@ -1885,6 +1885,10 @@ _EN_TRANSLATIONS.update({
     "请至少填写一个批量字段目标值": "Enter at least one field target",
     "批量单位原生属性读回身份不一致": "The batch unit's native stat readback identity differs",
     "批量武器范围读回的选择与单位身份不一致": "The batch weapon-range readback does not match the selected unit identities",
+    "此武器字段没有批量写入接口": "This weapon field has no batch write interface",
+    "批量武器字段读回的选择与单位身份不一致": "The batch weapon field readback does not match the selected unit identities",
+    "批量武器字段写入读回与目标值不一致": "Batch weapon field readback does not match the target value",
+    "攻击类型：0=法术，1=普通，2=穿刺，3=攻城，4=魔法，5=混乱，6=英雄；只修改对应武器，写后按游戏接口读回": "Attack type: 0=Spells, 1=Normal, 2=Pierce, 3=Siege, 4=Magic, 5=Chaos, 6=Hero. Changes only the specified weapon and verifies native readback.",
     "批量属性目标与单位身份不一致": "The batch stat target differs from the unit identity",
 })
 

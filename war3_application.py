@@ -198,6 +198,11 @@ class TrainerApplication:
         previous = self.view.value('state').get('trainer')
         batch_trainer = self.view.value('state').get('elephant_batch_trainer')
         if isinstance(previous, War3Trainer):
+            from war3_loadout_storage import transfer_plans
+            try:transfer_plans(previous, replacement)
+            except Exception:
+                replacement.close()
+                raise
             previous.close()
         if isinstance(batch_trainer, War3Trainer) and batch_trainer is not previous:
             batch_trainer.close()

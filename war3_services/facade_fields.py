@@ -535,10 +535,10 @@ class FieldsFacade:
 
     def _unit_fields_from_candidate(self,pm,candidate):
         from war3_services.batch_edit import active_field_keys
-        from war3_services.unit_fields import replace_range_fields
+        from war3_services.unit_fields import replace_weapon_fields, WEAPON_FIELDS
         requested = active_field_keys()
         fields=FieldsFacade._unit_fields_from_candidate_base(self,pm,candidate)
-        fields = replace_range_fields(self,candidate,fields) if requested is None or requested.intersection(('attack1_range','attack2_range')) else fields
+        fields = replace_weapon_fields(self,candidate,fields) if requested is None or requested.intersection(WEAPON_FIELDS) else fields
         return fields if requested is None else [field for field in fields if field.key in requested]
 
     def _unit_fields_from_candidate_base(

@@ -168,6 +168,7 @@ def bind_trainer(cls):
 
 
 CACHE_DEFAULTS = {
+    "_extension_any_slot_enabled": dict,
     "_selection_player_candidates": list,
     "_unit_component_layout_confirmed": lambda: False,
     "_native_hero_int_set_address": int,

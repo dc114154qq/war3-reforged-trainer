@@ -126,7 +126,7 @@ export const api = {
     callApi<{ success: boolean; data?: ItemFieldsData; error?: string }>('write_item_field', rowIid, newValue),
 
   // 7. Extensions
-  refreshExtensionStatus: () => callApi<ExtensionsSnapshot>('refresh_extension_status'),
+  refreshExtensionStatus: (refresh = true) => callApi<ExtensionsSnapshot>('refresh_extension_status', refresh),
   extensionBagAction: (action: string, params?: Record<string, any>) =>
     callApi<{ success: boolean; data?: ExtensionsSnapshot; message?: string; error?: string }>('extension_bag_action', action, params),
   extensionEquipmentAction: (action: string, params?: Record<string, any>) =>

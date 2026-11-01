@@ -250,7 +250,17 @@ class AttackAdapter(LayoutProvider):
         host._append_unit_field(pm, fields, f"{key_prefix}_internal_bonus2", f"{label_prefix}内部加成槽2", "i32", data + layout["internal_bonus2"], "攻击", note=damage_note)
         host._append_unit_field(pm, fields, f"{key_prefix}_sound", f"{label_prefix}攻击音效码", "i32", data + layout["sound"], "攻击", note=damage_note)
         host._append_unit_field(pm, fields, f"{key_prefix}_damage_loss_factor", f"{label_prefix}丢失因子(候选只读)", "f32", data + layout["damage_loss_factor"], "攻击", writable=False, note=readonly_candidate_note)
-        host._append_unit_field(pm, fields, f"{key_prefix}_type", f"{label_prefix}种类", "i32", data + layout["type"], "攻击")
+        if getattr(host,'_game_session',None) is not None:
+            # This historical offset can be an unrelated pointer in newer
+            # builds. Only the native ua1t getter/setter authorizes this field.
+            from war3_services.batch_edit import active_field_keys
+            requested=active_field_keys()
+            if requested is None or f'{key_prefix}_type' in requested:
+                fields.append(field_type(key=f'{key_prefix}_type',label=f'{label_prefix}种类',
+                    value_type='i32',value=0,address=0,category='攻击',write_address=0,write_type='',
+                    note='攻击类型等待游戏原生接口确认'))
+        else:
+            host._append_unit_field(pm, fields, f"{key_prefix}_type", f"{label_prefix}种类", "i32", data + layout["type"], "攻击")
         host._append_unit_field(pm, fields, f"{key_prefix}_max_targets", f"{label_prefix}最大目标数(候选)", "i32", data + layout["max_targets"], "攻击", note=candidate_note)
         if current_24268:
             host._append_unit_field(

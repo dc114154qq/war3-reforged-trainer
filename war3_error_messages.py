@@ -145,6 +145,13 @@ def describe_error(exc, language='zh'):
     report=next((getattr(e,'report') for e in chain if isinstance(getattr(e,'report',None),dict)),{})
     dispatch=report.get('dispatch') or {}
     text='\n'.join(str(e) for e in chain)
+    if 'Classic inventory is full; free one temporary slot before regenerating ordinary equipment' in text:
+        return dict(category='classic_inventory_full',operation='loadout',reason_confirmed=True,
+            reason=('经典六格物品栏已满。恢复这套方案中的普通物品需要一个临时空位，请先腾出经典物品栏的一格，再点击恢复套装。'
+                    if language=='zh' else
+                    'The six-slot classic inventory is full. Restoring ordinary items in this plan needs one temporary slot. Free one classic inventory slot, then restore the loadout again.'),
+            recovery=('方案仍然保留，本次未创建该物品。' if language=='zh' else
+                      'The saved plan is retained. This item was not created.'),business_error=None)
     operation=report.get('operation','')
     reason=None;category='unknown';confirmed=False
     business=report.get('business_status') or report.get(operation+'_status') or {}

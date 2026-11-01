@@ -15,6 +15,7 @@ const en: Record<string, string> = {
   '第二武器射程可读取；游戏现有原生接口无法可靠写入': 'Weapon 2 range can be read; the game native cannot write it reliably.',
   '该字段是文本定义；当前未提供经过验证的游戏字符串写入接口': 'Text field; a verified game string write interface is not currently available.',
   '游戏返回非有限实数，未开放写入': 'The game returned a nonfinite number; writing is unavailable.',
+  '攻击类型：0=法术，1=普通，2=穿刺，3=攻城，4=魔法，5=混乱，6=英雄；只修改对应武器，写后按游戏接口读回': 'Attack type: 0=Spells, 1=Normal, 2=Pierce, 3=Siege, 4=Magic, 5=Chaos, 6=Hero. Changes only the specified weapon and verifies native readback.',
   '搜索批量字段': 'Search batch fields',
   '收起单位': 'Hide portraits',
   '展开单位': 'Show portraits',

@@ -2,6 +2,7 @@ export interface SystemStatus {
   appVersion: string;
   edition: string;
   connected: boolean;
+  connectionId?: string;
   pid: number | null;
   gameVersion: string | null;
   adapterProfile: string | null;
@@ -185,6 +186,7 @@ export interface ExtensionsSnapshot {
   currentBackpackChoice: string;
   loadoutName: string;
   loadoutNames?: string[];
+  currentLoadoutChoice?: string;
   talentChoices?: string[];
   selectedTalentIid?: string;
   currentTalentChoice?: string;

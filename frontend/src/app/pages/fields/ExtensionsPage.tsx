@@ -20,6 +20,8 @@ type Result = { success: boolean; data?: ExtensionsSnapshot; message?: string; e
 export default function ExtensionsPage() {
   const t = useT()
   const connected = useSystem(st => st.status.connected)
+  const connectionId = useSystem(st => st.status.connectionId ?? String(st.status.pid ?? ''))
+  const bridgeReady = useSystem(st => st.bridgeReady)
   const { pending, run } = usePending()
   const [snap, setSnap] = useState<ExtensionsSnapshot>(EMPTY)
   const [bagId, setBagId] = useState('')
@@ -35,6 +37,7 @@ export default function ExtensionsPage() {
   const [elapsed, setElapsed] = useState(0)
   const [definitions, setDefinitions] = useState(false)
   const clearTimer = useRef<number | undefined>(undefined)
+  const snapshotRevision = useRef(0)
 
   const talent = snap.talents.find(r => r._iid === talentId)
   const choices = talent?.choiceCodes ?? []
@@ -44,12 +47,15 @@ export default function ExtensionsPage() {
 
   /** Keep the talent selection and choice valid against a fresh snapshot, as 2.1.22 did. */
   const accept = (next: ExtensionsSnapshot) => {
+    snapshotRevision.current++
     setSnap(next)
     const tier = next.talents.some(r => r._iid === talentId) ? talentId : next.selectedTalentIid || next.talents[0]?._iid || ''
     setTalentId(tier)
     const options = next.talents.find(r => r._iid === tier)?.choiceCodes ?? []
     setTalentChoice(c => (options.includes(c) ? c : options[0] ?? ''))
     setBackpack(b => b || next.currentBackpackChoice || next.officialBackpacks[0] || '')
+    const plans=next.loadoutNames ?? []
+    setSavedLoadout(current => plans.includes(current) ? current : next.currentLoadoutChoice || (plans.includes(loadoutName) ? loadoutName : plans[0] || ''))
   }
 
   const say = (text: string, error = false) => {
@@ -60,7 +66,21 @@ export default function ExtensionsPage() {
   useEffect(() => () => window.clearTimeout(clearTimer.current), [])
 
   const load = () => run('load', async () => accept(await api.refreshExtensionStatus()))
-  useEffect(() => { void load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (connected) void load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // Plan names belong to this app run. A new game connection must refresh the
+  // catalogue without requiring a selected unit or a loaded chapter.
+  useEffect(() => {
+    if (!bridgeReady) return
+    let active=true
+    const revision=snapshotRevision.current
+    void api.refreshExtensionStatus(false).then(next => {
+      if (!active || snapshotRevision.current!==revision) return
+      const plans=next.loadoutNames ?? []
+      setSnap(prev => ({ ...prev, loadoutNames: plans, currentLoadoutChoice: next.currentLoadoutChoice }))
+      setSavedLoadout(current => plans.includes(current) ? current : next.currentLoadoutChoice || plans[0] || '')
+    }).catch(() => { /* the API already reports a communication failure */ })
+    return () => { active=false }
+  }, [bridgeReady, connectionId])
 
   /**
    * Run an extension action and take the snapshot it returns. api.ts throws on success: false
@@ -71,6 +91,7 @@ export default function ExtensionsPage() {
       const result = await call()
       if (result?.data) accept(result.data)
       say(result?.message || done)
+      return result
     } catch (err) {
       say(err instanceof Error ? err.message : String(err), true)
       throw err
@@ -86,7 +107,12 @@ export default function ExtensionsPage() {
     const timer = window.setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000)
     say(action.includes('restore') ? t('正在恢复套装并按部位装备，请稍候…') : t('正在处理装备，请稍候…'))
     try {
-      await perform(() => api.extensionEquipmentAction(action, { row_iid: equipId, bag_row_iid: bagId, ...params }), `${t('装备操作完成')}：${t(EQUIP_ACTIONS[action] ?? action)}`)
+      const result=await perform(() => api.extensionEquipmentAction(action, { row_iid: equipId, bag_row_iid: bagId, ...params }), `${t('装备操作完成')}：${t(EQUIP_ACTIONS[action] ?? action)}`)
+      if (action==='save_loadout' || action==='save_all_loadouts') {
+        const plans=result?.data?.loadoutNames ?? []
+        const choice=result?.data?.currentLoadoutChoice || String(params.name ?? '')
+        if (plans.includes(choice)) setSavedLoadout(choice)
+      }
     } finally {
       window.clearInterval(timer)
     }

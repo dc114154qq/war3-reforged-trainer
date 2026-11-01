@@ -78,6 +78,9 @@ class NativeFacade:
     def _write_unit_stat_field_24268(
         self, candidate: UnitCandidate, field: UnitMemoryField, value: int | float | str,
     ) -> UnitMemoryField:
+        if field.key in ('attack1_type','attack2_type'):
+            from war3_services.unit_fields import set_attack_type
+            return set_attack_type(self,candidate,field,value)
         if field.key in ('attack1_range','attack2_range'):
             from war3_services.unit_fields import set_weapon_range
             return set_weapon_range(self,candidate,field,value)

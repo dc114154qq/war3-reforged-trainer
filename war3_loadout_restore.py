@@ -2,8 +2,10 @@
 
 def plan_choices(host):
     """Distinguish identically named saved plans without binding their targets."""
-    records=[r for key,per_target in getattr(host,'_extension_saved_loadouts',{}).items()
-             if int(key[0])==int(getattr(host,'pid',0)) for r in per_target.values()]
+    # Plans are data owned by this trainer/application, not live game objects.
+    # A restarted game can have another PID; restore binds a fresh target.
+    records=[r for per_target in getattr(host,'_extension_saved_loadouts',{}).values()
+             for r in per_target.values()]
     choices={}
     for index,record in enumerate(records,1):
         name=record['name']
@@ -131,7 +133,21 @@ def _regenerate_loadout(host, saved, before, slot_types, runtime):
         for index, row in enumerate(layout)
     )
     key = (int(getattr(host, 'pid', 0)), target)
-    if needed and not getattr(host, '_extension_any_slot_enabled', {}).get(key):
+    # Detect a missing classic staging slot before generating any plan items.
+    # Definition checks are reused only within this restore, never across maps.
+    from war3_game_session import GameSession
+    if needed and isinstance(getattr(host,'_game_session',None),GameSession):
+        from war3_services.equipment_effects import preflight_creation, require_creation_capacity
+        checked=set()
+        for index,row in enumerate(layout):
+            code=int(row[1])
+            if not code or reusable[index] or code in checked:continue
+            checked.add(code)
+            definition=preflight_creation(host,code,target)
+            if not definition.get('equipment_type') and not definition.get('skipped'):
+                require_creation_capacity(host,code,target,definition)
+                break
+    if needed or requires_any:
         host.set_extension_equipment_any_slot_24268(True)
     runtime.record('any_slot_ready', enabled=bool(getattr(host, '_extension_any_slot_enabled', {}).get(key)),
         saved_requires_any=requires_any, item_count=needed, free_bag_slots=free)

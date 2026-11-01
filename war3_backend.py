@@ -726,7 +726,7 @@ NATIVE_COMPONENT_FIELD_SPECS = {
         ("base_agility", "hero", "i32"), ("move_speed", "move", "f32"),
     ))
 }
-CURRENT_ENGINE_UNIT_STAT_FIELDS = frozenset(("armor", "armor_type", "intelligence_total", "attack1_range", "attack2_range"))
+CURRENT_ENGINE_UNIT_STAT_FIELDS = frozenset(("armor", "armor_type", "intelligence_total", "attack1_range", "attack2_range", "attack1_type", "attack2_type"))
 for _attack_number in (1, 2):
     for _index, _name in enumerate(("multiplier", "multiplier_cache", "dice", "base1", "base2",
             "dice_cache", "internal_bonus1", "internal_bonus2", "sound", "type", "max_targets",
@@ -3221,13 +3221,13 @@ class War3Trainer(NativeFacade, ExtensionsFacade, UnitsFacade, AbilitiesFacade, 
     def _process_memory(self, write: bool = False) -> ProcessMemory:
         return ProcessMemory(self.pid, write=write)
 
-    def refresh_window(self, allow_pid_change: bool = False) -> None:
+    def refresh_window(self, allow_pid_change: bool = False, *, attempts: int = 16) -> None:
         if is_war3_window(self.hwnd, self.pid):
             return
         old_pid = self.pid
         new_hwnd, new_pid = find_war3_with_retry(
-            None if allow_pid_change else self.pid,
-            executable_path=getattr(self, "_executable_path", "") or None,
+            self.pid, attempts=attempts,
+            executable_path=(getattr(self, "_executable_path", "") or None) if allow_pid_change else None,
         )
         if new_pid != old_pid:
             display = getattr(self, "_talent_icon_display", None)

@@ -676,7 +676,7 @@ class DesktopBridgeApi:
             'currentLoadoutChoice': choice,
             'talentChoices': list(getattr(self.port.value('extension_talent_choice_box'), 'values', ())),
             'loadoutWarnings': {key: value for key, value in (self.port.value('state').get('extension_snapshot') or {}).items()
-                                if key in ('loadout_charge_mismatches', 'loadout_postcondition_warning')},
+                                if key in ('loadout_charge_mismatches', 'loadout_postcondition_warning', 'loadout_talents', 'loadout_talent_summary', 'talent_display_warning')},
         }
 
     def extension_bag_action(self, action: str, params: dict[str, Any] | None = None) -> dict[str, Any]:

@@ -173,17 +173,21 @@ class ComponentAdapter(LayoutProvider):
                 raise RuntimeError("Unit component head changed while reading")
             return head, identities, result
 
-        last_error, first_head = None, None
+        last_error = None
         for _attempt in range(4):
+            if _attempt and (memory.read_u64(owner + object_layout["owner_data"]) != unit
+                             or registry.resolve_unit(memory, unit) != (handle, owner)):
+                raise RuntimeError("Component owner mismatches unit registry")
             try:
                 current_head, identities, result = traverse()
-                if first_head is None:
-                    first_head = current_head
-                elif current_head != first_head:
-                    raise RuntimeError("Unit component head changed while retrying")
+                # A retry is a fresh read of the same verified unit. The head
+                # may legitimately differ from a discarded unstable attempt.
+                # Require two equal traversals within this attempt, never an
+                # obsolete head retained from the first failed attempt.
                 second_head, second_ids, second_result = traverse()
                 if (identities != second_ids or result != second_result
                         or current_head != second_head
+                        or memory.read_u64(owner + object_layout["owner_data"]) != unit
                         or registry.resolve_unit(memory, unit) != (handle, owner)):
                     raise RuntimeError("Unit component identity changed while reading")
                 return result

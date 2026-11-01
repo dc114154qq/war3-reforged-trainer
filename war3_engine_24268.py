@@ -87,6 +87,7 @@ class EngineExecutionError(RuntimeError):
             same_route_retry=retry,
             ability_status=report.get('ability_status'),item_status=report.get('item_status'),
             equipment_status=report.get('equipment_status'),
+            extension_status=report.get('extension_status'),
             clone_status=report.get('clone_status'),world_status=report.get('world_status'),
             spawn_status=report.get('spawn_status'),
             attack_speed_status=report.get('attack_speed_status'),
@@ -337,6 +338,9 @@ class Engine24268(UnitsService, AbilitiesService, ItemsService, ExtensionsServic
                             business_status=failure_status(raw_result)
                         elif kind == 'clone_bound':
                             from war3_clone_bound_protocol import failure_status
+                            business_status=failure_status(raw_result)
+                        elif kind == 'extension':
+                            from war3_extension_protocol import failure_status
                             business_status=failure_status(raw_result)
                         elif kind == 'unit_bindings':
                             from war3_unit_bindings_protocol import failure_status

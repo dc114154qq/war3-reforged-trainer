@@ -143,6 +143,49 @@ def validate_work(payload):
         raise ValueError("3.0 extension output must start empty")
 
 
+def status(payload):
+    """Bounded diagnostics; an early rejection has no inventory snapshot."""
+    if len(payload) != WORK_SIZE:
+        return None
+    target, item = struct.unpack_from('<2Q', payload, 664)
+    (action, slot, rawcode, ability_count, error, completed, changed,
+     bag_size, removed, reserved) = struct.unpack_from('<10I', payload, 680)
+    count, selection_error, destroyed = struct.unpack_from('<3I', payload, 80)
+    selection = None
+    try:
+        selection = selection_result(payload[:480], count)
+    except ValueError:
+        pass
+    rows = tuple(selection['rows']) if selection is not None else ()
+    matches = sum(row['handle'] == target for row in rows)
+    # 222 exits before the first business call. Require the complete valid
+    # selection and untouched output as evidence; changed=0 alone is not proof.
+    before_write = (error == 222 and selection is not None and count > 0 and target > 0
+                    and matches == 0 and action in range(13) and ability_count <= MAX_ABILITIES
+                    and completed == changed == bag_size == removed == reserved == 0
+                    and not any(payload[816:]))
+    snapshot_valid = (selection is not None and matches == 1 and not error
+                      and completed == 1 and not reserved and bag_size <= MAX_BAG_SLOTS
+                      and ability_count <= MAX_ABILITIES)
+    return dict(action=action, slot=slot, target_unit=target, item_handle=item,
+                item_rawcode=rawcode, error=error, completed=completed,
+                changed=0 if before_write or snapshot_valid and action == 0 and changed == 0 else None,
+                raw_changed=changed, raw_bag_size=bag_size,
+                bag_size=bag_size if snapshot_valid else None, snapshot_valid=snapshot_valid,
+                selection_error=selection_error, selection_destroyed=destroyed,
+                selected_count=count, selected_rows=rows, target_matches=matches,
+                selection_valid=selection is not None, rejected_before_write=bool(before_write))
+
+
+def failure_status(payload):
+    value = status(payload)
+    if value is None or not value['error']:
+        return None
+    clean = value['rejected_before_write']
+    return dict(value, session_continuable=clean, cleanup=0 if clean else None,
+                no_write_rejection=clean, read_only_rejection=clean and value['action'] == 0)
+
+
 def decode_work(payload, count):
     if len(payload) != WORK_SIZE:
         raise ValueError("3.0 extension response is incomplete")

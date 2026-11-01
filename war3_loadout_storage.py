@@ -10,7 +10,9 @@ def validate_records(records):
         raise ValueError('Invalid equipment plan list')
     result = []
     for record in records:
-        if not isinstance(record, dict) or set(record) != {'name', 'unit_type_id', 'equipment', 'equipment_charges', 'requires_any_slot'}:
+        required={'name', 'unit_type_id', 'equipment', 'equipment_charges', 'requires_any_slot'}
+        optional={'talents','talent_capture_error'}
+        if not isinstance(record, dict) or not required<=set(record) or set(record)-required-optional:
             raise ValueError('Invalid equipment plan fields')
         name = record['name']
         if not isinstance(name, str) or not name.strip() or len(name) > 64:
@@ -32,7 +34,14 @@ def validate_records(records):
             layout.append((0, rawcode, kind))
         if any(type(value) is not int or not 0 <= value <= 1_000_000_000 for value in charges) or type(record['requires_any_slot']) is not bool:
             raise ValueError('Invalid equipment quantity or any-slot flag')
-        result.append(dict(record, equipment=tuple(layout), equipment_charges=tuple(charges), target_unit=0))
+        normalized=dict(record, equipment=tuple(layout), equipment_charges=tuple(charges), target_unit=0)
+        if 'talents' in record:
+            from war3_services.loadout_talents import validate_talents
+            normalized['talents']=validate_talents(record['talents'])
+        if 'talent_capture_error' in record:
+            error=record['talent_capture_error']
+            if type(error) is not str or len(error)>1000:raise ValueError('Invalid saved talent read error')
+        result.append(normalized)
     return result
 
 
@@ -41,10 +50,15 @@ def portable_records(host):
     records = []
     for per_target in getattr(host, '_extension_saved_loadouts', {}).values():
         for record in per_target.values():
-            records.append(dict(name=record['name'], unit_type_id=int(record.get('unit_type_id', 0)),
+            portable=dict(name=record['name'], unit_type_id=int(record.get('unit_type_id', 0)),
                 equipment=[(int(row[1]), int(row[2]) if len(row) > 2 else 0) for row in record['equipment']],
                 equipment_charges=list(record.get('equipment_charges', (0,) * 9)),
-                requires_any_slot=bool(record.get('requires_any_slot', False))))
+                requires_any_slot=bool(record.get('requires_any_slot', False)))
+            if 'talents' in record:
+                from war3_services.loadout_talents import validate_talents
+                portable['talents']=validate_talents(record['talents'])
+            if 'talent_capture_error' in record:portable['talent_capture_error']=record['talent_capture_error']
+            records.append(portable)
     validate_records(records)
     return records
 
@@ -66,7 +80,7 @@ def save_file(host, path):
     fd, pending = tempfile.mkstemp(prefix=destination.name + '.', suffix='.tmp', dir=destination.parent)
     try:
         with os.fdopen(fd, 'w', encoding='utf-8') as stream:
-            json.dump(dict(schema=1, records=records), stream, ensure_ascii=False, indent=2)
+            json.dump(dict(schema=2, records=records), stream, ensure_ascii=False, indent=2)
             stream.flush(); os.fsync(stream.fileno())
         os.replace(pending, destination)
     finally:
@@ -76,10 +90,10 @@ def save_file(host, path):
 
 def load_file(host, path):
     source = Path(path)
-    if source.stat().st_size > 2_000_000:
+    if source.stat().st_size > 8_000_000:
         raise ValueError('Equipment plan file is too large')
     value = json.loads(source.read_text(encoding='utf-8'))
-    if not isinstance(value, dict) or set(value) != {'schema', 'records'} or type(value['schema']) is not int or value['schema'] != 1:
+    if not isinstance(value, dict) or set(value) != {'schema', 'records'} or type(value['schema']) is not int or value['schema'] not in (1,2):
         raise ValueError('Unsupported equipment plan schema')
     # Imported records contain no process or object identity. Bind only their
     # catalogue ownership to the current trainer; restore creates new items.

@@ -2,7 +2,7 @@
 
 # Warcraft III 3.0 Trainer · 2.2.0
 
-A Warcraft-style desktop interface for editing units, abilities, items and resources, with an expanded unit field editor. Includes batch editing, extended backpacks, loadouts, map definition preparation and save extraction. Search/export custom objects and upgrades, or embed classic HKE menus into map copies for independent in-game use.
+A Warcraft-style desktop interface for editing units, abilities, items and resources, with an expanded unit field editor. Includes batch editing, extended backpacks, and equipment/talent plans with import/export, including multiple talents in the same tier. Prepare map definitions, extract saves, search/export custom objects and upgrades, or embed classic HKE menus into map copies for independent in-game use.
 
 ## Download and run
 

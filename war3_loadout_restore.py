@@ -17,17 +17,34 @@ def plan_choices(host):
     return choices
 
 
+def _batch_native_candidates(host,candidates):
+    """Resolve full identities once; identical unit codes are not identities."""
+    from war3_game_session import GameSession,NativeHandle,UnitRef
+    if not isinstance(getattr(host,'_game_session',None),GameSession):return None
+    refs=host._capture_unit_refs_24268(tuple(candidate for candidate,_ in candidates))
+    bindings=host._engine_instance_24268().bind_unit_refs(refs,strict_selection=True)
+    if (len(bindings)!=len(refs) or len(refs)!=len(candidates) or
+            any(type(native) is not NativeHandle or type(ref) is not UnitRef or ref!=expected
+                for (native,ref),expected in zip(bindings,refs))):
+        raise RuntimeError('批量套装目标的原生编号与完整单位身份不一致，未开始恢复')
+    mapped={native.value:candidate for (candidate,_),(native,_ref) in zip(candidates,bindings)}
+    if len(mapped)!=len(candidates):
+        raise RuntimeError('批量套装的英雄目标身份不唯一，未开始恢复')
+    return mapped
+
+
 def run_loadout_batch(host, name, action, record=None):
     if action == 'restore' and name:
         choice=plan_choices(host).get(name)
         if choice is not None:name=choice['name']
     initial = host.extension_snapshot_24268()
     last = initial
-    done, skipped, failures, item_skips, failure_explanations = [], [], [], [], []
+    done, skipped, failures, item_skips, failure_explanations, talents, failure_reports = [], [], [], [], [], [], []
     rows = tuple(initial.get('selection', {}).get('rows', ()))
     candidates = tuple(host._selected_candidates_snapshot(None)) if action != 'save' else ()
     if not rows:
         raise RuntimeError('No selected units')
+    native_candidates=_batch_native_candidates(host,candidates) if action!='save' else None
     for row in rows:
         handle = int(row['handle'])
         try:
@@ -36,8 +53,9 @@ def run_loadout_batch(host, name, action, record=None):
                 continue
             candidate = None
             if action != 'save':
-                matches = [c for c, h in candidates if int(h) == handle]
-                if not matches:
+                matches = ([native_candidates[handle]] if handle in native_candidates else []) if native_candidates is not None else [
+                    c for c, h in candidates if int(h) == handle]
+                if not matches and native_candidates is None:
                     # The external fallback returns full object identities;
                     # bind only an unambiguous type across both snapshots.
                     same_type = [r for r in rows if int(r['rawcode']) == int(row['rawcode'])]
@@ -76,16 +94,28 @@ def run_loadout_batch(host, name, action, record=None):
                     host._extension_pending_restore_record = record
                     host._extension_pending_restore_name = record['name']
                     last = host.restore_extension_loadout_24268()
+                from war3_services.loadout_talents import prepare_display_state
+                prepare_display_state(host,last)
                 item_skips.extend((handle,entry) for entry in last.get('loadout_item_skips',()))
+                if last.get('loadout_talents') is not None:
+                    talents.append((handle,last['loadout_talents']))
                 done.append(handle)
         except Exception as exc:
             from war3_error_messages import describe_error
             failures.append((handle, str(exc)))
             failure_explanations.append(describe_error(exc))
+            # Preserve each underlying wire report; an aggregate description
+            # must not discard the requested target or the actual selection.
+            from war3_error_messages import _chain
+            report=next((entry.report for entry in _chain(exc)
+                         if isinstance(getattr(entry,'report',None),dict)),{})
+            failure_reports.append(dict(target_unit=handle,report=report))
     last['loadout_batch'] = {
         'saved' if action == 'save' else 'restored': tuple(done),
         'skipped': tuple(skipped), 'failures': tuple(failures), 'item_skips': tuple(item_skips),
         'failure_explanations': tuple(failure_explanations),
+        'talents': tuple(talents),
+        'failure_reports': tuple(failure_reports),
     }
     return last
 
@@ -147,7 +177,9 @@ def _regenerate_loadout(host, saved, before, slot_types, runtime):
             if not definition.get('equipment_type') and not definition.get('skipped'):
                 require_creation_capacity(host,code,target,definition)
                 break
-    if needed or requires_any:
+    # An identical layout needs neither placement nor slot changes. Revalidate
+    # any-slot before actual generation, including when a saved flag is true.
+    if needed:
         host.set_extension_equipment_any_slot_24268(True)
     runtime.record('any_slot_ready', enabled=bool(getattr(host, '_extension_any_slot_enabled', {}).get(key)),
         saved_requires_any=requires_any, item_count=needed, free_bag_slots=free)
@@ -230,6 +262,18 @@ def _regenerate_loadout(host, saved, before, slot_types, runtime):
             charge_mismatches=committed.get('loadout_charge_mismatches', ()))
         return committed
     except Exception as exc:
+        from war3_error_messages import _chain,describe_error
+        source_report=next((entry.report for entry in _chain(exc)
+                            if isinstance(getattr(entry,'report',None),dict)),{})
+        if source_report.get('operation')=='loadout_selection' or describe_error(exc).get('business_error')==222:
+            # A target-selection rejection is not a failed item definition.
+            # It cannot authorize rollback/removal against another selection.
+            error=RuntimeError('恢复期间内部目标核对不一致，已停止该英雄并保留物品')
+            error.report=dict(operation='loadout',loadout_interrupted=True,target_unit=target,
+                generated=tuple(created),placement_started=placement_started,cleanup_issued=False,
+                original_equipment=old_layout,underlying_report=source_report)
+            runtime.record('target_mismatch_preserved',report=error.report)
+            raise error from exc
         errors = []
         if placement_started:
             # Equip can finish before effect-refresh/readback reports an error.

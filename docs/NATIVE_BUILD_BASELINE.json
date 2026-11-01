@@ -1,8 +1,8 @@
 {
   "version": "2.2.0",
-  "artifact": "DAA0C225D1AD/War3ReforgedTrainer-v2.2.0-Web.exe",
-  "exe_sha256": "DAA0C225D1AD384343D10CC76418432CEC30A7646633076937523C9F17C2CC5D",
-  "exe_bytes": 32318164,
+  "artifact": "2C1B8EBE8FEA/War3ReforgedTrainer-v2.2.0-Web.exe",
+  "exe_sha256": "2C1B8EBE8FEAB607B6F29D2E77DC37ABF23F3B9147B6705E1374A57F1CB13A2F",
+  "exe_bytes": 32344946,
   "bundled_sha256": {
     "tools\\war3_bridge_24268.dll": "B448C84EAFED5E231D56CABA3AC6760103FA1F5EA453D297C4A2FAEB0028CE07",
     "tools\\war3_mpq.dll": "6CD644F3C091C2FFF6430CBF612DBBF6657D8508941FBA2E925CAADFA7A04DA6",
@@ -10,5 +10,5 @@
     "tools\\war3_talent_icon_display.dll": "54C0EDD2D639EB4AFD203D5A4222F13814A3ABD27BD694AACBA52545586DE386"
   },
   "kind": "published_dependency_baseline",
-  "carrier_url": "https://twomengxi.xyz/downloads/War3ReforgedTrainer-v2.2.0-DAA0C225D1AD.exe"
+  "carrier_url": "https://twomengxi.xyz/downloads/War3ReforgedTrainer-v2.2.0-2C1B8EBE8FEA.exe"
 }

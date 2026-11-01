@@ -1545,7 +1545,46 @@ class TrainerApplication:
             rawcode = int(row.get('rawcode', 0))
             self.view.value('extension_equipment_tree').insert('', 'end', iid=f'equipment:{slot}', values=(EQUIPMENT_SLOT_NAMES[slot], format_rawcode(rawcode) if rawcode else '', EQUIPMENT_TYPE_NAMES.get(int(row.get('equipment_type', 0)), '') if rawcode else '', int(row.get('charges', 0)) if rawcode else '', f'0x{int(row.get('handle', 0)):x}' if rawcode else ''))
         ability_levels = {int(rawcode): int(level) for rawcode, level in dict(snapshot.get('abilities', {})).items()}
-        talent_state = self.trainer().talent_state_24268(snapshot)
+        talent_warning = ''
+        try:
+            if snapshot.get('loadout_talents',{}).get('state_unavailable'):
+                raise RuntimeError('天赋恢复后状态需重新读取')
+            from war3_services.loadout_talents import display_state
+            talent_state=display_state(snapshot)
+            if talent_state is None:
+                captured_error=snapshot.get('loadout_talent_display_error')
+                if captured_error:
+                    read_error=RuntimeError(captured_error['message'])
+                    read_error.report=captured_error.get('report') or {}
+                    raise read_error
+                talent_state = self.trainer().talent_state_24268(snapshot)
+        except Exception as exc:
+            # Display is an optional read after a completed service operation.
+            # Never let it mask the equipment/batch result, including old plans
+            # with no saved talents. Clear old rows rather than showing stale
+            # points or interpreting a failed read as a missing controller.
+            from war3_error_messages import describe_error, format_error
+            exc.report=dict(getattr(exc,'report',None) or {})
+            exc.report.setdefault('operation','extension_talent_display')
+            exc.report['talent_display']=dict(target_unit=snapshot.get('target_unit'),
+                bag_size=snapshot.get('bag_size'),loadout_batch=snapshot.get('loadout_batch'),
+                loadout_talents=snapshot.get('loadout_talents'),
+                equipment_placement_verified=snapshot.get('loadout_placement_verified'),
+                display_only=True,automatic_replay=False)
+            diagnosis=describe_error(exc,self.view.value('ui_language')['code'])
+            try:
+                exc.diagnostic_log_path=record_operation_failure(
+                    getattr(self.view.value('state').get('trainer'),'pid',None),
+                    'extension_talent_display',exc)
+            except Exception as log_error:
+                exc.log_write_error=repr(log_error)
+            snapshot['talent_display_warning']=dict(diagnosis,log_path=getattr(exc,'diagnostic_log_path',''),
+                target_unit=snapshot.get('target_unit'),equipment_result_retained=True)
+            talent_state=dict(controller='',tiers=(),anomalies=('天赋状态本次未读出，需重新读取；背包与装备结果仍保留',))
+            if not snapshot.get('loadout_talents',{}).get('skipped'):
+                talent_warning=format_error(exc,self.view.value('ui_language')['code'])
+        else:
+            snapshot.pop('talent_display_warning',None)
         active_controllers = []
         if talent_state['controller']:
             active_controllers.append(f'{talent_state['name']} {talent_state['controller']}/{talent_state['controller_level']}；点数 {talent_state['remaining_points']}/{talent_state['total_points']}')
@@ -1569,11 +1608,18 @@ class TrainerApplication:
                 self.view.value('extension_loadout_choice').set(names[-1] if names else '')
         except NameError:
             pass
+        if talent_warning:
+            english=self.view.value('ui_language')['code']=='en'
+            self.view.value('root').after(0,self.view.value('messagebox').showwarning,
+                'Talent state could not be refreshed' if english else '天赋状态未能刷新',
+                ('The inventory lists are displayed. Completed equipment operations are retained.\n\n' if english else
+                 '背包和装备列表已显示；已经完成的装备操作仍然保留。\n\n')+talent_warning)
 
     def refresh_extension_snapshot(self) -> str:
         snapshot = self.trainer().extension_snapshot_24268()
         self.view.value('root').after(0, self.populate_extension_snapshot, snapshot)
-        return '已读取 3.0 扩展背包、装备和天赋状态'
+        return ('已读取 3.0 扩展背包和装备；天赋状态未读出，请查看弹窗' if snapshot.get('talent_display_warning') else
+                '已读取 3.0 扩展背包、装备和天赋状态')
 
     def extension_add_item(self) -> str:
         rawcode = self.view.value('extension_item_rawcode').get().strip()
@@ -1698,20 +1744,32 @@ class TrainerApplication:
         trainer_obj = self.trainer()
         trainer_obj._extension_pending_loadout_name = name
         snapshot = trainer_obj.save_extension_loadout_24268()
+        talent_suffix=self.extension_loadout_talent_result(snapshot)
         names = tuple(snapshot.get('loadout_names', ()))
         self.view.value('extension_loadout_choice').set(name or (names[-1] if names else ''))
         self.view.value('extension_loadout_box')['values'] = names
         self.view.value('root').after(0, self.populate_extension_snapshot, snapshot)
-        return f'已保存套装“{name or (names[-1] if names else '')}”，共 {len(names)} 套'
+        return f'已保存套装“{name or (names[-1] if names else '')}”，共 {len(names)} 套'+talent_suffix
+
+    def extension_loadout_talent_result(self, snapshot: dict) -> str:
+        from war3_services.loadout_talents import result_messages
+        language=self.view.value('ui_language')['code']
+        summary,notice=result_messages(snapshot,language)
+        if summary:snapshot['loadout_talent_summary']=summary
+        if notice:
+            self.view.value('root').after(0,self.view.value('messagebox').showwarning,
+                'Loadout completed with skipped talents' if language=='en' else '套装处理完成，部分天赋已跳过',notice)
+        return ('; ' if language=='en' else '；')+summary if summary else ''
 
     def extension_restore_loadout(self) -> str:
         name = self.view.value('extension_loadout_choice').get().strip()
         trainer_obj = self.trainer()
         trainer_obj._extension_pending_restore_name = name
         snapshot = trainer_obj.restore_extension_loadout_24268()
+        talent_suffix=self.extension_loadout_talent_result(snapshot)
         self.view.value('root').after(0, self.populate_extension_snapshot, snapshot)
         if snapshot.get('loadout_charge_mismatches') or snapshot.get('loadout_postcondition_warning'):
-            return '套装装备位置已核对，物品已保留；部分数量或效果刷新需要检查，请查看恢复详情'
+            return '套装装备位置已核对，物品已保留；部分数量或效果刷新需要检查，请查看恢复详情'+talent_suffix
         batch = snapshot.get('loadout_batch')
         if batch is not None:
             summary = f'已对选中英雄恢复所选套装 {len(batch.get('restored', ()))} 个；跳过 {len(batch.get('skipped', ()))} 个，失败 {len(batch.get('failures', ()))} 个'
@@ -1720,15 +1778,16 @@ class TrainerApplication:
             if failures:
                 from war3_error_messages import loadout_batch_error
                 raise loadout_batch_error(summary, batch)
-            return summary + __import__('war3_error_messages').summarize_skips(snapshot, self.view.value('ui_language')['code'])
+            return summary + __import__('war3_error_messages').summarize_skips(snapshot, self.view.value('ui_language')['code'])+talent_suffix
         item_skips = snapshot.get('loadout_item_skips', ())
         if item_skips:
-            return f'套装恢复已完成，跳过 {len(item_skips)} 件不兼容物品，其余已读回验证' + __import__('war3_error_messages').summarize_skips(snapshot, self.view.value('ui_language')['code'])
-        return f'已重新生成并恢复套装“{name or '唯一套装'}”，并逐槽验证物品实例和数量'
+            return f'套装恢复已完成，跳过 {len(item_skips)} 件不兼容物品，其余已读回验证' + __import__('war3_error_messages').summarize_skips(snapshot, self.view.value('ui_language')['code'])+talent_suffix
+        return f'已重新生成并恢复套装“{name or '唯一套装'}”，并逐槽验证物品实例和数量'+talent_suffix
 
     def extension_save_all_loadouts(self) -> str:
         name = self.view.value('extension_loadout_name').get().strip()
         snapshot = self.trainer().save_extension_loadouts_for_selected_24268(name)
+        talent_suffix=self.extension_loadout_talent_result(snapshot)
         self.view.value('root').after(0, self.populate_extension_snapshot, snapshot)
         batch = snapshot.get('loadout_batch', {})
         summary = f'已保存选中英雄套装 {len(batch.get('saved', ()))} 个；跳过 {len(batch.get('skipped', ()))} 个，失败 {len(batch.get('failures', ()))} 个'
@@ -1737,11 +1796,12 @@ class TrainerApplication:
         if failures:
             from war3_error_messages import loadout_batch_error
             raise loadout_batch_error(summary, batch)
-        return summary + __import__('war3_error_messages').summarize_skips(snapshot, self.view.value('ui_language')['code'])
+        return summary + __import__('war3_error_messages').summarize_skips(snapshot, self.view.value('ui_language')['code'])+talent_suffix
 
     def extension_restore_all_loadouts(self) -> str:
         name = self.view.value('extension_loadout_choice').get().strip()
         snapshot = self.trainer().restore_extension_loadouts_for_selected_24268(name)
+        talent_suffix=self.extension_loadout_talent_result(snapshot)
         self.view.value('root').after(0, self.populate_extension_snapshot, snapshot)
         batch = snapshot.get('loadout_batch', {})
         summary = f'已恢复匹配的选中英雄套装 {len(batch.get('restored', ()))} 个；跳过 {len(batch.get('skipped', ()))} 个，失败 {len(batch.get('failures', ()))} 个'
@@ -1750,7 +1810,7 @@ class TrainerApplication:
         if failures:
             from war3_error_messages import loadout_batch_error
             raise loadout_batch_error(summary, batch)
-        return summary + __import__('war3_error_messages').summarize_skips(snapshot, self.view.value('ui_language')['code'])
+        return summary + __import__('war3_error_messages').summarize_skips(snapshot, self.view.value('ui_language')['code'])+talent_suffix
 
     def extension_export_plans(self) -> None:
         from war3_loadout_storage import save_file

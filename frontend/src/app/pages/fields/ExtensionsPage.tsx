@@ -42,8 +42,8 @@ export default function ExtensionsPage() {
   const talent = snap.talents.find(r => r._iid === talentId)
   const choices = talent?.choiceCodes ?? []
   const names = useCatalogNameMap('item', [...snap.bag, ...snap.equipment].map(r => r.rawcode).filter(Boolean))
-  const equipBusy = Object.entries(pending).some(([k, v]) => v && k.startsWith('equip-'))
-  const talentBusy = Object.entries(pending).some(([k, v]) => v && k.startsWith('talent-'))
+  const equipBusy = Object.entries(pending).some(([k, v]) => v && (k.startsWith('equip-') || k.startsWith('talent-')))
+  const talentBusy = equipBusy
 
   /** Keep the talent selection and choice valid against a fresh snapshot, as 2.1.22 did. */
   const accept = (next: ExtensionsSnapshot) => {
@@ -105,7 +105,7 @@ export default function ExtensionsPage() {
     setElapsed(0)
     const started = Date.now()
     const timer = window.setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000)
-    say(action.includes('restore') ? t('正在恢复套装并按部位装备，请稍候…') : t('正在处理装备，请稍候…'))
+    say(action.includes('restore') ? t('正在恢复装备与天赋，请稍候…') : t('正在处理装备，请稍候…'))
     try {
       const result=await perform(() => api.extensionEquipmentAction(action, { row_iid: equipId, bag_row_iid: bagId, ...params }), `${t('装备操作完成')}：${t(EQUIP_ACTIONS[action] ?? action)}`)
       if (action==='save_loadout' || action==='save_all_loadouts') {
@@ -139,8 +139,8 @@ export default function ExtensionsPage() {
     { key: 'R', icon: 'write', title: t('改数量'), description: t('把选中背包物品的数量改成填写的数量。'), pending: pending['bag-set_charges'], estimateMs: 600, disabled: !connected || !bagId, onPress: () => void bag('set_charges', { charges }) },
     { key: 'A', icon: 'equipment', title: t('放入所选装备槽'), description: t('把选中的背包物品装进选中的装备槽。'), pending: pending['equip-equip_bag_to_slot'], estimateMs: 2500, disabled: !connected || equipBusy, onPress: () => void equip('equip_bag_to_slot') },
     { key: 'S', icon: 'cancel', title: t('卸下所选'), description: t('卸下选中装备槽里的装备，效果一并撤销。'), pending: pending['equip-unequip'], estimateMs: 2000, disabled: !connected || equipBusy, onPress: () => void equip('unequip') },
-    { key: 'D', icon: 'save', title: t('保存套装'), description: t('把当前九个部位的装备存成一套方案。'), pending: pending['equip-save_loadout'], estimateMs: 1500, disabled: !connected || equipBusy, onPress: () => void equip('save_loadout', { name: loadoutName }) },
-    { key: 'F', icon: 'open-file', title: t('恢复套装'), description: t('按保存的方案把装备逐个部位装回去。'), pending: pending['equip-restore_loadout'], estimateMs: 6000, disabled: !connected || equipBusy, onPress: () => void equip('restore_loadout', { name: restoreName() }) },
+    { key: 'D', icon: 'save', title: t('保存套装'), description: t('同时保存九个部位的装备、天赋点数和每层全部已加天赋。'), pending: pending['equip-save_loadout'], estimateMs: 1500, disabled: !connected || equipBusy, onPress: () => void equip('save_loadout', { name: loadoutName }) },
+    { key: 'F', icon: 'open-file', title: t('恢复套装'), description: t('先恢复装备，再逐项恢复天赋；失败项跳过并提示。'), pending: pending['equip-restore_loadout'], estimateMs: 6000, disabled: !connected || equipBusy, onPress: () => void equip('restore_loadout', { name: restoreName() }) },
     { key: 'Z', icon: 'level-up', title: t('+1 天赋点'), description: t('给选中英雄加一个天赋点。'), pending: pending['talent-grant_point'], estimateMs: 600, disabled: !connected || talentBusy, onPress: () => void talentAction('grant_point') },
     { key: 'X', icon: 'hero-skill', title: t('添加所选天赋'), description: t('把下方选中天赋层里选好的天赋加给英雄。'), pending: pending['talent-add_choice'], estimateMs: 700, disabled: !connected || talentBusy || !choices.includes(talentChoice),
       onPress: () => void talentAction('add_choice', { choice: talentChoice }) },
@@ -225,6 +225,8 @@ export default function ExtensionsPage() {
               <Button size="sm" icon="open-file" onClick={() => void equip('import_loadouts')}>{t('导入方案')}</Button>
             </Row>
           </fieldset>
+          <Hint>{t('保存套装会带上天赋点数及同层多个天赋；旧方案需重新保存。恢复时已有天赋不重复添加，不兼容项跳过并提示。')}</Hint>
+          {typeof snap.loadoutWarnings?.loadout_talent_summary === 'string' && <Status tone="info">{snap.loadoutWarnings.loadout_talent_summary}</Status>}
           {equipBusy && <Status tone="busy">{fill(t('正在处理装备，已用时 {n} 秒；完成后会核对九个部位。'), { n: elapsed })}</Status>}
         </Section>
       </div>

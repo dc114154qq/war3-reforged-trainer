@@ -2,6 +2,10 @@
 import struct
 
 def record_status(kind,evidence,report):
+    if kind=='extension' and evidence.get('work_result_hex'):
+        from war3_extension_protocol import status
+        value=status(bytes.fromhex(evidence['work_result_hex']))
+        if value is not None:report['extension_status']=value
     if kind=='gold_mine' and evidence.get('work_result_hex'):
         from war3_gold_mine_protocol import status
         report['gold_mine_status']=status(bytes.fromhex(evidence['work_result_hex']))

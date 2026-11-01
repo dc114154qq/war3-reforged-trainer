@@ -764,6 +764,8 @@ class ExtensionsFacade:
             )
             for index, (handle, _rawcode, item_type) in enumerate(equipment)
         )
+        from war3_services.loadout_talents import capture_talents
+        talents,talent_error=capture_talents(self,snapshot,name)
         key = (int(getattr(self, "pid", 0)), target)
         store = dict(getattr(self, "_extension_saved_loadouts", {}))
         per_target = dict(store.get(key, {}))
@@ -774,6 +776,8 @@ class ExtensionsFacade:
             equipment=equipment,
             equipment_charges=tuple(int(row.get('charges', 0)) for row in snapshot['equipment']),
             requires_any_slot=bool(requires_any_slot),
+            talents=talents,
+            talent_capture_error=talent_error,
         )
         store[key] = per_target
         self._extension_saved_loadouts = store
@@ -910,7 +914,9 @@ class ExtensionsFacade:
         if getattr(self, '_elephant_selection_override', None) is None and len(
             before.get('selection', {}).get('rows', ())) > 1:
             return run_loadout_batch(self, saved['name'], 'apply', saved)
-        return regenerate_loadout(self, saved, before, EQUIPMENT_SLOT_TYPES)
+        completed=regenerate_loadout(self, saved, before, EQUIPMENT_SLOT_TYPES)
+        from war3_services.loadout_talents import restore_talents
+        return restore_talents(self,saved,completed)
 
 
     def audit_extension_equipment_24268(self, repair: bool = False) -> dict:
@@ -1091,28 +1097,15 @@ class ExtensionsFacade:
                 if parsed is not None:
                     live_remaining,native_records,native_choices=parsed
             elif getattr(self, "pid", 0):
-                with ProcessMemory(int(self.pid)) as memory:
-                    native_rows = [row for row in snapshot.get("selection", {}).get("rows", ())
-                                   if int(row["handle"]) == int(snapshot["target_unit"])]
-                    if len(native_rows) != 1:
-                        raise RuntimeError("天赋快照缺少唯一原生目标")
-                    rawcode = int(native_rows[0]["rawcode"])
-                    # Extension snapshots follow native selection order, which
-                    # can differ from the persistent candidate enumeration.
-                    candidates = [candidate for candidate, _ in self._selected_candidates_snapshot(None)
-                                  if int(candidate.unit_type_id) == rawcode]
-                    if len(candidates) != 1:
-                        raise RuntimeError("天赋控制器目标身份不唯一")
-                    candidate = candidates[0]
+                from war3_services.talent_definitions import bound_target
+                # Several selected heroes can have the same unit code. Bind
+                # the exact native/full identity instead of guessing by type.
+                with bound_target(self,snapshot) as (memory,registry,candidate,profile):
                     wanted = int.from_bytes(controller.encode("ascii"), "big")
                     matches = self._ability_instances_from_candidate(
                         memory, candidate, required_rawcodes={wanted}, allow_global_scan=False,
                     )
-                    from war3_game_profile import current_profile
-                    parsed = current_profile().adapter.talents.records(
-                        memory, candidate, matches, tiers,
-                        getattr(self, "_classic_object_registry", None),
-                    )
+                    parsed = profile.adapter.talents.records(memory,candidate,matches,tiers,registry)
                     if parsed is not None:
                         live_remaining, native_records, native_choices = parsed
         except Exception as exc:

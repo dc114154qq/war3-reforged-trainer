@@ -67,7 +67,17 @@ def require_creation_capacity(host, rawcode, target, definition=None):
     engine=host._engine_instance_24268();session=engine.session
     classic=host.item_batch_24268()
     rows=[r for r in classic['rows'] if int(r['handle'])==int(target)]
-    if len(rows)!=1:raise RuntimeError('Creation target is not uniquely selected')
+    if len(rows)!=1:
+        error=RuntimeError('恢复所需物品创建前，内部选中列表未能唯一匹配本次英雄；未创建本件物品')
+        error.report=dict(operation='loadout_selection',target_unit=int(target),rejected_before_write=True,
+            phase='creation_capacity',selected_rows=tuple(dict(handle=int(r['handle']),
+                rawcode=r.get('rawcode'),inventory_size=r.get('inventory_size')) for r in classic['rows']),
+            native_selection=classic.get('selection'))
+        try:
+            error.report['external_selected_units']=tuple(dict(full_handle=c.handle,object_address=c.unit_address,
+                rawcode=c.unit_type_id) for c,_ in host._selected_candidates_snapshot(None))
+        except Exception as read_exc:error.report['external_selection_error']=str(read_exc)
+        raise error
     size=int(rows[0]['inventory_size'])
     if any(not r['handle'] for r in rows[0]['before'][:size]):
         return

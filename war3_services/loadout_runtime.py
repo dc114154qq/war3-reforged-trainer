@@ -33,10 +33,17 @@ class RestoreRuntime:
         if target and int(target) != self.target:
             raise RuntimeError('套装恢复目标发生变化，已停止后续操作')
         # Every read is fresh. No inventory result survives a callback or a frame.
-        snapshot = self.host._engine_instance_24268().extension(target_unit=self.target)
+        try:
+            snapshot = self.host._engine_instance_24268().extension(target_unit=self.target)
+        except Exception as exc:
+            self.record('inventory_read_failed',reason=str(exc),execution_report=getattr(exc,'report',None))
+            raise
         if int(snapshot['target_unit']) != self.target:
             raise RuntimeError('套装恢复读回了其他目标，已停止后续操作')
         self.snapshot_count += 1
+        self.record('inventory_read',number=self.snapshot_count,requested_target=self.target,
+            actual_target=snapshot['target_unit'],native_selection=snapshot.get('selection'),
+            bag_size=snapshot.get('bag_size'))
         override = getattr(self.host, '_elephant_selection_override', None)
         if override is not None:
             selection = dict(snapshot['selection'])

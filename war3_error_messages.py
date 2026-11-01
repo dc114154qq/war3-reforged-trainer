@@ -2,6 +2,7 @@
 import re
 
 BUSINESS_REASONS = {
+    ('extension',222): ('本次要处理的英雄未能在执行时的选中列表中唯一匹配，已停止该英雄的本步操作；本步尚未读取背包容量，不能据此判断背包或天赋缺失。','The requested hero did not uniquely match the selection at execution time. This step stopped before reading inventory capacity; it does not prove missing inventory or talents.'),
     ('ability',25): ('游戏拒绝添加本次能力组件，具体原因未确认；已停止本次补齐，请保留诊断日志。','The game rejected adding this ability component. The cause is unconfirmed; this addition stopped. Keep the diagnostic log.'),
     ('ability',29): ('能力调用后的等级读回与请求不一致，本次补齐未确认成功；请保留诊断日志。','The ability level readback differs from the request. This addition is unconfirmed; keep the diagnostic log.'),
     ('ability',34): ('技能实例或技能编号在操作期间变化，本次添加已停止。','The ability instance or ID changed during this operation.'),
@@ -90,7 +91,9 @@ BUSINESS_REASONS = {
 
 def loadout_batch_error(summary, batch):
     exc=RuntimeError(summary+'; '+repr(batch.get('failures',())))
-    exc.report={'operation':'loadout','batch_failures':tuple(batch.get('failure_explanations',()))}
+    exc.report={'operation':'loadout','batch_summary':summary,
+                'batch_failures':tuple(batch.get('failure_explanations',())),
+                'batch_results':batch}
     return exc
 
 def summarize_skips(snapshot, language='zh'):
@@ -145,7 +148,37 @@ def describe_error(exc, language='zh'):
     report=next((getattr(e,'report') for e in chain if isinstance(getattr(e,'report',None),dict)),{})
     dispatch=report.get('dispatch') or {}
     text='\n'.join(str(e) for e in chain)
-    if 'Classic inventory is full; free one temporary slot before regenerating ordinary equipment' in text:
+    if not report.get('batch_failures') and report.get('loadout_interrupted'):
+        count=len(report.get('generated',()))
+        return dict(category='loadout_interrupted',operation='loadout',reason_confirmed=True,
+            reason=(f'恢复期间内部读取的选中列表未能匹配本次英雄，已中止该英雄。已确认生成 {count} 件物品，均未自动删除；请检查原英雄背包。'
+                    if language=='zh' else f'The internal selection did not match the restoration target. This hero stopped; {count} confirmed generated items were retained. Check the original hero inventory.'),
+            recovery=('其他已完成的英雄保留恢复结果；请重新读取未完成的英雄后核对，不要连续重复恢复。' if language=='zh' else
+                      'Completed heroes were retained. Refresh and inspect the unfinished hero before another restore.'),business_error=None)
+    if not report.get('batch_failures') and (report.get('operation')=='loadout_selection' or 'Creation target is not uniquely selected' in text):
+        return dict(category='loadout_target_selection',operation='loadout_selection',reason_confirmed=True,
+            reason=('创建前的内部选中列表未能匹配本次英雄，未创建本件物品；不能据此判断背包或天赋控制器缺失。' if language=='zh' else
+                    'The internal selection did not match the requested hero before creation. This item was not created; it does not indicate a missing bag or talent controller.'),
+            recovery=('本次初始多选与执行时读取结果需分别核对，详细目标已记录。' if language=='zh' else
+                      'The initial selection and execution-time readback are recorded separately.'),business_error=None)
+    if not report.get('batch_failures') and '天赋读取目标已变化' in text:
+        return dict(category='talent_display_target',operation=report.get('operation',''),reason_confirmed=True,
+            reason=('本次天赋快照对应的英雄与后续读取到的选中目标不一致，未取得该英雄的实时天赋状态；这不是控制器缺失的证据。' if language=='zh' else
+                    'The hero in the talent snapshot differs from the later selected target. Its live talent state was not read; this does not prove a missing controller.'),
+            recovery=('已完成的装备恢复保留；请重新读取扩展状态。' if language=='zh' else
+                      'Completed equipment operations were retained. Refresh the extension state.'),business_error=None)
+    if not report.get('batch_failures') and ('Unit component list remained unstable after retries' in text or 'Unit component head changed while retrying' in text):
+        return dict(category='component_unstable',operation=report.get('operation',''),reason_confirmed=True,
+            reason=('读取期间单位的技能组件列表发生变化，本次未能取得稳定的天赋状态；这不能说明天赋控制器缺失。'
+                    if language=='zh' else 'The unit ability list changed during reading. A stable talent state was unavailable; this does not prove the talent controller is missing.'),
+            recovery=('请重新读取扩展状态；已完成的装备操作不会因这次读取失败而撤销。' if language=='zh' else
+                      'Refresh the extension state. This read failure does not undo completed equipment operations.'),business_error=None)
+    if not report.get('batch_failures') and '天赋控制器目标身份不唯一' in text:
+        return dict(category='talent_target_ambiguous',operation=report.get('operation',''),reason_confirmed=True,
+            reason=('旧版未能区分同类型英雄，未能确认要读取哪一个天赋控制器；不能据此判断控制器缺失。'
+                    if language=='zh' else 'The older build could not distinguish same-type heroes and identify the target controller. This does not prove a missing controller.'),
+            recovery=('请使用按完整单位身份绑定目标的修复版。' if language=='zh' else 'Use the fixed build that binds the complete unit identity.'),business_error=None)
+    if not report.get('batch_failures') and 'Classic inventory is full; free one temporary slot before regenerating ordinary equipment' in text:
         return dict(category='classic_inventory_full',operation='loadout',reason_confirmed=True,
             reason=('经典六格物品栏已满。恢复这套方案中的普通物品需要一个临时空位，请先腾出经典物品栏的一格，再点击恢复套装。'
                     if language=='zh' else
@@ -156,6 +189,9 @@ def describe_error(exc, language='zh'):
     reason=None;category='unknown';confirmed=False
     business=report.get('business_status') or report.get(operation+'_status') or {}
     code=business.get('error')
+    # Historical EXEs included this exact native error but omitted its decoded
+    # status. Explain the known branch without inventing an inventory snapshot.
+    if code is None and operation=='extension' and re.search(r'3\.0 extension incomplete: error=222,',text):code=222
     world=report.get('world_status') or {}
     if operation=='world' and world.get('action') in (3,4) and world.get('error'):
         reason=('游戏迷雾接口调用失败，开图状态未确认。具体失败位置已记录在日志中。',
@@ -175,7 +211,8 @@ def describe_error(exc, language='zh'):
         reason=BUSINESS_REASONS[(business_operation,code)];category='business';confirmed=True
     if report.get('batch_failures'):
         causes=report['batch_failures']
-        reason=('批量操作有失败项：'+'；'.join(c['reason'] for c in causes[:3]),
+        prefix=report.get('batch_summary','')
+        reason=((prefix+'。\n\n' if prefix else '')+'批量操作有失败项：'+'；'.join(c['reason'] for c in causes[:3]),
                 'Some batch operations failed. See the diagnostic log.')
         category='batch';confirmed=all(c.get('reason_confirmed') for c in causes)
     failed_apis=[entry for entry in (dispatch.get('remote_api_resolution') or {}).values()
@@ -223,6 +260,7 @@ def describe_error(exc, language='zh'):
         # Retain a concise existing Chinese validation message, strip all
         # report/stack/address tails. Never show raw technical notes in a dialog.
         raw=str(exc).split('; engine24268=',1)[0].split('\n',1)[0]
+        raw=re.sub(r'[（(]ATal\+0x[0-9a-fA-F]+[）)]','',raw)
         raw=re.sub(r'^[A-Za-z][A-Za-z0-9 /_-]*:\s*(?=[\u4e00-\u9fff])','',raw)
         raw=raw.split('；失败详情：',1)[0]
         raw=re.split(r'(?:error=|engine24268=|0x[0-9a-fA-F]+|\{\s*["\'])',raw,maxsplit=1)[0].rstrip('：:;； ,')
@@ -231,7 +269,9 @@ def describe_error(exc, language='zh'):
         else:
             reason=('本次操作未完成，具体原因尚未确认。请保留诊断日志。','The operation did not complete; the exact cause is not confirmed. Keep the diagnostic log.')
     recovered=business.get('session_continuable') is True
-    if recovered and business.get('read_only_rejection'):
+    if recovered and business.get('no_write_rejection'):
+        suffix=('本步在写入前停止，执行通道已清理；之前已完成的操作保留。','This step stopped before writing and the channel was cleaned up. Previously completed operations are retained.')
+    elif recovered and business.get('read_only_rejection'):
         suffix=('该查询未写入游戏，可继续其他操作；此属性暂未读出。','This query did not write to the game. Other operations can continue; this statistic is unavailable.')
     elif recovered:
         suffix=('已验证回滚，可继续其他操作。','Rollback was verified; other operations can continue.')

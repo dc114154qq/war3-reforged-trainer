@@ -5,8 +5,13 @@
     <link rel="icon" href="data:," />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>魔兽争霸 III 修改器 by B站两杯沈梦溪、chatgpt和claude</title>
+    <script src="/startup.js"></script>
   </head>
   <body>
+    <div id="startup-status" role="status" style="position:fixed;inset:0;z-index:2147483647;background:#121a2b;color:#eee;padding:48px;font:16px/1.7 'Microsoft YaHei',sans-serif;overflow:auto">
+      <strong id="startup-title">正在打开修改器… / Opening trainer…</strong>
+      <p id="startup-detail" style="white-space:pre-wrap;overflow-wrap:anywhere">正在加载界面，请稍候。 / Loading interface, please wait.</p>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/app/main.tsx"></script>
   </body>

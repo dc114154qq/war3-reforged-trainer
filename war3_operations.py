@@ -23,6 +23,7 @@ class OperationSpec:
 
 OPERATIONS = {
     'unit_field': OperationSpec('unit_field','war3_unit_field_protocol',b'unit_field_abi',b'BridgeUnitFieldQuery',False,True),
+    'unit_field_hero_int': OperationSpec('unit_field_hero_int','war3_unit_field_hero_int_protocol',b'unit_field_hero_int_abi',b'BridgeUnitFieldHeroIntQuery',False,True),
     'clone_state': OperationSpec('clone_state','war3_clone_state_protocol',b'clone_state_abi',b'BridgeCloneStateQuery',False,True),
     "gold_mine": OperationSpec("gold_mine", "war3_gold_mine_protocol", b"gold_mine_abi", b"BridgeGoldMineQuery", False, True),
     "item_effect": OperationSpec("item_effect", "war3_item_effect_protocol", b"item_effect_abi", b"BridgeItemEffectQuery", False, True),
@@ -333,6 +334,6 @@ def is_read_query(kind, request):
     if kind=='hero':return request.get('target')==0
     if kind=='hero_attributes':return request.get('target') is None
     if kind=='attack_speed':return request.get('target_aps')==0
-    if kind in ('unit_field','gold_mine','unit_stats','stat_details','ability','ability_field','item','item_field','item_ability','item_effect','extension','game_speed'):
+    if kind in ('unit_field','unit_field_hero_int','gold_mine','unit_stats','stat_details','ability','ability_field','item','item_field','item_ability','item_effect','extension','game_speed'):
         return request.get('action')==0
     return False

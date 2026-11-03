@@ -1,11 +1,17 @@
 """First-run checks for the desktop renderer; ordinary starts need no download."""
 from pathlib import Path
-import ctypes,hashlib,json,os,subprocess,sys,time,winreg
+import ctypes,hashlib,json,logging,os,subprocess,sys,time,winreg
 
 BOOTSTRAPPER_SHA256='f414de01c4680f0bb0694d1ea7803c6968f3a81bf6bad01b89bfc65dce14c2a2'
 TITLE='魔兽争霸 III 修改器 · 运行环境'
+MIN_WEBVIEW_MAJOR=111  # Kept in sync with frontend/vite.config.ts.
+
+def supported_webview(version):
+    try:return int(str(version).split('.',1)[0])>=MIN_WEBVIEW_MAJOR
+    except (TypeError,ValueError):return False
 
 def log(stage,**values):
+    logging.getLogger('War3DesktopRuntime').info('%s %s',stage,json.dumps(values,ensure_ascii=False))
     try:
         folder=Path(os.environ.get('LOCALAPPDATA',str(Path.home())))/'War3Trainer/log'
         folder.mkdir(parents=True,exist_ok=True)
@@ -62,20 +68,24 @@ def ensure_desktop_runtime(*,detect=webview_version,framework=framework_release,
                 '微软下载页：https://dotnet.microsoft.com/download/dotnet-framework/net48')
             return False
         version=detect()
-        if version:
+        if supported_webview(version):
             record('ready',webview2=version,framework_release=release)
             return True
-        record('webview2_missing',framework_release=release)
-        approved=ask('本机缺少新版界面需要的微软 WebView2 运行组件。\n\n'
-            '是否现在安装？首次安装需要联网，安装窗口将显示进度。\n'
+        record('webview2_outdated' if version else 'webview2_missing',webview2=version,
+               minimum_major=MIN_WEBVIEW_MAJOR,framework_release=release)
+        reason=(f'本机 WebView2 版本过旧（{version}），新版界面需要 {MIN_WEBVIEW_MAJOR} 或更高版本。'
+                if version else '本机缺少新版界面需要的微软 WebView2 运行组件。')
+        approved=ask(reason+'\n\n是否现在安装或更新？需要联网，安装窗口将显示进度。\n'
             '安装完成后修改器会继续打开，无需安装 Python 或 Node.js。',question=True)
         if not approved:
             record('installation_cancelled');return False
         record('installation_started');exit_code=install();version=detect()
         record('installation_finished',exit_code=exit_code,webview2=version)
-        if version:return True
-        ask('微软 WebView2 组件尚未安装完成。请检查网络，安装完成后重新打开修改器。\n\n'
-            f'安装结果：{exit_code}\n微软下载页：https://developer.microsoft.com/microsoft-edge/webview2/')
+        if supported_webview(version):return True
+        ask('微软 WebView2 组件尚未达到新版界面的运行要求。\n'
+            '请检查网络及 Windows 版本，安装或更新组件后重新打开修改器。\n\n'
+            f'安装结果：{exit_code}\n当前版本：{version or "未检测到"}；需要：{MIN_WEBVIEW_MAJOR} 或更高版本\n'
+            '微软下载页：https://developer.microsoft.com/microsoft-edge/webview2/')
         return False
     except Exception as exc:
         record('startup_failed',exception=repr(exc))

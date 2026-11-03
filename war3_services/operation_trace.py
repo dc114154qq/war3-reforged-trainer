@@ -265,7 +265,10 @@ class UnitFieldTrace(SkillTrace):
 
     def bind_engine(self,engine):
         import struct
-        from war3_unit_field_protocol import ABI
+        if self.request.get('operation')=='unit_field_hero_int':
+            from war3_unit_field_hero_int_protocol import ABI
+        else:
+            from war3_unit_field_protocol import ABI
         self.engine=engine
         self.record('engine_context',bridge=_artifact(engine.image),
                     expected_bridge_protocol=hex(struct.unpack_from('<I',ABI)[0]))

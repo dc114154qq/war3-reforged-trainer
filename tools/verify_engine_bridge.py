@@ -51,6 +51,7 @@ def main() -> None:
         b"BridgeAbilityQuery",
         b"BridgeAbilityFieldQuery",
         b"BridgeUnitFieldQuery",
+        b"BridgeUnitFieldHeroIntQuery",
         b"BridgeItemQuery",
         b"BridgeItemAbilityQuery",
         b"BridgeItemCatalogQuery",
@@ -93,6 +94,7 @@ def main() -> None:
     marker(b"ability_batch_abi", (0x24268076, 216, 58856))
     marker(b"ability_field_batch_abi", (0x24268021, 216, 7688))
     marker(b"unit_field_abi", (0x24268082, 216, 7368))
+    marker(b"unit_field_hero_int_abi", (0x24268090, 216, 7368))
     marker(b"item_batch_abi", (0x2426806f, 216, 63432))
     marker(b"item_ability_abi", (0x24268070, 216, 58632))
     marker(b"item_effect_abi", (0x24268077, 216, 2584))

@@ -1,31 +1,27 @@
 import { Suspense } from 'react'
-import { AnimatePresence, motion } from 'motion/react'
 import { PAGES, isReady } from '../pages/registry'
 import { chapterOf, pageMeta, type PageId } from '../routes'
 import { useNav } from '../state/nav'
 import { useT } from '../i18n'
 import { Chat } from './Chat'
 import s from './Stage.module.css'
+import { FrontendReady } from '../startup'
 
 export function Stage() {
+  const t = useT()
   const page = useNav(st => st.page)
   const Page = PAGES[page]
   return (
     <main className={`ds-stage ${s.stage}`} data-testid="stage" data-page={page} data-ready={isReady(page)}>
       <PageHeader page={page} />
-      {/* No initial={false}: it would disable mount animations inside every page. */}
-      <AnimatePresence mode="wait">
-        <motion.div
+      {/* Page availability must not depend on an exit animation/rAF completing. */}
+        <div
           key={page}
           data-page-view={page}
           className={s.content}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1, transition: { duration: 0.1 } }}
-          exit={{ opacity: 0, transition: { duration: 0.06 } }}
         >
-          <Suspense fallback={null}><Page /></Suspense>
-        </motion.div>
-      </AnimatePresence>
+          <Suspense fallback={<div role="status">{t('正在加载页面…')}</div>}><Page /><FrontendReady /></Suspense>
+        </div>
       <Chat />
     </main>
   )

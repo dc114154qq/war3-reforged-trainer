@@ -3,6 +3,23 @@ from war3_selection_protocol import SIGNATURES
 from war3_hero_protocol import SIGNATURES as HERO_SIGNATURES, build_work, decode_work
 
 class UnitsService:
+    def unit_field_hero_int(self,fields,action=0,target_unit=0,rawcode=0):
+        from war3_unit_field_hero_int_protocol import SIGNATURES as INT_SIGNATURES,enabled_for,build_work,decode_work,details
+        if not enabled_for(self.session.profile):
+            raise ValueError('此智力兼容路径仅适用于精确匹配的 3.0.1.24342')
+        fields=tuple(fields)
+        names=tuple(n for n,_ in SIGNATURES)+tuple(n for n,_ in (INT_SIGNATURES if action else INT_SIGNATURES[:1]))
+        def builder(entries,tls):
+            if not enabled_for(self.session.profile):raise RuntimeError('智力兼容目标版本已变化')
+            return build_work(entries,tls,fields,action,target_unit,rawcode)
+        def decoder(payload,count):
+            from war3_services.operation_trace import record_operation_phase
+            record_operation_phase(self,'hero_intelligence_readback',compatibility='3.0.1.24342',
+                                   requested_fields=fields,action=action,details=details(payload))
+            return decode_work(payload,count)
+        return self._execute('unit_field_hero_int',names,builder,decoder,
+            dict(fields=fields,action=action,target_unit=target_unit,rawcode=rawcode,compatibility='3.0.1.24342'))
+
     def unit_fields(self,fields,action=0,target_unit=0,rawcode=0):
         from war3_unit_field_protocol import SIGNATURES as FIELD_SIGNATURES,build_work,decode_work,handler_indices
         fields=tuple(fields)

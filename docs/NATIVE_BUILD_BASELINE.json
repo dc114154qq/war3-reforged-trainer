@@ -1,14 +1,14 @@
 {
-  "version": "2.2.0",
-  "artifact": "2C1B8EBE8FEA/War3ReforgedTrainer-v2.2.0-Web.exe",
-  "exe_sha256": "2C1B8EBE8FEAB607B6F29D2E77DC37ABF23F3B9147B6705E1374A57F1CB13A2F",
-  "exe_bytes": 32344946,
+  "version": "2.2.1",
+  "artifact": "788FFBADD654/War3ReforgedTrainer-v2.2.1-Web.exe",
+  "exe_sha256": "788FFBADD6549167942D75EC12B476D32C85410E2EBBE0AD8AE136CCDBB03624",
+  "exe_bytes": 32363635,
   "bundled_sha256": {
-    "tools\\war3_bridge_24268.dll": "B448C84EAFED5E231D56CABA3AC6760103FA1F5EA453D297C4A2FAEB0028CE07",
+    "tools\\war3_bridge_24268.dll": "951E1DA5A7244672592C28B8B93B7DA925539CCA9DEC5B8614143C72C7FCAE57",
     "tools\\war3_mpq.dll": "6CD644F3C091C2FFF6430CBF612DBBF6657D8508941FBA2E925CAADFA7A04DA6",
     "tools\\war3_speed_clock.dll": "91FB4F87344EBA12EB21759EF426437601EFB93C256F6F82ADB22B92BCC2685E",
     "tools\\war3_talent_icon_display.dll": "54C0EDD2D639EB4AFD203D5A4222F13814A3ABD27BD694AACBA52545586DE386"
   },
   "kind": "published_dependency_baseline",
-  "carrier_url": "https://twomengxi.xyz/downloads/War3ReforgedTrainer-v2.2.0-2C1B8EBE8FEA.exe"
+  "carrier_url": "https://twomengxi.xyz/downloads/War3ReforgedTrainer-v2.2.1-788FFBADD654.exe"
 }

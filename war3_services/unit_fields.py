@@ -127,7 +127,10 @@ class UnitFieldsService:
             refs=self.host._capture_unit_refs_24268((candidate,))
             native,ref=engine.bind_unit_refs(refs,strict_selection=False)[0]
             rows=catalogue()
-            supported=[r for r in rows if r['kind'] in KINDS]
+            from war3_unit_field_hero_int_protocol import enabled_for,FIELD_IDS
+            int_compat=enabled_for(session.profile)
+            intelligence=[r for r in rows if int_compat and int.from_bytes(r['code'].encode(),'big') in FIELD_IDS]
+            supported=[r for r in rows if r['kind'] in KINDS and r not in intelligence]
             for start in range(0,len(supported),32):
                 batch=supported[start:start+32]
                 result=engine.unit_fields(tuple((int.from_bytes(r['code'].encode(),'big'),KINDS[r['kind']],r['weapon'],0) for r in batch),target_unit=native.value,rawcode=ref.rawcode)
@@ -136,6 +139,20 @@ class UnitFieldsService:
                     if isinstance(actual,float) and not math.isfinite(actual):
                         row.update(value=None,writable=False,note='游戏返回非有限实数，未开放写入')
                     else:row['value']=actual
+            if intelligence:
+                result=engine.unit_field_hero_int(tuple((int.from_bytes(r['code'].encode(),'big'),1,0,0) for r in intelligence),
+                                                  target_unit=native.value,rawcode=ref.rawcode)
+                actual_rows=result.get('rows',())
+                if len(actual_rows)!=1 or (actual_rows[0]['unit'],actual_rows[0]['rawcode'])!=(native.value,ref.rawcode):
+                    raise RuntimeError('智力字段读取目标不一致，请重新读取')
+                if len(actual_rows[0]['fields'])!=len(intelligence):raise RuntimeError('智力字段读回数量不一致')
+                for row,value in zip(intelligence,actual_rows[0]['fields']):
+                    if (value['field_id'],value['kind'],value['weapon'])!=(int.from_bytes(row['code'].encode(),'big'),1,0):
+                        raise RuntimeError('智力字段读回类型不一致')
+                    row.update(value=value['value'],note=('3.0.1.24342 兼容：输入目标总智力；保留装备与光环加成，自动换算基础智力并读回确认'
+                        if row['code']=='uinb' else '3.0.1.24342 兼容：永久设置当前基础智力；保留装备与光环加成，并按英雄属性读回确认'))
+                    if result['hero_intelligence_trace']['base_before']<0:
+                        row.update(writable=False,note='当前单位不是英雄，没有英雄智力属性')
             with self.host._process_memory() as memory:
                 registry,_,_=session.prepare(memory);session.resolve(memory,registry,ref)
             self.snapshot=(session,ref,native.value)
@@ -154,7 +171,17 @@ class UnitFieldsService:
                 registry,_,_=session.prepare(memory);session.resolve(memory,registry,ref)
             bindings=engine.bind_unit_refs((ref,),strict_selection=False)
             if bindings[0][0].value!=native or bindings[0][1]!=ref:raise RuntimeError('单位身份已变化，请重新读取')
-            if row['code']=='ua1r':actual=write_range_verified(engine,native,ref.rawcode,row['weapon'],bits)
+            from war3_unit_field_hero_int_protocol import enabled_for,FIELD_IDS
+            if enabled_for(session.profile) and int.from_bytes(row['code'].encode(),'big') in FIELD_IDS:
+                result=engine.unit_field_hero_int(((int.from_bytes(row['code'].encode(),'big'),1,0,bits),),1,native,ref.rawcode)
+                actual_rows=result.get('rows',())
+                if len(actual_rows)!=1 or (actual_rows[0]['unit'],actual_rows[0]['rawcode'])!=(native,ref.rawcode):
+                    raise RuntimeError('智力字段写入后的目标身份不一致')
+                values=actual_rows[0]['fields']
+                if len(values)!=1 or (values[0]['field_id'],values[0]['kind'],values[0]['weapon'])!=(int.from_bytes(row['code'].encode(),'big'),1,0) or values[0]['value']!=bits:
+                    raise RuntimeError('智力字段写入后读回与目标不符')
+                actual=values[0]['value']
+            elif row['code']=='ua1r':actual=write_range_verified(engine,native,ref.rawcode,row['weapon'],bits)
             elif row['code']=='ua1t':actual=write_attack_type_verified(engine,native,ref.rawcode,row['weapon'],bits)
             else:
                 result=engine.unit_fields(((int.from_bytes(row['code'].encode(),'big'),KINDS[row['kind']],row['weapon'],bits),),1,native,ref.rawcode)

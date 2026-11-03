@@ -1434,8 +1434,9 @@ for _name, _method in tuple(vars(DesktopBridgeApi).items()):
 
 class DesktopRpcFacade:
     """Expose explicit RPC methods without walking application/service objects."""
-    def __init__(self, bridge):
+    def __init__(self, bridge, startup=None):
         self._bridge = bridge
+        self._startup = startup
         for name, method in vars(DesktopBridgeApi).items():
             if not name.startswith('_') and callable(method) and name != 'close':
                 bound=getattr(bridge,name)
@@ -1447,3 +1448,9 @@ class DesktopRpcFacade:
                     invoke.__signature__=inspect.signature(bound)
                     return invoke
                 setattr(self, name, export(bound))
+
+    def report_frontend_state(self, stage, details=None):
+        # Startup health must not wait for the gameplay operation lock.
+        if self._startup is None:
+            return {'accepted': False}
+        return self._startup.report(stage, details)

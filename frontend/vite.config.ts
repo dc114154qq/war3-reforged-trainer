@@ -7,6 +7,9 @@ export default defineConfig({
   base: './',
   plugins: [react()],
   build: {
+    // Match the launcher's WebView2 version check; do not let a Vite upgrade raise it silently.
+    target: 'chrome111',
+    cssTarget: 'chrome111',
     emptyOutDir: true,
     rollupOptions: {
       input: 'index.html',

@@ -10,9 +10,6 @@ import threading
 import time
 from pathlib import Path
 
-import webview
-
-from war3_desktop_bridge import DesktopBridgeApi, DesktopRpcFacade
 from war3_metadata import APP_VERSION, PRODUCT_EDITION_LABEL
 
 logger = logging.getLogger("War3WebGui")
@@ -27,6 +24,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--debug", action="store_true", help="Enable WebView2 developer tools (F12 inspect)")
     parser.add_argument('--offline', action='store_true', help='Open UI without game initialization')
     parser.add_argument('--ui-check', help='Write an offline desktop UI verification report')
+    parser.add_argument('--safe-render', action='store_true', help='Use software rendering for blank/black desktop windows')
     return parser.parse_args()
 
 
@@ -101,18 +99,15 @@ _PAGE_PROBE = """(() => {
 })()"""
 
 
-def main() -> int:
-    if len(sys.argv) == 3 and sys.argv[1] == '--runtime-self-test':
-        from war3_runtime_check import run
-        return run(sys.argv[2])
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] [%(name)s] %(message)s",
-    )
-    args = parse_args()
+def _run_desktop(args, startup_log) -> int:
+    from war3_desktop_startup import configure_rendering, DesktopStartupMonitor
+    configure_rendering(args.safe_render)
     from war3_desktop_runtime import ensure_desktop_runtime
     if not ensure_desktop_runtime():
         return 1
+    # Log setup and native error handling are available before importing the UI/backend.
+    import webview
+    from war3_desktop_bridge import DesktopBridgeApi, DesktopRpcFacade
 
     # Determine frontend target
     if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
@@ -128,6 +123,8 @@ def main() -> int:
         if not dist_index.exists():
             logger.error(f"Frontend dist build not found at {dist_index}!")
             logger.error("Please run 'npm run build' inside the frontend directory first, or run with --dev")
+            from war3_desktop_runtime import message
+            message('界面资源缺失，请重新下载完整修改器。\n\n详细日志：\n'+str(startup_log))
             return 1
         target_url = str(dist_index)
         logger.info(f"Running in PRODUCTION mode, loading {target_url}")
@@ -142,11 +139,12 @@ def main() -> int:
 
     window_title = f"魔兽争霸 III 修改器 v{APP_VERSION} by B站两杯沈梦溪、chatgpt和claude"
 
+    startup = DesktopStartupMonitor(startup_log, safe=args.safe_render)
     # Create native WebView2 window
     window = webview.create_window(
         title=window_title,
         url=target_url,
-        js_api=DesktopRpcFacade(bridge_api),
+        js_api=DesktopRpcFacade(bridge_api, startup),
         width=1280,
         height=820,
         min_size=(800, 480),
@@ -159,6 +157,7 @@ def main() -> int:
     shutdown_started = threading.Event()
 
     def closing():
+        startup.close()
         if bridge_api.port._closed:
             return True
         if not shutdown_started.is_set():
@@ -166,6 +165,12 @@ def main() -> int:
             threading.Thread(target=bridge_api.close, name='desktop-shutdown', daemon=False).start()
         return False
     window.events.closing += closing
+    window.events.closed += startup.close
+    window.events.loaded += lambda: logger.info('Desktop document loaded; waiting for frontend paint and bridge')
+    def resource_response(response):
+        if response.status_code >= 400:
+            logger.error('Desktop resource response status=%s url=%s', response.status_code, response.url)
+    window.events.response_received += resource_response
 
     def verify_ui():
         if not args.ui_check:
@@ -212,10 +217,33 @@ def main() -> int:
 
     # Launch event loop
     try:
+        startup.start()
         webview.start(verify_ui if args.ui_check else None, debug=args.debug, gui='edgechromium')
+    except Exception as exc:
+        logger.exception('Desktop renderer failed')
+        startup.fail(str(exc), wait=True)
+        return 1
     finally:
+        startup.close()
         bridge_api.port.close()
     return 0
+
+
+def main() -> int:
+    if len(sys.argv) == 3 and sys.argv[1] == '--runtime-self-test':
+        from war3_runtime_check import run
+        return run(sys.argv[2])
+    logging.basicConfig(level=logging.INFO,
+                        format="%(asctime)s [%(levelname)s] [%(name)s] %(message)s")
+    from war3_desktop_startup import configure_startup_log
+    startup_log = configure_startup_log()
+    try:
+        return _run_desktop(parse_args(), startup_log)
+    except Exception as exc:
+        logger.exception('Desktop startup failed before entering the renderer event loop')
+        from war3_desktop_runtime import message
+        message('修改器启动未完成。\n\n'+str(exc)+'\n\n详细日志：\n'+str(startup_log or '日志目录不可写'))
+        return 1
 
 
 if __name__ == "__main__":

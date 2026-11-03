@@ -11,6 +11,8 @@ import tempfile
 import sys
 import threading
 import time
+from html.parser import HTMLParser
+from urllib.parse import unquote, urlsplit
 
 from war3_desktop_runtime import message
 
@@ -67,6 +69,33 @@ def configure_rendering(safe, environ=None):
             if flag not in flags.split():
                 flags = (flags + ' ' + flag).strip()
         environ[key] = flags
+
+
+def frontend_file_url(index):
+    """Use WebView2's file loader; do not depend on localhost MIME/proxy settings."""
+    index = Path(index).resolve(strict=True)
+    root = index.parent
+    class Assets(HTMLParser):
+        def __init__(self):
+            super().__init__();self.paths=[]
+        def handle_starttag(self, tag, attrs):
+            attrs=dict(attrs)
+            value=attrs.get('src') if tag=='script' else attrs.get('href') if tag=='link' and attrs.get('rel')=='stylesheet' else None
+            if value:self.paths.append(value)
+    parser=Assets();parser.feed(index.read_text(encoding='utf8'))
+    checked=[]
+    for relative in parser.paths:
+        parsed=urlsplit(relative)
+        if parsed.scheme or parsed.netloc:
+            raise RuntimeError('内置界面入口包含外部资源：'+relative)
+        path=(root/unquote(parsed.path)).resolve(strict=True)
+        if not path.is_relative_to(root):
+            raise RuntimeError('内置界面资源路径超出界面目录：'+relative)
+        raw=path.read_bytes()
+        checked.append(dict(path=relative,bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest()))
+    logging.getLogger('War3DesktopStartup').info('frontend_local_resources %s',json.dumps(
+        dict(loader='webview2_file',entry=index.as_uri(),assets=checked),ensure_ascii=False))
+    return index.as_uri()
 
 
 class DesktopStartupMonitor:

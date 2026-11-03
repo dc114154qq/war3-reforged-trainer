@@ -15,6 +15,7 @@ BUSINESS_REASONS = {
     ('item_ability',446): ('挂载能力期间，背包物品的身份或经典栏发生变化；已停止后续修复。','The backpack item identity or classic inventory changed during attachment.'),
     ('item_ability',447): ('挂载能力后，背包物品原有的能力读回变化；已停止后续修复。','An existing item ability changed after attachment.'),
     ('direct_cast',344): ('游戏未创建全屏技能实例，本次未施放；具体拒绝原因未确认。','The game did not create the full-screen ability; its rejection cause is unconfirmed.'),
+    ('direct_cast',354): ('施法后的原单位或技能实例未通过校验，本次后处理未完成；可以重新选择目标再操作。','The original casting unit or ability no longer passed identity checks. This request could not finish; a new request can use a freshly selected target.'),
     ('direct_cast',355): ('全屏技能的临时法力参数未通过读回，未继续施放。','Temporary mana-cost parameters failed readback; casting stopped.'),
     ('direct_cast',356): ('全屏技能的临时冷却参数未通过读回，未继续施放。','Temporary cooldown parameters failed readback; casting stopped.'),
     ('direct_cast',359): ('游戏未按要求清除本次技能的临时冷却，未继续施放。','The temporary cooldown did not clear as requested; casting stopped.'),
@@ -64,7 +65,7 @@ BUSINESS_REASONS = {
     ('equipment_effect',407): ('待修复物品的槽位、归属或分类已变化，未修改该物品。','The source slot, ownership or classification changed; the item was not modified.'),
     ('equipment_effect',405): ('旧物品的原生移除或重新入包未通过验证，未确认修复成功；请保留日志。','Native removal or reinsertion of the inherited item could not be verified. Keep the log.'),
     ('equipment_effect',401): ('待销毁的物品不再唯一属于所选英雄，未执行删除。','The destruction target is no longer uniquely owned by the selected hero; no deletion was issued.'),
-    ('equipment_effect',402): ('销毁前的原生卸下未完成，物品状态未确认；已停止后续写入。','Native removal before destruction did not complete; the item state is uncertain and later writes are blocked.'),
+    ('equipment_effect',402): ('销毁前的原生卸下未完成，本次物品状态未确认；详情已记录，可重新读取后操作。','Native removal before destruction did not complete. This item state is unconfirmed; refresh it before a new request.'),
     ('equipment_effect',403): ('销毁后的背包或装备状态读取失败，结果未确认；请保留日志。','Inventory readback after destruction failed; the result remains unconfirmed. Keep the log.'),
     ('equipment_effect',404): ('游戏执行删除后仍存在物品或槽位引用，销毁未通过验证；请保留日志并重启游戏。','The game still retains the item or a slot reference; destruction verification failed. Keep the log and restart the game.'),
     ('stat_details',274): ('3.0 属性能力的运行时分类或对象身份校验失败，未确认属性修改成功。','The runtime stat classification or object identity check failed; the write was not confirmed.'),
@@ -73,7 +74,7 @@ BUSINESS_REASONS = {
     ('stat_details',268): ('游戏未接受当前属性的模式转换，未确认修改成功。','The game rejected the stat mode conversion; the write was not confirmed.'),
     ('stat_details',269): ('游戏拒绝写入当前属性值，未确认修改成功。','The game rejected the stat value write; success was not confirmed.'),
     ('stat_details',271): ('游戏读回的属性值与目标不一致，本次修改未确认成功。','The stat readback differs from the requested value; the write was not confirmed.'),
-    ('stat_details',273): ('属性修改后的恢复未通过验证，已停止后续写入；请保留日志并重启游戏。','Stat rollback could not be verified; later writes are blocked. Keep the log and restart the game.'),
+    ('stat_details',273): ('本次属性恢复未通过验证，详情已记录；新的操作会重新读取当前状态。','This stat restoration was not verified and was logged. New requests read the current state again.'),
     ('stat_details',275): ('当前单位没有可触发的暴击来源，请先增加对应暴击几率或装备暴击物品。','No triggering critical source exists. Add the matching chance or critical equipment first.'),
     ('world',3221225477): ('迷雾原生接口发生未识别的访问异常，开／关图状态未确认；未自动重试。','An unrecognized fog-native fault occurred; the fog state is unconfirmed and no automatic replay was attempted.'),
     ('world',83): ('游戏读回的迷雾状态与请求不一致，未将本次开／关图标为成功。','The fog readback did not match the request; the operation was not marked successful.'),
@@ -84,7 +85,7 @@ BUSINESS_REASONS = {
     ('equipment_effect',389): ('扩展背包已满，或待卸下的物品已不在原槽位。','The extended bag is full or the source equipment changed.'),
     ('equipment_effect',395): ('游戏拒绝把创建的物品转入扩展背包。','The game rejected transfer into the extended bag.'),
     ('item_safety',411): ('当前地图没有可创建的该物品定义，或游戏拒绝创建；未开始背包转移。','The item is unavailable or creation was rejected; no bag transfer began.'),
-    ('item_safety',414): ('检查用临时物品的清理未通过验证；已停止后续写入。','Temporary item cleanup could not be verified; later writes are blocked.'),
+    ('item_safety',414): ('本次临时物品清理未通过验证，详情已记录；可重新读取后继续操作。','Temporary item cleanup was not verified and was logged. Refresh the current state for a new request.'),
     ('item',63): ('游戏未能创建该物品；当前地图可能未注册它，具体原因仍需核对地图数据。','The game could not create this item; its definition may be absent from the map.'),
     ('direct_cast',353): ('技能请求未完成；具体施放条件尚未确认。','The skill request did not complete; the casting restriction is not yet confirmed.'),
 }
@@ -245,7 +246,7 @@ def describe_error(exc, language='zh'):
         reason=('上次游戏回调或执行通道尚未确认清理，原生查询暂时未执行；可独立读取的单位字段仍可读取。','The previous callback or execution channel remains unresolved; native queries are deferred while independent unit fields remain readable.');category='pending_query';confirmed=True
     elif reason is None and any(s in text for s in ('execution unresolved', 'retained resources',
             'Session is not writable', 'Session has unresolved execution/resources')):
-        reason=('上一次操作的执行或清理状态未确认，已阻止重复写入。请保存日志并重新启动游戏后连接。','The previous execution or cleanup remains uncertain. Save the log, restart the game, and reconnect.');category='uncertain_session';confirmed=True
+        reason=('上一次操作的执行或清理状态未确认，详情已保留在日志中；新的操作会重新读取当前状态。','The previous operation remains unconfirmed and is recorded in the log. New requests read the current state again.');category='uncertain_session';confirmed=True
     elif reason is None and dispatch.get('transport_error'):
         reason=('连接游戏的执行通道失败，尚未确认具体系统原因。','The game execution channel failed; the exact system cause is not yet confirmed.');category='transport'
     elif reason is None and 'Multiple Warcraft III clients are open' in text:
@@ -276,10 +277,10 @@ def describe_error(exc, language='zh'):
     elif recovered:
         suffix=('已验证回滚，可继续其他操作。','Rollback was verified; other operations can continue.')
     elif report.get('independent_operations_allowed') is True:
-        suffix=('本次操作未确认成功，执行通道已清理，可继续其他操作。',
-                'This operation was not confirmed; the channel was cleaned up and other operations remain available.')
+        suffix=('本次操作未确认成功，详情已记录，可继续新的操作。',
+                'This operation was not confirmed and was logged. New independent requests remain available.')
     elif report.get('session',{}).get('uncertain') or report.get('verification',{}).get('uncertain'):
-        suffix=('执行状态未确认，请勿重复此操作；重新启动游戏后连接。','Execution remains uncertain. Do not repeat the operation; restart the game and reconnect.')
+        suffix=('本次执行状态未确认，已保留日志；下一次操作重新读取当前状态。','This execution remains unconfirmed and was logged. The next request reads the current state again.')
     elif report.get('ok') or not report:
         suffix=('','')
     elif business.get('cleanup')==0 and dispatch.get('cleanup_verified'):

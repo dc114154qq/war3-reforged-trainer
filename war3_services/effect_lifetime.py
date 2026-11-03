@@ -10,8 +10,7 @@ from war3_services.operation_trace import record_operation_phase
 
 class HeldEffectCleanupError(RuntimeError):
     def __init__(self, primary, cleanup, *, deferred=False):
-        super().__init__('技能已发送，但游戏暂未接收清理请求；下次先清理原技能，不会重复施放，其他读取可继续'
-            if deferred else '全屏技能清理状态不确定，未重复施放；请保留诊断日志')
+        super().__init__('本次技能后处理未完成，详细原因已记录；下一次操作会重新读取当前目标，不会被本次失败锁住')
         self.primary_error=primary
         self.cleanup_error=cleanup
         self.report=dict(getattr(primary,'report',None) or getattr(cleanup,'report',None) or {})
@@ -97,12 +96,22 @@ def _run_one_held_effect(engine, rawcode, mode, area, duration):
             prior = session.resources[key]
             record_operation_phase(engine,'skill_prior_resource',state=getattr(prior,'state',None),
                 reference=getattr(prior,'ref',None),deferred_cleanup=getattr(prior,'deferred_cleanup',False))
-            if not getattr(prior, 'deferred_cleanup', False):
-                raise RuntimeError('A fullscreen effect still owns its source instance')
-            # Exact-instance cleanup only. A new cast is not sent unless the
-            # previous owned ability was actually restored/removed.
-            prior.close()
-            session.resources.pop(key, None)
+            # Best-effort exact-instance cleanup is independent of the new
+            # request. A failed cleanup is preserved, never a permanent latch.
+            try:
+                prior.close()
+            except Exception as exc:
+                if not hasattr(session, 'abandoned_resources'):
+                    session.abandoned_resources = []
+                session.abandoned_resources.append(dict(name=key, resource=prior,
+                    error=repr(exc), epoch=getattr(getattr(prior,'ref',None),'epoch',None)))
+                record_operation_phase(engine,'skill_prior_resource_abandoned',
+                    exception=repr(exc),cleanup_report=getattr(exc,'report',None),
+                    state=getattr(prior,'state',None),reference=getattr(prior,'ref',None),
+                    continue_with_fresh_request=True,previous_cast_replayed=False)
+            finally:
+                if session.resources.get(key) is prior:
+                    session.resources.pop(key, None)
         state = engine.direct_cast(rawcode, 1, mode=mode, passes=1, area=area)
         record_operation_phase(engine,'skill_start_readback',state=state)
         resource = None

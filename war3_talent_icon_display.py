@@ -147,7 +147,9 @@ class TalentIconDisplay:
         if not self._alive():
             transport.p['close'](self.handle);self.handle=None;self.base=0
             return dict(closed=True,process_exited=True)
-        if self.uncertain:raise RuntimeError('Display control completion unknown; mapped image retained')
+        previously_uncertain=self.uncertain
+        # Read current installation state and submit a new removal command;
+        # the previous command's failure flag is not a user-operation lock.
         if self.base:
             state=self.snapshot(allow_stale=True)
             if state['installed'] or self.registered:
@@ -166,6 +168,15 @@ class TalentIconDisplay:
             site_rva=_module_address('talent_icon_site', SITE_RVA)
             if not never_patched and transport.bytes_at(self.handle,self.game_base+site_rva,len(ORIGINAL))!=ORIGINAL:
                 raise RuntimeError('Original display instructions not restored; image retained')
+            if previously_uncertain:
+                # An old command may have registered unwind metadata before
+                # its response was lost. Keep that image resident after the
+                # fresh removal; it does not prevent a new installation.
+                self.engine.session.retain('talent_icons_retired',dict(
+                    image_base=hex(self.base),original_code_restored=True,
+                    reason='previous_command_result_unconfirmed'))
+                transport.p['close'](self.handle);self.handle=None
+                return dict(closed=True,original_code_restored=True,image_retained=True)
             status=transport.x['unmap_section'](self.handle,transport.P(self.base))
             if status<0:raise RuntimeError('Display image unmap failed: '+hex(status&0xffffffff))
             self.base=0

@@ -154,6 +154,8 @@ class GameSession:
         self.adapter_cache_defaults = {}
         self.retained = {}
         self.resources = {}
+        self.abandoned_resources = []
+        self.retained_history = []
         self.uncertain = False
         self.closed = False
         self.lock = threading.RLock()
@@ -334,15 +336,18 @@ class GameSession:
             raise SessionError(
                 "Map context changed during the operation; stale request was not dispatched"
             )
-        # A prior business failure is diagnostic evidence, not a global write
-        # embargo. Each new user request resolves its own identities/readback.
-        # Actual outstanding callback allocations still belong to the channel.
-        if self.closed or self.retained:
-            raise SessionError(
-                "Session is closed or still owns active dispatch resources"
-            )
+        # Failed requests and their allocations remain diagnostic/ownership
+        # records. A fresh request verifies its own process, targets and work.
+        if self.closed:
+            raise SessionError("Game session closed")
         if self.identity is None:
             raise SessionError("Game session has not been verified")
+
+    def retain(self, name, evidence):
+        """Keep failed-allocation ownership without making it an execution lock."""
+        if name in self.retained:
+            self.retained_history.append(dict(name=name,evidence=self.retained[name]))
+        self.retained[name] = evidence
 
     def finish(self, dispatch, readback=False):
         cleanup = bool(
@@ -377,7 +382,7 @@ class GameSession:
         if self.last_evidence.uncertain:
             self.uncertain = True
         if dispatch.get("allocations_retained") or not cleanup or (began and not exited):
-            self.retained["dispatch"] = dispatch
+            self.retain("dispatch", dispatch)
         return self.last_evidence
 
     def require_native_query(self):
@@ -386,8 +391,6 @@ class GameSession:
             raise SessionError('Map context changed; stale query was not dispatched')
         if self.closed or self.identity is None:
             raise SessionError('Game session has not been verified')
-        if self.retained:
-            raise SessionError('Previous callback or execution channel is still unresolved; native query deferred')
         # Business uncertainty remains in logs; it does not veto a new query.
 
     def bind_unit(self, memory, registry, address):
@@ -485,6 +488,9 @@ class GameSession:
             "uncertain": self.uncertain,
             "retained_resources": list(self.retained),
             "owned_resources": list(self.resources),
+            "abandoned_resource_count": len(self.abandoned_resources),
+            "retained_history_count": len(self.retained_history),
+            "failure_policy": "fresh_independent_requests",
             "last_invalidation": getattr(self, "last_invalidation", None),
             "native_registry_error": getattr(self, "native_registry_error", None),
             "adapter_import_errors": self.catalog.errors,
@@ -501,7 +507,7 @@ class GameSession:
             try:
                 resource.close()
             except Exception as exc:
-                self.retained[name] = {"error": str(exc), "resource": resource}
+                self.retain(name, {"error": str(exc), "resource": resource})
             else:
                 self.resources.pop(name, None)
         self.closed = True

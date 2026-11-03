@@ -178,7 +178,8 @@ class SpeedClockBackend:
         if getattr(self,'incompatible_resident',False):
             raise ResidentClockMismatch('No control dispatch permitted against an incompatible resident')
         self._validate()
-        if self.uncertain:raise RuntimeError('Timing control completion unknown; no automatic replay')
+        # Each explicit request allocates its own command block. Prior failed
+        # blocks stay resident; their uncertainty does not veto this command.
         payload=struct.pack('<4I2Q2I8I2Q',MAGIC,WORK_SIZE,action,rate,
                             self.base,self.base+self.unwind.VirtualAddress,self.unwind.Size//12,0,
                             *([0]*8),0,0)
@@ -235,6 +236,7 @@ class SpeedClockBackend:
                 self.uncertain=True
                 raise RuntimeError('Timing control failed: '+str(self.last_result))
             self.uncertain=False
+            self.unavailable_reason=None
             if pinned and not init and not installed and not mask:
                 self.unavailable_reason='游戏中已有未能启动的加速组件，请重开游戏后再试；其他功能仍可使用。'
             self.engine.session.last_evidence=OperationEvidence(delivered=True,readback_verified=True,
@@ -252,8 +254,8 @@ class SpeedClockBackend:
             if self.uncertain:
                 self.engine.session.uncertain=True
                 self.engine.session.last_evidence=OperationEvidence(uncertain=True,callback_exited=completed)
-                self.engine.session.retained['speed_clock']=dict(self.last_result,base=hex(self.base),
-                    command_block=hex(block) if not completed or release_error else None)
+                self.engine.session.retain('speed_clock',dict(self.last_result,base=hex(self.base),
+                    command_block=hex(block) if not completed or release_error else None))
             if health_report is not None:
                 health_report['verification'].update(uncertain=self.uncertain,
                     cleanup_complete=not self.uncertain and release_error is None)
@@ -263,7 +265,6 @@ class SpeedClockBackend:
 
     def set_rate(self,factor):
         encoded=encode_speed_factor(factor)
-        if getattr(self,'unavailable_reason',None):raise RuntimeError(self.unavailable_reason)
         return self._call(1,encoded)
 
     def close(self):
@@ -275,7 +276,8 @@ class SpeedClockBackend:
             transport.p['close'](self.handle);self.handle=None
             return {'closed':True,'restored_rate':None,'resident_until_process_exit':True,
                     'restart_required_for_speed':True}
-        if self.uncertain:raise RuntimeError('Timing cleanup uncertain; image remains mapped')
+        if self.uncertain:
+            self.query()
         if self.pinned:
             if not getattr(self,'unavailable_reason',None):
                 result=self.set_rate(1)

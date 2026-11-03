@@ -100,7 +100,7 @@ _PAGE_PROBE = """(() => {
 
 
 def _run_desktop(args, startup_log) -> int:
-    from war3_desktop_startup import configure_rendering, DesktopStartupMonitor
+    from war3_desktop_startup import configure_rendering, DesktopStartupMonitor, frontend_file_url
     configure_rendering(args.safe_render)
     from war3_desktop_runtime import ensure_desktop_runtime
     if not ensure_desktop_runtime():
@@ -126,7 +126,8 @@ def _run_desktop(args, startup_log) -> int:
             from war3_desktop_runtime import message
             message('界面资源缺失，请重新下载完整修改器。\n\n详细日志：\n'+str(startup_log))
             return 1
-        target_url = str(dist_index)
+        target_url = frontend_file_url(dist_index)
+        webview.settings['ALLOW_FILE_URLS'] = True
         logger.info(f"Running in PRODUCTION mode, loading {target_url}")
 
     # Initialize Desktop Bridge
@@ -180,7 +181,7 @@ def _run_desktop(args, startup_log) -> int:
         try:
             deadline = time.monotonic() + 30
             while time.monotonic() < deadline:
-                ready = window.evaluate_js("Boolean(document.querySelector('[data-testid=\"app\"]') && window.pywebview && window.pywebview.api)")
+                ready = window.evaluate_js("Boolean(document.querySelector('[data-testid=\"app\"]') && window.pywebview && window.pywebview.api && document.getElementById('startup-status')?.style.display === 'none')")
                 if ready:
                     break
                 time.sleep(.1)
@@ -194,6 +195,12 @@ def _run_desktop(args, startup_log) -> int:
                 status: document.querySelector('[data-testid="clock"]')?.getAttribute('aria-label'),
                 bridgeReady: Boolean(window.pywebview.api.read_ability_fields)
             }))()""")
+            report['dom']['url'] = window.evaluate_js('location.href')
+            if not args.dev:
+                assert report['dom']['url'].startswith('file:///')
+            hero_catalog = bridge_api.search_3_hero_skills('被遗忘者圣骑士', '')
+            assert [row['code'] for row in hero_catalog['rows']] == ['AHcr','ANcp','AHpa','AHcl']
+            report['hero_catalog'] = hero_catalog
             hotkeys = bridge_api.get_all_hotkeys()
             assert len(hotkeys) == 68
             assert len([h for h in hotkeys if h['category'] == 'stats']) == 17

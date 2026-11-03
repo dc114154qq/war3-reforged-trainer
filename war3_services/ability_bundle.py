@@ -86,7 +86,7 @@ def run_indexed_bundle(host, bundle):
     with manager as trace:
         for index, (rawcode, requested) in enumerate(bundle):
             if identity is not None and ((session.identity, session.epoch) != identity
-                                         or session.closed or session.retained):
+                                         or session.closed):
                 raise SessionError('进程、地图或执行状态已变化，本轮技能组合已停止，请重新读取目标。')
             # 112 is the historical default-level sentinel, not a real level.
             level = 0 if requested == 112 else requested or 0

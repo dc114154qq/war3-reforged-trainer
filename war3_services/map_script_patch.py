@@ -13,8 +13,7 @@ import traceback
 import uuid
 
 from war3_mpq import Archive, canonical_name, normalize_classic_header
-from war3_map_objects import object_records
-from war3_object_tables import DefinitionError, campaign_maps, map_data_mode, parse_slk
+from war3_object_tables import DefinitionError, campaign_maps, map_data_mode
 from war3_jass_parser import boundaries, inject, tokens
 from war3_map_script_runtime import PRESETS
 from war3_huolong_runtime import generate, usage, REVISION, SOURCE_SHA256, configuration
@@ -65,7 +64,7 @@ def _prefix(raw):
 
 def _context(catalogue, scope, mode):
     stock = baseline(mode)
-    known = {kind: set(stock[kind]) for kind in ('item','unit','ability')}
+    known = {kind: set(stock[kind]) for kind in ('item','unit','ability','upgrade')}
     protected_items, protected_abilities = set(PROTECTED_ITEMS), set(PROTECTED_ABILITIES)
     manifest, _ = definition_pack()
     protected_items.update(manifest['critical_items'])
@@ -113,12 +112,20 @@ def _context(catalogue, scope, mode):
     return known, protected_items, protected_abilities, levels
 
 
-def _upgrades(archive, prefix):
-    result=set()
-    for stem in (prefix,prefix+'Skin'):
-        raw=archive.read(stem+'.w3q',optional=True)
-        if raw is not None:
-            result.update(r['rawcode'] for r in object_records(raw,extended=True))
+def _read_script_catalogue(source, journal):
+    """Object descriptions enrich menus; they are not an injection prerequisite."""
+    try:
+        result = scan_map_catalog(source, cancel=journal.cancel,
+            progress=lambda stage,data:journal.event('catalogue_'+stage,**data))
+    except InterruptedError:
+        raise
+    except (ValueError, OSError) as exc:
+        journal.check()
+        result = dict(rows=[],scopes=[],warnings=[dict(scope=source.name,file='辅助对象目录',
+            code='catalogue_unavailable',message=str(exc),
+            impact='已继续注入火龙；目录使用自带基础资料，原图对象文件不作修改。')])
+    journal.event('catalogue_diagnostics',warnings=result['warnings'],
+        warning_count=len(result['warnings']),required_for_injection=False)
     return result
 
 
@@ -156,13 +163,22 @@ def _patch_chapter(path, scope, catalogue, options, journal, checks):
         parsed = boundaries(original)
         if any(t.kind=='identifier' and t.value==b'hke_z09Z' for t in parsed['tokens']):
             raise DefinitionError('该章节已包含经典火龙 HKE 脚本，请使用未注入火龙的原图，避免两套菜单重复执行。')
-        known, protected_items, protected_abilities, levels = _context(catalogue, scope, metadata['mode'])
-        _, pack_files = definition_pack()
-        known['upgrade'] = set(parse_slk(pack_files['baseline/'+metadata['mode']+'/UpgradeData.slk']).rows)
-        known['upgrade'].update(catalogue.get('shared_upgrades', ()))
-        known['upgrade'].update(_upgrades(archive,'war3map'))
-        known['catalogue'] = catalogue_entries(catalogue, scope, metadata['mode'], known,
-                                               protected_items, protected_abilities)
+        context_diagnostics = []
+        try:
+            known, protected_items, protected_abilities, levels = _context(catalogue, scope, metadata['mode'])
+            known['catalogue'] = catalogue_entries(catalogue, scope, metadata['mode'], known,
+                                                   protected_items, protected_abilities)
+        except (ValueError, TypeError) as exc:
+            # An unresolvable menu entry must not stop the classic payload.
+            # Never rewrite old object data or guess its missing base values.
+            context_diagnostics.append(dict(scope=scope,file='辅助菜单目录',
+                code='menu_catalogue_fallback',message=str(exc),
+                impact='该章节目录使用自带基础资料；火龙脚本继续注入，原物编保持不变。'))
+            journal.event('catalogue_context_fallback',**context_diagnostics[-1])
+            stock_catalogue = dict(rows=[])
+            known, protected_items, protected_abilities, levels = _context(stock_catalogue, scope, metadata['mode'])
+            known['catalogue'] = catalogue_entries(stock_catalogue, scope, metadata['mode'], known,
+                                                   protected_items, protected_abilities)
         catalogue_raw = json.dumps(dict(rows=known['catalogue'],gold_mines=known['gold_mines']),
             ensure_ascii=False,sort_keys=True,separators=(',',':')).encode('utf-8')
         catalogue_member = _neutral(members,CATALOGUE)
@@ -189,6 +205,7 @@ def _patch_chapter(path, scope, catalogue, options, journal, checks):
         if old_marker == marker and patched == current and catalogue_member and archive.read(catalogue_member)==catalogue_raw:
             return dict(name=scope, changed=False, already_added=True, metadata=metadata,
                 original_check=original_check, payload_check=payload_check, patched_check=patched_check,
+                catalogue_diagnostics=context_diagnostics,
                 command_prefix='-', script=name, independent_of_trainer=True)
         before = _fingerprints(archive, members, journal)
         plan = {name: (patched, member), MARKER: (marker_raw, marker_member), ORIGINAL: (original, original_member),
@@ -219,6 +236,7 @@ def _patch_chapter(path, scope, catalogue, options, journal, checks):
         ordinary_inventory_abilities=sorted(known['ordinary_inventory']),
         menu_catalogue={kind:sum(r['kind']==kind for r in known['catalogue']) for kind in ('item','ability','unit','upgrade')},
         catalogue_sha256=sha(catalogue_raw), archive_header_repair=header_repair,
+        catalogue_diagnostics=context_diagnostics,
         independent_of_trainer=True)
 
 
@@ -262,16 +280,10 @@ def prepare_map_script(source, output_folder, *, options=None, combined=False, p
                 shutil.copyfile(result.output, staged)
                 journal.event('definitions_complete', chapters=result.chapter_count)
             journal.event('catalogue_begin')
-            catalogue = scan_map_catalog(staged, cancel=journal.cancel,
-                progress=lambda stage,data:journal.event('catalogue_'+stage,**data))
-            if catalogue['warnings']:
-                exc = DefinitionError('部分章节对象定义未能完整读取，已停止添加脚本。')
-                exc.user_details = catalogue['warnings']
-                raise exc
+            catalogue = _read_script_catalogue(staged, journal)
             reports = []
             if source.suffix.casefold() == '.w3n':
                 with Archive(staged) as archive:
-                    catalogue['shared_upgrades'] = _upgrades(archive,'war3campaign')
                     referenced = campaign_maps(archive.read('war3campaign.w3f'))
                     archive.identify_names(referenced)
                     _identify_archive_names(archive, journal)
@@ -312,7 +324,7 @@ def prepare_map_script(source, output_folder, *, options=None, combined=False, p
             else:
                 current_chapter = source.name
                 journal.event('chapter_begin', index=1, total=1, name=source.name)
-                scope = next(s for s in catalogue['scopes'] if s != '战役共用')
+                scope = next((s for s in catalogue['scopes'] if s != '战役共用'), source.name)
                 for row in catalogue['rows']:
                     if row['scope'] == scope:
                         row['scope'] = source.name
@@ -332,6 +344,9 @@ def prepare_map_script(source, output_folder, *, options=None, combined=False, p
             report = dict(schema=1, revision=REVISION, source=str(source), sourceSha256=source_hash,
                 output=str(destination), outputSha256=output_hash, options=configuration(options),
                 combined=combined, definitions=definition_report, chapters=reports,
+                catalogue_optional=True,
+                catalogue_diagnostics=catalogue.get('diagnostics',catalogue['warnings'])
+                    + [d for chapter in reports for d in chapter.get('catalogue_diagnostics',())],
                 verification=dict(source_unchanged=True, member_hashes_and_flags_verified=True,
                     scripts_typechecked=True, payload_checked_with_classic_interface=True,
                     independent_of_trainer=True, gameplay_tested=False, old_saves_updated=False))
@@ -347,7 +362,8 @@ def prepare_map_script(source, output_folder, *, options=None, combined=False, p
         pending.unlink(missing_ok=True)
         try:
             journal.stream.write(json.dumps(dict(stage='failed', chapter=current_chapter,
-                exception=repr(exc), traceback=traceback.format_exc(), output_published=False), ensure_ascii=False)+'\n')
+                exception=repr(exc), traceback=traceback.format_exc(),
+                details=getattr(exc,'user_details',None),output_published=False), ensure_ascii=False)+'\n')
             journal.stream.flush()
         except (OSError, ValueError):
             pass

@@ -120,7 +120,8 @@ def scan_map_catalog(source,*,progress=None,cancel=None):
     def tick(stage,**data):
         if cancel.is_set():raise InterruptedError('目录读取已停止，原文件未修改。')
         if progress:progress(stage,data)
-    def warning(scope,file,exc):warnings.append(dict(scope=scope,file=file,message=str(exc)))
+    def warning(scope,file,exc,**details):
+        warnings.append(dict(scope=scope,file=file,message=str(exc),**details))
     def read_optional(archive,name,scope):
         raw=archive.read(name,optional=True)
         if raw is not None:members_read.append(dict(scope=scope,file=name,sha256=hashlib.sha256(raw).hexdigest()))
@@ -232,7 +233,15 @@ def scan_map_catalog(source,*,progress=None,cancel=None):
                     code=rec['rawcode'];base_code=rec['base']
                     attrs=state[kind].get(code)
                     if attrs is None:attrs=deepcopy(state[kind].get(base_code,{}));state[kind][code]=attrs
-                    if not attrs and base_code not in state[kind]:warning(scope,name,'基础对象未收录：'+base_code)
+                    if not attrs and base_code not in state[kind]:
+                        # A well-formed modification can refer to an object from
+                        # an older game dataset. Its explicit fields were fully
+                        # decoded; missing reference defaults are not a corrupt
+                        # object file and do not prevent additive script work.
+                        warning(scope,name,'基础对象未收录：'+base_code,
+                            code='base_reference_missing',kind=kind,rawcode=code,base=base_code,
+                            blocksScript=False,
+                            impact='保留地图中的原始对象和已读取字段；未收录的基础属性不作推测，不影响添加功能脚本。')
                     row=None
                     for change in rec['changes']:
                         meta=reference()['metadata'][kind].get(change['field'],{})

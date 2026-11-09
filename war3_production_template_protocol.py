@@ -12,6 +12,8 @@ ACTION_BIND = 1
 ACTION_SCAN = 2
 ACTION_APPLY = 3
 ACTION_REMOVE_STOCK = 4
+ACTION_BIND_BUILDINGS = 5
+ACTION_PROBE_BUILDINGS = 6
 MAX_FIELDS = 32
 MAX_ABILITIES = 16
 MAX_TARGETS = 32
@@ -76,7 +78,7 @@ def _field(row):
 
 def build_work(entries, tls, *, action, unit_rawcode, building_handle=0, building_rawcode=0,
                radius_bits=0, stock_current=1, stock_max=99, fields=(), abilities=(), targets=()):
-    if action not in (ACTION_BIND, ACTION_SCAN, ACTION_APPLY, ACTION_REMOVE_STOCK):
+    if action not in (ACTION_BIND, ACTION_SCAN, ACTION_APPLY, ACTION_REMOVE_STOCK, ACTION_BIND_BUILDINGS, ACTION_PROBE_BUILDINGS):
         raise ValueError("生产模板动作无效")
     if type(unit_rawcode) is not int or not 0 < unit_rawcode <= 0xffffffff:
         raise ValueError("生产模板单位 ID 无效")
@@ -89,9 +91,9 @@ def build_work(entries, tls, *, action, unit_rawcode, building_handle=0, buildin
         raise ValueError("生产模板技能无效")
     if any(not 0 < x < 0x8000000000000000 for x in targets):
         raise ValueError("生产模板目标句柄无效")
-    if action in (ACTION_SCAN, ACTION_APPLY) and (not building_handle or not building_rawcode):
+    if action == ACTION_SCAN and (not building_handle or not building_rawcode):
         raise ValueError("生产模板缺少建筑绑定")
-    if action == ACTION_APPLY and not targets:
+    if action in (ACTION_APPLY, ACTION_PROBE_BUILDINGS) and not targets:
         raise ValueError("生产模板没有新单位目标")
     if action == ACTION_BIND and (stock_current < 0 or stock_max < 0 or stock_current > 0xffffffff or stock_max > 0xffffffff):
         raise ValueError("生产库存参数无效")
@@ -125,7 +127,7 @@ def validate_work(payload):
     if not 0x10000 <= pointers[-1] < 0x800000000000 or pointers[-1] % 8:
         raise ValueError("生产模板线程上下文无效")
     building, owner, group, _reserved_q, rawcode, building_rawcode, action, radius_bits, current, maximum, field_count, ability_count = struct.unpack_from("<4Q8I", payload, META)
-    if action not in (ACTION_BIND, ACTION_SCAN, ACTION_APPLY, ACTION_REMOVE_STOCK) or not rawcode:
+    if action not in (ACTION_BIND, ACTION_SCAN, ACTION_APPLY, ACTION_REMOVE_STOCK, ACTION_BIND_BUILDINGS, ACTION_PROBE_BUILDINGS) or not rawcode:
         raise ValueError("生产模板请求头无效")
     if field_count > MAX_FIELDS or ability_count > MAX_ABILITIES:
         raise ValueError("生产模板数量无效")
@@ -149,7 +151,7 @@ def decode_work(payload, expected_count):
     error = result_q & 0xffffffff
     count = (result_q >> 32) & 0xffffffff
     if error:
-        messages = {1:"需要只选中一座建筑",2:"建筑身份已变化",3:"创建临时单位组失败",4:"扫描单位过多",5:"目标单位身份已变化",6:"字段写入被游戏拒绝",7:"字段读回不一致",8:"技能添加或等级设置失败",10:"当前选中的不是建筑"}
+        messages = {1:"需要只选中一座建筑",2:"建筑身份已变化",3:"创建临时单位组失败",4:"扫描单位过多",5:"目标单位身份已变化",6:"字段写入被游戏拒绝",7:"字段读回不一致",8:"技能添加或等级设置失败",10:"当前选中的不是建筑",11:"请至少选中一座建筑"}
         raise ValueError("生产模板：" + messages.get(error, f"操作失败（{error}）"))
     rows = [struct.unpack_from("<Q", payload, ROW_OFFSET + i*8)[0] for i in range(min(count, MAX_SCAN_ROWS))]
     return dict(action=action, building=building, building_rawcode=building_rawcode,

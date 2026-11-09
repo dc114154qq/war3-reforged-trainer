@@ -59,6 +59,8 @@ class DesktopBridgeApi:
         self._production_templates = {}
         self._production_binding = None
         self._production_tick_scheduled = False
+        self._building_upgrade_binding = None
+        self._building_upgrade_tick_scheduled = False
         from war3_definition_jobs import DefinitionJobs
         self._definition_jobs=DefinitionJobs(self.services.prepare_extension_definitions,self.app.start_operation_thread,
             lambda exc:self._failure(exc,'prepare_backpack_definitions'))
@@ -1359,6 +1361,86 @@ class DesktopBridgeApi:
         if self._production_binding:self._production_binding['active']=False
         self._production_binding=None
         return dict(success=True,message='已停止建筑专属模板监控；不会全局修改单位定义')
+
+    def bind_building_upgrade_template(self, name: str) -> dict[str, Any]:
+        """Bind one saved *building* template to exactly the currently selected instances.
+
+        Warcraft upgrades preserve the concrete building handle on the supported
+        engine.  We therefore store only those handles and probe them after each
+        tick; unrelated towers of the same rawcode are never considered.
+        """
+        trainer=self.port.value('state').get('trainer')
+        if not trainer:raise ValueError('尚未连接游戏，请先连接后框选哨塔')
+        template=self._production_templates.get(str(name))
+        if template is None:raise ValueError('没有这个模板，请先选中定制防御塔并保存模板')
+        from war3_production_template_protocol import ACTION_BIND_BUILDINGS
+        engine=trainer._engine_instance_24268()
+        bound=engine.production_template(action=ACTION_BIND_BUILDINGS,unit_rawcode=template['unitRawcode'])
+        handles=tuple(int(value) for value in bound.get('rows',()))
+        if not handles:raise RuntimeError('请先框选至少一座待升级建筑')
+        self._building_upgrade_binding=dict(template=template,handles=handles,seen=set(),active=True,
+            trainer=trainer,tickFailures=0,skippedFields=set())
+        self._schedule_building_upgrade_tick()
+        return dict(success=True,message=f'已绑定 {len(handles)} 座建筑：升级为 {template["unitCode"]} 后自动套用模板 {template["name"]}',
+                    binding=dict(template=template['name'],unitCode=template['unitCode'],count=len(handles),active=True))
+
+    def stop_building_upgrade_template(self) -> dict[str, Any]:
+        if self._building_upgrade_binding:self._building_upgrade_binding['active']=False
+        self._building_upgrade_binding=None
+        return dict(success=True,message='已停止建筑升级模板监控')
+
+    def _schedule_building_upgrade_tick(self):
+        if self._building_upgrade_tick_scheduled or self.port.value('state').get('closing'):return
+        self._building_upgrade_tick_scheduled=True
+        self.port.value('root').after(300,self._building_upgrade_tick)
+
+    def _building_upgrade_tick(self):
+        self._building_upgrade_tick_scheduled=False
+        binding=self._building_upgrade_binding
+        if not binding or not binding.get('active') or self.port.value('state').get('closing'):return
+        try:
+            with self.port.dispatch_lock:
+                trainer=self.port.value('state').get('trainer')
+                if trainer is not binding.get('trainer'):
+                    self._building_upgrade_binding=None;return
+                from war3_production_template_protocol import ACTION_PROBE_BUILDINGS,ACTION_APPLY,MAX_FIELDS,MAX_TARGETS
+                engine=trainer._engine_instance_24268();template=binding['template']
+                upgraded=[]
+                for start in range(0,len(binding['handles']),MAX_TARGETS):
+                    probe=engine.production_template(action=ACTION_PROBE_BUILDINGS,unit_rawcode=template['unitRawcode'],
+                        targets=binding['handles'][start:start+MAX_TARGETS])
+                    upgraded.extend(int(value) for value in probe.get('rows',()))
+                new=tuple(handle for handle in upgraded if handle not in binding['seen'])
+                if new:
+                    skipped=binding['skippedFields']
+                    def apply_fields(fields,targets):
+                        if not fields:return
+                        try:
+                            engine.production_template(action=ACTION_APPLY,unit_rawcode=template['unitRawcode'],fields=fields,targets=targets)
+                        except Exception as exc:
+                            message=str(exc)
+                            if '字段写入被游戏拒绝' not in message and '字段读回不一致' not in message:raise
+                            if len(fields)==1:
+                                skipped.add(tuple(fields[0][:3]));return
+                            middle=len(fields)//2
+                            apply_fields(fields[:middle],targets);apply_fields(fields[middle:],targets)
+                    for target_start in range(0,len(new),MAX_TARGETS):
+                        targets=new[target_start:target_start+MAX_TARGETS]
+                        eligible=tuple(field for field in template['fields'] if tuple(field[:3]) not in skipped)
+                        for field_start in range(0,len(eligible),MAX_FIELDS):
+                            apply_fields(eligible[field_start:field_start+MAX_FIELDS],targets)
+                        if template['abilities']:
+                            engine.production_template(action=ACTION_APPLY,unit_rawcode=template['unitRawcode'],fields=(),abilities=template['abilities'],targets=targets)
+                    binding['seen'].update(new)
+                    suffix=f'；跳过 {len(skipped)} 个不兼容字段' if skipped else ''
+                    self.app.set_status(f'建筑升级模板：已给 {len(new)} 座 {template["unitCode"]} 套用 {template["name"]}{suffix}')
+                binding['tickFailures']=0
+        except Exception:
+            failures=int(binding.get('tickFailures',0))+1;binding['tickFailures']=failures
+            if failures>=10:
+                binding['active']=False;self.app.set_status('建筑升级模板监控已暂停：游戏窗口连续无响应，请重新绑定')
+        finally:
+            if self._building_upgrade_binding is binding and binding.get('active'):self._schedule_building_upgrade_tick()
 
     def _schedule_production_tick(self):
         if self._production_tick_scheduled or self.port.value('state').get('closing'):return

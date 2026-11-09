@@ -57,6 +57,14 @@ export default function ElephantPage() {
     const result = await api.stopProductionTemplate()
     if (result?.success) { setTemplateStatus(result.message ?? '已停止'); announce(result.message ?? '已停止') }
   })
+  const bindBuildingUpgradeTemplate = () => void run('bind_building_upgrade_template', async () => {
+    const result = await api.bindBuildingUpgradeTemplate(templateName)
+    if (result?.success) { setTemplateStatus(result.message ?? '建筑升级模板已启动'); announce(result.message ?? '建筑升级模板已启动') }
+  })
+  const stopBuildingUpgradeTemplate = () => void run('stop_building_upgrade_template', async () => {
+    const result = await api.stopBuildingUpgradeTemplate()
+    if (result?.success) { setTemplateStatus(result.message ?? '建筑升级模板已停止'); announce(result.message ?? '建筑升级模板已停止') }
+  })
 
   const prewarm = () => void run('prewarm', async () => {
     const result = await api.prewarmElephant()
@@ -177,6 +185,11 @@ export default function ElephantPage() {
             <Button disabled={!!pending.stop_production_template} onClick={stopTemplate}>停止模板监控</Button>
           </div>
           {templateStatus && <p className={s.lead}>{templateStatus}</p>}
+          <p className={s.lead}>建筑升级模板：先选中已调好的成品防御塔并保存模板；随后框选需要升级的哨塔，再点击下面按钮。只有这批建筑升级成同 ID 的防御塔时才会套用模板。</p>
+          <div className={s.params}>
+            <Button variant="cast" disabled={!connected || !!pending.bind_building_upgrade_template} onClick={bindBuildingUpgradeTemplate}>绑定已选建筑的升级模板</Button>
+            <Button disabled={!!pending.stop_building_upgrade_template} onClick={stopBuildingUpgradeTemplate}>停止升级模板监控</Button>
+          </div>
         </Group>
 
         <Group title={t('科技与经验')}>

@@ -155,6 +155,9 @@ export const api = {
   bindProductionTemplate: (name:string,radius='420',stockCurrent='1',stockMax='99') =>
     callApi<{success:boolean;message?:string;binding?:any}>('bind_production_template',name,radius,stockCurrent,stockMax),
   stopProductionTemplate: () => callApi<{success:boolean;message?:string}>('stop_production_template'),
+  bindBuildingUpgradeTemplate: (name:string) =>
+    callApi<{success:boolean;message?:string;binding?:any}>('bind_building_upgrade_template',name),
+  stopBuildingUpgradeTemplate: () => callApi<{success:boolean;message?:string}>('stop_building_upgrade_template'),
 
   // 9. Artifact Plan
   getArtifactPlan: () => callApi<ArtifactPlanData>('get_artifact_plan'),

@@ -23,6 +23,7 @@ class OperationSpec:
 
 OPERATIONS = {
     'unit_field': OperationSpec('unit_field','war3_unit_field_protocol',b'unit_field_abi',b'BridgeUnitFieldQuery',False,True),
+    'production_template': OperationSpec('production_template','war3_production_template_protocol',b'production_template_abi',b'BridgeProductionTemplateQuery',False,True),
     'unit_field_hero_int': OperationSpec('unit_field_hero_int','war3_unit_field_hero_int_protocol',b'unit_field_hero_int_abi',b'BridgeUnitFieldHeroIntQuery',False,True),
     'clone_state': OperationSpec('clone_state','war3_clone_state_protocol',b'clone_state_abi',b'BridgeCloneStateQuery',False,True),
     "gold_mine": OperationSpec("gold_mine", "war3_gold_mine_protocol", b"gold_mine_abi", b"BridgeGoldMineQuery", False, True),
@@ -331,6 +332,7 @@ def is_read_query(kind, request):
     """Classify only fixed production queries, never trust a caller's label."""
     if kind in ('camera','terrain','map_bounds','mouse','screen_mouse','unit_bindings'):
         return True
+    if kind=='production_template':return request.get('action')==2
     if kind=='hero':return request.get('target')==0
     if kind=='hero_attributes':return request.get('target') is None
     if kind=='attack_speed':return request.get('target_aps')==0

@@ -128,7 +128,7 @@
   z-index: var(--z-tooltip);
   right: 0;
   bottom: calc(100% + 20px);
-  width: 300px;
+  width: 320px;
   pointer-events: none;
 }
 

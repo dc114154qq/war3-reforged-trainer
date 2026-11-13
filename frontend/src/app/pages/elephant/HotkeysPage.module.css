@@ -64,7 +64,7 @@
 
 .groupTitle {
   margin: 14px 0 8px;
-  font: 600 var(--fs-sm) var(--font-serif);
+  font: 600 var(--fs-label) var(--font-serif);
   letter-spacing: 0.08em;
   color: var(--text-label);
 }
@@ -74,9 +74,9 @@
   flex-direction: column;
   gap: 4px;
   min-width: 0;
-  padding: 5px 8px 6px;
+  padding: 6px 8px 7px;
   background: rgba(7, 10, 18, 0.45);
-  box-shadow: inset 0 0 0 1px var(--line-faint);
+  box-shadow: inset 0 0 0 1px rgba(234, 227, 210, 0.09);
   transition: box-shadow var(--dur-press) var(--ease-out), background-color var(--dur-press) var(--ease-out);
 }
 
@@ -119,7 +119,8 @@
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  font-size: var(--fs-sm);
+  /* Fixed at 13 px: five cards a row must fit the name, the warning tag and the button. */
+  font-size: 13px;
   white-space: nowrap;
   text-overflow: ellipsis;
   color: var(--text-secondary);
@@ -134,7 +135,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 3px;
-  opacity: 0.55;
+  opacity: 0.72;
   transition: opacity var(--dur-fast) var(--ease-out);
 }
 
@@ -145,8 +146,8 @@
 .dangerTag {
   flex: none;
   padding: 0 5px;
-  font-size: 11px;
-  line-height: 17px;
+  font-size: 12px;
+  line-height: 18px;
   color: var(--text-danger);
   border-radius: var(--radius-xs);
   box-shadow: inset 0 0 0 1px rgba(239, 106, 82, 0.45);
@@ -154,6 +155,12 @@
 
 .fire {
   flex: none;
+}
+
+/* Kept compact (beats the Button size class) so the binding name gets the room in a five-card row. */
+.cardTop .fire {
+  padding: 0 10px;
+  font-size: 13px;
 }
 
 .paramField {
@@ -185,7 +192,7 @@
 .empty {
   margin: 0;
   padding: 24px 12px;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
 }
 
 @media (max-width: 899px) {

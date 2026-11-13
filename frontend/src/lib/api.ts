@@ -1,5 +1,5 @@
 export interface MapCatalogChange {field:string;label:string;labelEn?:string;level:number;index:number;value:unknown;rawValue:unknown;baseValue:unknown;baseKnown:boolean;file:string;storage:string;}
-export interface MapCatalogRow {heroNames?:string[];isHero?:boolean;id:string;kind:string;rawcode:string;base:string;name:string;description:string;scope:string;changeType:string;changeCount:number;files:string[];changes?:MapCatalogChange[];}
+export interface MapCatalogRow {heroNames?:string[];isHero?:boolean;id:string;kind:string;rawcode:string;base:string;name:string;description:string;scope:string;changeType:string;changeCount:number;files:string[];changes?:MapCatalogChange[];maxLevel?:number;}
 export interface CatalogDiagnostic {scope:string;file:string;message:string;impact?:string;severity?:string;stringId?:string;byteOffset?:number;usedBy?:string[];}
 export interface MapCatalogProgress {diagnostics?:CatalogDiagnostic[];jobId:string;status:string;elapsed:number;stage?:string;source?:string;scope?:string;file?:string;index?:number;total?:number;rowCount?:number;counts?:Record<string,number>;scopes?:string[];warnings?:{scope:string;file:string;message:string}[];error?:string;notice?:string;}
 

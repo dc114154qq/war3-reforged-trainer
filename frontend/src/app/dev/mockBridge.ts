@@ -335,7 +335,7 @@ const MAP_ROWS: MapCatalogRow[] = [
     changes: [change('unam', '名称', '攻击之爪 +12', '白银之手战锤', 'war3map.w3t'), change('Iatt', '攻击力加成', 12, 15, 'war3map.w3t')] },
   { id: '3', kind: 'ability', rawcode: 'A000', base: 'AHhb', name: '圣光术（战役）', description: '治疗量提高的神圣之光。', scope: '第 2 章', changeType: 'added', changeCount: 1, files: ['war3map.w3a'],
     changes: [change('Hhb1', '治疗量', 200, 260, 'war3map.w3a')] },
-  { id: '4', kind: 'upgrade', rawcode: 'Rhme', base: 'Rhme', name: '铁剑', description: '', scope: '战役共用', changeType: 'modified', changeCount: 0, files: ['war3campaign.w3q'], changes: [] },
+  { id: '4', kind: 'upgrade', rawcode: 'Rhme', base: 'Rhme', name: '铁剑', description: '最高等级：3', scope: '战役共用', changeType: 'modified', changeCount: 0, files: ['war3campaign.w3q'], changes: [], maxLevel: 3 },
 ]
 let mapJob: MapCatalogProgress = { jobId: '', status: 'idle', elapsed: 0 }
 let mapStarted = 0
@@ -599,7 +599,7 @@ const handlers: Record<string, (...args: any[]) => unknown> = {
     const all = Object.entries(CATALOG).filter(([, v]) => v[0] === kind)
     const rows = all
       .filter(([code, v]) => !q || [code, v[1], v[2], v[3] ?? '', v[4] ?? ''].some(x => x.toLowerCase().includes(q)))
-      .map(([code, v]) => ({ rawcode: code, name_zh: v[1], name_en: v[2], category: v[3] ?? '', description: v[4] ?? '', descriptionSource: '游戏基础资料', descriptionPartial: false }))
+      .map(([code, v]) => ({ rawcode: code, name_zh: v[1], name_en: v[2], category: v[3] ?? '', description: v[4] ?? '', descriptionSource: '游戏基础资料', descriptionPartial: false, ...(kind === 'upgrade' ? { maxLevel: 3 } : {}) }))
     return { kind, totalCount: all.length, matchCount: rows.length, rows }
   },
   search_3_equipment(query: string) {

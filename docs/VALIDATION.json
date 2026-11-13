@@ -1,6 +1,6 @@
 {
-  "version": "2.2.3",
-  "exe_sha256": "B8CE004856588676D512DD28199C04A39DAC0C1CFC6D600CA99F8AB70974D83B",
+  "version": "2.2.4",
+  "exe_sha256": "54AA78D2D4189735D22D15CFBB451514DE222DD7BDC8AEDF34ACED0633917FEC",
   "production_inputs": 513,
   "packaged_modules": 195,
   "native_dlls_sha256": {
@@ -9,28 +9,16 @@
     "tools\\war3_speed_clock.dll": "91FB4F87344EBA12EB21759EF426437601EFB93C256F6F82ADB22B92BCC2685E",
     "tools\\war3_talent_icon_display.dll": "54C0EDD2D639EB4AFD203D5A4222F13814A3ABD27BD694AACBA52545586DE386"
   },
-  "related_tests": 455,
+  "related_tests": 462,
   "normal_safe_and_restricted_file_ui_verified": true,
   "all_seven_game_profiles_preserved": true,
-  "auxiliary_object_catalogue_optional": true,
-  "old_object_definitions_preserved": true,
-  "missing_reference_defaults_not_invented": true,
-  "catalogue_failure_does_not_block_classic_payload": true,
-  "upgrade_catalogue_reuses_parsed_rows": true,
-  "script_compile_and_archive_readback_required": true,
-  "processing_diagnostics_include_scope_file_code_and_fallback_reason": true,
-  "supplied_campaign_sha256": "78f90ff385faca7421f5924b0693bab287781ec4d4df0ac093b04202e7b76b05",
-  "campaign_checks": {
-    "modes": [
-      "huolong",
-      "definitions",
-      "definitions_then_huolong",
-      "huolong_then_definitions"
-    ],
-    "chapters_per_mode": 10,
-    "custom_object_bytes_and_flags_preserved": true,
-    "evidence": "E:/War3CodexTools/WarcraftIII/tasks/huolong-bloodelf-20261105/output-verification.json"
-  },
+  "native_binaries_unchanged": true,
+  "catalogue_direct_actions": true,
+  "stock_upgrade_max_levels_verified": 90,
+  "new_actions_reuse_existing_application_routes": true,
+  "spawn_countdown_seconds": 3,
+  "spawn_cancel_on_close_navigation_or_disconnect": true,
   "gameplay_tested": false,
-  "external_machine_acceptance": false
+  "external_machine_acceptance": false,
+  "limitation": "Code, UI dispatch and packaged runtime verified; no live gameplay acceptance in this release."
 }

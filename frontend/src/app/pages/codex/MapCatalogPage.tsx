@@ -6,7 +6,7 @@ import { useMapIssues } from '../../state/mapIssues'
 import { fill, useT } from '../../i18n'
 import { DataTable } from '../common/DataTable'
 import { copyText, isRunning, usePolledJob } from '../common/Jobs'
-import { CodexLayout, Fact, SheetActions, SheetHead, SheetText, copyCode, useDebounced } from './Codex'
+import { CodexLayout, Fact, GiveButton, SheetActions, SheetHead, SheetText, SpawnButton, TechButton, copyCode, useDebounced } from './Codex'
 import s from './MapCatalogPage.module.css'
 
 const KINDS = [['item', '物品'], ['ability', '技能'], ['unit', '单位'], ['upgrade', '科技']] as const
@@ -268,12 +268,19 @@ export default function MapCatalogPage() {
           <SheetText>
             {entry.description && <p>{entry.description}</p>}
             {entry.isHero && <small>{t('本名来自物编；多个名称表示候选名字。')}</small>}
+            <small>{entry.kind === 'unit'
+              ? t('单位生成在鼠标所指的游戏画面位置，归你所有；需要游戏里正在运行的地图有这个代码。')
+              : t('添加需要游戏里正在运行的地图有这个代码。')}</small>
             <Changes changes={entry.changes ?? []} />
           </SheetText>
           <SheetActions>
             <Button size="sm" onClick={() => setEntry(null)}>{t('关闭')}</Button>
             <Button size="sm" icon="copy" onClick={() => void copyCode(entry.rawcode)}>{t('复制代码')}</Button>
             <Button size="sm" icon="copy" onClick={() => void copyEntry(entry)}>{t('复制全部字段')}</Button>
+            {entry.kind === 'item' && <GiveButton action="add_item" params={{ rawcode: entry.rawcode }} label={t('给选中单位')} done={fill(t('已添加物品 {name}'), { name: entry.name || entry.rawcode })} />}
+            {entry.kind === 'ability' && <GiveButton action="add_ability" params={{ rawcode: entry.rawcode, level: '1' }} label={t('给选中单位')} done={fill(t('已添加技能 {name}'), { name: entry.name || entry.rawcode })} />}
+            {entry.kind === 'unit' && <SpawnButton rawcode={entry.rawcode} name={entry.name || entry.rawcode} />}
+            {entry.kind === 'upgrade' && <TechButton key={entry.id} rawcode={entry.rawcode} name={entry.name || entry.rawcode} maxLevel={entry.maxLevel} />}
           </SheetActions>
         </>,
       }}

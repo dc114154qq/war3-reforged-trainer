@@ -5,7 +5,7 @@ import type { CatalogItemRow } from '../../../lib/types'
 import { useCommandCard } from '../../state/commands'
 import { fill, useT } from '../../i18n'
 import { DataTable } from '../common/DataTable'
-import { CodexLayout, Count, Fact, GiveButton, SheetActions, SheetHead, SheetText, copyCode, useDebounced, useSearch } from './Codex'
+import { CodexLayout, Count, Fact, GiveButton, SheetActions, SheetHead, SheetText, SpawnButton, TechButton, copyCode, useDebounced, useSearch } from './Codex'
 import s from './CatalogPage.module.css'
 
 export type CatalogKind = 'item' | 'ability' | 'unit' | 'upgrade'
@@ -83,18 +83,25 @@ export function CatalogSearch({ initialKind }: { initialKind: CatalogKind }) {
             code={entry.rawcode}
             name={entry.name_zh || entry.name_en}
             sub={entry.name_zh ? entry.name_en : undefined}
-            facts={<Fact label={t('分类')}>{entry.category || t('未分类')}</Fact>}
+            facts={<>
+              <Fact label={t('分类')}>{entry.category || t('未分类')}</Fact>
+              {kind === 'upgrade' && entry.maxLevel ? <Fact label={t('最高等级')}>{entry.maxLevel}</Fact> : null}
+            </>}
           />
           <SheetText>
             <p>{entry.description || t('游戏基础资料没有这个对象的介绍。')}</p>
             {entry.descriptionSource && <small>{entry.descriptionSource}</small>}
             {entry.descriptionPartial && <small>{t('部分变量以游戏内数值为准。')}</small>}
+            {kind === 'unit' && <small>{t('单位生成在鼠标所指的游戏画面位置，归你所有；鼠标不在游戏画面内时不会生成。')}</small>}
+            {kind === 'upgrade' && <small>{t('直接设为你的科技等级，默认最高等级。')}</small>}
           </SheetText>
           <SheetActions>
             <Button size="sm" onClick={() => setSelected(null)}>{t('关闭')}</Button>
             <Button size="sm" icon="copy" onClick={() => void copyCode(entry.rawcode)}>{t('复制代码')}</Button>
             {kind === 'item' && <GiveButton action="add_item" params={{ rawcode: entry.rawcode }} label={t('给选中单位')} done={fill(t('已添加物品 {name}'), { name: entry.name_zh || entry.rawcode })} />}
             {kind === 'ability' && <GiveButton action="add_ability" params={{ rawcode: entry.rawcode, level: '1' }} label={t('给选中单位')} done={fill(t('已添加技能 {name}'), { name: entry.name_zh || entry.rawcode })} />}
+            {kind === 'unit' && <SpawnButton rawcode={entry.rawcode} name={entry.name_zh || entry.rawcode} />}
+            {kind === 'upgrade' && <TechButton key={entry.rawcode} rawcode={entry.rawcode} name={entry.name_zh || entry.rawcode} maxLevel={entry.maxLevel} />}
           </SheetActions>
         </>,
       }}

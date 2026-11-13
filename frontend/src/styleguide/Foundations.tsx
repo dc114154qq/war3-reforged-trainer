@@ -150,8 +150,8 @@ export function Type() {
         </div>
       </div>
       <ol className={s.scale}>
-        {[['12', '表头、次要标注'], ['13', '说明、药丸'], ['14', '正文基准'], ['15', '衬线标签'], ['16', '字段值'], ['21', '对话框标题'], ['28', '页名'], ['48', '统计数字'], ['72', '资源大数字']].map(([px, use]) => (
-          <li key={px}><span className={s.scalePx}>{px}</span><span className={s.dim}>{use}</span></li>
+        {[['13', '表头、次要标注'], ['14', '说明、药丸'], ['14', '正文基准'], ['15', '衬线标签'], ['16', '字段值'], ['21', '对话框标题'], ['28', '页名'], ['48', '统计数字'], ['72', '资源大数字']].map(([px, use]) => (
+          <li key={use}><span className={s.scalePx}>{px}</span><span className={s.dim}>{use}</span></li>
         ))}
       </ol>
     </Section>

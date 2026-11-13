@@ -50,7 +50,7 @@
 .path {
   display: block;
   margin: 0;
-  font: 12px / 1.5 var(--font-mono);
+  font: 13px / 1.5 var(--font-mono);
   color: var(--text-tertiary);
   overflow-wrap: anywhere;
   user-select: text;

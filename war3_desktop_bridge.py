@@ -20,7 +20,7 @@ from war3_artifact_plan import (
     DEFAULT_ARTIFACT_CODES,
     ArtifactPlanError,
 )
-from war3_id_catalog import CATALOG_COUNTS, search_id_entries
+from war3_id_catalog import CATALOG_COUNTS, search_id_entries, upgrade_max_level
 from war3_field_labels import ability_field_search_text, item_field_search_text
 from war3_new_equipment_catalog import EQUIPMENT
 
@@ -1219,7 +1219,8 @@ class DesktopBridgeApi:
              "category": row.category_en if self.port.value('ui_language')['code']=='en' else row.category_zh,
              "description": (row.description_en or row.description_zh) if self.port.value('ui_language')['code']=='en' else (row.description_zh or row.description_en),
              "descriptionSource": 'Warcraft III 3.0.1.24371 base game data' if self.port.value('ui_language')['code']=='en' else row.description_source,
-             "descriptionPartial": row.description_partial}
+             "descriptionPartial": row.description_partial,
+             **({"maxLevel": upgrade_max_level(row)} if kind == "upgrade" else {})}
             for row in matches[:200]
         ]
         return {

@@ -11,7 +11,7 @@
   margin: 0;
   font-size: var(--fs-sm);
   line-height: 1.7;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
 }
 
 .prewarm {
@@ -87,8 +87,8 @@
   justify-items: center;
   align-content: start;
   gap: 6px;
-  width: 80px;
-  padding: 5px 3px 6px;
+  width: 86px;
+  padding: 5px 3px 7px;
   text-align: center;
   background: linear-gradient(180deg, #2a251f, #18150f);
   border: 1px solid #08070a;
@@ -114,7 +114,7 @@
 .tileLabel {
   font-size: var(--fs-xs);
   line-height: 1.35;
-  color: var(--text-secondary);
+  color: var(--text-primary);
 }
 
 .tile:hover:not(:disabled) {

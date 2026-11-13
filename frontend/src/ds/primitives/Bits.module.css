@@ -15,7 +15,7 @@
 .rawcode {
   display: inline-block;
   padding: 0 7px;
-  font: 12.5px/20px var(--font-mono);
+  font: 13px/20px var(--font-mono);
   letter-spacing: 0.06em;
   color: var(--text-primary);
   background: linear-gradient(180deg, #2c2721, #191612);

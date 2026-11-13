@@ -283,7 +283,16 @@ function describe(t: (s: string) => string, where: string, row: BagItemRow | Equ
   return `${where}：${name ?? row.rawcode}（${row.rawcode}）×${row.charges}${type}　${row.handle}`
 }
 
-/** One inventory cell: rawcode in the socket, charges in the corner as in the game. */
+/** The name in a socket. A trailing bonus such as "+4" is kept whole; the narrow bag cell gives it its own line.
+ *  Chinese names are marked so the bag can size them apart from Latin ones, which need every pixel of width. */
+function SocketName({ name }: { name: string }) {
+  const m = /^(.*\S)\s+([+-]\d+%?)$/.exec(name)
+  const cjk = /[\u3400-\u9fff\uf900-\ufaff]/.test(name) || undefined
+  if (!m) return <span className={s.socketName} data-cjk={cjk}>{name}</span>
+  return <span className={s.socketName} data-cjk={cjk}>{m[1]} <span className={s.socketBonus}>{m[2]}</span></span>
+}
+
+/** One inventory cell: the item name (or rawcode if unknown) in the socket, charges in the corner as in the game. */
 function ItemSocket({ row, name, selected, onSelect, label, slotName }: {
   row: BagItemRow | EquipmentItemRow
   name: string | undefined
@@ -305,7 +314,9 @@ function ItemSocket({ row, name, selected, onSelect, label, slotName }: {
       onClick={onSelect}
     >
       {slotName && <span className={s.slotName}>{slotName}</span>}
-      {!empty && <span className={s.socketCode}>{row.rawcode}</span>}
+      {!empty && (name
+        ? <SocketName name={name} />
+        : <span className={s.socketCode}>{row.rawcode}</span>)}
       {!empty && Number(row.charges) > 0 && <span className={s.charges}>{row.charges}</span>}
     </button>
   )

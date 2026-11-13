@@ -139,6 +139,26 @@
   background: rgba(80, 60, 30, 0.08);
 }
 
+/* Upgrade level and "添加科技" wrap as one pair. */
+.techGroup {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.techGroup > small {
+  flex-basis: 100%;
+  color: rgba(43, 33, 23, 0.85);
+  font: var(--fs-xs) / 1.6 var(--font-sans);
+}
+
+/* The sheet's ink colour would vanish in the dark well. */
+.level input {
+  width: 5ch;
+  color: var(--text-primary);
+}
+
 @media (max-width: 1099px) {
   .sheet {
     width: 300px;

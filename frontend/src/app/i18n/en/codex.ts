@@ -1,5 +1,7 @@
 // English for the Codex chapter: ID lookup, tech, map data, 3.0 equipment and hero abilities.
 const en: Record<string, string> = {
+  '{n} 秒后生成 · 取消': 'Create in {n}s · Cancel',
+  '请把鼠标移到游戏画面内；离开此条目会取消。': 'Move the cursor into the game view; leaving this entry cancels placement.',
   '物品': 'Items',
   '单位': 'Units',
   '科技': 'Upgrades',
@@ -31,6 +33,18 @@ const en: Record<string, string> = {
   '已添加技能 {name}': 'Added ability {name}',
   '连接游戏后可用': 'Available once connected',
   '正在检索…': 'Searching…',
+  '生成到鼠标处': 'Create at cursor',
+  '已生成 {name}': 'Created {name}',
+  '单位生成在鼠标所指的游戏画面位置，归你所有；鼠标不在游戏画面内时不会生成。':
+    'The unit appears where the cursor points in the game view and belongs to you. Nothing is created while the cursor is outside the game view.',
+  '最高等级': 'Maximum level',
+  '科技等级': 'Upgrade level',
+  '添加科技': 'Add upgrade',
+  '科技 {name} 已设为 {level} 级': 'Upgrade {name} set to level {level}',
+  '直接设为你的科技等级，默认最高等级。': 'Sets your level of this upgrade directly; the maximum by default.',
+  '单位生成在鼠标所指的游戏画面位置，归你所有；需要游戏里正在运行的地图有这个代码。':
+    'The unit appears where the cursor points in the game view and belongs to you. The map running in the game must define this code.',
+  '添加需要游戏里正在运行的地图有这个代码。': 'The map running in the game must define this code.',
 
   // 3.0 equipment
   '搜索装备': 'Search equipment',

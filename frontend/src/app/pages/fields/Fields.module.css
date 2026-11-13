@@ -87,7 +87,7 @@
   max-width: 96ch;
   font-size: var(--fs-sm);
   line-height: 1.7;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   overflow-wrap: anywhere;
 }
 

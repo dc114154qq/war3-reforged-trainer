@@ -42,5 +42,5 @@
 .empty {
   margin: 0;
   padding: 14px 0;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
 }

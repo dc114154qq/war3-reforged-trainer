@@ -75,7 +75,7 @@
   z-index: 1;
   display: flex;
   gap: 6px;
-  font: 11.5px var(--font-mono);
+  font: 12.5px var(--font-mono);
 }
 
 .hp {
@@ -131,5 +131,5 @@
 .empty {
   margin: 0;
   padding: 10px 0;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
 }

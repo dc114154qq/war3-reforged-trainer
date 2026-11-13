@@ -219,6 +219,8 @@ export interface CatalogItemRow {
   name_zh: string;
   name_en: string;
   category: string;
+  /** Upgrades only: the editor's maximum level, when the catalogue records it. */
+  maxLevel?: number | null;
 }
 
 export interface CatalogSearchData {

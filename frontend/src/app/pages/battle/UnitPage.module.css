@@ -165,7 +165,7 @@
 }
 
 .candSub {
-  font: 12px var(--font-mono);
+  font: 13px var(--font-mono);
   color: var(--text-tertiary);
   overflow: hidden;
   white-space: nowrap;
@@ -176,7 +176,7 @@
 .empty {
   margin: 8px 0 0;
   font-size: var(--fs-xs);
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
 }
 
 .ledger {

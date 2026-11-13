@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import zlib
 from dataclasses import dataclass
 from functools import lru_cache
@@ -491,3 +492,13 @@ def search_id_entries(kind: str, query: str = "") -> tuple[War3IdEntry, ...]:
         or needle in entry.description_zh.casefold()
         or needle in entry.description_en.casefold()
     )
+
+
+def upgrade_max_level(entry: War3IdEntry) -> int | None:
+    """Maximum level of a stock upgrade.
+
+    tools/generate_upgrade_catalog.py writes the editor's maxlevel as the last
+    line of every upgrade description; other kinds have none.
+    """
+    match = re.search(r"最高等级：(\d+)\s*$", entry.description_zh)
+    return int(match[1]) if match else None

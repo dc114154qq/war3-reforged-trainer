@@ -291,6 +291,7 @@ def scan_map_catalog(source,*,progress=None,cancel=None):
             hero_names=list(dict.fromkeys(plain_text(v.strip()) for item in proper for v in str(item).split(',') if v.strip() and v.strip() not in ('_','-')))
             row.update(name=plain_text(name),heroNames=hero_names,isHero=is_hero,
                 description='\n\n'.join(desc),id=str(len(rows)),changeCount=len(row['changes']))
+            if upgrade_levels is not None:row['maxLevel']=upgrade_levels
             rows.append(row)
             if len(rows)>MAX_ROWS:raise DefinitionError('目录超过 50000 条，请按单张章节地图读取。')
 

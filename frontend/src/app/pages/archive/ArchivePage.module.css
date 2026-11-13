@@ -46,7 +46,7 @@
 .empty {
   margin: 0;
   padding: 18px 0;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
 }
 
 .codes {

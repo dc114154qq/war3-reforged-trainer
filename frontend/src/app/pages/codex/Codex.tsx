@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { Button, RawcodePlate, announce } from '../../../ds'
+import { Button, RawcodePlate, TextField, announce, type IconName } from '../../../ds'
 import { api } from '../../../lib/api'
 import { useSystem } from '../../state/system'
 import { fill, t as tr, useT } from '../../i18n'
@@ -107,8 +107,13 @@ export async function copyCode(code: string) {
   }
 }
 
-/** Give the selected unit an item, ability or new unit through the Elephant actions. */
-export function GiveButton({ action, params, label, done }: { action: string; params: Record<string, unknown>; label: string; done: string }) {
+const GIVE_ICONS: Record<string, IconName> = { add_ability: 'add-ability', create_unit: 'summon', set_tech: 'tech' }
+
+/**
+ * Run a catalogue entry through the Elephant actions: an item or ability for the selected
+ * unit, a new unit at the cursor, or an upgrade level for the local player.
+ */
+export function GiveButton({ action, params, label, done, disabled }: { action: string; params: Record<string, unknown>; label: string; done: string; disabled?: boolean }) {
   const t = useT()
   const connected = useSystem(st => st.status.connected)
   const [busy, setBusy] = useState(false)
@@ -125,9 +130,60 @@ export function GiveButton({ action, params, label, done }: { action: string; pa
     }
   }
   return (
-    <Button variant="cast" icon={action === 'add_ability' ? 'add-ability' : 'add-item'} disabled={!connected || busy} onClick={() => void give()} title={connected ? undefined : t('连接游戏后可用')}>
+    <Button variant="cast" icon={GIVE_ICONS[action] ?? 'add-item'} disabled={!connected || busy || disabled} onClick={() => void give()} title={connected ? undefined : t('连接游戏后可用')}>
       {label}
     </Button>
+  )
+}
+
+/** Create a unit type for the local player where the cursor points in the game view. */
+export function SpawnButton({ rawcode, name }: { rawcode: string; name: string }) {
+  const t = useT()
+  const connected = useSystem(st => st.status.connected)
+  const [countdown, setCountdown] = useState<number | null>(null)
+  const [busy, setBusy] = useState(false)
+  const running = useRef(false)
+  useEffect(() => {
+    if (!connected) { setCountdown(null); return }
+    if (countdown === null) return
+    const timer = window.setTimeout(() => {
+      if (countdown > 1) { setCountdown(countdown - 1); return }
+      setCountdown(null)
+      if (running.current) return
+      running.current = true
+      setBusy(true)
+      void api.executeElephantAction('create_unit', { rawcode, to_self: false }).then(result => {
+        if (result?.success) announce(fill(tr('已生成 {name}'), { name }))
+        else window.dispatchEvent(new CustomEvent('war3-error', { detail: result?.error || '操作未完成' }))
+      }).catch(() => { /* reported by callApi */ }).finally(() => {
+        running.current = false
+        setBusy(false)
+      })
+    }, 1000)
+    // Leaving the entry/page or losing the connection cancels pending placement.
+    return () => window.clearTimeout(timer)
+  }, [connected, countdown, rawcode, name])
+  return <span className={s.techGroup}>
+    <Button variant="cast" icon="summon" disabled={!connected || busy}
+      onClick={() => setCountdown(countdown === null ? 3 : null)}
+      title={connected ? undefined : t('连接游戏后可用')}>
+      {countdown === null ? t('生成到鼠标处') : fill(t('{n} 秒后生成 · 取消'), { n: countdown })}
+    </Button>
+    {countdown !== null && <small role="status">{t('请把鼠标移到游戏画面内；离开此条目会取消。')}</small>}
+  </span>
+}
+
+/** Set an upgrade for the local player, at its maximum level unless another is typed in. */
+export function TechButton({ rawcode, name, maxLevel }: { rawcode: string; name: string; maxLevel?: number | null }) {
+  const t = useT()
+  const [level, setLevel] = useState(() => String(maxLevel && maxLevel > 0 ? maxLevel : 1))
+  const value = Number(level)
+  const valid = /^\d+$/.test(level) && value >= 1 && value <= 100000
+  return (
+    <span className={s.techGroup}>
+      <TextField className={s.level} aria-label={t('科技等级')} suffix={t('级')} inputMode="numeric" value={level} onChange={e => setLevel(e.target.value.trim())} />
+      <GiveButton action="set_tech" params={{ rawcode, level: String(value) }} disabled={!valid} label={t('添加科技')} done={fill(t('科技 {name} 已设为 {level} 级'), { name, level: value })} />
+    </span>
   )
 }
 

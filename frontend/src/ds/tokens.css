@@ -46,9 +46,10 @@
   --surface-document: var(--vellum);
 
   --text-primary: var(--bone);
-  --text-secondary: rgba(234, 227, 210, 0.66);
-  /* 0.56 is the lowest alpha that keeps 4.5:1 on both the stage and the console. */
-  --text-tertiary: rgba(234, 227, 210, 0.56);
+  --text-secondary: rgba(234, 227, 210, 0.78);
+  /* 0.56 is the lowest alpha that keeps 4.5:1 on both the stage and the console; 0.64 leaves
+     headroom so captions, hints and table headers stay legible on the lit top of the stage. */
+  --text-tertiary: rgba(234, 227, 210, 0.64);
   --text-on-bronze: #1d150b;
   --text-on-document: var(--ink);
   --text-heading: var(--bone);
@@ -56,22 +57,26 @@
   --text-value: var(--gold);
   --text-danger: #ef6a52;
 
-  --line-faint: rgba(234, 227, 210, 0.06);
+  --line-faint: rgba(234, 227, 210, 0.07);
   --line-soft: rgba(176, 138, 78, 0.24);
   --line: rgba(176, 138, 78, 0.42);
   --line-strong: var(--bronze);
   --focus: var(--bronze-hi);
 
-  --tint-hover: rgba(26, 37, 57, 0.75);
+  --tint-hover: rgba(36, 50, 76, 0.7);
   --tint-selected: rgba(176, 138, 78, 0.16);
+  /* Table header band and alternate rows: low enough to read as structure, not decoration. */
+  --tint-head: rgba(5, 8, 14, 0.42);
+  --tint-stripe: rgba(234, 227, 210, 0.022);
 
   /* ---- Type ---- */
   --font-serif: 'W3 Serif', 'Source Han Serif SC', 'Noto Serif SC', 'SimSun', serif;
   --font-sans: 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', sans-serif;
   --font-mono: Consolas, 'Cascadia Mono', monospace;
 
-  --fs-xs: 12px;
-  --fs-sm: 13px;
+  /* 13 px is the smallest size for running text; only keycaps and corner counts go below. */
+  --fs-xs: 13px;
+  --fs-sm: 14px;
   --fs-base: 14px;
   --fs-label: 15px;
   --fs-md: 16px;

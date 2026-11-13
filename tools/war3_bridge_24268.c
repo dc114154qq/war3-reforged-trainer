@@ -489,6 +489,7 @@ BOOL WINAPI DllMain(HINSTANCE module,DWORD reason,LPVOID reserved) {
 #include "war3_bridge_unit_action.h"
 #include "war3_bridge_unit_stats.h"
 #include "war3_bridge_unit_field.h"
+#include "war3_bridge_production_template.h"
 #include "war3_bridge_unit_field_hero_int.h"
 #include "war3_bridge_world.h"
 #include "war3_bridge_game_speed.h"

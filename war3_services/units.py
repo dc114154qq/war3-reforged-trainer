@@ -3,6 +3,18 @@ from war3_selection_protocol import SIGNATURES
 from war3_hero_protocol import SIGNATURES as HERO_SIGNATURES, build_work, decode_work
 
 class UnitsService:
+
+    def production_template(self, *, action, unit_rawcode, building_handle=0, building_rawcode=0,
+                            radius_bits=0, stock_current=1, stock_max=99, fields=(), abilities=(), targets=()):
+        from war3_production_template_protocol import SIGNATURES as PT_SIGNATURES, build_work, decode_work
+        names=tuple(name for name,_ in PT_SIGNATURES)
+        request=dict(action=int(action),unit_rawcode=int(unit_rawcode),building_handle=int(building_handle),
+                     building_rawcode=int(building_rawcode),radius_bits=int(radius_bits),
+                     stock_current=int(stock_current),stock_max=int(stock_max),fields=tuple(fields),
+                     abilities=tuple(abilities),targets=tuple(targets))
+        return self._execute('production_template', names,
+            lambda entries,tls:build_work(entries,tls,**request), decode_work, request)
+
     def unit_field_hero_int(self,fields,action=0,target_unit=0,rawcode=0):
         from war3_unit_field_hero_int_protocol import SIGNATURES as INT_SIGNATURES,enabled_for,build_work,decode_work,details
         if not enabled_for(self.session.profile):

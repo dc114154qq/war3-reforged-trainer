@@ -149,6 +149,15 @@ export const api = {
   prewarmElephant: () => callApi<{ success: boolean; message?: string; error?: string }>('prewarm_elephant'),
   executeElephantAction: (actionName: string, params?: Record<string, any>) =>
     callApi<{ success: boolean; action?: string; error?: string }>('execute_elephant_action', actionName, params),
+  captureProductionTemplate: (name:string, abilityRawcode='', abilityLevel='1') =>
+    callApi<{success:boolean;template?:any;templates?:any[]}>('capture_production_template',name,abilityRawcode,abilityLevel),
+  getProductionTemplates: () => callApi<{success:boolean;templates:any[];binding?:any}>('get_production_templates'),
+  bindProductionTemplate: (name:string,radius='420',stockCurrent='1',stockMax='99') =>
+    callApi<{success:boolean;message?:string;binding?:any}>('bind_production_template',name,radius,stockCurrent,stockMax),
+  stopProductionTemplate: () => callApi<{success:boolean;message?:string}>('stop_production_template'),
+  bindBuildingUpgradeTemplate: (name:string) =>
+    callApi<{success:boolean;message?:string;binding?:any}>('bind_building_upgrade_template',name),
+  stopBuildingUpgradeTemplate: () => callApi<{success:boolean;message?:string}>('stop_building_upgrade_template'),
 
   // 9. Artifact Plan
   getArtifactPlan: () => callApi<ArtifactPlanData>('get_artifact_plan'),

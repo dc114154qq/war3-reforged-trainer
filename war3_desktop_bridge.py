@@ -56,6 +56,11 @@ class DesktopBridgeApi:
         self.app.call_async = self._run_action
         self.artifact_store = ArtifactPlanStore()
         self._batch_model = None
+        self._production_templates = {}
+        self._production_binding = None
+        self._production_tick_scheduled = False
+        self._building_upgrade_binding = None
+        self._building_upgrade_tick_scheduled = False
         from war3_definition_jobs import DefinitionJobs
         self._definition_jobs=DefinitionJobs(self.services.prepare_extension_definitions,self.app.start_operation_thread,
             lambda exc:self._failure(exc,'prepare_backpack_definitions'))
@@ -251,6 +256,7 @@ class DesktopBridgeApi:
         try:
             self.app.connect()
             self._batch_model = None
+            self._production_binding = None
             self.app.clear_selected_unit_readout()
             self._mark_units_changed()
             return {"success": True, "status": self.get_system_status()}
@@ -1256,6 +1262,260 @@ class DesktopBridgeApi:
             "matchCount": len(matches),
             "rows": rows,
         }
+
+    # =========================================================================
+    # 14.5 Building-bound production templates
+    # =========================================================================
+
+    @staticmethod
+    def _production_rawcode(text: str) -> int:
+        value=str(text or '').strip()
+        if len(value)!=4 or any(ord(ch)<32 or ord(ch)>126 for ch in value):
+            raise ValueError('单位 ID 必须是 4 个 ASCII 字符，例如 hfoo')
+        return int.from_bytes(value.encode('ascii'),'big')
+
+    @staticmethod
+    def _production_field_bits(kind: str, value) -> int:
+        from war3_unit_field_protocol import value_bits
+        mapping={'boolean':0,'integer':1,'real':2}
+        if kind not in mapping:raise ValueError('模板包含不支持的字段类型：'+str(kind))
+        return value_bits(mapping[kind], value)
+
+    def capture_production_template(self, name: str='模板1', ability_rawcode: str='', ability_level: str='1') -> dict[str, Any]:
+        """Capture a curated runtime combat template from the currently selected unit."""
+        trainer=self.port.value('state').get('trainer')
+        if not trainer:raise ValueError('尚未连接游戏，请先连接后选择模板单位')
+        # Keep fields that are instance-safe and useful for a produced combat unit.
+        # ua1r has a special wrapper quirk and hero intelligence fields require a
+        # separate compatibility path, so neither is replayed by this template.
+        allowed={
+            'udty','uarm','uhpr','umpr','udfc','umvc','uhpc','umpc','uacq',
+            'ua1d','ua1b','ua1s','utc1','ua1t','ucs1','ua1p','ua1g',
+            'ubs1','udp1','ua1c','udl1','uhd1','uqd1','usp1','usr1',
+        }
+        service=self.services.UnitFieldsService(trainer,self.services.logger_factory)
+        data=service.read(only_codes=allowed,tolerate_field_errors=True)
+        kind_id={'boolean':0,'integer':1,'real':2}
+        fields=[]
+        labels=[]
+        for row in data.get('rows',()):
+            if row.get('code') not in allowed or not row.get('writable') or row.get('value') is None:
+                continue
+            kind=row.get('kind')
+            if kind not in kind_id:continue
+            fid=int.from_bytes(str(row['code']).encode('ascii'),'big')
+            bits=self._production_field_bits(kind,row['value'])
+            fields.append((fid,kind_id[kind],int(row.get('weapon') or 0),bits))
+            labels.append(row.get('label') or row['code'])
+        if not fields:raise RuntimeError('当前单位没有可保存的生产模板字段')
+        abilities=[]
+        raw=str(ability_rawcode or '').strip()
+        if raw:
+            code=self._production_rawcode(raw)
+            level=int(str(ability_level or '1'),0)
+            if not 1<=level<=100000:raise ValueError('技能等级必须大于 0')
+            abilities.append((code,level))
+        key=str(name or '').strip() or '模板1'
+        rawcode=int(data['rawcode'])
+        template=dict(name=key,unitRawcode=rawcode,unitCode=data['unitCode'],fields=tuple(fields),
+                      abilities=tuple(abilities),fieldLabels=tuple(labels))
+        self._production_templates[key]=template
+        return dict(success=True,template=self._production_public(template),templates=self._production_template_list())
+
+    @staticmethod
+    def _production_public(template: dict) -> dict:
+        return dict(name=template['name'],unitCode=template['unitCode'],fieldCount=len(template['fields']),
+                    abilityCount=len(template['abilities']),fields=list(template.get('fieldLabels',())))
+
+    def _production_template_list(self):
+        return [self._production_public(v) for v in self._production_templates.values()]
+
+    def get_production_templates(self) -> dict[str, Any]:
+        binding=self._production_binding
+        status=None if not binding else dict(template=binding['template']['name'],buildingCode=binding['buildingCode'],
+            unitCode=binding['template']['unitCode'],active=bool(binding.get('active')),processed=len(binding.get('seen',())))
+        return dict(success=True,templates=self._production_template_list(),binding=status)
+
+    def bind_production_template(self, name: str, radius: str='420', stock_current: str='1', stock_max: str='99') -> dict[str, Any]:
+        trainer=self.port.value('state').get('trainer')
+        if not trainer:raise ValueError('尚未连接游戏，请先连接后选择建筑')
+        template=self._production_templates.get(str(name))
+        if template is None:raise ValueError('没有这个模板，请先选中定制单位并保存模板')
+        import struct
+        radius_value=float(radius)
+        if not 64.0<=radius_value<=2000.0:raise ValueError('出生判定半径建议 64～2000')
+        radius_bits=struct.unpack('<I',struct.pack('<f',radius_value))[0]
+        engine=trainer._engine_instance_24268()
+        from war3_production_template_protocol import ACTION_BIND,ACTION_SCAN
+        bound=engine.production_template(action=ACTION_BIND,unit_rawcode=template['unitRawcode'],
+            radius_bits=radius_bits,stock_current=int(stock_current),stock_max=int(stock_max))
+        scan=engine.production_template(action=ACTION_SCAN,unit_rawcode=template['unitRawcode'],
+            building_handle=int(bound['building']),building_rawcode=int(bound['building_rawcode']),radius_bits=radius_bits)
+        building_code=int(bound['building_rawcode']).to_bytes(4,'big').decode('ascii','replace')
+        self._production_binding=dict(template=template,building=int(bound['building']),buildingRawcode=int(bound['building_rawcode']),
+            buildingCode=building_code,radiusBits=radius_bits,seen=set(int(x) for x in scan.get('rows',())),active=True,
+            trainer=trainer)
+        self._schedule_production_tick()
+        return dict(success=True,message=f"已绑定 {building_code} → {template['unitCode']} / {template['name']}",binding=self.get_production_templates()['binding'])
+
+    def stop_production_template(self) -> dict[str, Any]:
+        if self._production_binding:self._production_binding['active']=False
+        self._production_binding=None
+        return dict(success=True,message='已停止建筑专属模板监控；不会全局修改单位定义')
+
+    def bind_building_upgrade_template(self, name: str) -> dict[str, Any]:
+        """Bind one saved *building* template to exactly the currently selected instances.
+
+        Warcraft upgrades preserve the concrete building handle on the supported
+        engine.  We therefore store only those handles and probe them after each
+        tick; unrelated towers of the same rawcode are never considered.
+        """
+        trainer=self.port.value('state').get('trainer')
+        if not trainer:raise ValueError('尚未连接游戏，请先连接后框选哨塔')
+        template=self._production_templates.get(str(name))
+        if template is None:raise ValueError('没有这个模板，请先选中定制防御塔并保存模板')
+        from war3_production_template_protocol import ACTION_BIND_BUILDINGS
+        engine=trainer._engine_instance_24268()
+        bound=engine.production_template(action=ACTION_BIND_BUILDINGS,unit_rawcode=template['unitRawcode'])
+        handles=tuple(int(value) for value in bound.get('rows',()))
+        if not handles:raise RuntimeError('请先框选至少一座待升级建筑')
+        self._building_upgrade_binding=dict(template=template,handles=handles,seen=set(),active=True,
+            trainer=trainer,tickFailures=0,skippedFields=set())
+        self._schedule_building_upgrade_tick()
+        return dict(success=True,message=f'已绑定 {len(handles)} 座建筑：升级为 {template["unitCode"]} 后自动套用模板 {template["name"]}',
+                    binding=dict(template=template['name'],unitCode=template['unitCode'],count=len(handles),active=True))
+
+    def stop_building_upgrade_template(self) -> dict[str, Any]:
+        if self._building_upgrade_binding:self._building_upgrade_binding['active']=False
+        self._building_upgrade_binding=None
+        return dict(success=True,message='已停止建筑升级模板监控')
+
+    def _schedule_building_upgrade_tick(self):
+        if self._building_upgrade_tick_scheduled or self.port.value('state').get('closing'):return
+        self._building_upgrade_tick_scheduled=True
+        self.port.value('root').after(300,self._building_upgrade_tick)
+
+    def _building_upgrade_tick(self):
+        self._building_upgrade_tick_scheduled=False
+        binding=self._building_upgrade_binding
+        if not binding or not binding.get('active') or self.port.value('state').get('closing'):return
+        try:
+            with self.port.dispatch_lock:
+                trainer=self.port.value('state').get('trainer')
+                if trainer is not binding.get('trainer'):
+                    self._building_upgrade_binding=None;return
+                from war3_production_template_protocol import ACTION_PROBE_BUILDINGS,ACTION_APPLY,MAX_FIELDS,MAX_TARGETS
+                engine=trainer._engine_instance_24268();template=binding['template']
+                upgraded=[]
+                for start in range(0,len(binding['handles']),MAX_TARGETS):
+                    probe=engine.production_template(action=ACTION_PROBE_BUILDINGS,unit_rawcode=template['unitRawcode'],
+                        targets=binding['handles'][start:start+MAX_TARGETS])
+                    upgraded.extend(int(value) for value in probe.get('rows',()))
+                new=tuple(handle for handle in upgraded if handle not in binding['seen'])
+                if new:
+                    skipped=binding['skippedFields']
+                    def apply_fields(fields,targets):
+                        if not fields:return
+                        try:
+                            engine.production_template(action=ACTION_APPLY,unit_rawcode=template['unitRawcode'],fields=fields,targets=targets)
+                        except Exception as exc:
+                            message=str(exc)
+                            if '字段写入被游戏拒绝' not in message and '字段读回不一致' not in message:raise
+                            if len(fields)==1:
+                                skipped.add(tuple(fields[0][:3]));return
+                            middle=len(fields)//2
+                            apply_fields(fields[:middle],targets);apply_fields(fields[middle:],targets)
+                    for target_start in range(0,len(new),MAX_TARGETS):
+                        targets=new[target_start:target_start+MAX_TARGETS]
+                        eligible=tuple(field for field in template['fields'] if tuple(field[:3]) not in skipped)
+                        for field_start in range(0,len(eligible),MAX_FIELDS):
+                            apply_fields(eligible[field_start:field_start+MAX_FIELDS],targets)
+                        if template['abilities']:
+                            engine.production_template(action=ACTION_APPLY,unit_rawcode=template['unitRawcode'],fields=(),abilities=template['abilities'],targets=targets)
+                    binding['seen'].update(new)
+                    suffix=f'；跳过 {len(skipped)} 个不兼容字段' if skipped else ''
+                    self.app.set_status(f'建筑升级模板：已给 {len(new)} 座 {template["unitCode"]} 套用 {template["name"]}{suffix}')
+                binding['tickFailures']=0
+        except Exception:
+            failures=int(binding.get('tickFailures',0))+1;binding['tickFailures']=failures
+            if failures>=10:
+                binding['active']=False;self.app.set_status('建筑升级模板监控已暂停：游戏窗口连续无响应，请重新绑定')
+        finally:
+            if self._building_upgrade_binding is binding and binding.get('active'):self._schedule_building_upgrade_tick()
+
+    def _schedule_production_tick(self):
+        if self._production_tick_scheduled or self.port.value('state').get('closing'):return
+        self._production_tick_scheduled=True
+        self.port.value('root').after(300,self._production_tick)
+
+    def _production_tick(self):
+        self._production_tick_scheduled=False
+        binding=self._production_binding
+        if not binding or not binding.get('active') or self.port.value('state').get('closing'):return
+        try:
+            with self.port.dispatch_lock:
+                trainer=self.port.value('state').get('trainer')
+                if trainer is not binding.get('trainer'):
+                    self._production_binding=None;return
+                from war3_production_template_protocol import ACTION_SCAN,ACTION_APPLY,MAX_FIELDS,MAX_TARGETS
+                engine=trainer._engine_instance_24268();template=binding['template']
+                scan=engine.production_template(action=ACTION_SCAN,unit_rawcode=template['unitRawcode'],
+                    building_handle=binding['building'],building_rawcode=binding['buildingRawcode'],radius_bits=binding['radiusBits'])
+                binding['tickFailures']=0
+                current={int(x) for x in scan.get('rows',())}
+                new=tuple(sorted(current-binding['seen']))
+                if new:
+                    # The native ABI intentionally bounds one request to 32 fields
+                    # and 32 units.  A game build may accept a field setter but
+                    # normalize its value on readback.  Bisect only those failed
+                    # field batches so one incompatible field cannot prevent later
+                    # fields (notably attack type) from being applied.
+                    skipped=binding.setdefault('skippedFields',set())
+                    def apply_fields(fields,targets):
+                        if not fields:return
+                        try:
+                            engine.production_template(action=ACTION_APPLY,unit_rawcode=template['unitRawcode'],
+                                building_handle=binding['building'],building_rawcode=binding['buildingRawcode'],radius_bits=binding['radiusBits'],
+                                fields=fields,abilities=(),targets=targets)
+                        except Exception as exc:
+                            message=str(exc)
+                            if '字段写入被游戏拒绝' not in message and '字段读回不一致' not in message:
+                                raise
+                            if len(fields)==1:
+                                skipped.add(tuple(fields[0][:3]));return
+                            middle=len(fields)//2
+                            apply_fields(fields[:middle],targets)
+                            apply_fields(fields[middle:],targets)
+                    for target_start in range(0,len(new),MAX_TARGETS):
+                        targets=new[target_start:target_start+MAX_TARGETS]
+                        eligible=tuple(field for field in template['fields'] if tuple(field[:3]) not in skipped)
+                        for field_start in range(0,len(eligible),MAX_FIELDS):
+                            apply_fields(eligible[field_start:field_start+MAX_FIELDS],targets)
+                        if template['abilities']:
+                            engine.production_template(action=ACTION_APPLY,unit_rawcode=template['unitRawcode'],
+                                building_handle=binding['building'],building_rawcode=binding['buildingRawcode'],radius_bits=binding['radiusBits'],
+                                fields=(),abilities=template['abilities'],targets=targets)
+                    binding['seen'].update(new)
+                    suffix=f"；跳过 {len(skipped)} 个不兼容字段" if skipped else ''
+                    self.app.set_status(f"{binding['buildingCode']}：已给 {len(new)} 个新 {template['unitCode']} 套用模板 {template['name']}{suffix}")
+                # Keep handles seen during the binding lifetime.  This prevents a
+                # unit walking out and back into the radius from being reclassified.
+                binding['seen'].update(current)
+        except Exception as exc:
+            # This is a background poll, not the foreground operation the user
+            # just completed.  Window transitions, loading screens and game exit
+            # can temporarily prevent hook delivery; do not misreport those as a
+            # failed field edit.  Retry quietly, then stop without a modal error.
+            failures=int(binding.get('tickFailures',0))+1
+            binding['tickFailures']=failures
+            if failures>=10:
+                binding['active']=False
+                self.app.set_status('建筑专属模板监控已暂停：游戏窗口连续无响应，请重新绑定建筑')
+            else:
+                self.app.set_status(f'建筑专属模板监控等待游戏响应（{failures}/10），将自动重试')
+        finally:
+            if self._production_binding is binding and binding.get('active'):
+                self._schedule_production_tick()
 
     # =========================================================================
     # 15. Batch Edit & Archive Extraction

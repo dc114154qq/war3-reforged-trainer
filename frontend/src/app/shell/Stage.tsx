@@ -1,7 +1,8 @@
-import { Suspense } from 'react'
+import { Suspense, useRef } from 'react'
 import { PAGES, isReady } from '../pages/registry'
 import { chapterOf, pageMeta, type PageId } from '../routes'
 import { useNav } from '../state/nav'
+import { usePageScrollMemory } from '../state/viewMemory'
 import { useT } from '../i18n'
 import { Chat } from './Chat'
 import s from './Stage.module.css'
@@ -11,12 +12,15 @@ export function Stage() {
   const t = useT()
   const page = useNav(st => st.page)
   const Page = PAGES[page]
+  const content = useRef<HTMLDivElement>(null)
+  usePageScrollMemory(content, page)
   return (
     <main className={`ds-stage ${s.stage}`} data-testid="stage" data-page={page} data-ready={isReady(page)}>
       <PageHeader page={page} />
       {/* Page availability must not depend on an exit animation/rAF completing. */}
         <div
           key={page}
+          ref={content}
           data-page-view={page}
           className={s.content}
         >

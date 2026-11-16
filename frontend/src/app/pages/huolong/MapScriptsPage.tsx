@@ -1,3 +1,4 @@
+import { useViewState } from '../../state/viewMemory'
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { Button, Keycap, ProgressBar, TextField } from '../../../ds'
@@ -41,8 +42,8 @@ export default function MapScriptsPage() {
   const t = useT()
   const reduce = useReducedMotion()
   const { progress, setProgress, poll, busy } = usePolledJob<MapScriptProgress>(id => api.getMapScriptProgress(id), { jobId: '', status: 'idle', elapsed: 0 }, 300)
-  const [paths, setPaths] = useState('')
-  const [folder, setFolder] = useState('')
+  const [paths, setPaths] = useViewState('map-scripts.paths', '')
+  const [folder, setFolder] = useViewState('map-scripts.folder', '')
   const [options, setOptions] = useState<MapScriptOptions>(DEFAULT_OPTIONS)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)

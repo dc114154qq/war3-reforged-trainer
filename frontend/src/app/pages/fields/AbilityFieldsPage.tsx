@@ -1,3 +1,4 @@
+import { useViewState } from '../../state/viewMemory'
 import { useState } from 'react'
 import { Button, Icon, TextField, announce } from '../../../ds'
 import { api } from '../../../lib/api'
@@ -15,9 +16,9 @@ export default function AbilityFieldsPage() {
   const t = useT()
   const connected = useSystem(st => st.status.connected)
   const { pending, run } = usePending()
-  const [rawcode, setRawcode] = useState('AHhb')
-  const [level, setLevel] = useState('1')
-  const [filter, setFilter] = useState<FieldFilter>({ query: '', showZero: true, showUnsupported: true })
+  const [rawcode, setRawcode] = useViewState('ability-fields.code', 'AHhb')
+  const [level, setLevel] = useViewState('ability-fields.level', '1')
+  const [filter, setFilter] = useViewState<FieldFilter>('ability-fields.filter', { query: '', showZero: true, showUnsupported: true })
   const [data, setData] = useState<AbilityFieldsData>({ summary: '', detail: '', rows: [] })
   const [feedback, setFeedback] = useState<{ text: string; error?: boolean } | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)

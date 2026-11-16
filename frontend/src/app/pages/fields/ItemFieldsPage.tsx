@@ -1,3 +1,4 @@
+import { useViewState, choice } from '../../state/viewMemory'
 import { useState, type CSSProperties } from 'react'
 import { Button, PillGroup, TextField, announce, cx } from '../../../ds'
 import { api } from '../../../lib/api'
@@ -27,11 +28,11 @@ export default function ItemFieldsPage() {
   const t = useT()
   const connected = useSystem(st => st.status.connected)
   const { pending, run } = usePending()
-  const [mode, setMode] = useState<Mode>('basic')
-  const [area, setArea] = useState<Area>('classic')
-  const [level, setLevel] = useState('1')
-  const [slot, setSlot] = useState('0')
-  const [filter, setFilter] = useState<FieldFilter>({ query: '', showZero: true, showUnsupported: true })
+  const [mode, setMode] = useViewState<Mode>('item-fields.mode', 'basic', choice(['basic', 'effects']))
+  const [area, setArea] = useViewState<Area>('item-fields.area', 'classic', choice(['classic', 'bag', 'equipment']))
+  const [level, setLevel] = useViewState('item-fields.level', '1')
+  const [slot, setSlot] = useViewState('item-fields.slot', '0', choice(Array.from({ length: 30 }, (_, i) => String(i))))
+  const [filter, setFilter] = useViewState<FieldFilter>('item-fields.filter', { query: '', showZero: true, showUnsupported: true })
   const [data, setData] = useState<ItemFieldsData>(EMPTY)
   const [feedback, setFeedback] = useState<{ text: string; error?: boolean } | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)

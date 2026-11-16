@@ -3,6 +3,7 @@ import { Button, PillGroup, ProgressBar, Select, TextArea, TextField } from '../
 import { api, type MapCatalogChange, type MapCatalogProgress, type MapCatalogRow } from '../../../lib/api'
 import { useCommandCard } from '../../state/commands'
 import { useMapIssues } from '../../state/mapIssues'
+import { choice, nonnegative, useViewState } from '../../state/viewMemory'
 import { fill, useT } from '../../i18n'
 import { DataTable } from '../common/DataTable'
 import { copyText, isRunning, usePolledJob } from '../common/Jobs'
@@ -27,22 +28,24 @@ export default function MapCatalogPage() {
   const t = useT()
   const { progress, setProgress, poll, busy } = usePolledJob<MapCatalogProgress>(id => api.getMapCatalogProgress(id), { jobId: '', status: 'idle', elapsed: 0 }, 400)
   const ready = progress.status === 'succeeded' || progress.status === 'partial'
-  const [path, setPath] = useState('')
+  const [path, setPath] = useViewState('map-catalog.path', '')
   const [starting, setStarting] = useState(false)
-  const [kind, setKind] = useState<string>('item')
-  const [query, setQuery] = useState('')
-  const [scope, setScope] = useState('')
-  const [changeType, setChangeType] = useState('')
+  const [kind, setKind] = useViewState<string>('map-catalog.kind', 'item', choice(KINDS.map(([id]) => id)))
+  const [query, setQuery] = useViewState('map-catalog.query', '')
+  const [scope, setScope] = useViewState('map-catalog.scope', '')
+  const [changeType, setChangeType] = useViewState('map-catalog.change', '', choice(['', 'added', 'modified']))
   const [rows, setRows] = useState<MapCatalogRow[]>([])
   const [matches, setMatches] = useState(0)
-  const [offset, setOffset] = useState(0)
+  const [offset, setOffset] = useViewState('map-catalog.offset', 0, nonnegative)
   const [loading, setLoading] = useState(false)
   const [entry, setEntry] = useState<MapCatalogRow | null>(null)
-  const [format, setFormat] = useState('csv')
+  const [format, setFormat] = useViewState('map-catalog.format', 'csv', choice(['csv', 'json']))
   const [exporting, setExporting] = useState(false)
   const [exported, setExported] = useState<{ path: string; count: number } | null>(null)
-  const [issuesOpen, setIssuesOpen] = useState(false)
-  const [sourceOpen, setSourceOpen] = useState(true)
+  const [issuesOpen, setIssuesOpen] = useViewState('map-catalog.issues-open', false)
+  const [sourceOpen, setSourceOpen] = useViewState('map-catalog.source-open', true)
+  const [browseKey, setBrowseKey] = useViewState('map-catalog.browse-key', '')
+  const [selectedObject, setSelectedObject] = useViewState('map-catalog.selected', '')
   const issuesRef = useRef<HTMLElement>(null)
   const searchRev = useRef(0)
   const detailRev = useRef(0)
@@ -50,18 +53,32 @@ export default function MapCatalogPage() {
   const working = starting || busy
   const diagnostics: { scope: string; file: string; message: string; impact?: string }[] = progress.diagnostics ?? progress.warnings ?? []
 
-  const search = async (page: number) => {
+  const requestKey = JSON.stringify([progress.jobId, kind, settled, scope, changeType])
+  const firstSearch = useRef(true)
+  const search = async (page: number, restoreSelection = false) => {
     if (!ready) return
     const mine = ++searchRev.current
-    detailRev.current++
+    const detailVersion = ++detailRev.current
+    const savedSelection = restoreSelection ? selectedObject : ''
+    if (!restoreSelection) setSelectedObject('')
     setEntry(null)
     setLoading(true)
     setOffset(page)
+    setBrowseKey(requestKey)
     try {
       const result = await api.searchMapCatalog(progress.jobId, kind, settled, scope, changeType, page)
       if (mine !== searchRev.current) return
       setRows(result.rows)
       setMatches(result.matchCount)
+      // A shortened/rebuilt result must not strand the browser on an empty page.
+      if (page > 0 && result.rows.length === 0) {
+        void search(Math.max(0, Math.floor((result.matchCount - 1) / PAGE) * PAGE))
+        return
+      }
+      if (savedSelection && result.rows.some(row => row.id === savedSelection)) {
+        const detail = await api.getMapCatalogEntry(progress.jobId, savedSelection)
+        if (mine === searchRev.current && detailVersion === detailRev.current) setEntry(detail)
+      }
     } catch {
       if (mine === searchRev.current) { setRows([]); setMatches(0) }
     } finally {
@@ -69,13 +86,21 @@ export default function MapCatalogPage() {
     }
   }
 
-  // A finished read (or a different job) brings the first page; later filters re-search.
+  // Preserve the UI for the same backend job; a newly read map starts at page one.
   useEffect(() => {
     if (!ready) return
+    try { if (JSON.parse(browseKey)[0] === progress.jobId) return } catch { /* no previous result */ }
     setSourceOpen(false)
     if (progress.status === 'partial') setIssuesOpen(true)
   }, [ready, progress.jobId, progress.status])
-  useEffect(() => { void search(0) }, [ready, progress.jobId, kind, settled, scope, changeType]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!ready) return
+    if (scope && !progress.scopes?.includes(scope)) { setScope(''); return }
+    const restore = firstSearch.current && browseKey === requestKey
+    firstSearch.current = false
+    void search(restore ? offset : 0, restore)
+  }, [ready, progress.jobId, kind, settled, scope, changeType]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => { searchRev.current++; detailRev.current++ }, [])
 
   // "Show the details on the page" from a failure notice.
   const issuesRequested = useMapIssues(st => st.pending)
@@ -97,6 +122,7 @@ export default function MapCatalogPage() {
     searchRev.current++
     detailRev.current++
     setRows([]); setEntry(null); setMatches(0); setOffset(0); setScope(''); setExported(null); setIssuesOpen(false)
+    setSelectedObject(''); setBrowseKey('')
     try {
       const r = await api.startMapCatalog(path.trim())
       if (r?.success) await poll(r.jobId)
@@ -115,7 +141,7 @@ export default function MapCatalogPage() {
     const mine = ++detailRev.current
     try {
       const detail = await api.getMapCatalogEntry(progress.jobId, row.id)
-      if (mine === detailRev.current) setEntry(detail)
+      if (mine === detailRev.current) { setEntry(detail); setSelectedObject(row.id) }
     } catch { /* reported by callApi */ }
   }
 
@@ -274,7 +300,7 @@ export default function MapCatalogPage() {
             <Changes changes={entry.changes ?? []} />
           </SheetText>
           <SheetActions>
-            <Button size="sm" onClick={() => setEntry(null)}>{t('关闭')}</Button>
+            <Button size="sm" onClick={() => { setEntry(null); setSelectedObject('') }}>{t('关闭')}</Button>
             <Button size="sm" icon="copy" onClick={() => void copyCode(entry.rawcode)}>{t('复制代码')}</Button>
             <Button size="sm" icon="copy" onClick={() => void copyEntry(entry)}>{t('复制全部字段')}</Button>
             {entry.kind === 'item' && <GiveButton action="add_item" params={{ rawcode: entry.rawcode }} label={t('给选中单位')} done={fill(t('已添加物品 {name}'), { name: entry.name || entry.rawcode })} />}

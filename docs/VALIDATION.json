@@ -1,7 +1,7 @@
 {
-  "version": "2.2.4",
-  "exe_sha256": "54AA78D2D4189735D22D15CFBB451514DE222DD7BDC8AEDF34ACED0633917FEC",
-  "production_inputs": 513,
+  "version": "2.2.5",
+  "exe_sha256": "0CCB6D6A7A4514920EB010016E2C68869FD8740B971E66D95DF097A4DDBD3179",
+  "production_inputs": 514,
   "packaged_modules": 195,
   "native_dlls_sha256": {
     "tools\\war3_bridge_24268.dll": "951E1DA5A7244672592C28B8B93B7DA925539CCA9DEC5B8614143C72C7FCAE57",
@@ -9,16 +9,18 @@
     "tools\\war3_speed_clock.dll": "91FB4F87344EBA12EB21759EF426437601EFB93C256F6F82ADB22B92BCC2685E",
     "tools\\war3_talent_icon_display.dll": "54C0EDD2D639EB4AFD203D5A4222F13814A3ABD27BD694AACBA52545586DE386"
   },
-  "related_tests": 462,
+  "desktop_startup_tests": 20,
+  "browser_ui_scenarios": 12,
   "normal_safe_and_restricted_file_ui_verified": true,
   "all_seven_game_profiles_preserved": true,
   "native_binaries_unchanged": true,
-  "catalogue_direct_actions": true,
-  "stock_upgrade_max_levels_verified": 90,
-  "new_actions_reuse_existing_application_routes": true,
-  "spawn_countdown_seconds": 3,
-  "spawn_cancel_on_close_navigation_or_disconnect": true,
+  "gameplay_backend_unchanged": true,
+  "ui_view_memory": true,
+  "persistent_desktop_ui_storage": true,
+  "draggable_chapter_order": true,
+  "formal_exe_restart_persistence_verified": true,
+  "live_handles_and_write_targets_not_persisted": true,
   "gameplay_tested": false,
   "external_machine_acceptance": false,
-  "limitation": "Code, UI dispatch and packaged runtime verified; no live gameplay acceptance in this release."
+  "limitation": "UI interaction, desktop restart persistence and packaged runtime verified offline; no gameplay changes."
 }

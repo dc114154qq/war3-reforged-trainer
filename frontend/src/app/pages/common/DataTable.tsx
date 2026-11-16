@@ -55,7 +55,7 @@ export function DataTable<T>({
           <span key={c.key} role="columnheader" className={cx(c.align === 'right' && s.right)}>{c.label}</span>
         ))}
       </div>
-      <div className={s.body} role="rowgroup">
+      <div className={s.body} role="rowgroup" data-scroll-region="data-table">
         {rows.length === 0 ? (
           <p className={s.empty}>{empty}</p>
         ) : rows.map(row => {

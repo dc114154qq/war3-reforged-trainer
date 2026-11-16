@@ -1,3 +1,4 @@
+import { useViewState, choice } from '../../state/viewMemory'
 import { useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { Button, PillGroup, ProgressBar, Select, TextArea, TextField, announce } from '../../../ds'
@@ -24,18 +25,18 @@ export default function ArchivePage() {
   const t = useT()
   const connected = useSystem(st => st.status.connected)
   const { pending, run } = usePending()
-  const [tab, setTab] = useState<Tab>('campaign')
+  const [tab, setTab] = useViewState<Tab>('archive.tab', 'campaign', choice(['campaign', 'rpg']))
   const [feedback, setFeedback] = useState<Feedback>(null)
 
   // Campaign saves
-  const [directory, setDirectory] = useState('')
+  const [directory, setDirectory] = useViewState('archive.directory', '')
   const [files, setFiles] = useState<SaveFile[]>([])
   const [file, setFile] = useState('')
   const [rows, setRows] = useState<ArchiveRow[]>([])
-  const [filter, setFilter] = useState('')
+  const [filter, setFilter] = useViewState('archive.filter', '')
 
   // RPG load codes
-  const [prefix, setPrefix] = useState('-load')
+  const [prefix, setPrefix] = useViewState('archive.prefix', '-load')
   const [text, setText] = useState('')
   const [codes, setCodes] = useState<RpgCodeRow[]>([])
 

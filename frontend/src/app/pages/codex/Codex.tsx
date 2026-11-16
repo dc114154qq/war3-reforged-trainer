@@ -20,7 +20,7 @@ export function CodexLayout({ toolbar, list, sheet, footer }: {
   const reduce = useReducedMotion()
   return (
     <div className={s.codex}>
-      <div className={s.main}>
+      <div className={s.main} data-scroll-region="codex-main">
         <div className={s.toolbar}>{toolbar}</div>
         <div className={s.list}>{list}</div>
         {footer && <p className={s.footer}>{footer}</p>}
@@ -30,6 +30,7 @@ export function CodexLayout({ toolbar, list, sheet, footer }: {
           <motion.aside
             key={sheet.key}
             className={s.sheet}
+            data-scroll-region="codex-sheet"
             initial={reduce ? { opacity: 0 } : { opacity: 0, x: 28 }}
             animate={{ opacity: 1, x: 0 }}
             exit={reduce ? { opacity: 0 } : { opacity: 0, x: 16 }}
@@ -56,7 +57,7 @@ export function SheetHead({ code, name, sub, facts }: { code: string; name: stri
 }
 
 export function SheetText({ children }: { children: ReactNode }) {
-  return <div className={s.sheetText}>{children}</div>
+  return <div className={s.sheetText} data-scroll-region="codex-detail">{children}</div>
 }
 
 export function SheetActions({ children }: { children: ReactNode }) {

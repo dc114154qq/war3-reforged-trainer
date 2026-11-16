@@ -225,7 +225,18 @@ def _run_desktop(args, startup_log) -> int:
     # Launch event loop
     try:
         startup.start()
-        webview.start(verify_ui if args.ui_check else None, debug=args.debug, gui='edgechromium')
+        # UI preferences must survive app restarts and PyInstaller's changing extraction path.
+        # This is browser storage only; game targets and native sessions stay in the backend.
+        storage_path = Path(os.environ.get('LOCALAPPDATA') or Path.home() / 'AppData/Local') / 'War3Trainer' / 'UI' / 'WebView2'
+        try:
+            storage_path.mkdir(parents=True, exist_ok=True)
+            browser_storage = str(storage_path)
+        except OSError as exc:
+            logger.warning('Persistent UI storage unavailable; using session memory: %s', exc)
+            browser_storage = None
+        logger.info('UI browser storage: %s', browser_storage or 'session only')
+        webview.start(verify_ui if args.ui_check else None, debug=args.debug, gui='edgechromium',
+                      private_mode=browser_storage is None, storage_path=browser_storage)
     except Exception as exc:
         logger.exception('Desktop renderer failed')
         startup.fail(str(exc), wait=True)

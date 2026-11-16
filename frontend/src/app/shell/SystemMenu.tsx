@@ -2,6 +2,7 @@ import { useState } from 'react'
 import * as Popover from '@radix-ui/react-popover'
 import { Button, Checkbox, ICON_ATTRIBUTION, Icon, PillGroup, TextField } from '../../ds'
 import { useSystem } from '../state/system'
+import { useNav } from '../state/nav'
 import { useT } from '../i18n'
 import s from './SystemMenu.module.css'
 
@@ -65,6 +66,7 @@ export function SystemMenu() {
               onChange={lang => void setLanguage(lang)}
               options={[{ value: 'zh', label: '中文' }, { value: 'en', label: 'English' }]}
             />
+            <Button size="sm" onClick={() => useNav.getState().resetChapterOrder()}>{t('恢复默认栏目顺序')}</Button>
           </section>
 
           <section className={s.block}>

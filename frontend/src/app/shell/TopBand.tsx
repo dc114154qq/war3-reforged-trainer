@@ -1,7 +1,7 @@
-import { useState, type ReactNode } from 'react'
+import { useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { EditableNumber, Icon, SPRING, Tooltip, bounty, type BountyTone, type IconName, type IconTone } from '../../ds'
-import { CHAPTERS, chapterOf } from '../routes'
+import { CHAPTERS, chapterOf, type ChapterId } from '../routes'
 import { useNav } from '../state/nav'
 import { num, useResources, type SetKind } from '../state/resources'
 import { useSystem } from '../state/system'
@@ -15,13 +15,52 @@ export function TopBand() {
   const t = useT()
   const page = useNav(st => st.page)
   const setChapter = useNav(st => st.setChapter)
+  const order = useNav(st => st.chapterOrder)
+  const chapters = order.map(id => CHAPTERS.find(c => c.id === id)!)
+  const [dragging, setDragging] = useState<ChapterId | null>(null)
+  const [drop, setDrop] = useState<{ id: ChapterId; after: boolean } | null>(null)
+  const suppressClick = useRef(false)
   const current = chapterOf(page)
   const [menu, setMenu] = useState(false)
+
+  const reorderKeys = (event: KeyboardEvent<HTMLButtonElement>, id: ChapterId) => {
+    if (!event.altKey || !event.shiftKey || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return
+    event.preventDefault(); event.stopPropagation()
+    const after = event.key === 'ArrowRight' || event.key === 'ArrowDown'
+    const target = order[order.indexOf(id) + (after ? 1 : -1)]
+    if (target) useNav.getState().moveChapter(id, target, after)
+  }
+  const dragProps = (id: ChapterId, vertical = false) => ({
+    draggable: true,
+    onDragStart(event: DragEvent<HTMLButtonElement>) {
+      suppressClick.current = true
+      event.dataTransfer.effectAllowed = 'move'
+      event.dataTransfer.setData('application/x-war3-chapter', id)
+      setDragging(id)
+    },
+    onDragOver(event: DragEvent<HTMLButtonElement>) {
+      if (!dragging) return
+      event.preventDefault(); event.dataTransfer.dropEffect = 'move'
+      const rect = event.currentTarget.getBoundingClientRect()
+      setDrop({ id, after: vertical ? event.clientY > rect.top + rect.height / 2 : event.clientX > rect.left + rect.width / 2 })
+    },
+    onDrop(event: DragEvent<HTMLButtonElement>) {
+      if (!dragging) return
+      event.preventDefault()
+      const rect = event.currentTarget.getBoundingClientRect()
+      const after = vertical ? event.clientY > rect.top + rect.height / 2 : event.clientX > rect.left + rect.width / 2
+      useNav.getState().moveChapter(dragging, id, after)
+      setDragging(null); setDrop(null)
+    },
+    onDragEnd() { setDragging(null); setDrop(null); window.setTimeout(() => { suppressClick.current = false }, 0) },
+    onClick() { if (!suppressClick.current) { setChapter(id); if (vertical) setMenu(false) } },
+    onKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => reorderKeys(event, id),
+  })
 
   return (
     <header className={`ds-metal ${s.band}`} data-testid="top-band">
       <nav className={s.chapters} aria-label={t('章节')}>
-        {CHAPTERS.map((c, i) => (
+        {chapters.map((c, i) => (
           <button
             key={c.id}
             type="button"
@@ -29,8 +68,10 @@ export function TopBand() {
             data-active={c.id === current.id || undefined}
             aria-current={c.id === current.id ? 'page' : undefined}
             data-testid={`chapter-${c.id}`}
-            title={`Alt+${i + 1}`}
-            onClick={() => setChapter(c.id)}
+            title={`Alt+${i + 1} · ${t('拖动调整顺序；Alt+Shift+方向键也可移动')}`}
+            data-dragging={dragging === c.id || undefined}
+            data-drop={drop?.id === c.id ? (drop.after ? 'after' : 'before') : undefined}
+            {...dragProps(c.id)}
           >
             {t(c.label)}
             {c.id === current.id && <motion.span layoutId="chapter-mark" className={s.mark} transition={SPRING.layout} />}
@@ -52,9 +93,12 @@ export function TopBand() {
               exit={{ opacity: 0, y: -4 }}
               transition={{ duration: 0.14 }}
             >
-              {CHAPTERS.map(c => (
+              {chapters.map(c => (
                 <li key={c.id}>
-                  <button type="button" data-active={c.id === current.id || undefined} onClick={() => { setChapter(c.id); setMenu(false) }}>
+                  <button type="button" data-active={c.id === current.id || undefined}
+                    title={t('拖动调整顺序；Alt+Shift+方向键也可移动')}
+                    data-drop={drop?.id === c.id ? (drop.after ? 'after' : 'before') : undefined}
+                    {...dragProps(c.id, true)}>
                     {t(c.label)}
                   </button>
                 </li>

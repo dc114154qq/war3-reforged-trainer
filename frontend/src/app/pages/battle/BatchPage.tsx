@@ -1,3 +1,4 @@
+import { useViewState } from '../../state/viewMemory'
 import { useRef, useState, type MouseEvent } from 'react'
 import { Button, Checkbox, Icon, RawcodePlate, Select, SelectionRing, TextField, announce } from '../../../ds'
 import { api } from '../../../lib/api'
@@ -26,10 +27,10 @@ export default function BatchPage() {
   const [reports, setReports] = useState<Report[]>([])
   const [message, setMessage] = useState('')
   const [hover, setHover] = useState<string | null>(null)
-  const [query, setQuery] = useState('')
-  const [category, setCategory] = useState('')
-  const [filledOnly, setFilledOnly] = useState(false)
-  const [showUnits, setShowUnits] = useState(false)
+  const [query, setQuery] = useViewState('batch.query', '')
+  const [category, setCategory] = useViewState('batch.category', '')
+  const [filledOnly, setFilledOnly] = useViewState('batch.filled', false)
+  const [showUnits, setShowUnits] = useViewState('batch.show-units', false)
   const anchor = useRef<number | null>(null)
 
   // api.ts throws on success: false and shows the reason; the status line repeats it here.
@@ -42,7 +43,7 @@ export default function BatchPage() {
       setUnits(list)
       const defs = (res?.fields ?? []) as FieldDef[]
       setFields(defs)
-      setCategory('')
+      setCategory(current => defs.some(f => f.category === current) ? current : '')
       setTargets(prev => Object.fromEntries(defs.map(f => [f.key, prev[f.key] ?? ''])))
       setReports([])
       setMessage(list.length ? `已成功解析 ${list.length} 个选中单位实例` : '未读取到选中单位')

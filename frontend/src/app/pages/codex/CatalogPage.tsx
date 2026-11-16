@@ -1,3 +1,4 @@
+import { useViewState, optionalText } from '../../state/viewMemory'
 import { useState } from 'react'
 import { Button, PillGroup, TextField } from '../../../ds'
 import { api } from '../../../lib/api'
@@ -25,8 +26,8 @@ export function CatalogSearch({ initialKind }: { initialKind: CatalogKind }) {
       return KINDS.find(k => k.value === saved)?.value ?? initialKind
     } catch { return initialKind }
   })
-  const [query, setQuery] = useState('')
-  const [selected, setSelected] = useState<string | null>(null)
+  const [query, setQuery] = useViewState('catalog.query', '')
+  const [selected, setSelected] = useViewState<string | null>('catalog.selected', null, optionalText)
   const settled = useDebounced(query)
   const { data, loading } = useSearch(() => api.searchIdCatalog(kind, settled), [kind, settled])
   const rows = data?.rows ?? []

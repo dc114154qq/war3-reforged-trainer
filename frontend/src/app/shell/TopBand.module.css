@@ -27,6 +27,13 @@
   transition: color var(--dur-press) var(--ease-out);
 }
 
+.chapter[draggable='true'] { cursor: grab; }
+.chapter[data-dragging] { opacity: 0.55; cursor: grabbing; }
+.chapters .chapter[data-drop='before'] { box-shadow: inset 3px 0 var(--bronze-hi); }
+.chapters .chapter[data-drop='after'] { box-shadow: inset -3px 0 var(--bronze-hi); }
+.menu button[data-drop='before'] { box-shadow: inset 0 2px var(--bronze-hi); }
+.menu button[data-drop='after'] { box-shadow: inset 0 -2px var(--bronze-hi); }
+
 .chapter:hover {
   color: var(--text-primary);
   background: linear-gradient(180deg, transparent, rgba(217, 182, 118, 0.1));

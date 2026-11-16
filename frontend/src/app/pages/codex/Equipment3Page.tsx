@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useViewState, optionalText } from '../../state/viewMemory'
 import { Button, TextField, announce } from '../../../ds'
 import { api } from '../../../lib/api'
 import type { Equipment3Row } from '../../../lib/types'
@@ -13,8 +13,8 @@ import s from './CatalogPage.module.css'
 export default function Equipment3Page() {
   const t = useT()
   const connected = useSystem(st => st.status.connected)
-  const [query, setQuery] = useState('')
-  const [selected, setSelected] = useState<string | null>(null)
+  const [query, setQuery] = useViewState('equipment3.query', '')
+  const [selected, setSelected] = useViewState<string | null>('equipment3.selected', null, optionalText)
   const settled = useDebounced(query)
   const { data, loading } = useSearch(() => api.search3Equipment(settled), [settled])
   const rows = data?.rows ?? []

@@ -1,6 +1,5 @@
 import { useEffect } from 'react'
-import { CHAPTERS } from './routes'
-import { useNav } from './state/nav'
+import { orderedChapters, useNav } from './state/nav'
 import { openChat } from './shell/Chat'
 
 /**
@@ -11,7 +10,7 @@ import { openChat } from './shell/Chat'
 export function useShellHotkeys() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const chapter = /^[1-9]$/.test(e.key) ? CHAPTERS[Number(e.key) - 1] : undefined
+      const chapter = /^[1-9]$/.test(e.key) ? orderedChapters()[Number(e.key) - 1] : undefined
       if (e.altKey && !e.ctrlKey && !e.metaKey && chapter) {
         e.preventDefault()
         useNav.getState().setChapter(chapter.id)

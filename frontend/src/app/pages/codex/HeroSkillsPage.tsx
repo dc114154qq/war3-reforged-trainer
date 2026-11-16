@@ -1,3 +1,4 @@
+import { useViewState, optionalText } from '../../state/viewMemory'
 import { useState } from 'react'
 import { Button, Select, TextField, announce } from '../../../ds'
 import { api } from '../../../lib/api'
@@ -15,10 +16,10 @@ const ALL_HEROES = '全部角色'
 export default function HeroSkillsPage() {
   const t = useT()
   const connected = useSystem(st => st.status.connected)
-  const [hero, setHero] = useState('')
+  const [hero, setHero] = useViewState('hero-skills.hero', '')
   const [heroes, setHeroes] = useState<string[]>([])
-  const [query, setQuery] = useState('')
-  const [selected, setSelected] = useState<string | null>(null)
+  const [query, setQuery] = useViewState('hero-skills.query', '')
+  const [selected, setSelected] = useViewState<string | null>('hero-skills.selected', null, optionalText)
   const settled = useDebounced(query)
   const { data, loading } = useSearch(async () => {
     const result = await api.search3HeroSkills(hero, settled)

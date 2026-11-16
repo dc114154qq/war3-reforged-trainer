@@ -1,5 +1,7 @@
 // English for the shell. One file per area in this folder; i18n/index.ts merges them.
 const en: Record<string, string> = {
+  '拖动调整顺序；Alt+Shift+方向键也可移动': 'Drag to reorder; Alt+Shift+arrow keys also move a tab',
+  '恢复默认栏目顺序': 'Reset tab order',
   // Chapters and pages
   '战况': 'Battle',
   '字段': 'Fields',

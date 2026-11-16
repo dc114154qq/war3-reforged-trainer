@@ -1,3 +1,4 @@
+import { useViewState } from '../../state/viewMemory'
 import { useEffect, useRef, useState } from 'react'
 import { Button, HoldToConfirm, PillGroup, Select, TextField, Tooltip } from '../../../ds'
 import { api } from '../../../lib/api'
@@ -28,8 +29,8 @@ export default function ExtensionsPage() {
   const [equipId, setEquipId] = useState('')
   const [talentId, setTalentId] = useState('')
   const [talentChoice, setTalentChoice] = useState('')
-  const [rawcode, setRawcode] = useState('')
-  const [charges, setCharges] = useState('1')
+  const [rawcode, setRawcode] = useViewState('extensions.code', '')
+  const [charges, setCharges] = useViewState('extensions.charges', '1')
   const [backpack, setBackpack] = useState('')
   const [loadoutName, setLoadoutName] = useState('套装1')
   const [savedLoadout, setSavedLoadout] = useState('')

@@ -1,3 +1,4 @@
+import { useViewState } from '../../state/viewMemory'
 import { useEffect, useMemo, useState } from 'react'
 import { Button, EditableNumber, Icon, PillGroup, RawcodePlate, StatBar, TextField, announce, bounty } from '../../../ds'
 import { api } from '../../../lib/api'
@@ -25,8 +26,8 @@ export default function UnitPage() {
   const unit = useUnit(st => st.unit)
   const locks = useLocks(st => st.items)
   const { pending, run } = usePending()
-  const [category, setCategory] = useState('全部')
-  const [query, setQuery] = useState('')
+  const [category, setCategory] = useViewState('unit.category', '全部')
+  const [query, setQuery] = useViewState('unit.query', '')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [candidate, setCandidate] = useState<string | null>(null)
@@ -36,7 +37,7 @@ export default function UnitPage() {
   const received = (data: SelectedUnitData | undefined | null) => { if (data) useUnit.getState().received(data) }
   const fields = useMemo(() => unit?.fields ?? [], [unit])
   const categories = useMemo(() => ['全部', ...new Set(fields.map(f => f.category))], [fields])
-  useEffect(() => { if (!categories.includes(category)) setCategory('全部') }, [categories, category])
+  useEffect(() => { if (fields.length && !categories.includes(category)) setCategory('全部') }, [categories, category, fields.length])
 
   const q = query.trim().toLowerCase()
   const visible = fields.filter(f =>

@@ -1,3 +1,4 @@
+import { useViewState } from '../../state/viewMemory'
 import { useState } from 'react'
 import { Button, Checkbox, Icon, Select, TextField, announce } from '../../../ds'
 import { api } from '../../../lib/api'
@@ -19,9 +20,9 @@ export default function UnitFieldsPage() {
   const english = useSystem(st => st.status.language === 'en')
   const { pending, run } = usePending()
   const [data, setData] = useState<NativeUnitFieldsData | null>(null)
-  const [query, setQuery] = useState('')
-  const [category, setCategory] = useState('')
-  const [writableOnly, setWritableOnly] = useState(false)
+  const [query, setQuery] = useViewState('unit-fields.query', '')
+  const [category, setCategory] = useViewState('unit-fields.category', '')
+  const [writableOnly, setWritableOnly] = useViewState('unit-fields.writable', false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<{ text: string; error?: boolean } | null>(null)
@@ -33,7 +34,8 @@ export default function UnitFieldsPage() {
     setFeedback(null); setEditingId(null); setSelectedId(null)
     try {
       const result = await api.readUnitFields()
-      setData(result); setChanged(new Set()); setCategory('')
+      setData(result); setChanged(new Set())
+      setCategory(current => result.rows.some(r => r.category === current) ? current : '')
     } catch (err) {
       setData(null)
       setFeedback({ text: `${t('读取失败：')}${err instanceof Error ? err.message : String(err)}`, error: true })

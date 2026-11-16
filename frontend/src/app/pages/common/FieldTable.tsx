@@ -97,6 +97,7 @@ export function FieldTable({
       </div>
       <div
         ref={bodyRef}
+        data-scroll-region="field-table"
         className={s.body}
         role="table"
         aria-label={label}

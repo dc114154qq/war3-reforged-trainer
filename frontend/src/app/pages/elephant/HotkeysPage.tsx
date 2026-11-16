@@ -1,3 +1,4 @@
+import { useViewState, choice } from '../../state/viewMemory'
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { Button, Checkbox, Keycap, PillGroup, TextField, announce } from '../../../ds'
 import { api } from '../../../lib/api'
@@ -24,8 +25,8 @@ export default function HotkeysPage() {
   const hotkeysOn = useSystem(st => st.status.hotkeysEnabled)
   const { pending, run } = usePending()
   const [hotkeys, setHotkeys] = useState<HotkeyItem[]>([])
-  const [category, setCategory] = useState<Category>('all')
-  const [query, setQuery] = useState('')
+  const [category, setCategory] = useViewState<Category>('hotkeys.category', 'all', choice(CATEGORIES.map(c => c.value)))
+  const [query, setQuery] = useViewState('hotkeys.query', '')
   const [artifacts, setArtifacts] = useState<string[]>([])
 
   const load = useCallback(async () => {

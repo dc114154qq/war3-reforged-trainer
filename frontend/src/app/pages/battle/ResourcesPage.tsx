@@ -1,3 +1,4 @@
+import { useViewState } from '../../state/viewMemory'
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { Button, EditableNumber, Icon, PlayerSwatch, TextField, announce, bounty, type BountyTone, type IconName, type IconTone } from '../../../ds'
 import { api } from '../../../lib/api'
@@ -35,7 +36,7 @@ export default function ResourcesPage() {
   const locks = useLocks(st => st.items)
   const { pending, run } = usePending()
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
-  const [delta, setDelta] = useState('')
+  const [delta, setDelta] = useViewState('resources.delta', '')
   const goldRef = useRef<HTMLSpanElement>(null)
   const lumberRef = useRef<HTMLSpanElement>(null)
 
@@ -233,7 +234,7 @@ function LockButton({ locked, disabled, onClick, children }: { locked: boolean; 
 /** Remaining gold in each mine: read or set for the selection or the whole map. */
 function GoldMines({ connected }: { connected: boolean }) {
   const t = useT()
-  const [amount, setAmount] = useState('1000000')
+  const [amount, setAmount] = useViewState('resources.mine-amount', '1000000')
   const [busy, setBusy] = useState(false)
   const [seconds, setSeconds] = useState(0)
   const [result, setResult] = useState<GoldMineData | null>(null)

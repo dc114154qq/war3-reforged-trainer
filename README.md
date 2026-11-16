@@ -1,12 +1,12 @@
 [中文](README.md) | [English](README.en.md)
 
-# 魔兽 3.0 修改器 · 2.2.4
+# 魔兽 3.0 修改器 · 2.2.5
 
 魔兽风格桌面界面，支持单位、技能、物品、资源与批量修改，新增单位字段编辑。支持扩展背包，装备与天赋方案保存、恢复及导入导出（含同层多个天赋）。还可补齐地图定义、提取存档、检索与导出自定义地图数据和科技，并将经典火龙菜单写进地图副本，在游戏内独立使用。
 
 ## 下载使用
 
-从[个人网站](https://twomengxi.xyz/trainer/)或[GitHub Release](https://github.com/dc114154qq/war3-reforged-trainer/releases/tag/v2.2.4)下载 EXE，直接打开。进入地图并选中单位后连接。
+从[个人网站](https://twomengxi.xyz/trainer/)或[GitHub Release](https://github.com/dc114154qq/war3-reforged-trainer/releases/tag/v2.2.5)下载 EXE，直接打开。进入地图并选中单位后连接。
 
 Windows 10/11 x64。无需安装 Python、Node.js 或另行启动前端；微软 WebView2 缺失或过旧时，启动会询问是否联网安装或更新。
 
@@ -16,19 +16,21 @@ Windows 10/11 x64。无需安装 Python、Node.js 或另行启动前端；微软
 
 ID 检索与自定义地图数据目录可直接添加物品、技能、生成单位或设置科技。生成单位前有 3 秒准备时间，请将鼠标移到游戏画面内；科技等级默认取目录记载的最高等级，也可自行填写。
 
+切换栏目会保留目录浏览位置、搜索和筛选。常用输入、文件路径及顶部栏目顺序可自动保存；顶部栏目可拖动排序，系统菜单中可恢复默认顺序。
+
 ## 从源码构建
 
 准备 Windows x64、Python 3.12 和 Node.js 22。构建助手会下载并校验固定版本的原生组件和微软安装程序。
 
 ```powershell
 python -m pip install -r requirements-build.txt
-python tools/prepare_build_baseline_224.py
+python tools/prepare_build_baseline_225.py
 npm ci --prefix frontend
 npm run build --prefix frontend
-python tools/build_modern_release_224.py
-python tools/build_modern_release_224.py --verify-only
+python tools/build_modern_release_225.py
+python tools/build_modern_release_225.py --verify-only
 ```
 
-输出：`dist-2.2.4-modern-verified/<哈希前缀>/War3ReforgedTrainer-v2.2.4-Web.exe`。
+输出：`dist-2.2.5-modern-verified/<哈希前缀>/War3ReforgedTrainer-v2.2.5-Web.exe`。
 
 [验证记录](docs/VALIDATION.json)

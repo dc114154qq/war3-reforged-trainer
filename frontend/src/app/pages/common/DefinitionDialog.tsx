@@ -1,3 +1,4 @@
+import { useViewState } from '../../state/viewMemory'
 import { useState } from 'react'
 import { Button, Dialog, DialogClose } from '../../../ds'
 import { api, type DefinitionProgress, type DefinitionResult } from '../../../lib/api'
@@ -25,8 +26,8 @@ const STAGES: Record<string, string> = {
 export function DefinitionDialog({ open, onOpenChange }: { open: boolean; onOpenChange(open: boolean): void }) {
   const t = useT()
   // Paths survive closing the dialog, as the bound values did in 2.1.22.
-  const [paths, setPaths] = useState('')
-  const [folder, setFolder] = useState('')
+  const [paths, setPaths] = useViewState('definitions.paths', '')
+  const [folder, setFolder] = useViewState('definitions.folder', '')
   return (
     <Dialog
       open={open}

@@ -1,12 +1,12 @@
 [中文](README.md) | [English](README.en.md)
 
-# Warcraft III 3.0 Trainer · 2.2.5
+# Warcraft III 3.0 Trainer · 2.2.6
 
-A Warcraft-style desktop interface for editing units, abilities, items and resources, with an expanded unit field editor. Includes batch editing, extended backpacks, and equipment/talent plans with import/export, including multiple talents in the same tier. Prepare map definitions, extract saves, search/export custom objects and upgrades, or embed classic HKE menus into map copies for independent in-game use.
+A Warcraft-style desktop interface for editing units, abilities, items, and resources, with batch editing. Save and restore equipment, talents, and items from 30-slot backpacks for one hero or all selected heroes. Loadouts can be imported and exported. Prepare map definitions, extract saves, search and export custom objects and upgrades, or embed classic HKE menus into map copies for independent in-game use.
 
 ## Download and run
 
-Download the EXE from the [website](https://twomengxi.xyz/trainer/?lang=en) or [GitHub Release](https://github.com/dc114154qq/war3-reforged-trainer/releases/tag/v2.2.5). Enter a map, select a unit and connect.
+Download the EXE from the [website](https://twomengxi.xyz/trainer/?lang=en) or [GitHub Release](https://github.com/dc114154qq/war3-reforged-trainer/releases/tag/v2.2.6). Enter a map, select a unit and connect.
 
 Windows 10/11 x64. No Python, Node.js or separate frontend server is needed. Startup offers Microsoft WebView2 setup when it is missing or outdated; installation requires Internet access.
 
@@ -16,7 +16,7 @@ HKE injection preserves old map object definitions. An incomplete auxiliary obje
 
 ID search and custom map data can add items or abilities, create units, and set upgrades. Unit creation starts after a three-second countdown; move the cursor into the game view. Upgrade levels default to the catalogue maximum and remain editable.
 
-Switching sections retains catalogue position, search and filters. Common inputs, file paths and chapter order are saved. Drag the top chapters to reorder them; restore the default order from the system menu.
+Switching sections retains catalogue position, search, and filters. Global hotkey settings, common inputs, file paths, and chapter order are saved. Drag the top chapters to reorder them. Restore the default order from the system menu.
 
 ## Build from source
 
@@ -24,13 +24,13 @@ Windows x64, Python 3.12 and Node.js 22. The helper downloads and verifies pinne
 
 ```powershell
 python -m pip install -r requirements-build.txt
-python tools/prepare_build_baseline_225.py
+python tools/prepare_build_baseline_226.py
 npm ci --prefix frontend
 npm run build --prefix frontend
-python tools/build_modern_release_225.py
-python tools/build_modern_release_225.py --verify-only
+python tools/build_modern_release_226.py
+python tools/build_modern_release_226.py --verify-only
 ```
 
-Output: `dist-2.2.5-modern-verified/<hash-prefix>/War3ReforgedTrainer-v2.2.5-Web.exe`.
+Output: `dist-2.2.6-modern-verified/<hash-prefix>/War3ReforgedTrainer-v2.2.6-Web.exe`.
 
 [Validation](docs/VALIDATION.json)

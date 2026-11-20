@@ -293,12 +293,14 @@ class ExtensionsFacade:
         return item
 
 
-    def set_extension_bag_charges_24268(self, slot: int, charges: int) -> dict:
+    def set_extension_bag_charges_24268(self, slot: int, charges: int, *, expected_item=None) -> dict:
         charges = int(charges)
         if not 0 <= charges <= 1_000_000_000:
             raise ValueError("物品数量必须在 0 到 1000000000 之间")
         before = self.extension_snapshot_24268()
         item = self._extension_bag_item(before, slot)
+        if expected_item is not None and (int(item['handle']), int(item['rawcode'])) != expected_item:
+            raise RuntimeError('设置数量前背包物品已变化，请刷新检查')
         result = self._engine_instance_24268().extension(
             action=6,
             target_unit=int(before["target_unit"]),
@@ -743,7 +745,7 @@ class ExtensionsFacade:
         return self.extension_snapshot_24268()
 
 
-    def save_extension_loadout_24268(self) -> dict:
+    def save_extension_loadout_24268(self, *, with_backpack: bool = False) -> dict:
         snapshot = self.extension_snapshot_24268()
         target = int(snapshot["target_unit"])
         name = str(getattr(self, "_extension_pending_loadout_name", "")).strip()
@@ -754,6 +756,9 @@ class ExtensionsFacade:
             name = f"套装{len(existing) + 1}"
         if len(name) > 64:
             raise ValueError("套装名称不能超过 64 个字符")
+        if with_backpack:
+            from war3_services.loadout_backpack import capture_backpack
+            backpack = capture_backpack(snapshot)
         equipment = tuple(
             (int(row["handle"]), int(row["rawcode"]), int(row.get("equipment_type", 0)))
             for row in snapshot["equipment"]
@@ -769,6 +774,9 @@ class ExtensionsFacade:
         key = (int(getattr(self, "pid", 0)), target)
         store = dict(getattr(self, "_extension_saved_loadouts", {}))
         per_target = dict(store.get(key, {}))
+        if not with_backpack:
+            # Updating equipment under the same name keeps its saved backpack.
+            backpack = per_target.get(name, {}).get('backpack')
         per_target[name] = dict(
             name=name,
             target_unit=target,
@@ -779,6 +787,10 @@ class ExtensionsFacade:
             talents=talents,
             talent_capture_error=talent_error,
         )
+        if backpack is not None:
+            per_target[name]['backpack'] = backpack
+        if with_backpack:
+            snapshot['loadout_saved_backpack_count'] = sum(bool(code) for code, _ in backpack)
         store[key] = per_target
         self._extension_saved_loadouts = store
         # Keep the old single-record attribute readable for older callers;
@@ -796,14 +808,14 @@ class ExtensionsFacade:
         return tuple(plan_choices(self))
 
 
-    def save_extension_loadouts_for_selected_24268(self, name: str = "") -> dict:
+    def save_extension_loadouts_for_selected_24268(self, name: str = "", *, with_backpack=False) -> dict:
         from war3_loadout_restore import run_loadout_batch
-        return run_loadout_batch(self, name, 'save')
+        return run_loadout_batch(self, name, 'save', with_backpack=with_backpack)
 
 
-    def restore_extension_loadouts_for_selected_24268(self, name: str = "") -> dict:
+    def restore_extension_loadouts_for_selected_24268(self, name: str = "", *, with_backpack=False) -> dict:
         from war3_loadout_restore import run_loadout_batch
-        return run_loadout_batch(self, name, 'restore')
+        return run_loadout_batch(self, name, 'restore', with_backpack=with_backpack)
 
 
     def _restore_extension_loadout_handles_24268(
@@ -884,7 +896,7 @@ class ExtensionsFacade:
         return after
 
 
-    def restore_extension_loadout_24268(self) -> dict:
+    def restore_extension_loadout_24268(self, *, with_backpack: bool = False) -> dict:
         name = str(getattr(self, "_extension_pending_restore_name", "")).strip()
         self._extension_pending_restore_name = ""
         before = self.extension_snapshot_24268()
@@ -908,13 +920,24 @@ class ExtensionsFacade:
             saved = next(iter(choices.values()))
         if saved is None:
             raise RuntimeError("没有唯一可恢复的九槽套装，请先选择或导入方案")
+        backpack = None
+        if with_backpack:
+            from war3_loadout_storage import validate_backpack
+            if 'backpack' not in saved:
+                raise RuntimeError('这个方案没有背包记录，请用“保存套装和背包”保存，或使用“恢复套装”')
+            backpack = validate_backpack(saved['backpack'])
         from war3_loadout_restore import regenerate_loadout, run_loadout_batch
         # A manually selected plan is independent of its saved hero. The
         # one-click matcher binds one hero and supplies its matching record.
         if getattr(self, '_elephant_selection_override', None) is None and len(
             before.get('selection', {}).get('rows', ())) > 1:
-            return run_loadout_batch(self, saved['name'], 'apply', saved)
+            return run_loadout_batch(self, saved['name'], 'apply', saved, with_backpack=with_backpack)
+        if with_backpack:
+            from war3_services.loadout_backpack import backpack_rows, restore_backpack
+            backpack_rows(before)
         completed=regenerate_loadout(self, saved, before, EQUIPMENT_SLOT_TYPES)
+        if with_backpack:
+            completed = restore_backpack(self, before, completed, backpack, saved['name'])
         from war3_services.loadout_talents import restore_talents
         return restore_talents(self,saved,completed)
 
@@ -1021,10 +1044,12 @@ class ExtensionsFacade:
                 results.append(dict(target=target, status="success"))
             except Exception as exc:
                 from war3_error_messages import describe_error
-                results.append(dict(target=target, status="failed", reason=str(exc),explanation=describe_error(exc)))
+                results.append(dict(target=target, status="failed", reason=str(exc),explanation=describe_error(exc),
+                    execution_report=getattr(exc, 'report', None)))
         return dict(snapshot=last, results=results,
                     succeeded=sum(row["status"] == "success" for row in results),
                     skipped=sum(row["status"] == "skipped" for row in results),
+                    unverified=sum(row["status"] == "unverified" for row in results),
                     failed=sum(row["status"] == "failed" for row in results))
 
 
@@ -1212,6 +1237,13 @@ class ExtensionsFacade:
 
 
     def add_talent_choice_24268(self, controller: str, tier: int, choice: str, *, target_unit: int = 0) -> dict:
+        if getattr(self, 'pid', 0):
+            from war3_services.talent_effects import add_choice
+            return add_choice(self,controller,tier,choice,target_unit,self._add_talent_choice_ordinary_24268)
+        return self._add_talent_choice_ordinary_24268(controller,tier,choice,target_unit=target_unit)
+
+
+    def _add_talent_choice_ordinary_24268(self, controller: str, tier: int, choice: str, *, target_unit: int = 0) -> dict:
         """Add one same-tier effect with the persistent command-card predicate."""
         before = (self.extension_snapshot_24268(target_unit) if target_unit else self.extension_snapshot_24268())
         state = self.talent_state_24268(before)
@@ -1366,6 +1398,9 @@ class ExtensionsFacade:
             raise RuntimeError("洗点返还点数越界")
         touched = False
 
+        from war3_services.talent_effects import before_reset, after_reset
+        composed_effects = before_reset(self,before,state)
+
         def clear_and_rebuild():
             current = self.extension_snapshot_24268(target_unit)
             for row in state["tiers"]:
@@ -1381,7 +1416,7 @@ class ExtensionsFacade:
             if (fresh_state["controller"] != controller or fresh_state["remaining_points"]
                     or fresh_state["used_points"] or any(row.get("native_record_present") for row in fresh_state["tiers"])):
                 raise RuntimeError("重建天赋控制器后状态未清空")
-            return fresh
+            return after_reset(self,fresh,composed_effects)
 
         def grant_until(snapshot: dict, target_remaining: int) -> dict:
             current = self.talent_state_24268(snapshot)

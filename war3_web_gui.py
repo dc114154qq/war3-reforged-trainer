@@ -138,7 +138,8 @@ def _run_desktop(args, startup_log) -> int:
         offline=bool(args.offline or args.ui_check),
     )
 
-    window_title = f"魔兽争霸 III 修改器 v{APP_VERSION} by B站两杯沈梦溪、chatgpt和claude"
+    from war3_metadata import trainer_window_title
+    window_title = trainer_window_title(bridge_api.port.value('ui_language')['code'])
 
     startup = DesktopStartupMonitor(startup_log, safe=args.safe_render)
     # Create native WebView2 window

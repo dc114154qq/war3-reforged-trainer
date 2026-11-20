@@ -79,7 +79,7 @@ export const api = {
   connectProcess: (pid?: number | null) => callApi<{ success: boolean; status: SystemStatus; error?: string }>('connect_process', pid),
   cancelDiscovery: () => callApi<{ success: boolean; error?: string }>('cancel_discovery'),
   setHotkeysEnabled: (enabled: boolean) => callApi<{ success: boolean; enabled: boolean; status: string }>('set_hotkeys_enabled', enabled),
-  setUiLanguage: (lang: 'zh' | 'en') => callApi<{ success: boolean; language: string; translations: Record<string, string> }>('set_ui_language', lang),
+  setUiLanguage: (lang: 'zh' | 'en', remember = true) => callApi<{ success: boolean; language: string; translations: Record<string, string> }>('set_ui_language', lang, remember),
 
   // 2. Resources
   selectResourceGroup: (iid: string) => callApi<ResourceSnapshot>('select_resource_group', iid),

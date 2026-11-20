@@ -16,6 +16,7 @@ from war3_3_stats import STAT_DETAIL_SPECS
 from war3_id_catalog import CATALOG_COUNTS,search_id_entries
 from war3_field_labels import (ability_field_name, ability_field_search_text,
                               item_field_name, item_field_search_text)
+from war3_ui_preferences import ELEPHANT_INPUTS, UiPreferenceStore
 
 class TrainerApplication:
     required_ports = frozenset((
@@ -51,6 +52,26 @@ class TrainerApplication:
     ))
     def __init__(self,view: ViewPort):
         self.view=view
+        self.preferences = UiPreferenceStore()
+
+    def restore_hotkey_preferences(self, preferences, *, force_enabled=False) -> None:
+        self.view.value('elephant_hotkeys_enabled').set(force_enabled or preferences.get('hotkeys_enabled', False))
+        checks = self.view.value('elephant_hotkey_checks')
+        for name, enabled in preferences.get('hotkey_checks', {}).items():
+            if name in checks and name in self.view.value('hotkey_callbacks'):
+                checks[name].set(enabled)
+        stats = self.view.value('elephant_stat_values')
+        for key, value in preferences.get('parameters', {}).items():
+            if key in ELEPHANT_INPUTS:
+                self.view.value('elephant_' + key).set(value)
+            elif key.startswith('stat_') and key[5:] in stats:
+                stats[key[5:]].set(value)
+
+    def save_ui_preferences(self, **changes) -> None:
+        try:
+            self.preferences.update(**changes)
+        except OSError as exc:
+            raise RuntimeError('无法保存桌面设置，下次打开时可能无法恢复此项') from exc
 
     def start_operation_thread(self, target: Callable[[], None], name: str) -> None:
 
@@ -1739,16 +1760,23 @@ class TrainerApplication:
         self.view.value('root').after(0, self.populate_extension_snapshot, snapshot)
         return '已开启当前单位任意装备槽；有脚本冲突风险的旧式物品会跳过'
 
-    def extension_save_loadout(self) -> str:
+    def extension_save_loadout(self, *, with_backpack: bool = False) -> str:
         name = self.view.value('extension_loadout_name').get().strip()
         trainer_obj = self.trainer()
         trainer_obj._extension_pending_loadout_name = name
-        snapshot = trainer_obj.save_extension_loadout_24268()
+        snapshot = (trainer_obj.save_extension_loadout_24268(with_backpack=True) if with_backpack
+                    else trainer_obj.save_extension_loadout_24268())
         talent_suffix=self.extension_loadout_talent_result(snapshot)
         names = tuple(snapshot.get('loadout_names', ()))
         self.view.value('extension_loadout_choice').set(name or (names[-1] if names else ''))
         self.view.value('extension_loadout_box')['values'] = names
         self.view.value('root').after(0, self.populate_extension_snapshot, snapshot)
+        if with_backpack:
+            count = snapshot['loadout_saved_backpack_count']
+            message = (f'Saved equipment and {count} backpack items in “{name or names[-1]}”'
+                       if self.view.value('ui_language')['code'] == 'en' else
+                       f'已保存“{name or names[-1]}”的套装及背包物品 {count} 件')
+            return message + talent_suffix
         return f'已保存套装“{name or (names[-1] if names else '')}”，共 {len(names)} 套'+talent_suffix
 
     def extension_loadout_talent_result(self, snapshot: dict) -> str:
@@ -1761,13 +1789,16 @@ class TrainerApplication:
                 'Loadout completed with skipped talents' if language=='en' else '套装处理完成，部分天赋已跳过',notice)
         return ('; ' if language=='en' else '；')+summary if summary else ''
 
-    def extension_restore_loadout(self) -> str:
+    def extension_restore_loadout(self, *, with_backpack: bool = False) -> str:
         name = self.view.value('extension_loadout_choice').get().strip()
         trainer_obj = self.trainer()
         trainer_obj._extension_pending_restore_name = name
-        snapshot = trainer_obj.restore_extension_loadout_24268()
+        snapshot = (trainer_obj.restore_extension_loadout_24268(with_backpack=True) if with_backpack
+                    else trainer_obj.restore_extension_loadout_24268())
         talent_suffix=self.extension_loadout_talent_result(snapshot)
         self.view.value('root').after(0, self.populate_extension_snapshot, snapshot)
+        if with_backpack:
+            talent_suffix = self._extension_backpack_restore_result(snapshot) + talent_suffix
         if snapshot.get('loadout_charge_mismatches') or snapshot.get('loadout_postcondition_warning'):
             return '套装装备位置已核对，物品已保留；部分数量或效果刷新需要检查，请查看恢复详情'+talent_suffix
         batch = snapshot.get('loadout_batch')
@@ -1784,33 +1815,86 @@ class TrainerApplication:
             return f'套装恢复已完成，跳过 {len(item_skips)} 件不兼容物品，其余已读回验证' + __import__('war3_error_messages').summarize_skips(snapshot, self.view.value('ui_language')['code'])+talent_suffix
         return f'已重新生成并恢复套装“{name or '唯一套装'}”，并逐槽验证物品实例和数量'+talent_suffix
 
-    def extension_save_all_loadouts(self) -> str:
+    def _extension_backpack_restore_result(self, snapshot: dict) -> str:
+        batch = snapshot.get('loadout_batch')
+        reports = (batch.get('backpacks', ()) if batch is not None else
+                   ((snapshot['target_unit'], snapshot['loadout_backpack']),))
+        english = self.view.value('ui_language')['code'] == 'en'
+        restored = sum(report['restored'] for _, report in reports)
+        present = sum(report['present'] for _, report in reports)
+        skipped = sum(len(report['skipped']) for _, report in reports)
+        summary = (f' · Backpack: {restored} restored, {present} already present, {skipped} skipped' if english else
+                   f'；背包已补回 {restored} 件，已有 {present} 件，跳过 {skipped} 件')
+        if skipped:
+            lines = []
+            for target, report in reports:
+                for row in report['skipped']:
+                    item = format_rawcode(row['rawcode'])
+                    prefix = f'0x{target:x} · ' if batch is not None else ''
+                    detail = (f"Saved slot {row['slot'] + 1}, {item} ×{row['quantity']} · {row['reason_en']}" if english else
+                              f"原第 {row['slot'] + 1} 格 {item} ×{row['quantity']} · {row['reason']}")
+                    lines.append(prefix + detail)
+            overflow = len(lines) - 8
+            if overflow > 0:
+                lines = lines[:8] + [f'{overflow} more skipped items. See the loadout log.' if english else
+                                    f'另有 {overflow} 件未恢复，详见套装恢复日志。']
+            self.view.value('root').after(0, self.view.value('messagebox').showwarning,
+                'Some backpack items were skipped' if english else '部分背包物品跳过', '\n'.join(lines))
+        return summary
+
+    def extension_save_all_loadouts(self, *, with_backpack=False) -> str:
         name = self.view.value('extension_loadout_name').get().strip()
-        snapshot = self.trainer().save_extension_loadouts_for_selected_24268(name)
+        trainer = self.trainer()
+        snapshot = (trainer.save_extension_loadouts_for_selected_24268(name, with_backpack=True) if with_backpack
+                    else trainer.save_extension_loadouts_for_selected_24268(name))
         talent_suffix=self.extension_loadout_talent_result(snapshot)
         self.view.value('root').after(0, self.populate_extension_snapshot, snapshot)
         batch = snapshot.get('loadout_batch', {})
         summary = f'已保存选中英雄套装 {len(batch.get('saved', ()))} 个；跳过 {len(batch.get('skipped', ()))} 个，失败 {len(batch.get('failures', ()))} 个'
         summary += f'；跳过物品 {len(batch.get('item_skips', ()))} 件'
+        if with_backpack:
+            if batch.get('saved_choice'):
+                self.view.value('extension_loadout_choice').set(batch['saved_choice'])
+            summary += f'；共记录背包物品 {batch['saved_backpack_count']} 件'
+            summary += self._extension_backpack_batch_skips(batch)
         failures = tuple(batch.get('failures', ()))
         if failures:
             from war3_error_messages import loadout_batch_error
             raise loadout_batch_error(summary, batch)
         return summary + __import__('war3_error_messages').summarize_skips(snapshot, self.view.value('ui_language')['code'])+talent_suffix
 
-    def extension_restore_all_loadouts(self) -> str:
+    def extension_restore_all_loadouts(self, *, with_backpack=False) -> str:
         name = self.view.value('extension_loadout_choice').get().strip()
-        snapshot = self.trainer().restore_extension_loadouts_for_selected_24268(name)
+        trainer = self.trainer()
+        snapshot = (trainer.restore_extension_loadouts_for_selected_24268(name, with_backpack=True) if with_backpack
+                    else trainer.restore_extension_loadouts_for_selected_24268(name))
         talent_suffix=self.extension_loadout_talent_result(snapshot)
         self.view.value('root').after(0, self.populate_extension_snapshot, snapshot)
         batch = snapshot.get('loadout_batch', {})
         summary = f'已恢复匹配的选中英雄套装 {len(batch.get('restored', ()))} 个；跳过 {len(batch.get('skipped', ()))} 个，失败 {len(batch.get('failures', ()))} 个'
         summary += f'；跳过物品 {len(batch.get('item_skips', ()))} 件'
+        if with_backpack:
+            summary += self._extension_backpack_restore_result(snapshot)
+            summary += self._extension_backpack_batch_skips(batch)
         failures = tuple(batch.get('failures', ()))
         if failures:
             from war3_error_messages import loadout_batch_error
             raise loadout_batch_error(summary, batch)
         return summary + __import__('war3_error_messages').summarize_skips(snapshot, self.view.value('ui_language')['code'])+talent_suffix
+
+    def _extension_backpack_batch_skips(self, batch):
+        skipped = batch.get('skipped', ())
+        if not skipped:
+            return ''
+        reasons = {
+            'Not a hero': '选中单位不是英雄',
+            'No extended inventory': '英雄没有开通 30 格扩展背包',
+            'No backpack saved for this hero': '方案里没有这个英雄的背包记录',
+            'No unique matching saved hero': '没有匹配的方案，或同类英雄有多份方案',
+        }
+        english = self.view.value('ui_language')['code'] == 'en'
+        details = tuple(dict.fromkeys(reason if english else reasons.get(reason, reason) for _, reason in skipped))
+        return ('. Skipped: ' + ', '.join(details)) if english else ('；跳过原因：' + '、'.join(details))
 
     def extension_export_plans(self) -> None:
         from war3_loadout_storage import save_file
@@ -1851,11 +1935,14 @@ class TrainerApplication:
     def extension_talent_batch_result(self, result: dict) -> str:
         self.view.value('root').after(0, self.populate_extension_snapshot, result['snapshot'])
         text = f'天赋操作：成功 {result['succeeded']}，跳过 {result['skipped']}，失败 {result['failed']}'
-        errors = [f'0x{row['target']:x}：{row['reason']}' for row in result['results'] if row['status'] == 'failed']
+        if result.get('unverified'):
+            text += f'；强化叠加未确认 {result["unverified"]}'
+        errors = [f'0x{row['target']:x}：{row['reason']}' for row in result['results'] if row['status'] in ('failed', 'unverified')]
         if errors:
             error=RuntimeError(text + '；' + '；'.join(errors))
             error.report={'operation':'talent_batch','batch_failures':tuple(
-                row['explanation'] for row in result['results'] if row['status']=='failed' and row.get('explanation'))}
+                row['explanation'] for row in result['results'] if row['status'] in ('failed', 'unverified') and row.get('explanation')),
+                'batch_results':tuple(result['results']), 'independent_operations_allowed':True}
             raise error
         return text
 
@@ -1977,8 +2064,12 @@ class TrainerApplication:
         self.call_async(callback, f'elephant:hotkey:{name}', busy_text=f'正在执行 {spec.label}...')
 
     def on_global_hotkey(self, name: str) -> None:
+        def dispatch() -> None:
+            check = self.view.value('elephant_hotkey_checks').get(name)
+            if self.view.value('elephant_hotkeys_enabled').get() and check is not None and check.get():
+                self.trigger_elephant_hotkey(name)
         try:
-            self.view.value('root').after(0, self.trigger_elephant_hotkey, name)
+            self.view.value('root').after(0, dispatch)
         except RuntimeError:
             pass
 

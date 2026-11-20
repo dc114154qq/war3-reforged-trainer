@@ -39,6 +39,26 @@
   white-space: nowrap;
 }
 
+.download {
+  display: flex;
+  align-items: baseline;
+  align-self: center;
+  flex-shrink: 0;
+  margin-inline-start: auto;
+  font: var(--fs-sm) var(--font-sans);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.download a {
+  color: var(--text-primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.download a:hover { color: var(--gold); }
+.download a:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+
 /* Page tabs: plates that read as buttons, the open page cast in bronze like a chosen pill. */
 .tabs {
   margin-left: auto;

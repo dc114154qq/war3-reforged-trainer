@@ -38,7 +38,9 @@ def grant_controller_point(host,snapshot,state,logger_factory):
                     result=ExternalMemoryBackend(session).increment_talent_point(memory,registry,unit,candidate,instances[0],
                         code,tiers,int(state['remaining_points']))
                     trace.record('write_readback',result=result)
-            current=engine.bind_unit_refs((unit,),strict_selection=True)
+            # Other selected heroes may remain selected during reset/restore.
+            # Revalidate this exact full identity as a selection member.
+            current=engine.bind_unit_refs((unit,),strict_selection=False)
             if current!=((NativeHandle(target),unit),):raise RuntimeError('加点后目标身份变化，请先重新读取，勿重复加点')
         trace.record('complete',point_readback_verified=True,result=result)
         return result

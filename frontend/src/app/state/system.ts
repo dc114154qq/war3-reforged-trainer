@@ -35,7 +35,7 @@ interface SystemState {
   connect(pid?: number | null): Promise<void>
   cancelDiscovery(): Promise<void>
   setHotkeysEnabled(enabled: boolean): Promise<void>
-  setLanguage(language: 'zh' | 'en'): Promise<void>
+  setLanguage(language: 'zh' | 'en', remember?: boolean): Promise<void>
 }
 
 let pending: Promise<void> | null = null
@@ -95,9 +95,9 @@ export const useSystem = create<SystemState>()((set, get) => ({
     await get().refresh(true)
   },
 
-  async setLanguage(language) {
+  async setLanguage(language, remember = true) {
     try {
-      const result = await api.setUiLanguage(language)
+      const result = await api.setUiLanguage(language, remember)
       if (result?.success) {
         set(st => ({ translations: result.translations ?? {}, status: { ...st.status, language } }))
         document.documentElement.lang = language === 'en' ? 'en' : 'zh-CN'

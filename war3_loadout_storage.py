@@ -5,13 +5,34 @@ import tempfile
 from pathlib import Path
 
 
+BAG_SLOTS = 30
+MAX_ITEM_QUANTITY = 1_000_000_000
+
+
+def validate_backpack(rows):
+    if not isinstance(rows, (list, tuple)) or len(rows) != BAG_SLOTS:
+        raise ValueError('背包方案必须包含 30 格记录')
+    result = []
+    for row in rows:
+        if not isinstance(row, (list, tuple)) or len(row) != 2:
+            raise ValueError('背包方案的槽位记录无效')
+        code, quantity = row
+        if (type(code) is not int or not 0 <= code <= 0xffffffff
+                or code and any(not 32 <= byte <= 126 for byte in code.to_bytes(4, 'big'))
+                or type(quantity) is not int or not 0 <= quantity <= MAX_ITEM_QUANTITY
+                or not code and quantity):
+            raise ValueError('背包方案的物品 ID 或数量无效')
+        result.append((code, quantity))
+    return tuple(result)
+
+
 def validate_records(records):
     if not isinstance(records, list) or len(records) > 512:
         raise ValueError('Invalid equipment plan list')
     result = []
     for record in records:
         required={'name', 'unit_type_id', 'equipment', 'equipment_charges', 'requires_any_slot'}
-        optional={'talents','talent_capture_error'}
+        optional={'talents','talent_capture_error','backpack'}
         if not isinstance(record, dict) or not required<=set(record) or set(record)-required-optional:
             raise ValueError('Invalid equipment plan fields')
         name = record['name']
@@ -35,6 +56,8 @@ def validate_records(records):
         if any(type(value) is not int or not 0 <= value <= 1_000_000_000 for value in charges) or type(record['requires_any_slot']) is not bool:
             raise ValueError('Invalid equipment quantity or any-slot flag')
         normalized=dict(record, equipment=tuple(layout), equipment_charges=tuple(charges), target_unit=0)
+        if 'backpack' in record:
+            normalized['backpack'] = validate_backpack(record['backpack'])
         if 'talents' in record:
             from war3_services.loadout_talents import validate_talents
             normalized['talents']=validate_talents(record['talents'])
@@ -58,6 +81,7 @@ def portable_records(host):
                 from war3_services.loadout_talents import validate_talents
                 portable['talents']=validate_talents(record['talents'])
             if 'talent_capture_error' in record:portable['talent_capture_error']=record['talent_capture_error']
+            if 'backpack' in record:portable['backpack']=validate_backpack(record['backpack'])
             records.append(portable)
     validate_records(records)
     return records
@@ -80,7 +104,8 @@ def save_file(host, path):
     fd, pending = tempfile.mkstemp(prefix=destination.name + '.', suffix='.tmp', dir=destination.parent)
     try:
         with os.fdopen(fd, 'w', encoding='utf-8') as stream:
-            json.dump(dict(schema=2, records=records), stream, ensure_ascii=False, indent=2)
+            schema = 3 if any('backpack' in record for record in records) else 2
+            json.dump(dict(schema=schema, records=records), stream, ensure_ascii=False, indent=2)
             stream.flush(); os.fsync(stream.fileno())
         os.replace(pending, destination)
     finally:
@@ -93,7 +118,7 @@ def load_file(host, path):
     if source.stat().st_size > 8_000_000:
         raise ValueError('Equipment plan file is too large')
     value = json.loads(source.read_text(encoding='utf-8'))
-    if not isinstance(value, dict) or set(value) != {'schema', 'records'} or type(value['schema']) is not int or value['schema'] not in (1,2):
+    if not isinstance(value, dict) or set(value) != {'schema', 'records'} or type(value['schema']) is not int or value['schema'] not in (1,2,3):
         raise ValueError('Unsupported equipment plan schema')
     # Imported records contain no process or object identity. Bind only their
     # catalogue ownership to the current trainer; restore creates new items.

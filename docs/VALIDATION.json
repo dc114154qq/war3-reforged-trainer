@@ -1,26 +1,19 @@
 {
-  "version": "2.2.5",
-  "exe_sha256": "0CCB6D6A7A4514920EB010016E2C68869FD8740B971E66D95DF097A4DDBD3179",
-  "production_inputs": 514,
-  "packaged_modules": 195,
+  "version": "2.2.6",
+  "exe_sha256": "4468538AF6A700B496059E4307F6FCF53ABA7C0FAEA0EF4BEA93646CD50F5707",
+  "production_inputs": 520,
+  "packaged_modules": 200,
   "native_dlls_sha256": {
-    "tools\\war3_bridge_24268.dll": "951E1DA5A7244672592C28B8B93B7DA925539CCA9DEC5B8614143C72C7FCAE57",
+    "tools\\war3_bridge_24268.dll": "03C1B40ABA21887649A370953B5AAC1D9ACCB398E105B334210662BAB89829CE",
     "tools\\war3_mpq.dll": "6CD644F3C091C2FFF6430CBF612DBBF6657D8508941FBA2E925CAADFA7A04DA6",
     "tools\\war3_speed_clock.dll": "91FB4F87344EBA12EB21759EF426437601EFB93C256F6F82ADB22B92BCC2685E",
     "tools\\war3_talent_icon_display.dll": "54C0EDD2D639EB4AFD203D5A4222F13814A3ABD27BD694AACBA52545586DE386"
   },
-  "desktop_startup_tests": 20,
-  "browser_ui_scenarios": 12,
+  "regression_tests": 500,
   "normal_safe_and_restricted_file_ui_verified": true,
   "all_seven_game_profiles_preserved": true,
-  "native_binaries_unchanged": true,
-  "gameplay_backend_unchanged": true,
-  "ui_view_memory": true,
-  "persistent_desktop_ui_storage": true,
-  "draggable_chapter_order": true,
-  "formal_exe_restart_persistence_verified": true,
-  "live_handles_and_write_targets_not_persisted": true,
-  "gameplay_tested": false,
-  "external_machine_acceptance": false,
-  "limitation": "UI interaction, desktop restart persistence and packaged runtime verified offline; no gameplay changes."
+  "hotkey_restart_and_registration_verified": true,
+  "batch_backpacks_and_quantities_verified_in_fixtures": true,
+  "live_talent_field_readback_verified_on_24371": true,
+  "external_machine_acceptance": false
 }

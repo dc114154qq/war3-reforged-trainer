@@ -55,6 +55,10 @@ function PageHeader({ page }: { page: PageId }) {
           ))}
         </nav>
       )}
+      <div className={s.download}>
+        <span>{t('下载链接：')}</span>
+        <a href="https://twomengxi.xyz/" target="_blank" rel="noopener noreferrer">https://twomengxi.xyz/</a>
+      </div>
     </div>
   )
 }

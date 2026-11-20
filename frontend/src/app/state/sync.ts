@@ -65,7 +65,7 @@ export function startSync(): () => void {
     system.setBridgeReady()
     await system.refresh()
     // Startup in English needs the backend's translation table once.
-    if (useSystem.getState().status.language === 'en') await system.setLanguage('en')
+    if (useSystem.getState().status.language === 'en') await system.setLanguage('en', false)
     await Promise.all([
       useUnit.getState().loadSnapshot(),
       useResources.getState().poll(),

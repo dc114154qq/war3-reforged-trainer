@@ -67,6 +67,7 @@ const en: Record<string, string> = {
   '中文': '中文',
   'English': 'English',
   '状态': 'Status',
+  '下载链接：': 'Download: ',
   '关于': 'About',
   '大象功能灵感来源于经典版大象修改器，本软件完全免费，谨防倒卖': 'Elephant features are inspired by the classic Elephant trainer. This software is free; beware of resellers.',
   '思源宋体按 SIL Open Font License 1.1 使用。': 'Source Han Serif is used under the SIL Open Font License 1.1.',

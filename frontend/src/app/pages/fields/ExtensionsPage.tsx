@@ -31,8 +31,8 @@ export default function ExtensionsPage() {
   const [talentChoice, setTalentChoice] = useState('')
   const [rawcode, setRawcode] = useViewState('extensions.code', '')
   const [charges, setCharges] = useViewState('extensions.charges', '1')
-  const [backpack, setBackpack] = useState('')
-  const [loadoutName, setLoadoutName] = useState('套装1')
+  const [backpack, setBackpack] = useViewState('extensions.official-backpack', '')
+  const [loadoutName, setLoadoutName] = useViewState('extensions.loadout-name', '套装1')
   const [savedLoadout, setSavedLoadout] = useState('')
   const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null)
   const [elapsed, setElapsed] = useState(0)
@@ -54,7 +54,7 @@ export default function ExtensionsPage() {
     setTalentId(tier)
     const options = next.talents.find(r => r._iid === tier)?.choiceCodes ?? []
     setTalentChoice(c => (options.includes(c) ? c : options[0] ?? ''))
-    setBackpack(b => b || next.currentBackpackChoice || next.officialBackpacks[0] || '')
+    setBackpack(b => next.officialBackpacks.includes(b) ? b : next.currentBackpackChoice || next.officialBackpacks[0] || '')
     const plans=next.loadoutNames ?? []
     setSavedLoadout(current => plans.includes(current) ? current : next.currentLoadoutChoice || (plans.includes(loadoutName) ? loadoutName : plans[0] || ''))
   }
@@ -77,7 +77,7 @@ export default function ExtensionsPage() {
     void api.refreshExtensionStatus(false).then(next => {
       if (!active || snapshotRevision.current!==revision) return
       const plans=next.loadoutNames ?? []
-      setSnap(prev => ({ ...prev, loadoutNames: plans, currentLoadoutChoice: next.currentLoadoutChoice }))
+      setSnap(prev => ({ ...prev, loadoutNames: plans, loadoutBackpackCounts: next.loadoutBackpackCounts, currentLoadoutChoice: next.currentLoadoutChoice }))
       setSavedLoadout(current => plans.includes(current) ? current : next.currentLoadoutChoice || plans[0] || '')
     }).catch(() => { /* the API already reports a communication failure */ })
     return () => { active=false }
@@ -106,10 +106,11 @@ export default function ExtensionsPage() {
     setElapsed(0)
     const started = Date.now()
     const timer = window.setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000)
-    say(action.includes('restore') ? t('正在恢复装备与天赋，请稍候…') : t('正在处理装备，请稍候…'))
+    say(action.startsWith('restore_') && action.endsWith('_with_backpack') ? t('正在恢复套装和背包，请稍候…') :
+      action.includes('restore') ? t('正在恢复装备与天赋，请稍候…') : t('正在处理装备，请稍候…'))
     try {
       const result=await perform(() => api.extensionEquipmentAction(action, { row_iid: equipId, bag_row_iid: bagId, ...params }), `${t('装备操作完成')}：${t(EQUIP_ACTIONS[action] ?? action)}`)
-      if (action==='save_loadout' || action==='save_all_loadouts') {
+      if (action.startsWith('save_')) {
         const plans=result?.data?.loadoutNames ?? []
         const choice=result?.data?.currentLoadoutChoice || String(params.name ?? '')
         if (plans.includes(choice)) setSavedLoadout(choice)
@@ -131,6 +132,7 @@ export default function ExtensionsPage() {
 
   /** Restore uses the picked saved plan, or the typed name when it names a saved plan. */
   const restoreName = () => savedLoadout || ((snap.loadoutNames ?? []).includes(loadoutName) ? loadoutName : '')
+  const restoringBackpack = pending['equip-restore_loadout_with_backpack'] || pending['equip-restore_all_loadouts_with_backpack']
 
   useCommandCard([
     { key: 'Q', icon: 'refresh', title: t('读取扩展状态'), description: t('重新读取选中英雄的扩展背包、装备栏和天赋树。'), pending: pending.load, estimateMs: 900, disabled: !connected, onPress: () => void load() },
@@ -213,11 +215,18 @@ export default function ExtensionsPage() {
                 label={t('已保存方案')}
                 value={savedLoadout}
                 onChange={e => { setSavedLoadout(e.target.value); if (e.target.value) setLoadoutName(e.target.value) }}
-                options={[{ value: '', label: t('自动匹配已保存方案') }, ...(snap.loadoutNames ?? []).map(n => ({ value: n, label: n }))]}
+                options={[{ value: '', label: t('自动匹配已保存方案') }, ...(snap.loadoutNames ?? []).map(n => {
+                  const count = snap.loadoutBackpackCounts?.[n]
+                  return { value: n, label: typeof count === 'number' ? `${n} · ${fill(t('背包 {n} 件'), { n: count })}` : n }
+                })]}
               />
               <TextField className={s.loadoutName} label={t('套装名称')} value={loadoutName} onChange={e => setLoadoutName(e.target.value)} />
               <Button variant="cast" disabled={!connected} onClick={() => void equip('save_loadout', { name: loadoutName })}>{t('保存套装')}</Button>
               <Button disabled={!connected} onClick={() => void equip('restore_loadout', { name: restoreName() })}>{t('恢复套装')}</Button>
+            </Row>
+            <Row className={s.controls}>
+              <Button variant="cast" disabled={!connected} onClick={() => void equip('save_loadout_with_backpack', { name: loadoutName })}>{t('保存套装和背包')}</Button>
+              <Button disabled={!connected} onClick={() => void equip('restore_loadout_with_backpack', { name: restoreName() })}>{t('恢复套装和背包')}</Button>
             </Row>
             <Row className={s.controls}>
               <Button size="sm" disabled={!connected} onClick={() => void equip('save_all_loadouts', { name: loadoutName })}>{t('一键保存全英雄')}</Button>
@@ -225,10 +234,15 @@ export default function ExtensionsPage() {
               <Button size="sm" icon="export" onClick={() => void equip('export_loadouts')}>{t('导出方案')}</Button>
               <Button size="sm" icon="open-file" onClick={() => void equip('import_loadouts')}>{t('导入方案')}</Button>
             </Row>
+            <Row className={s.controls}>
+              <Button size="sm" disabled={!connected} onClick={() => void equip('save_all_loadouts_with_backpack', { name: loadoutName })}>{t('一键保存全英雄（含背包）')}</Button>
+              <Button size="sm" disabled={!connected} onClick={() => void equip('restore_all_loadouts_with_backpack', { name: restoreName() })}>{t('一键恢复全英雄（含背包）')}</Button>
+            </Row>
           </fieldset>
+          <Hint>{t('同时记录 30 格扩展背包里的物品和数量。恢复时用空格补回物品，保留已有物品。')}</Hint>
           <Hint>{t('保存套装会带上天赋点数及同层多个天赋；旧方案需重新保存。恢复时已有天赋不重复添加，不兼容项跳过并提示。')}</Hint>
           {typeof snap.loadoutWarnings?.loadout_talent_summary === 'string' && <Status tone="info">{snap.loadoutWarnings.loadout_talent_summary}</Status>}
-          {equipBusy && <Status tone="busy">{fill(t('正在处理装备，已用时 {n} 秒；完成后会核对九个部位。'), { n: elapsed })}</Status>}
+          {equipBusy && <Status tone="busy">{fill(t(restoringBackpack ? '正在恢复套装和背包，已用时 {n} 秒。' : '正在处理装备，已用时 {n} 秒；完成后会核对九个部位。'), { n: elapsed })}</Status>}
         </Section>
       </div>
 
@@ -274,6 +288,8 @@ const BAG_ACTIONS: Record<string, string> = {
 const EQUIP_ACTIONS: Record<string, string> = {
   equip_bag_to_slot: '放入所选装备槽', unequip: '卸下所选', audit: '审计装备', repair_misplaced: '修复错槽', enable_any_slot: '开启任意槽', destroy: '销毁',
   save_loadout: '保存套装', restore_loadout: '恢复套装', save_all_loadouts: '一键保存全英雄', restore_all_loadouts: '一键恢复全英雄',
+  save_loadout_with_backpack: '保存套装和背包', restore_loadout_with_backpack: '恢复套装和背包',
+  save_all_loadouts_with_backpack: '一键保存全英雄（含背包）', restore_all_loadouts_with_backpack: '一键恢复全英雄（含背包）',
   export_loadouts: '导出方案', import_loadouts: '导入方案',
 }
 const TALENT_ACTIONS: Record<string, string> = { grant_point: '+1 天赋点', reset_talents: '重置天赋', add_choice: '添加所选天赋' }

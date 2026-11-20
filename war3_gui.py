@@ -107,6 +107,8 @@ def run_gui(initial_pid: int | None=None, initial_hotkeys_enabled: bool=False, *
     root.application_services = services
     view = TkViewPort(root)
     application = application_factory(view)
+    preferences = application.preferences.load()
+    ui_language['code'] = preferences.get('language', ui_language['code'])
     root.application_controller = application
     ability_field_write_clicked = application.ability_field_write_clicked
     add_resource = application.add_resource
@@ -205,7 +207,7 @@ def run_gui(initial_pid: int | None=None, initial_hotkeys_enabled: bool=False, *
     root.minsize(1040, 700)
     ui_style = ttk.Style(root)
     apply_ui_theme(root, ui_style, True)
-    dark_mode = tk.BooleanVar(master=root, value=True)
+    dark_mode = tk.BooleanVar(master=root, value=preferences.get('dark_mode', True))
     icon_path = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent)) / 'assets' / 'app_icon.png'
     try:
         app_icon = tk.PhotoImage(file=str(icon_path))
@@ -517,6 +519,35 @@ def run_gui(initial_pid: int | None=None, initial_hotkeys_enabled: bool=False, *
     def on_language_changed(_event: object | None=None) -> None:
         ui_language['code'] = 'zh' if language_choice.get() == '中文' else 'en'
         refresh_gui_language()
+        save_preferences(language=ui_language['code'])
+
+    def save_preferences(**values) -> None:
+        try:
+            application.save_ui_preferences(**values)
+        except RuntimeError as exc:
+            messagebox.showwarning(ui_text('设置'), ui_text(str(exc)), parent=root)
+
+    def apply_hotkey_switch() -> None:
+        refresh_elephant_hotkeys()
+        save_preferences(hotkeys_enabled=bool(elephant_hotkeys_enabled.get()))
+
+    def apply_hotkey_check(name) -> None:
+        refresh_elephant_hotkeys()
+        save_preferences(hotkey_checks={name: bool(elephant_hotkey_checks[name].get())})
+
+    def apply_all_hotkey_checks(enabled) -> None:
+        set_all_elephant_hotkeys(enabled)
+        save_preferences(hotkey_checks={name: bool(var.get()) for name, var in elephant_hotkey_checks.items()})
+
+    def apply_theme() -> None:
+        enabled = bool(dark_mode.get())
+        apply_ui_theme(root, ui_style, enabled)
+        save_preferences(dark_mode=enabled)
+
+    def open_downloads() -> None:
+        import webbrowser
+        from war3_ui_preferences import DOWNLOAD_URL
+        webbrowser.open_new_tab(DOWNLOAD_URL)
     outer = ttk.Frame(root, padding=12)
     outer.pack(fill='both', expand=True)
     top = ttk.Frame(outer)
@@ -528,8 +559,8 @@ def run_gui(initial_pid: int | None=None, initial_hotkeys_enabled: bool=False, *
     read_unit_button = ttk.Button(top, text='读取所有选中单位 (Ctrl+F11)')
     read_unit_button.configure(command=lambda: batch_edit_tab.read_clicked() if notebook.select() == str(batch_edit_tab.frame) else call_async(read_unit_with_sound, 'read_unit', read_unit_button))
     read_unit_button.pack(side='left', padx=(12, 0))
-    ttk.Checkbutton(top, text='启用全局快捷键', variable=elephant_hotkeys_enabled, command=refresh_elephant_hotkeys).pack(side='left', padx=(12, 0))
-    ttk.Checkbutton(top, text='深色模式', variable=dark_mode, command=lambda: apply_ui_theme(root, ui_style, bool(dark_mode.get()))).pack(side='left', padx=(12, 0))
+    ttk.Checkbutton(top, text='启用全局快捷键', variable=elephant_hotkeys_enabled, command=apply_hotkey_switch).pack(side='left', padx=(12, 0))
+    ttk.Checkbutton(top, text='深色模式', variable=dark_mode, command=apply_theme).pack(side='left', padx=(12, 0))
     ttk.Label(top, text='PID').pack(side='left', padx=(16, 4))
     ttk.Entry(top, textvariable=pid_var, width=10).pack(side='left')
     language_frame = ttk.Frame(top)
@@ -837,6 +868,14 @@ def run_gui(initial_pid: int | None=None, initial_hotkeys_enabled: bool=False, *
     ttk.Button(extension_equipment_frame, text='保存方案文件', command=extension_export_plans).grid(row=4, column=2, sticky='w', padx=(6, 0), pady=(6, 0))
     ttk.Button(extension_equipment_frame, text='从文件选择方案', command=extension_import_plans).grid(row=4, column=3, sticky='w', padx=(6, 0), pady=(6, 0))
     ttk.Button(extension_equipment_frame, text='一键修复装备状态', command=lambda: call_async(extension_repair_equipment_state)).grid(row=5, column=0, columnspan=2, sticky='w', pady=(6, 0))
+    ttk.Button(extension_equipment_frame, text='保存套装和背包', command=lambda: call_async(
+        lambda: extension_save_loadout(with_backpack=True))).grid(row=6, column=0, columnspan=2, sticky='w', pady=(6, 0))
+    ttk.Button(extension_equipment_frame, text='恢复套装和背包', command=lambda: call_async(
+        lambda: extension_restore_loadout(with_backpack=True))).grid(row=6, column=2, columnspan=3, sticky='w', pady=(6, 0))
+    ttk.Button(extension_equipment_frame, text='一键保存全英雄（含背包）', command=lambda: call_async(
+        lambda: extension_save_all_loadouts(with_backpack=True))).grid(row=7, column=0, columnspan=2, sticky='w', pady=(6, 0))
+    ttk.Button(extension_equipment_frame, text='一键恢复全英雄（含背包）', command=lambda: call_async(
+        lambda: extension_restore_all_loadouts(with_backpack=True))).grid(row=7, column=2, columnspan=3, sticky='w', pady=(6, 0))
     extension_equipment_frame.rowconfigure(0, weight=1)
     extension_equipment_frame.columnconfigure(0, weight=1)
     extension_talent_frame = ttk.LabelFrame(extension_tab, text='天赋', padding=8)
@@ -945,8 +984,8 @@ def run_gui(initial_pid: int | None=None, initial_hotkeys_enabled: bool=False, *
     elephant_controls_tab.rowconfigure(2, weight=1)
     hotkey_toolbar = ttk.Frame(elephant_hotkeys_tab)
     hotkey_toolbar.pack(fill='x', pady=(0, 8))
-    ttk.Button(hotkey_toolbar, text='全选可用', command=lambda: set_all_elephant_hotkeys(True)).pack(side='left', padx=(12, 4))
-    ttk.Button(hotkey_toolbar, text='清空', command=lambda: set_all_elephant_hotkeys(False)).pack(side='left')
+    ttk.Button(hotkey_toolbar, text='全选可用', command=lambda: apply_all_hotkey_checks(True)).pack(side='left', padx=(12, 4))
+    ttk.Button(hotkey_toolbar, text='清空', command=lambda: apply_all_hotkey_checks(False)).pack(side='left')
     ttk.Label(hotkey_toolbar, textvariable=elephant_hotkey_status).pack(side='right')
     hotkey_canvas = tk.Canvas(elephant_hotkeys_tab, borderwidth=0, highlightthickness=0, background=ttk.Style().lookup('TFrame', 'background') or root.cget('background'))
     view.bind('hotkey_canvas', hotkey_canvas)
@@ -966,7 +1005,8 @@ def run_gui(initial_pid: int | None=None, initial_hotkeys_enabled: bool=False, *
         row = index % hotkeys_per_column
         item = ttk.Frame(hotkey_body)
         item.grid(row=row, column=column, sticky='ew', padx=(0 if column == 0 else 12, 0), pady=2)
-        check = ttk.Checkbutton(item, text=spec.label, variable=elephant_hotkey_checks[spec.name], command=refresh_elephant_hotkeys)
+        check = ttk.Checkbutton(item, text=spec.label, variable=elephant_hotkey_checks[spec.name],
+                               command=lambda name=spec.name: apply_hotkey_check(name))
         check.grid(row=0, column=0, sticky='w')
         parameter = hotkey_parameter_vars.get(spec.name)
         if spec.name == 'game_speed':
@@ -986,9 +1026,16 @@ def run_gui(initial_pid: int | None=None, initial_hotkeys_enabled: bool=False, *
     HeroSkillTab(notebook)
     from war3_archive_fields_ui import ArchiveFieldsTab
     save_extraction_tab = ArchiveFieldsTab(notebook, get_trainer=trainer, start_thread=start_operation_thread, operation_lock=operation_lock, get_language=lambda: ui_language['code'], is_closing=lambda: bool(state.get('closing')))
-    ttk.Label(outer, textvariable=status, anchor='w', wraplength=1000).pack(fill='x', pady=(0, 2))
+    from war3_ui_preferences import DOWNLOAD_URL
+    footer = ttk.Frame(outer)
+    footer.pack(fill='x', pady=(0, 2))
+    ttk.Label(footer, textvariable=status, anchor='w', wraplength=850).pack(side='left', fill='x', expand=True)
+    ttk.Button(footer, text='下载链接：' + DOWNLOAD_URL, command=open_downloads).pack(side='right')
+    application.restore_hotkey_preferences(preferences, force_enabled=initial_hotkeys_enabled)
     apply_ui_theme(root, ui_style, bool(dark_mode.get()))
     refresh_gui_language()
+    if elephant_hotkeys_enabled.get():
+        root.after_idle(refresh_elephant_hotkeys)
     root.after(100, init)
     root.after(1500, lock_tick)
     root.after(100, ally_health_lock_tick)

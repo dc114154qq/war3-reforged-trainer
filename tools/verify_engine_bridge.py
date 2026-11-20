@@ -93,6 +93,8 @@ def main() -> None:
     marker(b"attack_speed_batch_abi", (0x24268032, 216, 640))
     marker(b"ability_batch_abi", (0x24268076, 216, 58856))
     marker(b"ability_field_batch_abi", (0x24268021, 216, 7688))
+    if b'BridgeAbilityDefinitionQuery' in exports:
+        marker(b'ability_definition_abi', (0x242680a1, 216, 1056))
     marker(b"unit_field_abi", (0x24268082, 216, 7368))
     marker(b"unit_field_hero_int_abi", (0x24268090, 216, 7368))
     marker(b"item_batch_abi", (0x2426806f, 216, 63432))

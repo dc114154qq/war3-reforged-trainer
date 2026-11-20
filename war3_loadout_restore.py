@@ -33,13 +33,22 @@ def _batch_native_candidates(host,candidates):
     return mapped
 
 
-def run_loadout_batch(host, name, action, record=None):
+def run_loadout_batch(host, name, action, record=None, *, with_backpack=False):
+    if with_backpack and action == 'save' and not name:
+        used_names = {record['name'] for record in plan_choices(host).values()}
+        index = 1
+        while f'套装{index}' in used_names:
+            index += 1
+        name = f'套装{index}'
     if action == 'restore' and name:
         choice=plan_choices(host).get(name)
         if choice is not None:name=choice['name']
     initial = host.extension_snapshot_24268()
     last = initial
     done, skipped, failures, item_skips, failure_explanations, talents, failure_reports = [], [], [], [], [], [], []
+    backpacks = []
+    saved_backpack_count = 0
+    saved_choice_record = None
     rows = tuple(initial.get('selection', {}).get('rows', ()))
     candidates = tuple(host._selected_candidates_snapshot(None)) if action != 'save' else ()
     if not rows:
@@ -76,29 +85,43 @@ def run_loadout_batch(host, name, action, record=None):
                     continue
                 if action == 'save':
                     host._extension_pending_loadout_name = name
-                    last = host.save_extension_loadout_24268()
+                    if with_backpack:
+                        last = host.save_extension_loadout_24268(with_backpack=True)
+                        saved_backpack_count += last['loadout_saved_backpack_count']
+                        saved_choice_record = host._extension_saved_loadouts[(int(host.pid), handle)][name]
+                    else:
+                        last = host.save_extension_loadout_24268()
                 elif action == 'restore':
                     records = [record for per_target in getattr(host, '_extension_saved_loadouts', {}).values()
                                for record in per_target.values()
                                if int(record.get('unit_type_id', 0)) == int(row['rawcode'])
                                and (not name or record['name'] == name)]
+                    if with_backpack and records:
+                        records = [entry for entry in records if 'backpack' in entry]
+                        if not records:
+                            skipped.append((handle, 'No backpack saved for this hero'))
+                            continue
                     if len(records) != 1:
                         skipped.append((handle, 'No unique matching saved hero'))
                         continue
                     host._extension_pending_restore_record = records[0]
                     host._extension_pending_restore_name = records[0]['name']
-                    last = host.restore_extension_loadout_24268()
+                    last = (host.restore_extension_loadout_24268(with_backpack=True) if with_backpack
+                            else host.restore_extension_loadout_24268())
                 else:
                     if record is None:
                         raise ValueError('A selected plan is required for apply')
                     host._extension_pending_restore_record = record
                     host._extension_pending_restore_name = record['name']
-                    last = host.restore_extension_loadout_24268()
+                    last = (host.restore_extension_loadout_24268(with_backpack=True) if with_backpack
+                            else host.restore_extension_loadout_24268())
                 from war3_services.loadout_talents import prepare_display_state
                 prepare_display_state(host,last)
                 item_skips.extend((handle,entry) for entry in last.get('loadout_item_skips',()))
                 if last.get('loadout_talents') is not None:
                     talents.append((handle,last['loadout_talents']))
+                if 'loadout_backpack' in last:
+                    backpacks.append((handle, last['loadout_backpack']))
                 done.append(handle)
         except Exception as exc:
             from war3_error_messages import describe_error
@@ -117,6 +140,12 @@ def run_loadout_batch(host, name, action, record=None):
         'talents': tuple(talents),
         'failure_reports': tuple(failure_reports),
     }
+    if with_backpack:
+        last['loadout_batch']['backpacks'] = tuple(backpacks)
+        if action == 'save':
+            last['loadout_batch']['saved_backpack_count'] = saved_backpack_count
+            last['loadout_batch']['saved_choice'] = next(
+                (label for label, value in plan_choices(host).items() if value is saved_choice_record), '')
     return last
 
 

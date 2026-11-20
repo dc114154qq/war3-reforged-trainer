@@ -173,6 +173,9 @@ class _Guard:
             raise _TargetChanged('天赋恢复目标已经变化，已停止后续天赋操作')
         if any(snapshot.get(k)!=v for k,v in self.original_inventory.items()):
             raise _TargetChanged('天赋恢复期间背包或装备发生变化，已保留物品并停止后续天赋操作')
+        self.check_identity()
+
+    def check_identity(self):
         if self.session is not None:
             from war3_game_session import NativeHandle
             if self.session.epoch!=self.epoch:raise _TargetChanged('天赋恢复期间地图发生变化，已停止后续天赋操作')
@@ -310,6 +313,14 @@ def restore_talents(host,saved,completed_equipment):
                             lambda:host.ability_batch_24268(code,3,rank,target_unit=target),
                             lambda s:int(current.get('abilities',{}).get(int.from_bytes(code.encode('ascii'),'big'),0))>=rank)
                         if outcome is not None and code!=native:report['succeeded']+=1
+                # An older trainer may have saved all choice IDs while only
+                # the first variant worked. Reconcile even already-present
+                # choices against this map's actual underlying skill fields.
+                if getattr(host,'pid',0) and len(live_state['tiers'][index]['selected']) > 1:
+                    code=live_state['tiers'][index]['selected'][-1]
+                    run('effect_composition',index,code,
+                        lambda:host.add_talent_choice_24268(data['controller'],index,code,target_unit=target),
+                        lambda s:code in s['tiers'][index]['selected'])
             state=read()
             for index in valid:
                 for effect in data['tiers'][index]['selected']:

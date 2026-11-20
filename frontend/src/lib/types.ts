@@ -191,6 +191,7 @@ export interface ExtensionsSnapshot {
   selectedTalentIid?: string;
   currentTalentChoice?: string;
   loadoutWarnings?: Record<string, unknown>;
+  loadoutBackpackCounts?: Record<string, number>;
 }
 
 export interface ArtifactPlanData {

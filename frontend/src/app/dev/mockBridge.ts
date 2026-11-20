@@ -20,7 +20,7 @@ const hex = (n: number) => `0x${n.toString(16).toUpperCase()}`
 /* ---- System ---------------------------------------------------------------------- */
 
 const status = (): SystemStatus => ({
-  appVersion: '2.2.0',
+  appVersion: '2.2.6',
   edition: '普通读取版',
   connected,
   pid: connected ? 14328 : null,
@@ -180,11 +180,12 @@ const talents: TalentRow[] = [
 ]
 let talentPoints = 1
 const loadouts = ['套装1', '首领战']
+const loadoutBackpackCounts: Record<string, number> = Object.create(null)
 const extensions = (): ExtensionsSnapshot => ({
   status: connected ? `扩展背包 30 格、装备 9 槽；人类加雷克 AThg/3；点数 ${talentPoints}/3` : '尚未读取 3.0 扩展状态',
   bag: connected ? bag : [], equipment: connected ? equipment : [], talents: connected ? talents : [],
   officialBackpacks: ['人类加雷克 (ebhg)', '人类兰登 (ebhl)', '人类伊拉斯塔 (ebhi)', '亡灵加雷克 (ebug)', '亡灵安雅 (ebua)', '亡灵列奥尼德 (ebul)'],
-  currentBackpackChoice: '人类加雷克 (ebhg)', loadoutName: '套装1', loadoutNames: loadouts, selectedTalentIid: 'talent:AThg:1',
+  currentBackpackChoice: '人类加雷克 (ebhg)', loadoutName: '套装1', loadoutNames: loadouts, loadoutBackpackCounts, selectedTalentIid: 'talent:AThg:1',
 })
 
 /* ---- File jobs (backpack definitions) -------------------------------------------- */
@@ -551,8 +552,11 @@ const handlers: Record<string, (...args: any[]) => unknown> = {
     await wait(action.includes('restore') ? 2600 : 900)
     const i = equipment.findIndex(r => r._iid === p.row_iid)
     if (action === 'unequip' && i >= 0) Object.assign(equipment[i], { rawcode: '', type: '', charges: '', handle: '' })
-    if (action === 'save_loadout' && p.name && !loadouts.includes(p.name)) loadouts.push(p.name)
-    const messages: Record<string, string> = { save_loadout: `已保存套装 ${p.name}`, restore_loadout: '已恢复套装并核对九个部位', audit: '九个部位均已核对' }
+    if (action.startsWith('save_') && p.name && !loadouts.includes(p.name)) loadouts.push(p.name)
+    if (action.startsWith('save_') && action.endsWith('_with_backpack') && p.name) loadoutBackpackCounts[p.name] = 12
+    const messages: Record<string, string> = { save_loadout: `已保存套装 ${p.name}`, restore_loadout: '已恢复套装并核对九个部位', audit: '九个部位均已核对',
+      save_loadout_with_backpack: `已保存“${p.name}”的套装及背包物品 12 件`, restore_loadout_with_backpack: '套装已恢复；背包已补回 12 件',
+      save_all_loadouts_with_backpack: '已保存全英雄套装和背包', restore_all_loadouts_with_backpack: '已恢复全英雄套装和背包' }
     return { success: true, message: messages[action] ?? '', data: extensions() }
   },
   async extension_talent_action(action: string, p: Record<string, any>) {

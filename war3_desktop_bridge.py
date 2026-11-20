@@ -81,6 +81,19 @@ class DesktopBridgeApi:
             self._run_action(lambda: self.app.elephant_add_six_artifacts(
                 self.port.value('artifact_plan_settings').snapshot()), 'six_artifacts')))
 
+        preferences = self.app.preferences.load()
+        language = self.port.value('ui_language')
+        if 'language' in preferences:
+            language['code'] = preferences['language']
+            self.port.value('status').refresh()
+        self.app.restore_hotkey_preferences(preferences, force_enabled=initial_hotkeys_enabled)
+        if initialize and not offline and self.port.value('elephant_hotkeys_enabled').get():
+            try:
+                self.app.refresh_elephant_hotkeys()
+            except Exception as exc:
+                self.port.value('elephant_hotkeys_enabled').set(False)
+                self._failure(exc, 'initialize_hotkeys')
+
         # Initialize trainer connection in background
         self._init_thread = None
         if initialize:
@@ -265,24 +278,36 @@ class DesktopBridgeApi:
             return self._failure(err)
 
     def set_hotkeys_enabled(self, enabled: bool) -> dict[str, Any]:
-        self.port.value("elephant_hotkeys_enabled").set(bool(enabled))
+        enabled = bool(enabled)
+        switch = self.port.value('elephant_hotkeys_enabled')
+        before = switch.get()
+        switch.set(enabled)
         try:
-            self.app.refresh_elephant_hotkeys()
-            status_text = "全局快捷键已启用" if enabled else "全局快捷键已禁用"
-            self.port.value("elephant_hotkey_status").set(status_text)
-            return {"success": True, "enabled": enabled, "status": status_text}
+            if not self.offline:
+                self.app.refresh_elephant_hotkeys()
+            else:
+                self.port.value('elephant_hotkey_status').set('全局快捷键已启用' if enabled else '快捷键未启用')
         except Exception as err:
+            switch.set(before)
+            try:
+                self.app.refresh_elephant_hotkeys()
+            except Exception:
+                logger.exception('Could not restore the previous hotkey registration')
+                switch.set(False)
             return self._failure(err)
+        self.app.save_ui_preferences(hotkeys_enabled=enabled)
+        return {"success": True, "enabled": enabled, "status": self.port.value('elephant_hotkey_status').get()}
 
-    def set_ui_language(self, lang: str) -> dict[str, Any]:
+    def set_ui_language(self, lang: str, remember: bool = True) -> dict[str, Any]:
         if lang in ("zh", "en"):
+            if remember:
+                self.app.save_ui_preferences(language=lang)
             self.port.value("ui_language")["code"] = lang
             self.port.value("status").refresh()
             self.port.value("elephant_hotkey_status").refresh()
             if self.port.window and hasattr(self.port.window,'set_title'):
-                title=(f'Warcraft III Reforged Trainer v{APP_VERSION} ({PRODUCT_EDITION_LABEL}) by Bilibili Two Cups of Shen Mengxi'
-                       if lang=='en' else f'魔兽争霸 III 修改器 v{APP_VERSION} ({PRODUCT_EDITION_LABEL}) by B站两杯沈梦溪')
-                self.port.window.set_title(title)
+                from war3_metadata import trainer_window_title
+                self.port.window.set_title(trainer_window_title(lang))
             from war3_ui_i18n import _EN_TRANSLATIONS
             return {"success": True, "language": lang, 'translations': _EN_TRANSLATIONS}
         return {"success": False, "error": "Unsupported language"}
@@ -652,7 +677,8 @@ class DesktopBridgeApi:
         backpack_options = [f"{hero_name} ({rawcode})" for rawcode, (hero_name, _) in OFFICIAL_BACKPACKS.items()]
         from war3_loadout_restore import plan_choices
         trainer=self.port.value('state').get('trainer')
-        saved_names=list(plan_choices(trainer)) if trainer is not None else []
+        plans = plan_choices(trainer) if trainer is not None else {}
+        saved_names = list(plans)
         self.port.value('extension_loadout_box')['values']=tuple(saved_names)
         choice=self.port.value('extension_loadout_choice').get()
         if choice not in saved_names:
@@ -673,6 +699,8 @@ class DesktopBridgeApi:
             "currentBackpackChoice": self.port.value("extension_backpack_choice").get(),
             "loadoutName": self.port.value("extension_loadout_name").get(),
             'loadoutNames': saved_names,
+            'loadoutBackpackCounts': {name: sum(bool(code) for code, _ in record['backpack'])
+                                      for name, record in plans.items() if 'backpack' in record},
             'currentLoadoutChoice': choice,
             'talentChoices': list(getattr(self.port.value('extension_talent_choice_box'), 'values', ())),
             'loadoutWarnings': {key: value for key, value in (self.port.value('state').get('extension_snapshot') or {}).items()
@@ -724,23 +752,27 @@ class DesktopBridgeApi:
             elif action == "destroy":
                 self.port.value("extension_equipment_tree").selection_set(params.get("row_iid", ""))
                 self.app.extension_destroy_clicked("equipment")
-            elif action == "save_loadout":
+            elif action in ("save_loadout", "save_loadout_with_backpack"):
                 name = params.get("name", "套装1")
                 self.port.value("extension_loadout_name").set(name)
-                message = self.app.extension_save_loadout()
-            elif action == "restore_loadout":
+                message = (self.app.extension_save_loadout(with_backpack=True) if action == 'save_loadout_with_backpack'
+                           else self.app.extension_save_loadout())
+            elif action in ("restore_loadout", "restore_loadout_with_backpack"):
                 name = params.get("name", "")
                 if 'name' in params:
                     self.port.value("extension_loadout_choice").set(name)
-                message = self.app.extension_restore_loadout()
-            elif action == "save_all_loadouts":
+                message = (self.app.extension_restore_loadout(with_backpack=True) if action == 'restore_loadout_with_backpack'
+                           else self.app.extension_restore_loadout())
+            elif action in ('save_all_loadouts', 'save_all_loadouts_with_backpack'):
                 if 'name' in params:
                     self.port.value("extension_loadout_name").set(params['name'])
-                message = self.app.extension_save_all_loadouts()
-            elif action == "restore_all_loadouts":
+                message = (self.app.extension_save_all_loadouts(with_backpack=True) if action.endswith('_with_backpack')
+                           else self.app.extension_save_all_loadouts())
+            elif action in ('restore_all_loadouts', 'restore_all_loadouts_with_backpack'):
                 if 'name' in params:
                     self.port.value("extension_loadout_choice").set(params['name'])
-                message = self.app.extension_restore_all_loadouts()
+                message = (self.app.extension_restore_all_loadouts(with_backpack=True) if action.endswith('_with_backpack')
+                           else self.app.extension_restore_all_loadouts())
             elif action == "audit":
                 self.app.extension_audit_equipment()
             elif action == "repair_misplaced":
@@ -970,8 +1002,15 @@ class DesktopBridgeApi:
 
     def set_elephant_parameter(self,key: str,value: str):
         if key not in self.get_elephant_parameters():raise ValueError('参数已变化，请重新打开此页面。')
-        self.port.value('elephant_'+key).set(str(value))
+        self._set_saved_parameter(key, self.port.value('elephant_'+key), value)
         return dict(success=True,changedParameters={key:str(value)})
+
+    def _set_saved_parameter(self, key, variable, value):
+        value = str(value)
+        if len(value) > 128:
+            raise ValueError('参数不能超过 128 个字符')
+        self.app.save_ui_preferences(parameters={key: value})
+        variable.set(value)
 
     def get_artifact_plan(self) -> dict[str, Any]:
         settings = self.port.value("artifact_plan_settings")
@@ -1091,9 +1130,11 @@ class DesktopBridgeApi:
 
     def set_hotkey_check(self, name: str, enabled: bool) -> dict[str, Any]:
         checks = self.port.value("elephant_hotkey_checks")
-        if name in checks:
-            checks[name].set(bool(enabled))
-            if self.port.value("elephant_hotkeys_enabled").get():
+        if name in checks and name in self.port.value('hotkey_callbacks'):
+            enabled = bool(enabled)
+            self.app.save_ui_preferences(hotkey_checks={name: enabled})
+            checks[name].set(enabled)
+            if not self.offline and self.port.value("elephant_hotkeys_enabled").get():
                 try:
                     self.app.refresh_elephant_hotkeys()
                 except Exception as err:
@@ -1102,7 +1143,14 @@ class DesktopBridgeApi:
         return {"success": False, "error": f"Unknown hotkey: {name}"}
 
     def set_all_hotkeys_checks(self, enabled: bool) -> dict[str, Any]:
-        self.app.set_all_elephant_hotkeys(enabled)
+        callbacks = self.port.value('hotkey_callbacks')
+        checks = self.port.value('elephant_hotkey_checks')
+        choices = {name: bool(enabled and name in callbacks) for name in checks}
+        self.app.save_ui_preferences(hotkey_checks=choices)
+        for name, value in choices.items():
+            checks[name].set(value)
+        if not self.offline and self.port.value('elephant_hotkeys_enabled').get():
+            self.app.refresh_elephant_hotkeys()
         return {"success": True, "enabled": enabled, "hotkeys": self.get_all_hotkeys()}
 
     def set_hotkey_parameter(self, param_key: str, value: str) -> dict[str, Any]:
@@ -1110,7 +1158,7 @@ class DesktopBridgeApi:
             stat_k = param_key[5:]
             stat_values = self.port.value("elephant_stat_values")
             if stat_k in stat_values:
-                stat_values[stat_k].set(value)
+                self._set_saved_parameter(param_key, stat_values[stat_k], value)
                 return {"success": True, "paramKey": param_key, "value": value}
         else:
             param_var_map = {
@@ -1134,7 +1182,7 @@ class DesktopBridgeApi:
             }
             if param_key in param_var_map:
                 var_name = param_var_map[param_key]
-                self.port.value(var_name).set(value)
+                self._set_saved_parameter(var_name.removeprefix('elephant_'), self.port.value(var_name), value)
                 return {"success": True, "paramKey": param_key, "value": value}
 
         return {"success": False, "error": f"Unknown param key: {param_key}"}
@@ -1394,7 +1442,8 @@ def _serialized_api(method):
                     'start_map_catalog','export_map_catalog',
                     'get_map_script_options','save_map_script_options','start_map_scripts',
                     'choose_definition_folder', 'save_artifact_plan', 'restore_default_artifact_plan',
-                    'get_elephant_parameters', 'set_elephant_parameter', 'close'}:
+                    'get_elephant_parameters', 'set_elephant_parameter', 'set_hotkeys_enabled',
+                    'set_hotkey_check', 'set_all_hotkeys_checks', 'set_hotkey_parameter', 'close'}:
                     raise RuntimeError('离线界面验收：未连接游戏')
             outer = getattr(self, '_api_depth', 0) == 0
             self._api_depth = getattr(self, '_api_depth', 0) + 1

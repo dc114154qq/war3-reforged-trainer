@@ -2,6 +2,13 @@
 from war3_selection_protocol import SIGNATURES
 
 class AbilitiesService:
+    def ability_definitions(self, codes):
+        from war3_ability_definition_protocol import SIGNATURES, build_work, decode_work
+        codes = tuple(codes)
+        return self._execute('ability_definition', tuple(n for n, _ in SIGNATURES),
+            lambda entries, tls: build_work(entries, tls, codes), decode_work,
+            dict(rawcodes=codes))
+
     def direct_cast(self, rawcode, action, *, mode=3, passes=1, area=100000.0, state=None):
         from war3_direct_cast_protocol import SIGNATURES as CAST, build_work, decode_work
         from war3_game_profile import current_profile

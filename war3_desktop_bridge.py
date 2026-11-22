@@ -7,6 +7,8 @@ import json
 import logging
 import threading
 import inspect
+from contextlib import contextmanager
+from contextvars import ContextVar
 from functools import wraps
 from pathlib import Path
 from typing import Any, Callable
@@ -23,6 +25,53 @@ from war3_artifact_plan import (
 from war3_id_catalog import CATALOG_COUNTS, search_id_entries, upgrade_max_level
 from war3_field_labels import ability_field_search_text, item_field_search_text
 from war3_new_equipment_catalog import EQUIPMENT
+
+
+_failure_cache = ContextVar('desktop_failure_cache', default=None)
+
+_ACTION_TITLES = {
+    'execute_elephant_action': {
+        'reveal_map':'开启全图视野','hide_map':'恢复迷雾','pause_game':'暂停游戏','resume_game':'继续游戏',
+        'peace_on':'开启和平','peace_off':'关闭和平','end_game':'结束游戏',
+        'hero_level_read':'读取英雄等级','hero_level_set':'修改英雄等级','invulnerable':'设为无敌',
+        'vulnerable':'取消无敌','reset_cooldown':'重置冷却','collision_off':'关闭碰撞','collision_on':'恢复碰撞',
+        'pause_unit':'暂停单位','resume_unit':'恢复单位行动','set_scale':'修改单位缩放',
+        'take_control':'接管单位','kill_unit':'杀死单位','explode_unit':'爆炸单位','remove_unit':'移除单位',
+        'kill_owner_units':'消灭同属主单位','create_unit':'创建或复制单位','add_item':'添加物品',
+        'clear_inventory':'清空物品栏','add_ability':'添加技能','remove_ability':'删除技能',
+        'set_ability_level':'修改技能等级','set_tech':'修改科技等级','set_xp_rate':'修改经验倍率',
+    },
+    'extension_bag_action': {
+        'add_item':'创建背包物品','set_charges':'修改背包物品数量','duplicate':'复制背包物品',
+        'drop':'丢弃背包物品','destroy':'销毁背包物品','repair_item':'修复背包物品',
+        'add_official_backpack':'添加官方背包',
+    },
+    'extension_equipment_action': {
+        'unequip':'卸下所选装备','destroy':'销毁所选装备','save_loadout':'保存套装',
+        'save_loadout_with_backpack':'保存套装和背包','restore_loadout':'恢复套装',
+        'restore_loadout_with_backpack':'恢复套装和背包','save_all_loadouts':'一键保存套装',
+        'save_all_loadouts_with_backpack':'一键保存套装和背包','restore_all_loadouts':'一键恢复套装',
+        'restore_all_loadouts_with_backpack':'一键恢复套装和背包','audit':'检查装备槽',
+        'repair_misplaced':'修复错槽装备','equip_bag_to_slot':'将背包物品装到指定部位',
+        'enable_any_slot':'开启任意槽','repair_state':'修复装备状态','export_loadouts':'导出套装方案',
+        'import_loadouts':'导入套装方案',
+    },
+    'extension_talent_action': {
+        'select_tier':'选择天赋层','add_choice':'添加所选天赋','grant_point':'增加天赋点','reset_talents':'重置天赋',
+    },
+}
+
+
+@contextmanager
+def _failure_scope():
+    if _failure_cache.get() is not None:
+        yield
+        return
+    token = _failure_cache.set({})
+    try:
+        yield
+    finally:
+        _failure_cache.reset(token)
 
 def search_equipment(query: str, entries=EQUIPMENT):
     terms = query.casefold().split()
@@ -67,8 +116,8 @@ class DesktopBridgeApi:
         self._script_option_store = ScriptOptionStore()
         self._map_script_jobs = MapScriptJobs(self.app.start_operation_thread,
             lambda exc:self._failure(exc,'map_script_tools'))
-        self._original_set_status=self.app.set_status
-        self.app.set_status=self._set_status
+        self.port.operation_error_reporter=self._failure
+        self.port.failure_scope=_failure_scope
         self._original_finish_connect=self.app.finish_initial_connect
         self._initial_failure_reason=None
         self.app.finish_initial_connect=self._finish_initial_connect
@@ -142,34 +191,47 @@ class DesktopBridgeApi:
             from war3_backend import record_operation_failure
             pid = self.port.value('pid_var').get()
             return record_operation_failure(int(pid) if pid else None, operation, exc)
-        except Exception:
+        except Exception as log_error:
+            exc.log_write_error = repr(log_error)
             logger.exception('Desktop failure log write failed')
 
     def _failure(self,exc,operation='desktop_action'):
-        payload=getattr(exc,'_desktop_failure',None)
+        cache = _failure_cache.get()
+        payload = cache[id(exc)][1] if cache is not None and id(exc) in cache else None
         if payload:return payload
-        from war3_error_messages import format_error
-        path=self._log_failure(operation,exc)
+        from war3_error_messages import _chain, describe_error, format_error, operation_name
+        operation = getattr(self, '_active_api_operation', operation) if operation=='desktop_action' else operation
+        language=self.port.value('ui_language')['code']
+        path=next((entry.diagnostic_log_path for entry in _chain(exc)
+                   if getattr(entry,'diagnostic_log_path',None)),None)
+        if not path:path=self._log_failure(operation,exc)
         if path and not getattr(exc,'diagnostic_log_path',None):
             try:exc.diagnostic_log_path=path
             except Exception:pass
-        message=format_error(exc,self.port.value('ui_language')['code'])
-        details=getattr(exc,'user_details',None) if operation in ('map_object_catalog','map_script_tools') else None
-        notice=self.port.publish_error(message,title=getattr(exc,'user_title','操作未完成') if details else '操作未完成',
-            log_path=getattr(exc,'diagnostic_log_path',''),details=details)
-        payload=dict(success=False,error=message,logPath=notice['logPath'],notificationId=notice['id'])
-        try:exc._desktop_failure=payload
-        except Exception:pass
+        diagnosis=describe_error(exc,language,operation=operation)
+        title_operation = diagnosis['operation'] if (
+            operation in ('desktop_action','scheduled_desktop_update') or operation.startswith('elephant:')
+        ) else operation
+        name=operation_name(title_operation,language)
+        action_title = getattr(self,'_active_action_title','')
+        active_entry = getattr(self,'_active_api_operation','')
+        if action_title and language=='zh' and (operation==active_entry or (
+            active_entry=='extension_equipment_action' and operation.startswith(('save_','restore_'))
+        )):
+            name = action_title
+        title=getattr(exc,'user_title',None) or (f'Could not {name[0].lower()+name[1:]}' if language=='en' else f'{name}未完成')
+        if operation.startswith('elephant:hotkey:'):
+            spec = self.port.value('hotkey_specs_by_name').get(operation.rsplit(':',1)[-1])
+            if spec and not getattr(exc,'user_title',None):
+                title = ('Hotkey action did not complete' if language=='en' else '快捷键操作未完成') + f' · {spec.label}'
+        message=format_error(exc,language,diagnosis=diagnosis)
+        notice=self.port.publish_error(message,title=title,log_path=path or '',details=getattr(exc,'user_details',None),
+            diagnosis={**diagnosis,'logSaveFailed':bool(getattr(exc,'log_write_error',None) and not path)},
+            context='map_catalog' if operation=='map_object_catalog' else '')
+        payload=dict(success=False,error=message,logPath=notice['logPath'],notificationId=notice['id'],notice=notice)
+        if cache is not None:
+            cache[id(exc)]=(exc,payload)
         return payload
-
-    def _set_status(self,text):
-        # These workers report failures through status instead of call_async.
-        # Keep their failure visible in the same desktop notification channel.
-        source=str(text)
-        if source.startswith(('锁定失败：','我方锁血已停止：','持续快速建造/升级已停止：')):
-            payload=self._failure(RuntimeError(source),'background_guard')
-            source=payload['error'].split('\n',1)[0]
-        self._original_set_status(source)
 
     def get_ui_notifications(self):
         return self.port.take_notifications()
@@ -310,7 +372,7 @@ class DesktopBridgeApi:
                 self.port.window.set_title(trainer_window_title(lang))
             from war3_ui_i18n import _EN_TRANSLATIONS
             return {"success": True, "language": lang, 'translations': _EN_TRANSLATIONS}
-        return {"success": False, "error": "Unsupported language"}
+        raise ValueError('所选语言不受支持，请选择简体中文或英语。')
 
     # =========================================================================
     # 2. Player Resources
@@ -320,6 +382,7 @@ class DesktopBridgeApi:
         tree: VirtualTree = self.port.value("resource_tree")
         groups = tree.to_list_of_dicts()
         return {
+            "selectedGroup": self.port.value("state").get("selected_resource_iid", ""),
             "current": {
                 "gold": self.port.value("gold_current").get(),
                 "lumber": self.port.value("lumber_current").get(),
@@ -354,7 +417,18 @@ class DesktopBridgeApi:
             data={k:result[k] for k in ('count','visited','ignored','changed','unchanged','failed','uncertain')}
             data.update(rows=rows,scope=scope,action=0 if amount is None else 1)
             if result['failed']:
-                return {**self._failure(RuntimeError('部分金矿未完成修改，请查看下方逐项结果；已完成的金矿保留。'),'gold_mines'),
+                from war3_error_messages import describe_error
+                language=self.port.value('ui_language')['code']
+                failure=RuntimeError('部分金矿未完成'+('读取。' if amount is None else '修改，已完成的金矿保留。'))
+                failure.user_details=[]
+                for row in rows:
+                    if not row['error']:continue
+                    error=RuntimeError()
+                    error.report={'operation':'gold_mine','gold_mine_status':{'error':row['error']}}
+                    detail=describe_error(error,language)['reason']
+                    row['reason']=detail
+                    failure.user_details.append(dict(scope=row['kind'],file=f"{row['rawcode']} ({row['x']:.0f}, {row['y']:.0f})",message=detail))
+                return {**self._failure(failure,'gold_mines'),
                         'data':data,'reports':rows}
             if amount is not None and not rows:
                 return {**self._failure(RuntimeError('当前范围未找到可修改的金矿，请检查游戏选择或改用全图读取。'),'gold_mines'),
@@ -384,7 +458,7 @@ class DesktopBridgeApi:
             self.port.value("food_cap_target").set(value)
             self.app.set_food_resource("food_cap")
         else:
-            return {"success": False, "error": f"Unknown resource kind: {kind}"}
+            raise ValueError('此资源类型不能修改，请重新选择金币、木材或人口。')
         return {"success": True, "data": self.get_resource_snapshot()}
 
     def add_resource(self, kind: str, delta: str | None = None) -> dict[str, Any]:
@@ -393,9 +467,9 @@ class DesktopBridgeApi:
         self.app.add_resource(kind)
         return {"success": True, "data": self.get_resource_snapshot()}
 
-    def add_resource_lock(self, kind: str) -> dict[str, Any]:
-        self.app.add_resource_lock(kind)
-        return {"success": True, "locks": self.get_locks()}
+    def add_resource_lock(self, kind: str, expected_group: str | None = None) -> dict[str, Any]:
+        self.app.add_resource_lock(kind, capture_current=True, expected_group=expected_group)
+        return {"success": True, "locks": self.get_locks(), "data": self.get_resource_snapshot()}
 
     # =========================================================================
     # 3. Selected Unit & Candidates
@@ -585,10 +659,10 @@ class DesktopBridgeApi:
             self.app.write_selected_ability_field(snapshot,
                 self.port.value('ability_field_rawcode').get(),
                 int(self.port.value('ability_field_level').get()), field, new_value)
-            return {"success": True, "data": self.read_ability_fields(
+            return self._after_field_write('refresh_ability_fields', lambda: self.read_ability_fields(
                 self.port.value("ability_field_rawcode").get(),
                 self.port.value("ability_field_level").get(),
-            )}
+            ))
         except Exception as err:
             return self._failure(err)
 
@@ -628,7 +702,7 @@ class DesktopBridgeApi:
             if snapshot is None or field is None or field.value is None or not field.spec.writable:
                 raise ValueError('请重新读取并选择可写物品字段')
             self.app.write_selected_item_field(snapshot, field, new_value)
-            return {"success": True, "data": self.read_item_fields(str(int(self.port.value("item_field_slot").get()) - 1))}
+            return self._after_field_write('refresh_item_fields', lambda: self.read_item_fields(str(int(self.port.value("item_field_slot").get()) - 1)))
         except Exception as err:
             return self._failure(err)
 
@@ -650,16 +724,22 @@ class DesktopBridgeApi:
                 raise ValueError('这条物品字段已失效，请重新读取')
             self.app.write_item_effect_field_value(snapshot, int(index), str(new_value))
             state['item_effect_snapshot'] = None
-            try:
+            def refresh():
                 current = self.app.read_item_effect_field_snapshot(snapshot.source.area, snapshot.source.slot, snapshot.level)
                 state['item_effect_snapshot'] = current
-                return {'success': True, 'data': self.app.item_effect_fields_view(current)}
-            except Exception as exc:
-                payload = self._failure(RuntimeError('物品数值已写入并读回；刷新列表时发生错误，请重新读取。'+str(exc)), 'refresh_item_effect_fields')
-                return dict(payload, write_completed=True)
+                return self.app.item_effect_fields_view(current)
+            return self._after_field_write('refresh_item_effect_fields', refresh)
         except Exception as exc:
             state['item_effect_snapshot'] = None
             return self._failure(exc, 'write_item_effect_field')
+
+    def _after_field_write(self, operation, refresh):
+        from war3_error_messages import CompletedWithWarning
+        try:
+            return {'success':True, 'data':refresh()}
+        except Exception as exc:
+            warning = self._failure(CompletedWithWarning(exc),operation)
+            return {'success':True,'write_completed':True,'notice':warning['notice']}
 
     # =========================================================================
     # 7. 3.0 Extensions (Backpack, Equipment, Talents, Definition Repair)
@@ -713,34 +793,34 @@ class DesktopBridgeApi:
             if action == "add_item":
                 self.port.value("extension_item_rawcode").set(params.get("rawcode", ""))
                 self.port.value("extension_item_charges").set(str(params.get("charges", "1")))
-                self.app.extension_add_item()
+                message = self.app.extension_add_item()
             elif action == "set_charges":
                 row_iid = params.get("row_iid", "")
                 self.port.value("extension_bag_tree").selection_set(row_iid)
                 self.port.value("extension_item_charges").set(str(params.get("charges", "1")))
-                self.app.extension_set_bag_charges()
+                message = self.app.extension_set_bag_charges()
             elif action == "duplicate":
                 self.port.value("extension_bag_tree").selection_set(params.get("row_iid", ""))
-                self.app.extension_duplicate_bag_item()
+                message = self.app.extension_duplicate_bag_item()
             elif action == "drop":
                 self.port.value("extension_bag_tree").selection_set(params.get("row_iid", ""))
-                self.app.extension_drop_clicked()
+                message = self.app.extension_drop_clicked()
             elif action == "destroy":
                 self.port.value("extension_bag_tree").selection_set(params.get("row_iid", ""))
-                self.app.extension_destroy_clicked("bag")
+                message = self.app.extension_destroy_clicked("bag")
             elif action == "repair_item":
                 self.port.value("extension_bag_tree").selection_set(params.get("row_iid", ""))
-                self.app.extension_repair_bag_item()
+                message = self.app.extension_repair_bag_item()
             elif action == "add_official_backpack":
                 choice = params.get("choice", "")
                 if choice:
                     self.port.value("extension_backpack_choice").set(choice)
-                self.app.extension_add_backpack_equipment()
+                message = self.app.extension_add_backpack_equipment()
             else:
-                raise ValueError(f'Unknown backpack action: {action}')
-            return {"success": True, "data": self.refresh_extension_status(False)}
+                raise ValueError('这项背包操作在当前版本不可用，请重新打开修改器后选择背包按钮。')
+            return {"success": True, "message":message or '', "data": self.refresh_extension_status(False)}
         except Exception as err:
-            return self._failure(err)
+            return self._failure(err, action if action=='add_official_backpack' else 'extension_bag_action')
 
     def extension_equipment_action(self, action: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         params = params or {}
@@ -748,10 +828,10 @@ class DesktopBridgeApi:
         try:
             if action == "unequip":
                 self.port.value("extension_equipment_tree").selection_set(params.get("row_iid", ""))
-                self.app.extension_unequip_item()
+                message = self.app.extension_unequip_item()
             elif action == "destroy":
                 self.port.value("extension_equipment_tree").selection_set(params.get("row_iid", ""))
-                self.app.extension_destroy_clicked("equipment")
+                message = self.app.extension_destroy_clicked("equipment")
             elif action in ("save_loadout", "save_loadout_with_backpack"):
                 name = params.get("name", "套装1")
                 self.port.value("extension_loadout_name").set(name)
@@ -774,29 +854,35 @@ class DesktopBridgeApi:
                 message = (self.app.extension_restore_all_loadouts(with_backpack=True) if action.endswith('_with_backpack')
                            else self.app.extension_restore_all_loadouts())
             elif action == "audit":
-                self.app.extension_audit_equipment()
+                message = self.app.extension_audit_equipment()
             elif action == "repair_misplaced":
-                self.app.extension_repair_equipment_clicked()
+                message = self.app.extension_repair_equipment_clicked()
             elif action == "equip_bag_to_slot":
                 self.port.value('extension_bag_tree').selection_set(params.get('bag_row_iid', ''))
                 self.port.value('extension_equipment_tree').selection_set(params.get('row_iid', ''))
-                self.app.extension_equip_bag_to_slot()
+                message = self.app.extension_equip_bag_to_slot()
             elif action == "enable_any_slot":
-                self.app.extension_enable_any_slot()
+                message = self.app.extension_enable_any_slot()
             elif action == "repair_state":
-                self.app.extension_repair_equipment_state()
+                message = self.app.extension_repair_equipment_state()
             elif action == 'export_loadouts':
-                self.app.extension_export_plans()
+                message = self.app.extension_export_plans()
+                if not message:return dict(success=False,cancelled=True)
             elif action == 'import_loadouts':
-                self.app.extension_import_plans()
+                message = self.app.extension_import_plans()
+                if not message:return dict(success=False,cancelled=True)
             else:
-                raise ValueError(f'Unknown equipment action: {action}')
+                raise ValueError('这项装备操作在当前版本不可用，请重新打开修改器后选择装备按钮。')
             return {"success": True, 'message': message, "data": self.refresh_extension_status(False)}
         except Exception as err:
-            return self._failure(err)
+            return self._failure(err, action if action in (
+                'save_loadout','save_loadout_with_backpack','save_all_loadouts','save_all_loadouts_with_backpack',
+                'restore_loadout','restore_loadout_with_backpack','restore_all_loadouts','restore_all_loadouts_with_backpack',
+            ) else 'extension_equipment_action')
 
     def extension_talent_action(self, action: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         params = params or {}
+        message = ''
         try:
             if action in ('select_tier', 'add_choice'):
                 iid = params.get('row_iid', '')
@@ -810,16 +896,16 @@ class DesktopBridgeApi:
                 if not isinstance(choice, str) or not choice:
                     raise ValueError('请先选择一个天赋选项')
                 self.port.value("extension_talent_choice").set(choice)
-                self.app.extension_add_talent_choice()
+                message = self.app.extension_add_talent_choice()
             elif action == "grant_point":
-                self.app.extension_grant_talent_point()
+                message = self.app.extension_grant_talent_point()
             elif action == "reset_talents":
-                self.app.extension_reset_talents_clicked()
+                message = self.app.extension_reset_talents_clicked()
             elif action == 'select_tier':
                 pass
             else:
-                raise ValueError(f'Unknown talent action: {action}')
-            return {"success": True, "data": self.refresh_extension_status(False)}
+                raise ValueError('这项天赋操作在当前版本不可用，请刷新天赋或重新打开修改器。')
+            return {"success": True, "message":message or '', "data": self.refresh_extension_status(False)}
         except Exception as err:
             return self._failure(err)
 
@@ -834,7 +920,6 @@ class DesktopBridgeApi:
             return {"success": True, "destination": result.output, "report": asdict(result),
                     "message": f'文件校验完成：共 {result.chapter_count} 个章节，补齐 {result.changed_chapters} 个章节。请使用下方新副本重新进入地图。'}
         except Exception as err:
-            self._log_failure('prepare_backpack_definitions', err)
             return self._failure(err,'prepare_backpack_definitions')
 
     def start_backpack_definitions(self,map_path: str,output_folder: str=''):
@@ -984,7 +1069,7 @@ class DesktopBridgeApi:
                 self.port.value("elephant_xp_rate").set(str(rate))
                 self.app.elephant_set_xp_rate()
             else:
-                return {"success": False, "error": f"Unknown action: {action_name}"}
+                raise ValueError('当前版本没有这条大象功能指令。请重新打开修改器，从界面中的按钮执行。')
 
             self._mark_units_changed()
             return {"success": True, "action": action_name,'parameters':self.get_elephant_parameters()}
@@ -1031,7 +1116,7 @@ class DesktopBridgeApi:
         except ArtifactPlanError as err:
             return self._failure(err)
         except Exception as err:
-            return {"success": False, "error": f"保存失败: {err}"}
+            return self._failure(err)
 
     def restore_default_artifact_plan(self) -> dict[str, Any]:
         try:
@@ -1134,13 +1219,8 @@ class DesktopBridgeApi:
             enabled = bool(enabled)
             self.app.save_ui_preferences(hotkey_checks={name: enabled})
             checks[name].set(enabled)
-            if not self.offline and self.port.value("elephant_hotkeys_enabled").get():
-                try:
-                    self.app.refresh_elephant_hotkeys()
-                except Exception as err:
-                    logger.warning("refresh_elephant_hotkeys: %s", err)
-            return {"success": True, "name": name, "enabled": enabled}
-        return {"success": False, "error": f"Unknown hotkey: {name}"}
+            return {**self._refresh_saved_hotkey_checks(), "name":name, "enabled":enabled}
+        raise ValueError('找不到要设置的快捷键，请刷新全局快捷键列表。')
 
     def set_all_hotkeys_checks(self, enabled: bool) -> dict[str, Any]:
         callbacks = self.port.value('hotkey_callbacks')
@@ -1149,9 +1229,17 @@ class DesktopBridgeApi:
         self.app.save_ui_preferences(hotkey_checks=choices)
         for name, value in choices.items():
             checks[name].set(value)
+        return {**self._refresh_saved_hotkey_checks(), "enabled":enabled, "hotkeys":self.get_all_hotkeys()}
+
+    def _refresh_saved_hotkey_checks(self):
+        result = {'success':True}
         if not self.offline and self.port.value('elephant_hotkeys_enabled').get():
-            self.app.refresh_elephant_hotkeys()
-        return {"success": True, "enabled": enabled, "hotkeys": self.get_all_hotkeys()}
+            try:
+                self.app.refresh_elephant_hotkeys()
+            except Exception as err:
+                err.user_title = '快捷键选项已保存，注册未完成'
+                result['notice'] = self._failure(err,'set_hotkeys_enabled')['notice']
+        return result
 
     def set_hotkey_parameter(self, param_key: str, value: str) -> dict[str, Any]:
         if param_key.startswith("stat_"):
@@ -1185,7 +1273,7 @@ class DesktopBridgeApi:
                 self._set_saved_parameter(var_name.removeprefix('elephant_'), self.port.value(var_name), value)
                 return {"success": True, "paramKey": param_key, "value": value}
 
-        return {"success": False, "error": f"Unknown param key: {param_key}"}
+        raise ValueError('此快捷键的参数设置已失效，请刷新全局快捷键列表。')
 
     def trigger_hotkey(self, name: str) -> dict[str, Any]:
         callbacks = self.port.value("hotkey_callbacks")
@@ -1196,8 +1284,8 @@ class DesktopBridgeApi:
                     self._mark_units_changed()
                 return {"success": True, "name": name, "message": str(result or '操作完成')}
             except Exception as err:
-                return {**self._failure(err,'trigger_hotkey'), "name": name}
-        return {"success": False, "error": f"Hotkey callback not found: {name}"}
+                return {**self._failure(err,'elephant:hotkey:'+name), "name": name}
+        raise ValueError('找不到要执行的快捷键功能，请刷新全局快捷键列表。')
 
     def _mark_units_changed(self):
         state = self.port.value('state')
@@ -1259,7 +1347,7 @@ class DesktopBridgeApi:
 
     def search_id_catalog(self, kind: str, query: str = "") -> dict[str, Any]:
         if kind not in ("item", "ability", "unit", "upgrade"):
-            return {"success": False, "error": f"Invalid catalog kind: {kind}"}
+            raise ValueError('此资料分类不可用，请从单位、物品、技能或科技中重新选择。')
         matches = search_id_entries(kind, query)
         # Limit matches to 200 for fast serialization
         rows = [
@@ -1340,7 +1428,17 @@ class DesktopBridgeApi:
             ]
             options = [dict(key=f.key, label=f.label, category=f.category,
                             type=f.value_type, supported=f.supported) for f in model.field_options()]
-            return {"success": True, "units": units, 'fields': options}
+            response = {"success": True, "units": units, 'fields': options}
+            unreadable = [(index,row) for index,row in enumerate(units,1) if row['error']]
+            if unreadable:
+                from war3_error_messages import describe_error
+                error = RuntimeError(f'已取得 {len(units)} 个目标，其中 {len(unreadable)} 个单位的部分字段没能读到。')
+                error.user_title = '批量读取有单位未读完整'
+                error.user_details = [dict(scope=f'第 {index} 个选中单位',file=row['rawcode'],
+                    message=describe_error(RuntimeError(row['error']),operation='batch_read_units')['reason'])
+                    for index,row in unreadable]
+                response['notice'] = self._failure(error,'batch_read_units')['notice']
+            return response
         except Exception as err:
             return self._failure(err)
 
@@ -1360,6 +1458,20 @@ class DesktopBridgeApi:
             reports = [dict(unit=':'.join(str(v) for v in row.unit.identity), field=row.key,
                             target=row.target, status=row.status, reason=row.reason, actual=row.actual)
                        for row in result.fields]
+            failures = [row for row in result.fields if row.status == 'failed']
+            if failures or result.stopped:
+                reasons = {}
+                for row in failures:
+                    field=next((field.label for field in row.unit.fields if field.key==row.key),row.key)
+                    key=(field,row.reason)
+                    reasons[key]=reasons.get(key,0)+1
+                error=RuntimeError(f'批量修改中有 {len(failures)} 项字段失败，已完成的修改保留。')
+                error.user_details=[dict(scope='批量修改',file=f'{field}（{count} 项）',message=reason)
+                    for (field,reason),count in reasons.items()]
+                if result.stopped:
+                    error.user_details.append(dict(scope='批量修改',file='后续字段未执行',message=result.stopped))
+                error.diagnostic_log_path=result.log_path
+                self._failure(error,'batch_write_units')
             return {'success': True, 'message': f'批量处理完成，共 {len(reports)} 项字段结果',
                     'reports': reports, 'stopped': result.stopped, 'logPath': result.log_path}
         except Exception as err:
@@ -1377,9 +1489,17 @@ class DesktopBridgeApi:
         if not p.is_dir():
             return {"success": False, "error": f"目录不存在: {dir_path}"}
         try:
-            files = self.services.find_archive_files(p)
-            result = [{"name": f.name, "path": str(f), "date": str(f.stat().st_mtime)} for f in files[:100]]
-            return {"success": True, "directory": dir_path, "files": result}
+            scan = self.services.find_archive_files(p)
+            result = [{"name": row['name'], "path": row['path'], "date": str(row['modified_ns']/1_000_000_000)}
+                      for row in scan['files'][:100]]
+            response = {"success": True, "directory": dir_path, "files": result}
+            if not scan['complete']:
+                error = RuntimeError('只读取了部分存档。可选择具体的存档子目录再扫一次。')
+                error.user_title='存档列表只读取了部分内容'
+                error.user_details=[dict(scope='读取存档目录',file=row['source'],message=row['reason'])
+                                    for row in scan['warnings']]
+                response['notice']=self._failure(error,'scan_archive_directory')['notice']
+            return response
         except Exception as err:
             return self._failure(err)
 
@@ -1401,7 +1521,16 @@ class DesktopBridgeApi:
         try:
             res = self.services.read_current_heroes(trainer)
             rows = [{"scope": r[0], "key": r[1], "type": r[2], "value": r[3]} for r in self.services.display_rows(res)]
-            return {"success": True, "rows": rows}
+            response = {"success": True, "rows": rows}
+            if res.get('warnings'):
+                from war3_error_messages import describe_error
+                error=RuntimeError('已读取英雄资料，其中部分字段或物品没有读完整。')
+                error.user_title='当前英雄资料只读取了部分内容'
+                error.user_details=[dict(scope=row['section'],file=row['unit'],
+                    message=describe_error(RuntimeError(row['reason']),operation='read_live_heroes')['reason'])
+                    for row in res['warnings']]
+                response['notice']=self._failure(error,'read_live_heroes')['notice']
+            return response
         except Exception as err:
             return self._failure(err)
 
@@ -1428,7 +1557,7 @@ class DesktopBridgeApi:
 def _serialized_api(method):
     @wraps(method)
     def invoke(self, *args, **kwargs):
-        with self.port.dispatch_lock:
+        with self.port.dispatch_lock, _failure_scope():
             if getattr(self, 'offline', False):
                 if method.__name__ == 'read_selected_unit':
                     return self._unit_snapshot()
@@ -1448,6 +1577,9 @@ def _serialized_api(method):
             outer = getattr(self, '_api_depth', 0) == 0
             self._api_depth = getattr(self, '_api_depth', 0) + 1
             if outer:
+                self._active_api_operation = method.__name__
+                selector = args[0] if args else kwargs.get('action',kwargs.get('action_name'))
+                self._active_action_title = _ACTION_TITLES.get(method.__name__,{}).get(selector,'') if isinstance(selector,str) else ''
                 self.port.dialog_error = None
                 self.port.dialog_notice = None
                 self.port.cancelled = False
@@ -1456,12 +1588,16 @@ def _serialized_api(method):
                 if outer and self.port.dialog_error:
                     exc=RuntimeError(self.port.dialog_error)
                     notice=self.port.dialog_notice
-                    if notice:exc._desktop_failure=dict(success=False,error=notice['message'],notificationId=notice['id'],logPath=notice['logPath'])
+                    if notice:
+                        _failure_cache.get()[id(exc)]=(exc,dict(success=False,error=notice['message'],
+                            notificationId=notice['id'],logPath=notice['logPath'],notice=notice))
                     raise exc
                 if outer and self.port.cancelled:
                     return {'success': False, 'cancelled': True, 'error': '操作已取消'}
                 if outer and isinstance(result,dict) and result.get('success') is False and not result.get('cancelled') and not result.get('notificationId'):
-                    failure=self._failure(RuntimeError(result.get('error') or '操作未完成'),method.__name__)
+                    exc=RuntimeError(result.get('error') or '操作未完成')
+                    if result.get('logPath'):exc.diagnostic_log_path=result['logPath']
+                    failure=self._failure(exc,method.__name__)
                     result={**result,**failure,'logPath':result.get('logPath') or failure['logPath']}
                 return result
             except Exception as exc:
@@ -1470,6 +1606,9 @@ def _serialized_api(method):
                 raise
             finally:
                 self._api_depth -= 1
+                if outer:
+                    del self._active_api_operation
+                    del self._active_action_title
     invoke.__signature__ = inspect.signature(method)
     return invoke
 
@@ -1493,8 +1632,9 @@ class DesktopRpcFacade:
                 def export(bound):
                     @wraps(bound)
                     def invoke(*args,**kwargs):
-                        try:return bound(*args,**kwargs)
-                        except Exception as exc:return bridge._failure(exc,bound.__name__)
+                        with _failure_scope():
+                            try:return bound(*args,**kwargs)
+                            except Exception as exc:return bridge._failure(exc,bound.__name__)
                     invoke.__signature__=inspect.signature(bound)
                     return invoke
                 setattr(self, name, export(bound))
@@ -1503,4 +1643,12 @@ class DesktopRpcFacade:
         # Startup health must not wait for the gameplay operation lock.
         if self._startup is None:
             return {'accepted': False}
-        return self._startup.report(stage, details)
+        result = self._startup.report(stage, details)
+        if stage == 'runtime_error' and result.get('accepted'):
+            if self._bridge.port.has_pending_error('界面处理报错'):
+                return result
+            self._bridge.port.publish_error(
+                '界面代码在处理当前页面时中断。请先核对页面或游戏的当前结果，再重新打开修改器。',
+                title='界面处理报错', log_path=self._startup.log_path,
+            )
+        return result

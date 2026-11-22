@@ -24,6 +24,7 @@ export interface ResourceGroup {
 }
 
 export interface ResourceSnapshot {
+  selectedGroup: string;
   current: {
     gold: string;
     lumber: string;

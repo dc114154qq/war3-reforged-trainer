@@ -1954,7 +1954,7 @@ def record_operation_failure(
             requested_pid=requested_pid,
             target_hwnd=target_hwnd,
         )
-        logger.log("user_explanation", **describe_error(exc))
+        logger.log("user_explanation", **describe_error(exc, operation=operation))
         logger.log("operation_failure", operation=operation, pid=logger.game_pid,
                    game_pid=logger.game_pid,
                    actual_target_pid=logger.game_pid,
@@ -5594,23 +5594,21 @@ class War3Trainer(NativeFacade, ExtensionsFacade, UnitsFacade, AbilitiesFacade, 
     def run_for_selected_units(
         self,
         action: Callable[[], object],
-    ) -> tuple[int, int, tuple[object, ...], tuple[str, ...]]:
+    ) -> tuple[int, int, tuple[object, ...], tuple[tuple[int, str, Exception], ...]]:
         # One persistent native snapshot supplies both the verified object
         # identity and its current JASS handle.
         snapshot = self._selected_candidates_snapshot(None)
         results: list[object] = []
-        errors: list[str] = []
+        errors: list[tuple[int, str, Exception]] = []
 
         def process_snapshot() -> None:
-            for candidate, unit_handle in snapshot:
+            for index, (candidate, unit_handle) in enumerate(snapshot, 1):
                 try:
                     with self._bound_elephant_selection(candidate, unit_handle):
                         results.append(action())
                 except Exception as exc:
-                    errors.append(
-                        f"{format_rawcode(candidate.unit_type_id) if candidate.unit_type_id else '未知单位'}"
-                        f"(0x{candidate.unit_address:x}): {exc}"
-                    )
+                    code = format_rawcode(candidate.unit_type_id) if candidate.unit_type_id else '-'
+                    errors.append((index, code, exc))
 
         if (len(snapshot) > 1 and hasattr(self, "_native_helper_lock")
                 and not getattr(self, "_native_selection_unavailable", False)):

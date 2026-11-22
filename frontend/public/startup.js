@@ -44,12 +44,12 @@
       if (panel) panel.style.display = 'none';
       send('ready', { page: document.querySelector('[data-testid="stage"]').getAttribute('data-page') });
     },
-    fail: function (message, stack) {
+    fail: function (message, stack, phase) {
       if (failed) return;
       failed = true;
-      failureMessage = String(message || 'Unknown frontend error');
+      failureMessage = String(message || '界面没有完成第一次显示。');
       showFailure();
-      send('failed', { message: failureMessage, stack: String(stack || '') });
+      send('failed', { message: failureMessage, stack: String(stack || ''), phase: phase || 'render' });
     }
   };
   window.addEventListener('pywebviewready', flush);
@@ -59,12 +59,13 @@
     var resource = target && (target.tagName === 'SCRIPT' || target.tagName === 'LINK');
     var source = resource ? (target.src || target.href || '') : (event.filename || '');
     var text = resource ? '界面资源加载失败 / Interface resource failed: ' + source :
-      (event.message || 'Unknown script error');
-    if (!painted || resource) window.__war3Startup.fail(text, event.error && event.error.stack);
+      (event.message || '界面代码在运行时中断。');
+    if (!painted || resource) window.__war3Startup.fail(text, event.error && event.error.stack, resource ? 'resource' : 'render');
     else send('runtime_error', { message: text, source: source, stack: String(event.error && event.error.stack || '') });
   }, true);
   window.addEventListener('unhandledrejection', function (event) {
     var error = event.reason;
+    if (error && error.reported) return;
     if (!painted) window.__war3Startup.fail(error && error.message || String(error), error && error.stack);
     else send('runtime_error', { message: String(error && error.message || error), stack: String(error && error.stack || '') });
   });

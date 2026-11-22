@@ -212,6 +212,29 @@ class TrainerApplication:
         self.configure_discovery(obj)
         return obj
 
+    def report_operation_problem(self, operation, exc, *, title=None):
+        from war3_error_messages import format_error
+        if title:
+            exc.user_title = title
+        reporter = getattr(self.view, 'operation_error_reporter', None)
+        if reporter:
+            reporter(exc, operation)
+            return
+        dialog = self.view.value('messagebox')
+        show = dialog.showwarning if title else dialog.showerror
+        show(title or self.view.value('ui_text')('错误'),
+             format_error(exc, self.view.value('ui_language')['code'], operation=operation))
+
+    def _report_background_failure(self, operation, exc):
+        from war3_error_messages import describe_error
+        diagnosis = describe_error(exc,operation=operation)
+        details = tuple((row['file'],row['message']) for row in getattr(exc,'user_details',()))
+        signature = (diagnosis['category'],diagnosis['business_error'],diagnosis['reason'],details)
+        failures = self.view.value('state').setdefault('background_failures',{})
+        if failures.get(operation) != signature:
+            failures[operation] = signature
+            self.report_operation_problem(operation,exc)
+
     def connect(self) -> str:
         requested_pid = int(self.view.value('pid_var').get()) if self.view.value('pid_var').get().strip() else None
         replacement = War3Trainer(pid=resolve_requested_war3_pid(requested_pid))
@@ -282,19 +305,23 @@ class TrainerApplication:
             self.view.value('resource_tree').focus(selected_iid)
             self.set_resource_entries(cache_map[selected_iid])
 
-    def update_resource_cache_display(self, cache: ResourceCache) -> None:
+    def update_resource_cache_display(self, cache: ResourceCache, *, preserve_selection: bool=False) -> None:
         iid = self.resource_iid(cache)
         caches = self.view.value('state').get('resource_caches', {})
         labels = self.view.value('state').get('resource_labels', {})
         if not isinstance(caches, dict) or not isinstance(labels, dict):
+            return
+        if preserve_selection and iid not in caches:
             return
         caches[iid] = cache
         label = str(labels.get(iid, ''))
         index = int(label) if label.isdigit() else len(caches)
         if self.view.value('resource_tree').exists(iid):
             self.view.value('resource_tree').item(iid, values=self.resource_row_values(index, cache))
-        self.view.value('state')['selected_resource_iid'] = iid
-        self.set_resource_entries(cache)
+        if not preserve_selection:
+            self.view.value('state')['selected_resource_iid'] = iid
+        if self.view.value('state').get('selected_resource_iid') == iid:
+            self.set_resource_entries(cache, reset_targets=not preserve_selection)
 
     def on_resource_select(self, _event=None) -> None:
         selection = self.view.value('resource_tree').selection()
@@ -626,11 +653,27 @@ class TrainerApplication:
         self.view.value('root').after(0, self.populate_locks)
         return f'已锁定选中单位字段：{field.label}={value}'
 
-    def add_resource_lock(self, kind: str) -> str:
+    def add_resource_lock(self, kind: str, *, capture_current: bool=False, expected_group: str | None=None) -> str:
         cache = self.selected_resource_cache()
+        cache_iid = self.resource_iid(cache)
+        if expected_group is not None and expected_group != cache_iid:
+            raise ValueError('当前资源组已经切换，请确认要锁定的玩家后重试。')
         group_label = self.selected_resource_label(cache)
-        targets = {'gold': ('金币', self.view.value('gold_target').get().strip()), 'lumber': ('木材', self.view.value('lumber_target').get().strip()), 'food_used': ('当前人口', self.view.value('food_used_target').get().strip()), 'food_cap': ('最大人口', self.view.value('food_cap_target').get().strip())}
-        label, value = targets[kind]
+        labels = {'gold': '金币', 'lumber': '木材', 'food_used': '当前人口', 'food_cap': '最大人口'}
+        label = labels.get(kind)
+        if label is None:
+            raise ValueError('请选择要锁定的金币、木材、当前人口或人口上限。')
+        is_local_player = cache_iid == str(self.view.value('state').get('local_resource_iid', ''))
+        if capture_current:
+            t = self.trainer()
+            cache = (t.validate_local_player_resource_cache(cache) if is_local_player
+                     else t.read_resource_cache_addresses(cache))
+            if kind.startswith('food_') and cache.source != 'persistent native player state' and not getattr(cache, kind+'_address'):
+                raise ValueError(f'这个玩家的{label}未能读取，请重新读取资源组。')
+            value = str(getattr(cache, kind))
+            self.update_resource_cache_display(cache, preserve_selection=True)
+        else:
+            value = self.view.value(kind+'_target').get().strip()
         if not value:
             raise ValueError(f'请先填写目标{label}')
         parse_int(value, f'目标{label}')
@@ -638,8 +681,6 @@ class TrainerApplication:
         if not isinstance(locks, dict):
             locks = {}
             self.view.value('state')['locks'] = locks
-        cache_iid = self.resource_iid(cache)
-        is_local_player = cache_iid == str(self.view.value('state').get('local_resource_iid', ''))
         locks[f'resource:{cache_iid}:{kind}'] = {'scope': '本地玩家资源' if is_local_player else f'资源组 {group_label}', 'kind': 'resource', 'key': kind, 'resource_cache': cache, 'resource_local_player': is_local_player, 'label': f'{label}', 'value': value}
         self.view.value('root').after(0, self.populate_locks)
         return f'已锁定资源组 {group_label}：{label}={value}'
@@ -660,52 +701,73 @@ class TrainerApplication:
         if not isinstance(locks, dict) or not locks:
             return
         t = self.trainer()
+        checked_resources = {}
+        failures = []
+        completed = 0
         for item in list(locks.values()):
             if not isinstance(item, dict):
                 continue
-            kind = item.get('kind')
-            key = str(item.get('key', ''))
-            value = str(item.get('value', ''))
-            if kind == 'unit':
-                identity = item.get('unit_identity')
-                if isinstance(identity, tuple) and len(identity) == 3 and all((isinstance(part, int) for part in identity)):
-                    if item.get('win10_compat'):
-                        t.write_unit_field_by_identity_win10(*identity, key, value)
-                    else:
-                        t.write_unit_field_by_identity(*identity, key, value)
-                else:
-                    t.write_selected_unit_field(key, value)
-                continue
-            if kind != 'resource':
-                continue
-            target = parse_int(value, str(item.get('label', '资源')))
-            cache = item.get('resource_cache')
-            if not isinstance(cache, ResourceCache):
-                raise ValueError('锁定项缺少资源组地址，请删除后重新锁定')
-            is_local_player = bool(item.get('resource_local_player'))
-
-            def write_locked_resource(target_cache: ResourceCache) -> ResourceCache:
-                if key == 'gold':
-                    return t.write_resource_cache(target_cache, target_gold=target)
-                if key == 'lumber':
-                    return t.write_resource_cache(target_cache, target_lumber=target)
-                if key == 'food_used':
-                    return t.write_resource_cache(target_cache, target_food_used=target, sync_local_food_used=is_local_player)
-                if key == 'food_cap':
-                    return t.write_resource_cache(target_cache, target_food_cap=target, sync_local_food_cap=is_local_player)
-                raise ValueError(f'未知资源锁定字段：{key}')
-            if is_local_player:
-                try:
-                    cache = t.validate_local_player_resource_cache(cache)
-                except (OSError, RuntimeError):
-                    cache = t.locate_local_player_resource_cache()
             try:
-                item['resource_cache'] = write_locked_resource(cache)
-            except (OSError, RuntimeError):
-                if not is_local_player:
-                    raise
-                cache = t.locate_local_player_resource_cache()
-                item['resource_cache'] = write_locked_resource(cache)
+                key = str(item.get('key', ''))
+                value = str(item.get('value', ''))
+                if item.get('kind') == 'resource':
+                    self._apply_resource_lock(t, item, key, value, checked_resources)
+                elif item.get('kind') == 'unit':
+                    identity = item.get('unit_identity')
+                    if isinstance(identity, tuple) and len(identity) == 3 and all(isinstance(part, int) for part in identity):
+                        write = t.write_unit_field_by_identity_win10 if item.get('win10_compat') else t.write_unit_field_by_identity
+                        write(*identity, key, value)
+                    else:
+                        t.write_selected_unit_field(key, value)
+                else:
+                    continue
+                completed += 1
+            except Exception as exc:
+                failures.append((item, exc))
+        if failures:
+            from war3_error_messages import describe_error
+            language = self.view.value('ui_language')['code']
+            error = RuntimeError(f'本轮已确认 {completed} 项锁定值，另有 {len(failures)} 项未能保持。')
+            error.user_details = [
+                dict(scope=item.get('scope', ''), file=f"{item.get('label', '')} = {item.get('value', '')}",
+                     message=describe_error(exc, language, operation='apply_locks_once')['reason'])
+                for item, exc in failures
+            ]
+            error.report = {'operation':'apply_locks_once','completed':completed,'failures':[
+                {'kind':item.get('kind'), 'field':item.get('key'), 'target':item.get('value'),
+                 'exception':repr(exc), 'report':getattr(exc,'report',None)}
+                for item, exc in failures]}
+            raise error
+
+    def _apply_resource_lock(self, trainer, item, key, value, checked):
+        cache = item.get('resource_cache')
+        if not isinstance(cache, ResourceCache):
+            raise ValueError('锁定项缺少有效的资源组，请删除后重新锁定。')
+        if key not in ('gold', 'lumber', 'food_used', 'food_cap'):
+            raise ValueError('该资源锁定项的字段无效，请删除后重新锁定。')
+        target = parse_int(value, str(item.get('label', '资源')))
+        local = bool(item.get('resource_local_player'))
+        group = (self.resource_iid(cache), local)
+        current = checked.get(group)
+        if current is None:
+            if local:
+                try:
+                    current = trainer.validate_local_player_resource_cache(cache)
+                except (OSError, RuntimeError):
+                    current = trainer.locate_local_player_resource_cache()
+            else:
+                current = trainer.read_resource_cache_addresses(cache)
+        if getattr(current, key) != target:
+            # A write failure invalidates this observation. The next field
+            # obtains a fresh view even if the rejected setter changed data.
+            checked.pop(group, None)
+            current = trainer.write_resource_cache(current, **{f'target_{key}': target})
+            actual = getattr(current, key)
+            if actual != target:
+                raise RuntimeError(f"{item.get('label',key)}目标为 {target}，本轮写入后游戏返回 {actual}。")
+        checked[group] = current
+        item['resource_cache'] = current
+        self.view.value('root').after(0, lambda: self.update_resource_cache_display(current, preserve_selection=True))
 
     def lock_tick(self) -> None:
         if self.view.value('state').get('closing'):
@@ -715,21 +777,30 @@ class TrainerApplication:
             self.view.value('state')['lock_busy'] = True
 
             def worker() -> None:
-                acquired = self.view.value('operation_lock').acquire(blocking=False)
+                # WebView runs the timer callback while holding this lock.
+                # Let the callback release it before starting periodic writes.
+                acquired = self.view.value('operation_lock').acquire(timeout=0.25)
                 if not acquired:
                     self.view.value('state')['lock_busy'] = False
                     return
                 try:
+                    if self.view.value('state').get('closing'):
+                        return
                     self.apply_locks_once()
+                    self.view.value('state').get('background_failures',{}).pop('value_lock_tick',None)
                     if not self.view.value('state').get('closing'):
                         self.view.value('root').after(0, self.set_status, f'锁定中：{len(locks)} 项')
                 except Exception as exc:
                     if not self.view.value('state').get('closing'):
-                        self.view.value('root').after(0, self.set_status, f'锁定失败：{exc}')
+                        self.view.post(self._report_background_failure, 'value_lock_tick', exc)
                 finally:
                     self.view.value('operation_lock').release()
                     self.view.value('state')['lock_busy'] = False
-            self.start_operation_thread(worker, 'war3-lock-tick')
+            try:
+                self.start_operation_thread(worker, 'war3-lock-tick')
+            except Exception as exc:
+                self.view.value('state')['lock_busy'] = False
+                self._report_background_failure('value_lock_tick', exc)
         if not self.view.value('state').get('closing'):
             self.view.value('root').after(1500, self.lock_tick)
 
@@ -752,7 +823,7 @@ class TrainerApplication:
                         self.view.value('state')['ally_health_lock'] = False
                         self.view.value('state')['ally_health_lock_trainer'] = None
                         if not self.view.value('state').get('closing'):
-                            self.view.value('root').after(0, self.set_status, f'我方锁血已停止：{exc}')
+                            self.view.post(self.report_operation_problem, 'ally_health_lock_tick', exc)
                     finally:
                         self.view.value('operation_lock').release()
                         self.view.value('state')['ally_health_lock_busy'] = False
@@ -785,7 +856,7 @@ class TrainerApplication:
                         self.view.value('state')['rapid_build'] = False
                         self.view.value('state')['rapid_build_trainer'] = None
                         if not self.view.value('state').get('closing'):
-                            self.view.value('root').after(0, self.set_status, f'持续快速建造/升级已停止：{exc}')
+                            self.view.post(self.report_operation_problem, 'rapid_build_tick', exc)
                     finally:
                         self.view.value('operation_lock').release()
                         self.view.value('state')['rapid_build_busy'] = False
@@ -891,9 +962,21 @@ class TrainerApplication:
             succeeded, failed, results, errors = batch_trainer.run_for_selected_units(action)
         finally:
             self.view.value('state').pop('elephant_batch_trainer', None)
-        if not succeeded:
-            detail = errors[0] if errors else '没有可操作的选中单位'
-            raise RuntimeError(f'{label}未成功：{detail}')
+        if errors:
+            from war3_error_messages import describe_error
+            language = self.view.value('ui_language')['code']
+            failure = RuntimeError(f'{label}处理了 {succeeded} 个单位，{failed} 个失败。各目标的原因如下。')
+            failure.user_details = [dict(scope=f'第 {index} 个单位',file=rawcode,
+                                         message=describe_error(exc,language)['reason'])
+                                    for index,rawcode,exc in errors]
+            failure.report = {'operation':'elephant_batch','failed_units':[
+                dict(index=index,rawcode=rawcode,error=str(exc),report=getattr(exc,'report',{}))
+                for index,rawcode,exc in errors]}
+            if not succeeded:
+                raise failure
+            self.report_operation_problem('elephant_batch',failure,title=f'{label}部分完成')
+        elif not succeeded:
+            raise RuntimeError(f'没有可执行“{label}”的选中单位，请先在游戏里选中目标。')
         self.view.value('state')['last_elephant_batch_failed'] = failed
         return results
 
@@ -996,13 +1079,10 @@ class TrainerApplication:
                       '游戏未接受添加' if issue['reason'] == 66 else
                       '临时状态没有可复制的技能等级' if issue['reason'] == 65 else
                       f'原等级 {issue["requested_level"]}，副本读回 {issue["actual_level"]}')
-            if len(details) < 12:
-                details.append(f'{code}：{reason}')
+            details.append(f'{code}：{reason}')
         paths = result.get('log_paths') or [result.get('operation_trace', {}).get('log_path')]
         text = (f'Units created; {len(issues)} ability states were not fully copied. Other contents continued.\n\n' if english else
                 f'单位已复制，{len(issues)} 项技能状态未完整复制，其余内容继续处理。\n\n') + '\n'.join(details)
-        if len(seen) > len(details):
-            text += '\nMore details are in the log.' if english else '\n其余项目见日志。'
         if paths and paths[0]:
             text += ('\n\nDetailed log: ' if english else '\n\n详细日志：') + str(paths[0])
         self.view.value('root').after(0, self.view.value('messagebox').showwarning,
@@ -1388,34 +1468,46 @@ class TrainerApplication:
         return f'已将 {count} 个单位移动到鼠标位置 ({x:g}, {y:g})'
 
     def elephant_add_standard_auras(self) -> str:
-        from war3_services.ability_bundle import format_bundle_outcome
         entries = (('AHab', 3), ('AHad', 3), ('AOr2', 4), ('AUau', 3), ('AUav', 3), ('AEar', 3), ('AEah', 3), ('Aabr', None), ('ACac', None))
         trainer = self.elephant_trainer()
         if getattr(trainer, '_native_selection_unavailable', False):
             result = trainer.add_ability_bundle_to_selected_unit(entries)
             changed, total = result
             if getattr(result, 'failures', ()):
-                return format_bundle_outcome('全光环', (result,), self.view.value('ui_language')['code'])
+                return self.report_bundle_skips('全光环', (result,))
             return f'已批量处理全光环 {total} 项，实际修改 {changed} 项'
         results = self.elephant_batch(lambda: trainer.add_ability_bundle_to_selected_unit(entries), '添加全光环')
         if any((getattr(result, 'failures', ()) for result in results)):
-            return format_bundle_outcome('全光环', results, self.view.value('ui_language')['code'])
+            return self.report_bundle_skips('全光环', results)
         return f'已为 {len(results)} 个单位添加全光环{self.elephant_batch_suffix()}'
 
     def elephant_add_standard_passives(self) -> str:
-        from war3_services.ability_bundle import format_bundle_outcome
         entries = (('AInv', None), ('AHbh', 3), ('AOcr', 3), ('Acdb', 4), ('ACce', None), ('ACes', None), ('ACrn', None), ('ACpv', None))
         trainer = self.elephant_trainer()
         if getattr(trainer, '_native_selection_unavailable', False):
             result = trainer.add_ability_bundle_to_selected_unit(entries)
             changed, total = result
             if getattr(result, 'failures', ()):
-                return format_bundle_outcome('全被动', (result,), self.view.value('ui_language')['code'])
+                return self.report_bundle_skips('全被动', (result,))
             return f'已批量处理全被动 {total} 项，实际修改 {changed} 项'
         results = self.elephant_batch(lambda: trainer.add_ability_bundle_to_selected_unit(entries), '添加全被动')
         if any((getattr(result, 'failures', ()) for result in results)):
-            return format_bundle_outcome('全被动', results, self.view.value('ui_language')['code'])
+            return self.report_bundle_skips('全被动', results)
         return f'已为 {len(results)} 个单位添加全被动{self.elephant_batch_suffix()}'
+
+    def report_bundle_skips(self, label, results):
+        from war3_services.ability_bundle import format_bundle_outcome
+        language = self.view.value('ui_language')['code']
+        summary = format_bundle_outcome(label,results,language)
+        failure = RuntimeError(summary)
+        failure.user_details = [
+            dict(scope=f'目标 {index}', file=format_rawcode(row.rawcode),
+                 message=row.reason_en if language=='en' else row.reason)
+            for index,result in enumerate(results,1) for row in getattr(result,'failures',())
+        ]
+        failure.diagnostic_log_path=next((result.log_path for result in results if getattr(result,'log_path','')),'')
+        self.report_operation_problem('ability_bundle',failure,title=f'{label}有技能未添加')
+        return summary
 
     def elephant_add_six_artifacts(self, plan=None) -> str:
         from war3_services.artifact_plan import apply_artifact_plan
@@ -1436,28 +1528,38 @@ class TrainerApplication:
 
     def elephant_apply_all_debuffs(self) -> str:
         trainer = self.elephant_trainer()
-        if getattr(trainer, '_native_selection_unavailable', False):
-            attempted, succeeded = trainer.apply_standard_debuffs_to_selected_unit()
-            return f'已对当前选择执行减益 {succeeded}/{attempted} 次'
-        results = self.elephant_batch(trainer.apply_standard_debuffs_to_selected_unit, '施加减益')
-        attempted = sum((int(result[0]) for result in results))
-        succeeded = sum((int(result[1]) for result in results))
-        return f'已对 {len(results)} 个单位执行减益 {succeeded}/{attempted} 次{self.elephant_batch_suffix()}'
+        return self._report_standard_effects(trainer,trainer.apply_standard_debuffs_to_selected_unit,'施加减益')
 
     def elephant_apply_all_buffs(self) -> str:
         trainer = self.elephant_trainer()
-        if getattr(trainer, '_native_selection_unavailable', False):
-            attempted, succeeded = trainer.apply_standard_buffs_to_selected_unit()
-            return f'已对当前选择执行增益 {succeeded}/{attempted} 次'
-        results = self.elephant_batch(trainer.apply_standard_buffs_to_selected_unit, '施加增益')
-        attempted = sum((int(result[0]) for result in results))
-        succeeded = sum((int(result[1]) for result in results))
-        return f'已对 {len(results)} 个单位执行增益 {succeeded}/{attempted} 次{self.elephant_batch_suffix()}'
+        return self._report_standard_effects(trainer,trainer.apply_standard_buffs_to_selected_unit,'施加增益')
+
+    def _report_standard_effects(self, trainer, action, label):
+        indexed = getattr(trainer,'_native_selection_unavailable',False)
+        results = (action(),) if indexed else self.elephant_batch(action,label)
+        attempted = sum(result[0] for result in results)
+        succeeded = sum(result[1] for result in results)
+        message = f'{label}确认完成 {succeeded}/{attempted} 次'
+        details = [dict(scope=f'目标组 {index}',file=code,message=reason)
+                   for index,result in enumerate(results,1) for code,reason in getattr(result,'failures',())]
+        if details:
+            error = RuntimeError(message+'，以下技能效果未能确认。')
+            error.user_details = details
+            if not succeeded:
+                raise error
+            self.report_operation_problem('ability_bundle',error,title=f'{label}部分完成')
+        return message + ('' if indexed else self.elephant_batch_suffix())
 
     def elephant_fullscreen_cast(self, action: Callable[[], tuple[int, int]], label: str) -> str:
         attempted, succeeded = action()
+        if not attempted:
+            raise RuntimeError(f'{label}没有找到符合这次操作条件的地图目标。')
         if not succeeded:
             raise RuntimeError(f'游戏没有接受{label}命令')
+        if succeeded < attempted:
+            self.report_operation_problem('world_cast',RuntimeError(
+                f'游戏确认了 {succeeded} 次施法，另有 {attempted-succeeded} 次没有返回成功结果。'),
+                title=f'{label}部分完成')
         return f'{label}已执行 {succeeded}/{attempted} 次'
 
     def elephant_fullscreen_auto(self) -> str:
@@ -1650,7 +1752,7 @@ class TrainerApplication:
         snapshot = trainer_obj.add_extension_item_24268(rawcode)
         self.view.value('root').after(0, self.populate_extension_snapshot, snapshot)
         if snapshot.get('operation_skipped'):
-            return snapshot['operation_skipped']['reason']
+            return self.report_unapplied_item(snapshot)
         return f'已添加物品 {rawcode} 并刷新 3.0 扩展状态'
 
     def extension_selected_bag_slot(self) -> int:
@@ -1671,7 +1773,7 @@ class TrainerApplication:
         snapshot = self.trainer().duplicate_extension_bag_item_24268(slot)
         self.view.value('root').after(0, self.populate_extension_snapshot, snapshot)
         if snapshot.get('operation_skipped'):
-            return snapshot['operation_skipped']['reason']
+            return self.report_unapplied_item(snapshot)
         return f'已复制扩展背包第 {slot + 1} 格物品及其数量'
 
     def extension_drop_bag_item(self) -> str:
@@ -1679,7 +1781,7 @@ class TrainerApplication:
         snapshot = self.trainer().drop_extension_bag_item_24268(slot)
         self.view.value('root').after(0, self.populate_extension_snapshot, snapshot)
         if snapshot.get('operation_skipped'):
-            return snapshot['operation_skipped']['reason']
+            return self.report_unapplied_item(snapshot)
         return f'已将扩展背包第 {slot + 1} 格物品丢到角色脚下'
 
     def extension_repair_bag_item(self) -> str:
@@ -1687,7 +1789,7 @@ class TrainerApplication:
         snapshot = self.trainer().repair_extension_bag_item_24268(slot)
         self.view.value('root').after(0, self.populate_extension_snapshot, snapshot)
         if snapshot.get('operation_skipped'):
-            return snapshot['operation_skipped']['reason']
+            return self.report_unapplied_item(snapshot)
         return self.view.value('ui_text')('物品原生状态已验证，物品仍保留在背包中')
 
     def extension_repair_equipment_state(self) -> str:
@@ -1706,7 +1808,9 @@ class TrainerApplication:
         self.view.value('root').after(0, self.populate_extension_snapshot, snapshot)
         diagnostic = snapshot.get('backpack_interface', {})
         if diagnostic.get('operation_trace', {}).get('log_errors'):
-            return self.view.value('ui_text')('背包能力已读回，但诊断日志写入未完成；请检查日志目录。')
+            message = '背包已添加并核对成功，附带的诊断日志未写完整。请检查日志目录。'
+            self.report_operation_problem('add_official_backpack',RuntimeError(message),title='背包已添加，日志记录有问题')
+            return self.view.value('ui_text')(message)
         return f'已将{hero_name}官方背包装备（{rawcode}/{controller}）放入经典物品栏第 1 格'
 
     def extension_selected_equipment_slot(self) -> int:
@@ -1720,7 +1824,7 @@ class TrainerApplication:
         snapshot = self.trainer().unequip_extension_slot_24268(slot)
         self.view.value('root').after(0, self.populate_extension_snapshot, snapshot)
         if snapshot.get('operation_skipped'):
-            return snapshot['operation_skipped']['reason']
+            return self.report_unapplied_item(snapshot)
         return f'已卸下{EQUIPMENT_SLOT_NAMES[slot]}装备并验证槽位'
 
     def extension_equip_bag_to_slot(self) -> str:
@@ -1729,20 +1833,17 @@ class TrainerApplication:
         snapshot = self.trainer().equip_extension_bag_item_to_slot_24268(bag_slot, equipment_slot)
         self.view.value('root').after(0, self.populate_extension_snapshot, snapshot)
         if snapshot.get('operation_skipped'):
-            return snapshot['operation_skipped']['reason']
+            return self.report_unapplied_item(snapshot)
         sync = snapshot.get('equipment_effect_sync', {})
         sync_status = sync.get('status') if isinstance(sync, dict) else 'unavailable'
         if sync_status == 'native_applied' and sync.get('verified'):
             return f'已将扩展背包第 {bag_slot + 1} 格物品原生装入{EQUIPMENT_SLOT_NAMES[equipment_slot]}槽；已验证物品能力挂载，卸下时会通过原生链路撤销效果'
         if sync_status == 'failed':
-            from war3_error_messages import format_error
             refresh_error = RuntimeError(str(sync.get('reason', '')))
             refresh_error.report = sync.get('execution_report') or {}
-            try:
-                refresh_error.diagnostic_log_path = record_operation_failure(self.trainer().pid, 'equipment_effect_refresh', refresh_error)
-            except Exception as log_error:
-                refresh_error.log_write_error = repr(log_error)
-            return f'已放入{EQUIPMENT_SLOT_NAMES[equipment_slot]}槽，但装备效果刷新未确认；' + format_error(refresh_error, self.view.value('ui_language')['code'])
+            message = f'物品已经穿到{EQUIPMENT_SLOT_NAMES[equipment_slot]}，随后刷新装备效果时失败'
+            self.report_operation_problem('equipment_effect_refresh',refresh_error,title=message)
+            return message
         if sync_status == 'no_stat_source':
             effect_text = '当前单位没有可读的 3.0 属性控制器，效果只能由游戏自身链路确认'
         elif sync_status == 'refreshed':
@@ -1799,8 +1900,6 @@ class TrainerApplication:
         self.view.value('root').after(0, self.populate_extension_snapshot, snapshot)
         if with_backpack:
             talent_suffix = self._extension_backpack_restore_result(snapshot) + talent_suffix
-        if snapshot.get('loadout_charge_mismatches') or snapshot.get('loadout_postcondition_warning'):
-            return '套装装备位置已核对，物品已保留；部分数量或效果刷新需要检查，请查看恢复详情'+talent_suffix
         batch = snapshot.get('loadout_batch')
         if batch is not None:
             summary = f'已对选中英雄恢复所选套装 {len(batch.get('restored', ()))} 个；跳过 {len(batch.get('skipped', ()))} 个，失败 {len(batch.get('failures', ()))} 个'
@@ -1810,6 +1909,15 @@ class TrainerApplication:
                 from war3_error_messages import loadout_batch_error
                 raise loadout_batch_error(summary, batch)
             return summary + __import__('war3_error_messages').summarize_skips(snapshot, self.view.value('ui_language')['code'])+talent_suffix
+        mismatches = snapshot.get('loadout_charge_mismatches') or ()
+        warning = snapshot.get('loadout_postcondition_warning')
+        if mismatches or warning:
+            detail = warning or '部分装备的使用次数与保存值不同。'
+            exc = RuntimeError(detail)
+            exc.user_details = [dict(scope='装备使用次数',file=EQUIPMENT_SLOT_NAMES[row['slot']],
+                message=f"方案保存 {row['expected']}，游戏中读到 {row['actual']}。") for row in mismatches]
+            self.report_operation_problem('restore_loadout',exc,title='套装位置已恢复，部分结果需要检查')
+            return detail+talent_suffix
         item_skips = snapshot.get('loadout_item_skips', ())
         if item_skips:
             return f'套装恢复已完成，跳过 {len(item_skips)} 件不兼容物品，其余已读回验证' + __import__('war3_error_messages').summarize_skips(snapshot, self.view.value('ui_language')['code'])+talent_suffix
@@ -1834,10 +1942,6 @@ class TrainerApplication:
                     detail = (f"Saved slot {row['slot'] + 1}, {item} ×{row['quantity']} · {row['reason_en']}" if english else
                               f"原第 {row['slot'] + 1} 格 {item} ×{row['quantity']} · {row['reason']}")
                     lines.append(prefix + detail)
-            overflow = len(lines) - 8
-            if overflow > 0:
-                lines = lines[:8] + [f'{overflow} more skipped items. See the loadout log.' if english else
-                                    f'另有 {overflow} 件未恢复，详见套装恢复日志。']
             self.view.value('root').after(0, self.view.value('messagebox').showwarning,
                 'Some backpack items were skipped' if english else '部分背包物品跳过', '\n'.join(lines))
         return summary
@@ -1856,7 +1960,7 @@ class TrainerApplication:
             if batch.get('saved_choice'):
                 self.view.value('extension_loadout_choice').set(batch['saved_choice'])
             summary += f'；共记录背包物品 {batch['saved_backpack_count']} 件'
-            summary += self._extension_backpack_batch_skips(batch)
+        summary += self._extension_loadout_batch_skips(batch)
         failures = tuple(batch.get('failures', ()))
         if failures:
             from war3_error_messages import loadout_batch_error
@@ -1875,14 +1979,14 @@ class TrainerApplication:
         summary += f'；跳过物品 {len(batch.get('item_skips', ()))} 件'
         if with_backpack:
             summary += self._extension_backpack_restore_result(snapshot)
-            summary += self._extension_backpack_batch_skips(batch)
+        summary += self._extension_loadout_batch_skips(batch)
         failures = tuple(batch.get('failures', ()))
         if failures:
             from war3_error_messages import loadout_batch_error
             raise loadout_batch_error(summary, batch)
         return summary + __import__('war3_error_messages').summarize_skips(snapshot, self.view.value('ui_language')['code'])+talent_suffix
 
-    def _extension_backpack_batch_skips(self, batch):
+    def _extension_loadout_batch_skips(self, batch):
         skipped = batch.get('skipped', ())
         if not skipped:
             return ''
@@ -1894,13 +1998,24 @@ class TrainerApplication:
         }
         english = self.view.value('ui_language')['code'] == 'en'
         details = tuple(dict.fromkeys(reason if english else reasons.get(reason, reason) for _, reason in skipped))
-        return ('. Skipped: ' + ', '.join(details)) if english else ('；跳过原因：' + '、'.join(details))
+        summary = ('. Skipped: ' + ', '.join(details)) if english else ('；跳过原因：' + '、'.join(details))
+        if not batch.get('saved') and not batch.get('restored') and not batch.get('failures'):
+            error = ValueError('这次没有可保存或恢复套装的选中英雄。请查看各目标的跳过原因。')
+            error.user_details=[dict(scope='套装操作',file=f'第 {index} 个跳过的目标',
+                message=reason if english else reasons.get(reason,reason)) for index,(_,reason) in enumerate(skipped,1)]
+            raise error
+        return summary
+
+    def report_unapplied_item(self, snapshot):
+        message = snapshot['operation_skipped']['reason']
+        self.report_operation_problem('extension',RuntimeError(message),title='这件物品未执行修改')
+        return message
 
     def extension_export_plans(self) -> None:
         from war3_loadout_storage import save_file
         path = self.view.value('filedialog').asksaveasfilename(parent=self.view.value('root'), title='保存装备方案文件', defaultextension='.json', filetypes=[('JSON', '*.json')])
         if path:
-            self.call_async(lambda: f'已保存装备方案文件：{save_file(self.trainer(), path)}')
+            return self.call_async(lambda: f'已保存装备方案文件：{save_file(self.trainer(), path)}','export_loadouts')
 
     def extension_import_plans(self) -> None:
         from war3_loadout_storage import load_file
@@ -1918,7 +2033,7 @@ class TrainerApplication:
                 self.view.value('extension_loadout_choice').set(names[0] if names else '')
             self.view.value('root').after(0, update)
             return f'已读取装备方案文件：{count}'
-        self.call_async(load)
+        return self.call_async(load,'import_loadouts')
 
     def extension_audit_equipment(self, repair: bool=False) -> str:
         result = self.trainer().audit_extension_equipment_24268(repair)
@@ -1937,13 +2052,19 @@ class TrainerApplication:
         text = f'天赋操作：成功 {result['succeeded']}，跳过 {result['skipped']}，失败 {result['failed']}'
         if result.get('unverified'):
             text += f'；强化叠加未确认 {result["unverified"]}'
-        errors = [f'0x{row['target']:x}：{row['reason']}' for row in result['results'] if row['status'] in ('failed', 'unverified')]
-        if errors:
-            error=RuntimeError(text + '；' + '；'.join(errors))
+        exceptions = [(index,row) for index,row in enumerate(result['results'],1)
+                      if row['status'] in ('failed','unverified','skipped')]
+        if exceptions:
+            error=RuntimeError(text + '。请查看各目标的结果。')
+            error.user_details = [dict(scope='英雄天赋',file=f'第 {index} 个选中目标',
+                message=(row.get('explanation') or {}).get('reason') or row['reason'])
+                for index,row in exceptions]
             error.report={'operation':'talent_batch','batch_failures':tuple(
                 row['explanation'] for row in result['results'] if row['status'] in ('failed', 'unverified') and row.get('explanation')),
-                'batch_results':tuple(result['results']), 'independent_operations_allowed':True}
-            raise error
+                'batch_summary':text,'batch_results':tuple(result['results']), 'independent_operations_allowed':True}
+            if not result['succeeded']:
+                raise error
+            self.report_operation_problem('talent_batch',error,title='天赋已部分处理')
         return text
 
     def extension_selected_talent_tier(self) -> int:
@@ -1987,7 +2108,7 @@ class TrainerApplication:
                 raise RuntimeError('天赋界面代码尚未解码，图标刷新未执行；请保持游戏天赋页可见后重试')
             if result.get('reason') == 'cleanup_uncertain':
                 raise RuntimeError(str(result['error']))
-            raise RuntimeError('天赋图标模块安装失败：' + str(result.get('error', '未知原因')))
+            raise RuntimeError(str(result.get('error') or '游戏没有返回天赋图标组件的已安装状态，无法确认图标刷新完成。'))
         return '天赋图标显示模块已安装并读回'
 
     def extension_drop_clicked(self) -> None:
@@ -2087,6 +2208,17 @@ class TrainerApplication:
         if unresolved_errors:
             conflict_details = '、'.join((f'{self.view.value('hotkey_specs_by_name')[name].label.split('  ', 1)[0]}（WinError {error}）' for name, error in unresolved_errors.items()))
             self.view.value('elephant_hotkey_status').set(f'已启用 {active_count} 个，冲突 {len(unresolved_errors)} 个：{conflict_details}')
+            failure = RuntimeError(f'全局快捷键已启用 {active_count} 个，另有 {len(unresolved_errors)} 个未能注册。')
+            failure.user_details = []
+            for name, code in unresolved_errors.items():
+                spec = self.view.value('hotkey_specs_by_name')[name]
+                reason = {1409:'这个组合键已被 Windows 或其他程序占用。',
+                          5:'Windows 拒绝注册这个组合键。',
+                          87:'Windows 判定这个组合键的设置无效。'}.get(
+                              code,f'Windows 拒绝注册这个组合键（错误代码 {code}）。')
+                failure.user_details.append(dict(scope='全局快捷键',file=spec.label,message=reason))
+            failure.report = {'operation':'set_hotkeys_enabled','registration_errors':unresolved_errors}
+            self.report_operation_problem('set_hotkeys_enabled',failure,title='部分全局快捷键无法启用' if active_count else '全局快捷键注册失败')
         elif fallback_names:
             fallback_labels = '、'.join((self.view.value('hotkey_specs_by_name')[name].label.split('  ', 1)[0] for name in fallback_names))
             self.view.value('elephant_hotkey_status').set(f'已启用 {active_count} 个（兼容监听：{fallback_labels}）')

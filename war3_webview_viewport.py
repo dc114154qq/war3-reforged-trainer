@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import threading
 import logging
+from contextlib import nullcontext
 from typing import Any, Callable
 from war3_view_contract import ViewPort, ViewControl
 from war3_ui_i18n import detect_ui_language, translate_ui_text
@@ -378,25 +379,27 @@ class WebStateViewPort:
         }
 
         # Zero-delay application updates complete before the RPC result is read.
+        self.failure_scope = nullcontext
         port = self
         class VirtualRoot:
             def after(self, ms: int, func: Callable[..., Any], *args) -> None:
                 if port._closed:
                     return
                 if ms == 0:
-                    with port.dispatch_lock:
+                    with port.dispatch_lock, port.failure_scope():
                         return func(*args)
                 def run():
-                    try:
-                        with port.dispatch_lock:
-                            if not port._closed:
-                                func(*args)
-                    except Exception as exc:
-                        logging.getLogger(__name__).exception('Scheduled desktop update failed')
-                        reporter=getattr(port,'error_reporter',None)
-                        if reporter and not port._closed:reporter(exc)
-                    finally:
-                        port._timers.discard(timer)
+                    with port.failure_scope():
+                        try:
+                            with port.dispatch_lock:
+                                if not port._closed:
+                                    func(*args)
+                        except Exception as exc:
+                            logging.getLogger(__name__).exception('Scheduled desktop update failed')
+                            reporter=getattr(port,'error_reporter',None)
+                            if reporter and not port._closed:reporter(exc)
+                        finally:
+                            port._timers.discard(timer)
                 timer = threading.Timer(ms / 1000.0, run)
                 timer.daemon = True
                 port._timers.add(timer)
@@ -482,11 +485,13 @@ class WebStateViewPort:
             raise KeyError(f"Undeclared port requested: {name}")
         return self._values[name]
 
-    def publish_error(self,message,title='操作未完成',log_path='',details=None):
+    def publish_error(self,message,title='操作未完成',log_path='',details=None,diagnosis=None,context=''):
         with self._notice_lock:
             self._notice_sequence+=1
-            notice=dict(id=self._notice_sequence,title=title,message=message,logPath=str(log_path))
-            if details:notice.update(details=details,context='map_catalog')
+            notice=dict(id=self._notice_sequence,kind='error',title=title,message=message,logPath=str(log_path))
+            if details:notice['details']=details
+            if diagnosis:notice['diagnosis']=diagnosis
+            if context:notice['context']=context
             self._notices.append(notice)
         return notice
 
@@ -494,6 +499,10 @@ class WebStateViewPort:
         with self._notice_lock:
             result,self._notices=self._notices,[]
         return result
+
+    def has_pending_error(self, title):
+        with self._notice_lock:
+            return any(notice.get('title') == title for notice in self._notices)
 
     def publish_unit_read(self,unit,candidates):
         with self._notice_lock:

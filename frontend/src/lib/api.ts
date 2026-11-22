@@ -30,6 +30,11 @@ declare global {
   }
 }
 
+export function publishError(error: UiNotice | string) {
+  const notice = typeof error === 'string' ? {message: error} : error;
+  window.dispatchEvent(new CustomEvent('war3-error', {detail: {...notice, kind: 'error'}}));
+}
+
 // Helper to safely call the backend API
 async function callApi<T>(method: string, ...args: any[]): Promise<T> {
   if (!window.pywebview?.api) await new Promise<void>((resolve,reject) => {
@@ -37,26 +42,37 @@ async function callApi<T>(method: string, ...args: any[]): Promise<T> {
     const timer=setTimeout(()=>{window.removeEventListener('pywebviewready',ready);reject(new Error('桌面通信尚未就绪，请重新打开修改器。'));},10000);
     window.addEventListener('pywebviewready',ready,{once:true});
     if(window.pywebview?.api)ready();
-  }).catch(err=>{window.dispatchEvent(new CustomEvent('war3-error',{detail:{message:err.message}}));throw err;});
+  }).catch(err=>{publishError({message:err.message});throw Object.assign(err,{reported:true});});
   if (typeof window !== 'undefined' && window.pywebview?.api?.[method]) {
     try {
       const result = await window.pywebview.api[method](...args);
       if(result?.parameters || result?.changedParameters)window.dispatchEvent(new CustomEvent('war3-elephant-parameters',{detail:result.parameters || result.changedParameters}));
       if(method==='set_hotkey_parameter' && result?.success)window.dispatchEvent(new CustomEvent('war3-elephant-parameters-changed'));
+      if (result?.notice) publishError(result.notice);
       if (result?.success === false && !result.cancelled) {
-        const detail={message:result.error || '操作未完成',logPath:result.logPath,id:result.notificationId};
-        window.dispatchEvent(new CustomEvent('war3-error', {detail}));
+        const detail: UiNotice = result.notice ?? {
+          message:result.error || '桌面服务返回了失败结果，但没有附上失败步骤。请重开修改器后再试。',
+          logPath:result.logPath,
+          id:result.notificationId,
+        };
+        if (!result.notice) publishError(detail);
         if(!('reports' in result))throw Object.assign(new Error(detail.message),{reported:true});
       }
       return result as T;
     } catch (err) {
       console.error(`pywebview.api.${method} failed:`, err);
-      if(!(err as {reported?:boolean})?.reported)window.dispatchEvent(new CustomEvent('war3-error', {detail: {message:err instanceof Error ? err.message : String(err)}}));
+      if (!(err as {reported?:boolean})?.reported) {
+        const message = '桌面服务没有返回完整结果。请先查看操作结果，再尝试重新连接游戏或重开修改器。';
+        publishError({message});
+        throw Object.assign(new Error(message), {reported:true, cause:err});
+      }
       throw err;
     }
   }
 
-  throw new Error('桌面通信尚未就绪，请在修改器桌面窗口内重试');
+  const message = '当前界面没有找到这项操作的桌面接口。请关闭修改器，再打开同一版本的 EXE。';
+  publishError({message});
+  throw Object.assign(new Error(message),{reported:true});
 }
 
 export const api = {
@@ -90,7 +106,8 @@ export const api = {
   refreshResources: () => callApi<{ success: boolean; data: ResourceSnapshot; error?: string }>('refresh_resources'),
   setResource: (kind: string, value: string) => callApi<{ success: boolean; data: ResourceSnapshot; error?: string }>('set_resource', kind, value),
   addResource: (kind: string, delta?: string) => callApi<{ success: boolean; data: ResourceSnapshot; error?: string }>('add_resource', kind, delta),
-  addResourceLock: (kind: string) => callApi<{ success: boolean; locks: LockItem[] }>('add_resource_lock', kind),
+  addResourceLock: (kind: string, group: string) =>
+    callApi<{ success: boolean; locks: LockItem[]; data: ResourceSnapshot }>('add_resource_lock', kind, group),
 
   // 3. Unit
   readSelectedUnit: () => callApi<SelectedUnitData>('read_selected_unit'),
@@ -179,7 +196,8 @@ export const api = {
   parseRpgCodesText: (text: string, prefix?: string) => callApi<{ success: boolean; rows?: RpgCodeRow[]; error?: string }>('parse_rpg_codes_text', text, prefix ?? '-load'),
 };
 
-export interface UiNotice { details?:CatalogDiagnostic[];context?:string;id?:number;title?:string;message:string;logPath?:string;kind?:string;unit?:SelectedUnitData;candidates?:CandidateUnit[];parameters?:Record<string,string>; }
+export interface ErrorDiagnosis { reason:string; recovery:string; category:string; business_error?:number|null; logSaveFailed?:boolean; }
+export interface UiNotice { details?:CatalogDiagnostic[];context?:string;id?:number;title?:string;message:string;logPath?:string;kind?:string;diagnosis?:ErrorDiagnosis;unit?:SelectedUnitData;candidates?:CandidateUnit[];parameters?:Record<string,string>; }
 export interface DefinitionFileResult {source:string;status:string;destination:string;message:string;error:string;logPath:string;reportPath:string;}
 export interface DefinitionResult {success?:boolean;batch?:boolean;cancelled?:boolean;files?:DefinitionFileResult[];destination?:string;report?:{report_path:string;log_path:string};message?:string;error?:string;logPath?:string;}
 export interface DefinitionProgress {jobId:string;status:string;stage?:string;chapter?:string;index?:number;total?:number;completed?:number;currentFile?:string;elapsed:number;result?:DefinitionResult;error?:string;logPath?:string;batchMode?:boolean;outputFolder?:string;fileTotal?:number;fileIndex?:number;fileCompleted?:number;fileSucceeded?:number;fileFailed?:number;fileSkipped?:number;files?:DefinitionFileResult[];}

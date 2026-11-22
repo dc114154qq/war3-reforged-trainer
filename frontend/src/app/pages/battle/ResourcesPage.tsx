@@ -1,7 +1,7 @@
 import { useViewState } from '../../state/viewMemory'
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { Button, EditableNumber, Icon, PlayerSwatch, TextField, announce, bounty, type BountyTone, type IconName, type IconTone } from '../../../ds'
-import { api } from '../../../lib/api'
+import { api, publishError } from '../../../lib/api'
 import type { GoldMineData, ResourceGroup, ResourceSnapshot } from '../../../lib/types'
 import { useCommandCard } from '../../state/commands'
 import { resourceLockId, useLocks } from '../../state/locks'
@@ -35,7 +35,7 @@ export default function ResourcesPage() {
   const snapshot = useResources(st => st.snapshot)
   const locks = useLocks(st => st.items)
   const { pending, run } = usePending()
-  const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
+  const selectedGroup = snapshot?.selectedGroup || null
   const [delta, setDelta] = useViewState('resources.delta', '')
   const goldRef = useRef<HTMLSpanElement>(null)
   const lumberRef = useRef<HTMLSpanElement>(null)
@@ -45,20 +45,9 @@ export default function ResourcesPage() {
     void useLocks.getState().reload()
   }, [])
   useEffect(() => { if (snapshot && !delta) setDelta(snapshot.delta || '10000') }, [snapshot, delta])
-  // The backend writes and locks the group selected on its side, which the snapshot does not
-  // report; select ours explicitly whenever it is missing or no longer listed.
-  const groupIds = snapshot?.groups.map(g => g._iid).join('|') ?? ''
-  useEffect(() => {
-    const ids = groupIds ? groupIds.split('|') : []
-    if (!ids.length || (selectedGroup && ids.includes(selectedGroup))) return
-    void syncGroup(ids[0])
-  }, [groupIds]) // eslint-disable-line react-hooks/exhaustive-deps
-
   const value = (kind: SetKind) => num(snapshot?.current[CURRENT[kind]])
-  const isLocked = (kind: SetKind) => locks.some(l =>
-    selectedGroup ? l._iid === resourceLockId(selectedGroup, kind) : l._iid.startsWith('resource:') && l._iid.endsWith(`:${kind}`))
-  const lockOf = (kind: SetKind) => locks.find(l => l._iid.startsWith('resource:') && l._iid.endsWith(`:${kind}`)
-    && (!selectedGroup || l._iid === resourceLockId(selectedGroup, kind)))
+  const lockOf = (kind: SetKind) => selectedGroup ? locks.find(l => l._iid === resourceLockId(selectedGroup, kind)) : undefined
+  const isLocked = (kind: SetKind) => Boolean(lockOf(kind))
 
   const setValue = (kind: SetKind, next: number, rect: DOMRect | null) => run(`set-${kind}`, async () => {
     const before = value(kind)
@@ -67,19 +56,17 @@ export default function ResourcesPage() {
     if (before !== null && now !== null && now !== before) bounty({ anchor: rect, text: signed(now - before), tone: TONE[kind] })
   })
 
-  /** Lock at the value shown: write it as the target first, since the backend locks its target. */
   const toggleLock = (kind: SetKind) => run(`lock-${kind}`, async () => {
     const existing = lockOf(kind)
     if (existing) {
       if (await useLocks.getState().remove(existing._iid)) announce(t('已解除锁定'))
       return
     }
-    const current = value(kind)
-    if (current === null) return announce(t('先读取资源组，再锁定。'))
-    if (!(await useResources.getState().set(kind, String(current)))) return
-    const result = await api.addResourceLock(kind)
+    if (!selectedGroup || value(kind) === null) return publishError(t('先读取资源组，再锁定。'))
+    const result = await api.addResourceLock(kind, selectedGroup)
     if (result?.success) {
       useLocks.getState().set(result.locks)
+      useResources.setState({ snapshot: result.data })
       announce(t('已锁定'))
     }
   })
@@ -96,7 +83,6 @@ export default function ResourcesPage() {
 
   /** Select a group on both sides; the backend resets its targets to that group's values. */
   const syncGroup = (iid: string) => run('select', async () => {
-    setSelectedGroup(iid)
     const next = await api.selectResourceGroup(iid)
     if (next) useResources.setState({ snapshot: next })
   })
@@ -106,8 +92,9 @@ export default function ResourcesPage() {
     if (!result?.data) return
     useResources.setState({ snapshot: result.data })
     // Keep the group the user picked when it is still there.
-    const ids = result.data.groups.map(g => g._iid)
-    if (ids.length) await syncGroup(selectedGroup && ids.includes(selectedGroup) ? selectedGroup : ids[0])
+    if (selectedGroup && selectedGroup !== result.data.selectedGroup && result.data.groups.some(g => g._iid === selectedGroup)) {
+      await syncGroup(selectedGroup)
+    }
   })
 
   const selectGroup = (group: ResourceGroup) => syncGroup(group._iid)

@@ -1,19 +1,19 @@
 {
-  "version": "2.2.6",
-  "exe_sha256": "4468538AF6A700B496059E4307F6FCF53ABA7C0FAEA0EF4BEA93646CD50F5707",
-  "production_inputs": 520,
-  "packaged_modules": 200,
+  "version": "2.2.7",
+  "exe_sha256": "D0954D1C88466C719E28CF5F686B1F679AB16E3AA29096E90DF7409AAEC7A867",
+  "production_inputs": 521,
+  "packaged_modules": 201,
   "native_dlls_sha256": {
     "tools\\war3_bridge_24268.dll": "03C1B40ABA21887649A370953B5AAC1D9ACCB398E105B334210662BAB89829CE",
     "tools\\war3_mpq.dll": "6CD644F3C091C2FFF6430CBF612DBBF6657D8508941FBA2E925CAADFA7A04DA6",
     "tools\\war3_speed_clock.dll": "91FB4F87344EBA12EB21759EF426437601EFB93C256F6F82ADB22B92BCC2685E",
     "tools\\war3_talent_icon_display.dll": "54C0EDD2D639EB4AFD203D5A4222F13814A3ABD27BD694AACBA52545586DE386"
   },
-  "regression_tests": 500,
+  "regression_tests": 1132,
   "normal_safe_and_restricted_file_ui_verified": true,
   "all_seven_game_profiles_preserved": true,
-  "hotkey_restart_and_registration_verified": true,
-  "batch_backpacks_and_quantities_verified_in_fixtures": true,
-  "live_talent_field_readback_verified_on_24371": true,
+  "resource_lock_selected_player_and_failure_isolation_verified": true,
+  "error_reporting_and_archive_scan_regressions_verified": true,
+  "live_gameplay_write_acceptance": false,
   "external_machine_acceptance": false
 }

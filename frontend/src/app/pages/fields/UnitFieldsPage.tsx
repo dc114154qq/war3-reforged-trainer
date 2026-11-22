@@ -1,7 +1,7 @@
 import { useViewState } from '../../state/viewMemory'
 import { useState } from 'react'
-import { Button, Checkbox, Icon, Select, TextField, announce } from '../../../ds'
-import { api } from '../../../lib/api'
+import { Button, Checkbox, Icon, Select, TextField } from '../../../ds'
+import { api, publishError } from '../../../lib/api'
 import type { NativeUnitField, NativeUnitFieldsData } from '../../../lib/types'
 import { useCatalogName } from '../../state/catalog'
 import { useCommandCard } from '../../state/commands'
@@ -73,7 +73,7 @@ export default function UnitFieldsPage() {
   useCommandCard([
     { key: 'Q', icon: 'read', title: t('读取单位字段'), description: t('读取当前选中单位的编辑器字段，包括状态、外观和两组攻击。'), pending: pending.read, estimateMs: 1500, disabled: !connected || busy, onPress: () => void read() },
     { key: 'W', icon: 'write', title: t('修改字段'), description: t('编辑字段表里选中的那一行，回车写入游戏。'), pending: pending.write, estimateMs: 500, disabled: !connected || busy || !selected?.writable || selected.value === null,
-      onPress: () => selectedId ? setEditingId(selectedId) : announce(t('先在字段表里选一行。')) },
+      onPress: () => selectedId ? setEditingId(selectedId) : publishError(t('先在字段表里选一行。')) },
     { key: 'A', icon: 'catalog', title: t('只看可修改字段'), description: t('隐藏当前没有写入接口的字段。'), active: writableOnly, onPress: () => setWritableOnly(v => !v) },
   ])
 

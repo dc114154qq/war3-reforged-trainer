@@ -2,6 +2,38 @@
 from __future__ import annotations
 from contextlib import contextmanager
 
+
+class StandardEffectsResult(tuple):
+    """Retain the (attempted, succeeded) result and report individual rejections."""
+    def __new__(cls, attempted, succeeded, failures):
+        result = super().__new__(cls, (attempted, succeeded))
+        result.failures = tuple(failures)
+        return result
+
+
+def _run_standard_effects(requests):
+    attempted = succeeded = 0
+    failures = []
+    for code, run in requests:
+        try:
+            result = run(code)
+        except Exception as exc:
+            from war3_error_messages import describe_error
+            error = RuntimeError(f'已确认 {succeeded} 项技能效果，处理技能 {code} 时中止。')
+            error.user_title = f'施加技能效果在 {code} 中止'
+            error.user_details = [dict(scope='技能效果',file=item,message=reason) for item,reason in failures]
+            error.user_details.append(dict(scope='中止步骤',file=code,message=describe_error(exc)['reason']))
+            raise error from exc
+        count, done = result if isinstance(result, tuple) else (1,int(bool(result)))
+        attempted += count
+        succeeded += done
+        if not count:
+            failures.append((code,'未找到这个技能可施加的目标。'))
+        elif done < count:
+            failures.append((code,f'游戏未确认 {count-done} 次技能效果已施加。'))
+    return StandardEffectsResult(attempted,succeeded,failures)
+
+
 class AbilitiesFacade:
     def _run_direct_selected_ability_locked(
         self,
@@ -366,39 +398,22 @@ class AbilitiesFacade:
 
     def apply_standard_debuffs_to_selected_unit(self) -> tuple[int, int]:
         target_abilities = ("Acrs", "Aply", "Aslo", "Acri", "Afae", "ANso", "AEer", "ANdo")
-        attempted = len(target_abilities) + 1
-        succeeded = sum(
-            1 if self.apply_direct_ability_to_selected_unit(ability) else 0
-            for ability in target_abilities
-        )
-        succeeded += 1 if self.apply_direct_roar_buff_to_selected_unit("ANht") else 0
-        return attempted, succeeded
+        return _run_standard_effects((
+            *((code,self.apply_direct_ability_to_selected_unit) for code in target_abilities),
+            ("ANht",self.apply_direct_roar_buff_to_selected_unit),
+        ))
 
 
     def apply_standard_buffs_to_selected_unit(self) -> tuple[int, int]:
         target_abilities = ("Aams", "Ainf", "Ablo", "Auhf", "Afzy", "Alsh", "Arej", "Aivs", "ACfa")
-        attempted = len(target_abilities)
-        succeeded = sum(
-            1 if self.apply_direct_ability_to_selected_unit(ability) else 0
-            for ability in target_abilities
-        )
-        for ability in ("Aroa", "Absk"):
-            attempted += 1
-            succeeded += 1 if self.apply_direct_immediate_ability(ability) else 0
-        attempted += 1
-        succeeded += 1 if self.apply_direct_point_ability("Ahwd") else 0
-        channel_attempted, channel_succeeded = self._run_selected_ability_effect(
-            "AEtq",
-            "immediate",
-            hold_seconds=12.0,
-        )
-        attempted += channel_attempted
-        succeeded += channel_succeeded
-        attempted += 1
-        succeeded += 1 if self.enable_selected_toggle_ability("ANms", 852589) else 0
-        attempted += 1
-        succeeded += 1 if self.apply_direct_noarg_derived_ability("AIsa") else 0
-        return attempted, succeeded
+        return _run_standard_effects((
+            *((code,self.apply_direct_ability_to_selected_unit) for code in target_abilities),
+            ("Aroa",self.apply_direct_immediate_ability),("Absk",self.apply_direct_immediate_ability),
+            ("Ahwd",self.apply_direct_point_ability),
+            ("AEtq",lambda code:self._run_selected_ability_effect(code,"immediate",hold_seconds=12.0)),
+            ("ANms",lambda code:self.enable_selected_toggle_ability(code,852589)),
+            ("AIsa",self.apply_direct_noarg_derived_ability),
+        ))
 
 
     def cast_fullscreen_swarm(self, *, success_limit: int = 0) -> tuple[int, int]:

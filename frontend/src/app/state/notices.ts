@@ -3,9 +3,9 @@ import { announce } from '../../ds'
 import type { UiNotice } from '../../lib/api'
 import { t } from '../i18n'
 
-/** Short plain failures go to the yellow line; anything with a log, details or a title gets the dialog. */
+/** Plain status text can use the bottom line. Failures always open the dialog. */
 const SHORT = 48
-const isShort = (n: UiNotice) => !n.logPath && !n.details?.length && !n.title && n.message.length <= SHORT
+const isShort = (n: UiNotice) => n.kind !== 'error' && !n.logPath && !n.details?.length && !n.title && n.message.length <= SHORT
 
 interface NoticeState {
   queue: UiNotice[]
@@ -27,7 +27,7 @@ export const useNotices = create<NoticeState>()((set, get) => ({
       if (seenIds.has(notice.id)) return
       seenIds.add(notice.id)
     }
-    if (get().queue.some(n => n.message === notice.message)) return
+    if (get().queue.some(n => n.title === notice.title && n.message === notice.message && n.logPath === notice.logPath)) return
     if (isShort(notice)) {
       announce(t(notice.message))
       return

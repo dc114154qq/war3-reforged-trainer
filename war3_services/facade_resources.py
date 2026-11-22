@@ -660,8 +660,10 @@ class ResourcesFacade:
                 for field, value, scale in targets:
                     address = getattr(current, field + "_address")
                     memory.write_i32(address, value * scale)
-                    if memory.read_i32(address) != value * scale:
-                        raise RuntimeError("Player resource write acknowledgment differs from request")
+                    actual = memory.read_i32(address)
+                    if actual != value * scale:
+                        label = {"gold":"金币", "lumber":"木材", "food_used":"当前人口", "food_cap":"人口上限"}[field]
+                        raise RuntimeError(f"{label}目标为 {value}，游戏写入后读回 {actual / scale:g}。")
                 refreshed = self._refresh_indexed_resource_cache(memory, current)
             self._classic_resource_cache = refreshed
             return refreshed

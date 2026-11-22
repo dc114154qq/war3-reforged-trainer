@@ -29,6 +29,7 @@ EQUIPMENT_NAMES = (
 
 
 def find_archive_files(root=None, *, cancel=None, max_files=5000):
+    from war3_error_messages import describe_error
     root = Path(root) if root else documents_directory() / "Warcraft III"
     if not root.is_dir():
         raise SaveExtractionError(
@@ -39,7 +40,7 @@ def find_archive_files(root=None, *, cancel=None, max_files=5000):
     complete = True
 
     def onerror(exc):
-        warnings.append({"source": str(exc.filename), "reason": str(exc)})
+        warnings.append({"source": str(exc.filename), "reason": describe_error(exc,operation='scan_archive_directory')['reason']})
 
     for directory, dirs, names in os.walk(root, followlinks=False, onerror=onerror):
         dirs[:] = sorted(d for d in dirs if not (Path(directory) / d).is_symlink())
@@ -52,6 +53,7 @@ def find_archive_files(root=None, *, cancel=None, max_files=5000):
                 continue
             if len(files) >= max_files:
                 complete = False
+                warnings.append({"source":str(root),"reason":f'目录中符合条件的存档超过单次扫描上限 {max_files} 个。'})
                 break
             try:
                 stat = path.stat()
@@ -64,7 +66,7 @@ def find_archive_files(root=None, *, cancel=None, max_files=5000):
                     }
                 )
             except OSError as exc:
-                warnings.append({"source": str(path), "reason": str(exc)})
+                onerror(exc)
         if not complete:
             break
     files.sort(key=lambda f: f["modified_ns"], reverse=True)

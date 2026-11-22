@@ -1,7 +1,7 @@
 import { useViewState, choice } from '../../state/viewMemory'
 import { useState, type CSSProperties } from 'react'
-import { Button, PillGroup, TextField, announce, cx } from '../../../ds'
-import { api } from '../../../lib/api'
+import { Button, PillGroup, TextField, cx } from '../../../ds'
+import { api, publishError } from '../../../lib/api'
 import type { ItemFieldRow, ItemFieldsData } from '../../../lib/types'
 import { useCommandCard } from '../../state/commands'
 import { useSystem } from '../../state/system'
@@ -88,7 +88,7 @@ export default function ItemFieldsPage() {
   useCommandCard([
     { key: 'Q', icon: 'read', title: t('读取选定槽位'), description: t('读取选中单位这个槽位上物品的字段。'), pending: pending.read, estimateMs: 900, disabled: !connected, onPress: () => void read() },
     { key: 'W', icon: 'write', title: t('修改字段'), description: t('编辑字段表里选中的那一行，回车写入游戏。'), pending: selectedId ? pending[`write-${selectedId}`] : false, estimateMs: 500, disabled: !connected,
-      onPress: () => selectedId ? setEditingId(selectedId) : announce(t('先在字段表里选一行。')) },
+      onPress: () => selectedId ? setEditingId(selectedId) : publishError(t('先在字段表里选一行。')) },
     { key: 'E', icon: 'add-item', title: t('物品基础字段'), description: t('查看和修改物品自身的字段。'), active: mode === 'basic', disabled: busy, onPress: () => switchMode('basic') },
     { key: 'R', icon: 'add-ability', title: t('装备加成 / 附带技能'), description: t('查看和修改物品附带技能提供的加成。'), active: mode === 'effects', disabled: busy, onPress: () => switchMode('effects') },
     { key: 'A', icon: 'search', title: t('显示数值为 0 的项'), description: t('切换是否列出数值为 0 的字段。'), active: filter.showZero, onPress: () => setFilter(f => ({ ...f, showZero: !f.showZero })) },

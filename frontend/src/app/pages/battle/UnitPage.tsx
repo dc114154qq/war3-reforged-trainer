@@ -1,7 +1,7 @@
 import { useViewState } from '../../state/viewMemory'
 import { useEffect, useMemo, useState } from 'react'
 import { Button, EditableNumber, Icon, PillGroup, RawcodePlate, StatBar, TextField, announce, bounty } from '../../../ds'
-import { api } from '../../../lib/api'
+import { api, publishError } from '../../../lib/api'
 import type { CandidateUnit, SelectedUnitData, UnitFieldRow } from '../../../lib/types'
 import { useCommandCard } from '../../state/commands'
 import { unitLockId, useLocks } from '../../state/locks'
@@ -65,7 +65,7 @@ export default function UnitPage() {
   })
 
   const toggleLock = (field: UnitFieldRow | null) => run('lock', async () => {
-    if (!field) return announce(t('请先选择需要操作的单位字段。'))
+    if (!field) return publishError(t('请先选择需要操作的单位字段。'))
     const id = unitLockId(field._iid)
     if (useLocks.getState().items.some(l => l._iid === id)) {
       if (await useLocks.getState().remove(id)) announce(t('已解除锁定'))
@@ -89,20 +89,20 @@ export default function UnitPage() {
     if (rows) useUnit.setState({ candidates: rows })
   })
   const readCandidate = (iid: string | null) => run('read', async () => {
-    if (!iid) return announce(t('先在候选单位列表里选一个。'))
+    if (!iid) return publishError(t('先在候选单位列表里选一个。'))
     setCandidate(iid)
     const result = await api.readSelectionCandidate(iid)
     if (result?.success) received(result.unit)
   })
 
   const copyAddress = () => {
-    if (!selected) return announce(t('请先选择需要操作的单位字段。'))
+    if (!selected) return publishError(t('请先选择需要操作的单位字段。'))
     navigator.clipboard?.writeText(selected.address).then(() => announce(`${t('已复制地址')} ${selected.address}`), () => {})
   }
 
   useCommandCard([
     { key: 'W', icon: 'write', title: t('修改字段'), description: t('编辑字段表里选中的那一行，回车写入游戏。'), pending: selectedId ? pending[`field-${selectedId}`] : false, estimateMs: 500, disabled: !connected,
-      onPress: () => selectedId ? setEditingId(selectedId) : announce(t('请先选择需要操作的单位字段。')) },
+      onPress: () => selectedId ? setEditingId(selectedId) : publishError(t('请先选择需要操作的单位字段。')) },
     { key: 'E', icon: 'refresh', title: t('刷新字段表'), description: t('重新读取当前单位的全部字段，不切换单位。'), pending: pending.refresh, estimateMs: 800, disabled: !connected, onPress: () => void refreshFields() },
     { key: 'R', icon: 'lock', title: t('锁定字段'), description: t('把选中字段冻在当前数值，游戏改动后会被改回来。再按一次解锁。'), pending: pending.lock, disabled: !connected, onPress: () => void toggleLock(selected),
       active: selectedId ? locks.some(l => l._iid === unitLockId(selectedId)) : undefined },

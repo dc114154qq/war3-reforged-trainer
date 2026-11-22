@@ -412,12 +412,14 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
     view=P();manual_mapped=False;image_unmapped=False
     loader_completed=False;loader_succeeded=False
     remote_thread_active=False;safe=True
+    stage='open_game'
     try:
         handle=p['open_process'](0x43a,False,pid)
         if not handle:raise c.WinError(c.get_last_error())
         memory=type('Memory',(),{'handle':handle,'pid':pid})()
         from war3_game_session import verify_opened_process
         verify_opened_process(memory)
+        stage='prepare_system_apis'
         hook_export=('win32u','NtUserSetWindowsHookEx') if hook_api=='win32u' else ('user32','SetWindowsHookExW')
         addresses=[resolve(memory,lib,name) for lib,name in [hook_export,
             ('user32','UnhookWindowsHookEx'),('user32','CallNextHookEx'),
@@ -425,6 +427,7 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
         sleep_address=resolve(memory,'kernel32','Sleep')
         load_library_address=resolve(memory,'kernel32','LoadLibraryW')
         free_library_address=resolve(memory,'kernel32','FreeLibrary')
+        stage='load_component'
         # Load the bridge through the target's normal loader. The previous
         # SEC_IMAGE/manual-map route could execute its first instruction but
         # die before SetWindowsHookEx on some Windows configurations, leaving
@@ -549,6 +552,7 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
             raise RuntimeError('Bridge profile initialization write failed')
         if p['bytes_at'](handle, profile_address, len(profile_payload)) != profile_payload:
             raise RuntimeError('Bridge profile initialization readback differs')
+        stage='prepare_request'
         report['profile'] = {'id': profile.id, 'digest': profile.digest,
             'bridge_version': profile.data['bridge_profile_version'],
             'game_version': profile.data['game_version'],
@@ -598,6 +602,7 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
         if not p['write'](handle,block,buffer,216,c.byref(written)) or written.value!=216:raise c.WinError(c.get_last_error())
         safe=False
         remote_thread_active=True
+        stage='start_request'
         worker_tid=U()
         thread=p['create_thread'](handle,None,0,image_base+install_rva,block,0,c.byref(worker_tid))
         if not thread:
@@ -612,6 +617,7 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
             time.sleep(0.005);state=fields(handle,block)
         report['after_install']=state
         delivered=False
+        stage='send_request'
         if state['stage']==2 and state['hook']:
             reply=Z();c.set_last_error(0)
             if thread_posted:
@@ -630,7 +636,9 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
             else:
                 delivered=bool(h['send'](hwnd,message,nonce,0,3,1500,c.byref(reply)))
                 report['send']={'completed':delivered,'error':c.get_last_error()}
+        stage='read_result'
         state=fields(handle,block);report['after_send']=state
+        stage='finish_request'
         stop=c.c_ulong(1);written=Z()
         if not p['write'](handle,block+104,c.byref(stop),4,c.byref(written)):
             raise c.WinError(c.get_last_error())
@@ -672,6 +680,8 @@ def _dispatch_once(pid,hwnd,tid,image,tls_index,work_payload,kind="hero",attempt
         if work:report['work_result_hex']=p['bytes_at'](handle,work,len(work_payload)).hex()
     except Exception as exc:
         report['error']=repr(exc)
+        report['failure_stage']=stage
+        report['winerror']=getattr(exc,'winerror',None)
         report['traceback']=traceback.format_exc()
     finally:
         module_unloaded=not remote_module

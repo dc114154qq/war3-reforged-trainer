@@ -122,6 +122,13 @@ const en: Record<string, string> = {
 
   // Notices
   '操作未完成': 'Operation not completed',
+  '诊断日志未能保存，请检查日志目录。': 'The diagnostic log could not be saved. Check the log folder.',
+  '无法写入剪贴板。可选中文字后按 Ctrl+C。': 'The clipboard could not be written. Select the text and press Ctrl+C.',
+  '桌面服务未在等待时间内启动，界面无法提交操作。请重新打开修改器。': 'The desktop service did not start in time. Reopen the trainer to use its controls.',
+  '桌面通信尚未就绪，请重新打开修改器。': 'The desktop connection did not start. Reopen the trainer.',
+  '桌面服务返回了失败结果，但没有附上失败步骤。请重开修改器后再试。': 'The desktop service returned a failure without identifying the step. Reopen the trainer and try again.',
+  '桌面服务没有返回完整结果。请先查看操作结果，再尝试重新连接游戏或重开修改器。': 'The desktop service returned an incomplete result. Check the result, then reconnect to the game or reopen the trainer.',
+  '当前界面没有找到这项操作的桌面接口。请关闭修改器，再打开同一版本的 EXE。': 'This action is unavailable in the desktop service. Close the trainer and reopen the EXE for this version.',
   '具体原因': 'Details',
   '诊断日志': 'Diagnostic log',
   '复制完整原因': 'Copy full details',

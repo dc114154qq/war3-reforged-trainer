@@ -1,7 +1,7 @@
 import { useViewState } from '../../state/viewMemory'
 import { useState } from 'react'
-import { Button, Icon, TextField, announce } from '../../../ds'
-import { api } from '../../../lib/api'
+import { Button, Icon, TextField } from '../../../ds'
+import { api, publishError } from '../../../lib/api'
 import type { AbilityFieldRow, AbilityFieldsData } from '../../../lib/types'
 import { useCatalogName } from '../../state/catalog'
 import { useCommandCard } from '../../state/commands'
@@ -66,7 +66,7 @@ export default function AbilityFieldsPage() {
   useCommandCard([
     { key: 'Q', icon: 'read', title: t('读取技能字段'), description: t('按技能 ID 和等级读取选中单位身上这个技能的全部字段。'), pending: pending.read, estimateMs: 900, disabled: !connected, onPress: () => void read() },
     { key: 'W', icon: 'write', title: t('修改字段'), description: t('编辑字段表里选中的那一行，回车写入游戏。'), pending: selectedId ? pending[`write-${selectedId}`] : false, estimateMs: 500, disabled: !connected,
-      onPress: () => selectedId ? setEditingId(selectedId) : announce(t('先在字段表里选一行。')) },
+      onPress: () => selectedId ? setEditingId(selectedId) : publishError(t('先在字段表里选一行。')) },
     { key: 'A', icon: 'search', title: t('显示数值为 0 的项'), description: t('切换是否列出数值为 0 的字段。'), active: filter.showZero, onPress: () => setFilter(f => ({ ...f, showZero: !f.showZero })) },
     { key: 'S', icon: 'catalog', title: t('显示未支持字段'), description: t('切换是否列出尚未开放或未确认的字段。'), active: filter.showUnsupported, onPress: () => setFilter(f => ({ ...f, showUnsupported: !f.showUnsupported })) },
   ])

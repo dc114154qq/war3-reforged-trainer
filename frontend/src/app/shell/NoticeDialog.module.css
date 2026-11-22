@@ -3,6 +3,8 @@
   flex-direction: column;
   gap: 10px;
   max-height: 52vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   user-select: text;
 }
 

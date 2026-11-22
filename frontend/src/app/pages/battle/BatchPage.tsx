@@ -1,7 +1,7 @@
 import { useViewState } from '../../state/viewMemory'
 import { useRef, useState, type MouseEvent } from 'react'
-import { Button, Checkbox, Icon, RawcodePlate, Select, SelectionRing, TextField, announce } from '../../../ds'
-import { api } from '../../../lib/api'
+import { Button, Checkbox, Icon, RawcodePlate, Select, SelectionRing, TextField } from '../../../ds'
+import { api, publishError } from '../../../lib/api'
 import { useCommandCard } from '../../state/commands'
 import { useSystem } from '../../state/system'
 import { useT } from '../../i18n'
@@ -72,9 +72,9 @@ export default function BatchPage() {
 
   const write = () => run('write', async () => {
     const instances = units.filter(u => u.checked).map(u => u.instance)
-    if (!instances.length) return announce(t('请先勾选需要批量修改的单位'))
+    if (!instances.length) return publishError(t('请先勾选需要批量修改的单位'))
     const active = Object.fromEntries(Object.entries(targets).map(([k, v]) => [k, v.trim()]).filter(([, v]) => v))
-    if (!Object.keys(active).length) return announce(t('请至少填写一个目标修改值'))
+    if (!Object.keys(active).length) return publishError(t('请至少填写一个目标修改值'))
     try {
       const res = await api.batchWriteUnits(instances, active)
       setMessage(res?.message || '批量修改已下发执行')

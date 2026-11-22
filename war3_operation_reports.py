@@ -1,11 +1,60 @@
 """Decode failure details without changing the operation success contract."""
 import struct
 
+# Additional observations are intentionally kept outside *_status so they do
+# not affect write, continuation or cleanup decisions in the engine.
+_EXTRA_FAILURE_WORDS = {
+    'unit_field':             (608, 604, 612),
+    'unit_field_hero_int':    (608, 604, 612),
+    'ability_definition':     (20, 24, None),
+    'talent_order':           (536, 540, None),
+    'unit_bindings':          (504, 508, None),
+    'hero':                   (528, None, 524),
+    'hero_attributes':        (552, 556, 548),
+    'unit_stats':            (556, 560, 552),
+    'bulk':                   (644, 648, 640),
+    'camera':                 (180, 184, 176),
+    'screen_mouse':           (36, 40, 32),
+    'terrain':                (48, 52, 44),
+    'map_bounds':             (68, 72, 64),
+    'talent_icon_control':    (76, 80, None),
+    'talent_probe':           (796, 800, None),
+}
+_SELECTED_OPERATIONS = frozenset((
+    'ability','ability_field','attack_speed','bulk','clone','clone_state','clone_bound',
+    'direct_cast','effect','equipment','equipment_effect','extension','hero','hero_attributes',
+    'item','item_ability','item_effect','item_field','item_safety','position','position_target',
+    'stat_details','talent_order','unit_action','unit_bindings','unit_field','unit_field_hero_int','unit_stats',
+))
+
+def _record_failure_observation(kind, raw, report):
+    from war3_operations import protocol
+    spec, module = protocol(kind)
+    if module is None or len(raw) != module.WORK_SIZE:
+        return
+    if kind in _EXTRA_FAILURE_WORDS:
+        words = _EXTRA_FAILURE_WORDS[kind]
+        status = {name:struct.unpack_from('<I',raw,offset)[0]
+                  for name,offset in zip(('error','completed','changed'),words) if offset is not None}
+        if kind=='unit_field_hero_int':
+            try:status['intelligence']=module.details(raw)
+            except ValueError as exc:status['intelligence_decode_error']=str(exc)
+        if kind=='hero_attributes':
+            status['rollback_error']=struct.unpack_from('<I',raw,560)[0]
+        report['failure_observation']=status
+    if kind in _SELECTED_OPERATIONS:
+        count,error,destroyed=struct.unpack_from('<3I',raw,80)
+        if error or count:
+            report['native_selection_observation']=dict(count=count,error=error,released=bool(destroyed))
+
 def record_status(kind,evidence,report):
-    if kind=='extension' and evidence.get('work_result_hex'):
+    if evidence.get('work_result_hex') and (kind in _EXTRA_FAILURE_WORDS or kind in _SELECTED_OPERATIONS):
+        _record_failure_observation(kind,bytes.fromhex(evidence['work_result_hex']),report)
+    if kind in ('extension','legacy_equipment_probe') and evidence.get('work_result_hex'):
         from war3_extension_protocol import status
         value=status(bytes.fromhex(evidence['work_result_hex']))
-        if value is not None:report['extension_status']=value
+        if value is not None:
+            report['extension_status' if kind=='extension' else 'failure_observation']=value
     if kind=='gold_mine' and evidence.get('work_result_hex'):
         from war3_gold_mine_protocol import status
         report['gold_mine_status']=status(bytes.fromhex(evidence['work_result_hex']))

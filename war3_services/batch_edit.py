@@ -9,6 +9,7 @@ import time
 import traceback
 
 from war3_game_session import GameSession, NativeHandle, ObjectAddress, SessionIdentity, UnitRef, session_scope
+from war3_error_messages import describe_error
 from war3_services.operation_trace import BackpackTrace
 
 _FIELD_TARGET = ContextVar("batch_field_target", default=None)
@@ -405,7 +406,7 @@ class BatchEditService:
                 try:
                     registry = ensure_session()
                 except Exception as exc:
-                    stopped = str(exc)
+                    stopped = describe_error(exc,operation='batch_write_units')['reason']
                     trace.record("session_stopped", **context, exception=repr(exc),
                                  traceback=traceback.format_exc())
                     results.extend(FieldResult(u, k, v, "not_attempted", stopped)
@@ -472,7 +473,7 @@ class BatchEditService:
                 except Exception as exc:
                     capabilities.pop(unit.identity, None)
                     bindings.pop(unit.ref, None)
-                    result = FieldResult(unit, key, target, "failed", str(exc))
+                    result = FieldResult(unit, key, target, "failed", describe_error(exc,operation='batch_write_units')['reason'])
                     trace.record("field_exception", **context, exception=repr(exc),
                                  traceback=traceback.format_exc(),
                                  execution_report=getattr(exc, "report", None),

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { create } from 'zustand'
 import { PLAYER_COLORS, announce, bounty } from '../../ds'
-import { api } from '../../lib/api'
+import { api, publishError } from '../../lib/api'
 import { PAGES } from '../routes'
 import { useNav } from '../state/nav'
 import { num, useResources, type AddKind } from '../state/resources'
@@ -109,14 +109,14 @@ async function execute(input: string) {
 
   const parsed = parseCommand(text)
   if (parsed) {
-    if (parsed.badAmount) return announce(tr('数值要写成数字，例如：加金币 5000'))
-    if (!useSystem.getState().status.connected) return announce(tr('还没有连接游戏。先点上方的昼夜钟连接。'))
+    if (parsed.badAmount) return publishError(tr('数值要写成数字，例如：加金币 5000'))
+    if (!useSystem.getState().status.connected) return publishError(tr('还没有连接游戏。先点上方的昼夜钟连接。'))
     return parsed.command.run(parsed.amount)
   }
   const page = PAGES.find(p => p.label === text || tr(p.label).toLowerCase() === text.toLowerCase())
     ?? PAGES.find(p => p.label.includes(text))
   if (page) return useNav.getState().setPage(page.id)
-  announce(tr('没有认出这条输入。可以输入页面名或修改器指令，例如：加金币 5000'))
+  publishError(tr('没有认出这条输入。可以输入页面名或修改器指令，例如：加金币 5000'))
 }
 
 /** Enter opens it, as typing in game. Takes page names and the trainer's own commands. */

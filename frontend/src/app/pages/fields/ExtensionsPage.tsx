@@ -16,7 +16,7 @@ const EMPTY: ExtensionsSnapshot = {
   status: '尚未读取 3.0 扩展状态', bag: [], equipment: [], talents: [], officialBackpacks: [], currentBackpackChoice: '', loadoutName: '套装1',
 }
 
-type Result = { success: boolean; data?: ExtensionsSnapshot; message?: string; error?: string } | undefined
+type Result = { success: boolean; data?: ExtensionsSnapshot; message?: string; error?: string; cancelled?: boolean } | undefined
 
 export default function ExtensionsPage() {
   const t = useT()
@@ -90,6 +90,7 @@ export default function ExtensionsPage() {
   const perform = async (call: () => Promise<Result>, done: string) => {
     try {
       const result = await call()
+      if (result?.cancelled) return result
       if (result?.data) accept(result.data)
       say(result?.message || done)
       return result

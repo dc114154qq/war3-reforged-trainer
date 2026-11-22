@@ -36,7 +36,12 @@ export function startSync(): () => void {
     }
   })
 
-  const onError = (e: Event) => useNotices.getState().push((e as CustomEvent<UiNotice>).detail)
+  const onError = (e: Event) => {
+    const detail = (e as CustomEvent<UiNotice | string>).detail
+    if (detail) useNotices.getState().push(typeof detail === 'string'
+      ? { kind: 'error', message: detail }
+      : { ...detail, kind: 'error' })
+  }
   const onParams = (e: Event) => useParams.getState().merge((e as CustomEvent<Record<string, string>>).detail)
   const onParamsChanged = () => void useParams.getState().reload()
   window.addEventListener('war3-error', onError)
@@ -77,7 +82,9 @@ export function startSync(): () => void {
   }
 
   const bridgeTimer = window.setTimeout(() => {
-    if (!useSystem.getState().bridgeReady) useNotices.getState().push('桌面通信尚未就绪，请重新打开修改器。')
+    if (!useSystem.getState().bridgeReady) useNotices.getState().push({
+      kind: 'error', message: '桌面服务未在等待时间内启动，界面无法提交操作。请重新打开修改器。',
+    })
   }, BRIDGE_TIMEOUT_MS)
 
   const onReady = () => void begin()

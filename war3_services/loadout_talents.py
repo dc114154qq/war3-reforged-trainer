@@ -377,7 +377,7 @@ def result_messages(snapshot,language='zh'):
             'Completed equipment operations were retained. The following talent steps were skipped.') if english else
            ('装备方案已保存，未能读取的天赋已跳过。' if saving else
             '已完成的装备操作均已保留；以下天赋项未能恢复，已跳过。')]
-    for unit,report,entry in issues[:12]:
+    for unit,report,entry in issues:
         tier=entry.get('tier',-1);code=entry.get('rawcode','')
         prefix=(f'Hero {unit}' if english else f'英雄 {unit}')
         if tier>=0:prefix+=(f', tier {tier+1}' if english else f'，第 {tier+1} 层')

@@ -140,8 +140,10 @@ class DefinitionJobs:
                 if batch and failed:
                     # One summary popup; per-file errors stay in the results
                     # and cannot interrupt the remaining queue.
-                    details = '\n'.join(f"{item['source']}：{item['error']}" for item in job['files'] if item['status'] == 'failed')
-                    notify(RuntimeError(message + '\n' + details))
+                    exc = RuntimeError(message)
+                    exc.user_details = [dict(scope='补齐背包定义',file=item['source'],message=item['error'])
+                                        for item in job['files'] if item['status']=='failed']
+                    notify(exc)
             except Exception as exc:
                 with self.lock:
                     if self.job['jobId'] == job_id:

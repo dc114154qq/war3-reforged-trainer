@@ -8,7 +8,7 @@ import s from './NoticeDialog.module.css'
 
 /**
  * Failures that need explaining: title, reason, per-file details and the diagnostic log.
- * One at a time, in arrival order. Short plain failures go to the yellow line instead.
+ * One at a time, in arrival order.
  */
 export function NoticeDialog() {
   const t = useT()
@@ -16,17 +16,21 @@ export function NoticeDialog() {
   const dismiss = useNotices(st => st.dismiss)
   const setPage = useNav(st => st.setPage)
   const [copied, setCopied] = useState(false)
+  const [copyFailed, setCopyFailed] = useState(false)
 
-  const close = () => { setCopied(false); dismiss() }
+  const close = () => { setCopied(false); setCopyFailed(false); dismiss() }
 
   const copy = async () => {
     if (!notice) return
     const details = (notice.details ?? []).map(d => `${d.scope} / ${d.file}\n${d.message}${d.impact ? `\n${d.impact}` : ''}`).join('\n\n')
     try {
-      await navigator.clipboard.writeText([notice.message, details, notice.logPath ?? ''].filter(Boolean).join('\n\n'))
+      const log = notice.logPath && !notice.message.includes(notice.logPath) ? notice.logPath : ''
+      await navigator.clipboard.writeText([t(notice.title || '操作未完成'), notice.message, details, log].filter(Boolean).join('\n\n'))
       setCopied(true)
+      setCopyFailed(false)
     } catch {
       setCopied(false)
+      setCopyFailed(true)
     }
   }
 
@@ -51,7 +55,8 @@ export function NoticeDialog() {
     >
       {notice && (
         <div className={s.body} data-testid="notice">
-          <p className={s.reason}>{t(notice.message)}</p>
+          <p className={s.reason}>{t(notice.diagnosis?.reason || notice.message)}</p>
+          {!!notice.diagnosis?.recovery && <p className={s.reason}>{t(notice.diagnosis.recovery)}</p>}
           {!!notice.details?.length && (
             <section aria-label={t('具体原因')}>
               <h3 className={s.heading}>{t('具体原因')}</h3>
@@ -64,9 +69,11 @@ export function NoticeDialog() {
               ))}
             </section>
           )}
-          {notice.logPath && !notice.message.includes(notice.logPath) && (
+          {notice.logPath && (notice.diagnosis || !notice.message.includes(notice.logPath)) && (
             <p className={s.log}>{t('诊断日志')}：<span className={s.path}>{notice.logPath}</span></p>
           )}
+          {notice.diagnosis?.logSaveFailed && <p className={s.reason}>{t('诊断日志未能保存，请检查日志目录。')}</p>}
+          {copyFailed && <p role="alert" className={s.reason}>{t('无法写入剪贴板。可选中文字后按 Ctrl+C。')}</p>}
         </div>
       )}
     </Dialog>

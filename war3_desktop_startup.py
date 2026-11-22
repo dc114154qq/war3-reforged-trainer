@@ -122,7 +122,7 @@ class DesktopStartupMonitor:
             return dict(accepted=False)
         details = details if isinstance(details, dict) else {}
         details = {k: str(details[k])[:6000] for k in
-                   ('message', 'stack', 'source', 'userAgent', 'url', 'page') if k in details}
+                   ('message', 'stack', 'source', 'userAgent', 'url', 'page', 'phase') if k in details}
         self._logger.info('frontend_%s %s', stage, json.dumps(details, ensure_ascii=False))
         if stage == 'ready':
             with self._lock:
@@ -132,14 +132,22 @@ class DesktopStartupMonitor:
                 if self._timer:
                     self._timer.cancel()
         elif stage == 'failed':
-            self.fail(details.get('message') or '界面加载失败，未收到具体错误。')
+            if details.get('phase') == 'resource':
+                reason = '修改器未能加载界面所需的文件。请重新下载完整 EXE。'
+                if details.get('message'):
+                    reason += '\n' + details['message']
+            elif details.get('phase') == 'render':
+                reason = '界面代码在显示页面时停止。请重新打开修改器，若再次出现可复制启动日志。'
+            else:
+                reason = details.get('message') or '窗口未能完成第一次显示。'
+            self.fail(reason)
         return dict(accepted=True)
 
     def timed_out(self):
         with self._lock:
             if self._closed or self._ready or self._failed:
                 return
-            self.fail('窗口已启动，但界面在规定时间内没有完成加载。可能是显示组件初始化、界面资源或渲染出现问题。')
+            self.fail('窗口已经打开，但等候超时前没有收到第一页显示完成的确认。')
 
     def fail(self, reason, *, wait=False):
         with self._lock:

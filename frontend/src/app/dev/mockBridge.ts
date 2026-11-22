@@ -20,7 +20,7 @@ const hex = (n: number) => `0x${n.toString(16).toUpperCase()}`
 /* ---- System ---------------------------------------------------------------------- */
 
 const status = (): SystemStatus => ({
-  appVersion: '2.2.6',
+  appVersion: '2.2.7',
   edition: '普通读取版',
   connected,
   pid: connected ? 14328 : null,
@@ -54,6 +54,7 @@ const groups = (): ResourceGroup[] => groupData.map(g => ({
 const snapshot = (): ResourceSnapshot => {
   const g = cur()
   return {
+    selectedGroup: connected ? g.iid : '',
     current: connected ? { gold: String(g.gold), lumber: String(g.lumber), food: String(g.used), foodCap: String(g.cap) } : { gold: '', lumber: '', food: '', foodCap: '' },
     targets: { gold: String(g.gold), lumber: String(g.lumber), foodUsed: String(g.used), foodCap: String(g.cap) },
     delta,
@@ -432,12 +433,13 @@ const handlers: Record<string, (...args: any[]) => unknown> = {
     if (kind !== 'gold') g.lumber += n
     return { success: true, data: snapshot() }
   },
-  add_resource_lock(kind: string) {
+  add_resource_lock(kind: string, expectedGroup: string) {
     const g = cur()
+    if (g.iid !== expectedGroup) return { success: false, error: '当前资源组已经切换，请确认要锁定的玩家后重试。' }
     const v = kind === 'gold' ? g.gold : kind === 'lumber' ? g.lumber : kind === 'food_used' ? g.used : g.cap
     const local = g === groupData[0]
     locks.set(`resource:${g.iid}:${kind}`, { _iid: `resource:${g.iid}:${kind}`, scope: local ? '本地玩家资源' : `资源组 ${g.label.split(' ')[0]}`, label: LOCK_LABEL[kind], value: String(v) })
-    return { success: true, locks: lockList() }
+    return { success: true, locks: lockList(), data: snapshot() }
   },
   async gold_mines(scope: string, amount: string | null) {
     await wait(1200)

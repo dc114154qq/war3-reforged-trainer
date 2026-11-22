@@ -353,7 +353,8 @@ def _patch_map(path,inherited,parent_custom,manifest,files,journal):
 
 def prepare_extension_definitions(source,output_folder,*,progress=None,cancel=None):
     try: source=Path(str(source).strip().strip('"')).expanduser().resolve(strict=True)
-    except OSError as exc: raise DefinitionError('输入文件没有找到或读取失败，请检查完整路径。') from exc
+    except FileNotFoundError as exc: raise DefinitionError('找不到所选战役或地图。文件可能已经移动，请重新选择。') from exc
+    except PermissionError as exc: raise DefinitionError('Windows 拒绝读取所选战役或地图，请检查文件权限。') from exc
     if source.suffix.casefold() not in ('.w3n','.w3x','.w3m') or not source.is_file():
         raise DefinitionError('请选择 w3n 战役或 w3x 地图文件。')
     if source.stat().st_size>8*1024**3:raise DefinitionError('这份战役或地图过大，请单独处理。')
@@ -365,6 +366,7 @@ def prepare_extension_definitions(source,output_folder,*,progress=None,cancel=No
     journal=Journal(run_folder/'处理日志.jsonl',progress,cancel)
     pending=run_folder/('未完成.tmp')
     current_chapter = None
+    current_step = '核对原文件'
     try:
         initial_stat=(source.stat().st_size,source.stat().st_mtime_ns)
         journal.event('source_hash_begin',source=str(source),log_path=str(journal.path))
@@ -374,11 +376,13 @@ def prepare_extension_definitions(source,output_folder,*,progress=None,cancel=No
                       processing_revision=PROCESSING_REVISION)
         with tempfile.TemporaryDirectory(prefix='war3-definitions-') as temporary:
             work=Path(temporary);staged=work/('campaign'+source.suffix)
+            current_step = '复制原文件'
             journal.event('copy_begin',path=source.name)
             shutil.copyfile(source,staged)
             if file_hash(staged)!=source_hash:raise DefinitionError('输入文件复制校验失败，请重新选择文件。')
             journal.event('source_copied',path=source.name)
             reports=[]
+            current_step = '读取战役或地图内容'
             if source.suffix.casefold()=='.w3n':
                 with Archive(staged) as archive:
                     members=_members(archive,journal);before=_fingerprints(archive,members,journal)
@@ -426,6 +430,7 @@ def prepare_extension_definitions(source,output_folder,*,progress=None,cancel=No
             journal.check()
             if (source.stat().st_size,source.stat().st_mtime_ns)!=initial_stat or file_hash(source)!=source_hash:
                 raise DefinitionError('处理期间输入文件发生变化，已停止输出，请重新选择文件。')
+            current_step = '校验输出副本'
             journal.event('output_verify',path=source.name)
             digest=file_hash(staged);shutil.copyfile(staged,pending)
             if file_hash(pending)!=digest:raise DefinitionError('输出文件复制校验失败。')
@@ -440,6 +445,7 @@ def prepare_extension_definitions(source,output_folder,*,progress=None,cancel=No
             report_path.write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf8')
             journal.event('verified',report_path=str(report_path),output=str(output),output_sha256=digest)
             os.fsync(journal.stream.fileno());journal.check();journal.close()
+            current_step = '保存结果到输出目录'
             os.replace(pending,output)
             return DefinitionResult(str(source),str(output),str(report_path),str(journal.path),len(reports),
                                     sum(row['changed'] for row in reports),sum(row['added_entries'] for row in reports),
@@ -457,8 +463,10 @@ def prepare_extension_definitions(source,output_folder,*,progress=None,cancel=No
         if isinstance(exc,DefinitionError) and current_chapter:
             error=DefinitionError(f'处理章节“{current_chapter}”时：'+str(exc));error.__cause__=exc;exc=error
         elif not isinstance(exc,DefinitionError):
-            error=DefinitionError((f'处理章节“{current_chapter}”时：' if current_chapter else '')+str(exc)
-                if isinstance(exc,MpqError) else '处理战役或地图时出错，原文件已保留。详细原因已记录在处理日志中。')
+            from war3_error_messages import describe_error
+            detail = str(exc) if isinstance(exc,MpqError) else describe_error(exc,operation='extension_definitions')['reason']
+            location = f'处理章节“{current_chapter}”时' if current_chapter else f'处理“{source.name}”时'
+            error=DefinitionError(f'{location}在“{current_step}”这一步停止。{detail}')
             error.__cause__=exc;exc=error
         exc.diagnostic_log_path=str(journal.path)
         raise exc

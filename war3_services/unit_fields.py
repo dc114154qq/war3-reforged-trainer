@@ -120,8 +120,9 @@ class UnitFieldsService:
     def __init__(self,host,logger_factory=None):
         self.host,self.logger_factory=host,logger_factory
 
-    def read(self):
+    def read(self, only_codes=None, tolerate_field_errors=False):
         engine=self.host._engine_instance_24268();session=engine.session
+        only_codes=None if only_codes is None else frozenset(str(code) for code in only_codes)
         with session.lock,session_scope(session):
             candidate,_=self.host._direct_selected_context()
             refs=self.host._capture_unit_refs_24268((candidate,))
@@ -130,16 +131,25 @@ class UnitFieldsService:
             from war3_unit_field_hero_int_protocol import enabled_for,FIELD_IDS
             int_compat=enabled_for(session.profile)
             intelligence=[r for r in rows if int_compat and int.from_bytes(r['code'].encode(),'big') in FIELD_IDS]
-            supported=[r for r in rows if r['kind'] in KINDS and r not in intelligence]
-            for start in range(0,len(supported),32):
-                batch=supported[start:start+32]
-                result=engine.unit_fields(tuple((int.from_bytes(r['code'].encode(),'big'),KINDS[r['kind']],r['weapon'],0) for r in batch),target_unit=native.value,rawcode=ref.rawcode)
+            supported=[r for r in rows if r['kind'] in KINDS and r not in intelligence and
+                       (only_codes is None or r['code'] in only_codes)]
+            batch_size=1 if tolerate_field_errors else 32
+            for start in range(0,len(supported),batch_size):
+                batch=supported[start:start+batch_size]
+                try:
+                    result=engine.unit_fields(tuple((int.from_bytes(r['code'].encode(),'big'),KINDS[r['kind']],r['weapon'],0) for r in batch),target_unit=native.value,rawcode=ref.rawcode)
+                except Exception as exc:
+                    if not tolerate_field_errors:raise
+                    for row in batch:
+                        row.update(value=None,writable=False,note='当前游戏版本读取该字段失败，模板已自动跳过：'+type(exc).__name__)
+                    continue
                 for row,value in zip(batch,result['rows'][0]['fields']):
                     actual=value['value']
                     if isinstance(actual,float) and not math.isfinite(actual):
                         row.update(value=None,writable=False,note='游戏返回非有限实数，未开放写入')
                     else:row['value']=actual
-            if intelligence:
+            if intelligence and (only_codes is None or any(r['code'] in only_codes for r in intelligence)):
+                intelligence=[r for r in intelligence if only_codes is None or r['code'] in only_codes]
                 result=engine.unit_field_hero_int(tuple((int.from_bytes(r['code'].encode(),'big'),1,0,0) for r in intelligence),
                                                   target_unit=native.value,rawcode=ref.rawcode)
                 actual_rows=result.get('rows',())

@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { HoldToConfirm, Icon, TextField, announce, cx, type IconName } from '../../../ds'
+import { Button, HoldToConfirm, Icon, TextField, announce, cx, type IconName } from '../../../ds'
 import { api } from '../../../lib/api'
 import { useCatalogName } from '../../state/catalog'
 import { useCommandCard } from '../../state/commands'
@@ -23,6 +23,11 @@ export default function ElephantPage() {
   const values = useParams(st => st.values)
   const { pending, run } = usePending()
   const p = (key: string) => values[key] ?? DEFAULTS[key]
+  const [templateName, setTemplateName] = useState('模板1')
+  const [templateAbility, setTemplateAbility] = useState('')
+  const [templateAbilityLevel, setTemplateAbilityLevel] = useState('1')
+  const [templateRadius, setTemplateRadius] = useState('420')
+  const [templateStatus, setTemplateStatus] = useState('')
 
   useEffect(() => { void useParams.getState().reload() }, [])
 
@@ -34,6 +39,33 @@ export default function ElephantPage() {
   })
 
   /** prewarm_elephant is its own bridge method, not one of the Elephant actions. */
+  const captureTemplate = () => void run('capture_production_template', async () => {
+    const result = await api.captureProductionTemplate(templateName, templateAbility, templateAbilityLevel)
+    if (result?.success) {
+      const t0 = result.template
+      setTemplateStatus(`已保存 ${t0?.name ?? templateName}：${t0?.unitCode ?? ''}，${t0?.fieldCount ?? 0} 个字段${t0?.abilityCount ? `，${t0.abilityCount} 个附加技能` : ''}`)
+      announce('单位模板已保存')
+    }
+  })
+
+  const bindTemplate = () => void run('bind_production_template', async () => {
+    const result = await api.bindProductionTemplate(templateName, templateRadius, '1', '99')
+    if (result?.success) { setTemplateStatus(result.message ?? '建筑专属模板已启动'); announce(result.message ?? '建筑专属模板已启动') }
+  })
+
+  const stopTemplate = () => void run('stop_production_template', async () => {
+    const result = await api.stopProductionTemplate()
+    if (result?.success) { setTemplateStatus(result.message ?? '已停止'); announce(result.message ?? '已停止') }
+  })
+  const bindBuildingUpgradeTemplate = () => void run('bind_building_upgrade_template', async () => {
+    const result = await api.bindBuildingUpgradeTemplate(templateName)
+    if (result?.success) { setTemplateStatus(result.message ?? '建筑升级模板已启动'); announce(result.message ?? '建筑升级模板已启动') }
+  })
+  const stopBuildingUpgradeTemplate = () => void run('stop_building_upgrade_template', async () => {
+    const result = await api.stopBuildingUpgradeTemplate()
+    if (result?.success) { setTemplateStatus(result.message ?? '建筑升级模板已停止'); announce(result.message ?? '建筑升级模板已停止') }
+  })
+
   const prewarm = () => void run('prewarm', async () => {
     const result = await api.prewarmElephant()
     if (result?.success) announce(t(result.message || '大象功能初始化就绪'))
@@ -136,6 +168,27 @@ export default function ElephantPage() {
             {tile('add_ability', '添加技能', 'add-ability', { rawcode: p('ability_rawcode'), level: p('ability_level') })}
             {tile('remove_ability', '删除技能', 'remove', { rawcode: p('ability_rawcode') })}
             {tile('set_ability_level', '设定技能等级', 'level-up', { rawcode: p('ability_rawcode'), level: p('ability_level') })}
+          </div>
+        </Group>
+
+        <Group title="建筑专属单位模板">
+          <p className={s.lead}>先把一个单位改成你想要的样子并选中它，保存模板；再选中一座建筑并绑定。以后只给这座建筑附近新出生的同 ID 单位套模板，不改全局单位定义。</p>
+          <div className={s.params}>
+            <TextField className={s.code} label="模板名" value={templateName} onChange={e => setTemplateName(e.target.value)} />
+            <TextField className={s.code} label="附加技能 ID（可空）" value={templateAbility} maxLength={4} placeholder="AOsh" onChange={e => setTemplateAbility(e.target.value)} />
+            <TextField className={s.narrow} label="技能等级" value={templateAbilityLevel} onChange={e => setTemplateAbilityLevel(e.target.value)} />
+            <Button variant="cast" disabled={!connected || !!pending.capture_production_template} onClick={captureTemplate}>保存当前单位为模板</Button>
+          </div>
+          <div className={s.params}>
+            <TextField className={s.narrow} label="出生判定半径" value={templateRadius} onChange={e => setTemplateRadius(e.target.value)} />
+            <Button variant="cast" disabled={!connected || !!pending.bind_production_template} onClick={bindTemplate}>绑定当前选中建筑</Button>
+            <Button disabled={!!pending.stop_production_template} onClick={stopTemplate}>停止模板监控</Button>
+          </div>
+          {templateStatus && <p className={s.lead}>{templateStatus}</p>}
+          <p className={s.lead}>建筑升级模板：先选中已调好的成品防御塔并保存模板；随后框选需要升级的哨塔，再点击下面按钮。只有这批建筑升级成同 ID 的防御塔时才会套用模板。</p>
+          <div className={s.params}>
+            <Button variant="cast" disabled={!connected || !!pending.bind_building_upgrade_template} onClick={bindBuildingUpgradeTemplate}>绑定已选建筑的升级模板</Button>
+            <Button disabled={!!pending.stop_building_upgrade_template} onClick={stopBuildingUpgradeTemplate}>停止升级模板监控</Button>
           </div>
         </Group>
 

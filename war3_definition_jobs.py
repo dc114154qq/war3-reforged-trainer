@@ -6,6 +6,7 @@ import os
 import threading
 import time
 import uuid
+from war3_services.legacy_equipment import BACKPACK_ONLY, validate_mode
 
 
 def _sources(paths):
@@ -30,13 +31,14 @@ class DefinitionJobs:
         self.job = None
         self.cancel_event = None
 
-    def start(self, source, folder=''):
-        return self._start([str(source)], folder, batch=False)
+    def start(self, source, folder='', mode=BACKPACK_ONLY):
+        return self._start([str(source)], folder, mode, batch=False)
 
-    def start_batch(self, sources, folder=''):
-        return self._start(sources, folder, batch=True)
+    def start_batch(self, sources, folder='', mode=BACKPACK_ONLY):
+        return self._start(sources, folder, mode, batch=True)
 
-    def _start(self, sources, folder, *, batch):
+    def _start(self, sources, folder, mode, *, batch):
+        mode = validate_mode(mode)
         paths = _sources(sources)
         output = Path(str(folder).strip().strip('"')).expanduser().resolve() if str(folder).strip() else None
         with self.lock:
@@ -47,7 +49,7 @@ class DefinitionJobs:
             cancel = self.cancel_event
             self.job = dict(jobId=job_id, status='running', stage='queued', chapter='', index=0, total=0,
                 completed=0, currentFile=str(paths[0]), started=time.monotonic(), ended=None,
-                result=None, error='', logPath='', batchMode=batch, outputFolder=str(output or ''),
+                result=None, error='', logPath='', batchMode=batch, outputFolder=str(output or ''), mode=mode,
                 fileTotal=len(paths), fileIndex=0, fileCompleted=0, fileSucceeded=0, fileFailed=0,
                 fileSkipped=0, files=[dict(source=str(path), status='queued', destination='',
                     message='', error='', logPath='', reportPath='') for path in paths])
@@ -92,14 +94,16 @@ class DefinitionJobs:
                         self.job.update(fileIndex=file_index + 1, stage='queued', chapter='', index=0,
                             total=0, completed=0, currentFile=str(source), logPath='')
                     try:
-                        result = self.prepare(source, output or source.parent, progress=progress, cancel=cancel)
+                        options = {} if mode == BACKPACK_ONLY else {'mode': mode}
+                        result = self.prepare(source, output or source.parent, progress=progress, cancel=cancel, **options)
                         last_payload = dict(success=True, destination=result.output, report=asdict(result),
                             message=f'文件校验完成：共 {result.chapter_count} 个章节，补齐 {result.changed_chapters} 个章节。请使用新副本重新进入地图。')
                         # Keep completed outputs even when stop is pressed just
                         # after the archive service returns successfully.
                         with self.lock:
                             item.update(status='succeeded', destination=result.output, message=last_payload['message'],
-                                logPath=result.log_path, reportPath=result.report_path)
+                                logPath=result.log_path, reportPath=result.report_path,
+                                legacyEquipmentCount=getattr(result, 'legacy_equipment_count', None))
                             self.job['fileSucceeded'] += 1
                             self.job['fileCompleted'] += 1
                             self.job['logPath'] = result.log_path

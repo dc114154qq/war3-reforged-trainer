@@ -437,6 +437,7 @@ class GlobalHotkeySpec:
     modifiers: int
     virtual_key: int
     poll_on_conflict: bool = True
+    dangerous: bool = False
 
 
 def async_hotkey_is_down(spec: GlobalHotkeySpec) -> bool:
@@ -605,7 +606,8 @@ ELEPHANT_HOTKEY_SPECS = (
     GlobalHotkeySpec("read_unit", "Ctrl+F11  读取所有选中单位", MOD_CONTROL, VK_F11),
     GlobalHotkeySpec("hero_level", "Ctrl+Q  英雄等级", MOD_CONTROL, ord("Q")),
     GlobalHotkeySpec("instant_move", "Ctrl+X  瞬间移动", MOD_CONTROL, ord("X")),
-    GlobalHotkeySpec("explode_unit", "Ctrl+W  瞬间爆炸目标单位", MOD_CONTROL, ord("W")),
+    GlobalHotkeySpec("kill_unit", "Ctrl+Shift+K  秒杀选中单位", MOD_CONTROL | MOD_SHIFT, ord("K"), dangerous=True),
+    GlobalHotkeySpec("explode_unit", "Ctrl+W  瞬间爆炸目标单位", MOD_CONTROL, ord("W"), dangerous=True),
     GlobalHotkeySpec("reveal_map", "Home  开图", 0, VK_HOME),
     GlobalHotkeySpec("hide_map", "End  关图", 0, VK_END),
     GlobalHotkeySpec("invulnerable", "Ctrl+E  无敌", MOD_CONTROL, ord("E")),
@@ -615,7 +617,7 @@ ELEPHANT_HOTKEY_SPECS = (
     GlobalHotkeySpec("duplicate_inventory", "Ctrl+D  复制背包物品", MOD_CONTROL, ord("D")),
     GlobalHotkeySpec("unit_scale", "Ctrl+P  设置大小", MOD_CONTROL, ord("P")),
     GlobalHotkeySpec("item_charges", "Ctrl+F  物品数量", MOD_CONTROL, ord("F")),
-    GlobalHotkeySpec("drop_inventory", "Ctrl+T  丢弃背包所有物品", MOD_CONTROL, ord("T")),
+    GlobalHotkeySpec("drop_inventory", "Ctrl+T  丢弃背包所有物品", MOD_CONTROL, ord("T"), dangerous=True),
     GlobalHotkeySpec("add_ability", "Ctrl+G  添加技能", MOD_CONTROL, ord("G")),
     GlobalHotkeySpec("clone_unit", "Ctrl+B  复制单位", MOD_CONTROL, ord("B")),
     GlobalHotkeySpec("take_control", "Ctrl+I  获取对方控制权", MOD_CONTROL, ord("I")),
@@ -633,7 +635,7 @@ ELEPHANT_HOTKEY_SPECS = (
     GlobalHotkeySpec("ignore_collision", "Alt+L  无视碰撞体积", MOD_ALT, ord("L")),
     GlobalHotkeySpec("hero_attributes", "Alt+Q  设置属性", MOD_ALT, ord("Q")),
     GlobalHotkeySpec("skill_points", "Alt+W  增加技能点数", MOD_ALT, ord("W")),
-    GlobalHotkeySpec("kill_owner_units", "Alt+E  秒杀玩家的所有单位", MOD_ALT, ord("E")),
+    GlobalHotkeySpec("kill_owner_units", "Alt+E  秒杀玩家的所有单位", MOD_ALT, ord("E"), dangerous=True),
     GlobalHotkeySpec("xp_rate", "Alt+R  增加经验获取率", MOD_ALT, ord("R")),
     GlobalHotkeySpec("reset_ability", "Alt+T  重置技能", MOD_ALT, ord("T")),
     GlobalHotkeySpec("all_debuffs", "Alt+Y  获得 debuff", MOD_ALT, ord("Y")),
@@ -646,12 +648,12 @@ ELEPHANT_HOTKEY_SPECS = (
     GlobalHotkeySpec("fullscreen_auto", "Alt+D  全屏自动特效攻击", MOD_ALT, ord("D")),
     GlobalHotkeySpec("toggle_unit_pause", "Alt+F  暂停/恢复单位", MOD_ALT, ord("F")),
     GlobalHotkeySpec("toggle_game_pause", "Alt+G  暂停/恢复游戏", MOD_ALT, ord("G")),
-    GlobalHotkeySpec("end_game", "Alt+H  结束游戏", MOD_ALT, ord("H")),
-    GlobalHotkeySpec("remove_all_abilities", "Alt+J  技能全删", MOD_ALT, ord("J")),
+    GlobalHotkeySpec("end_game", "Alt+H  结束游戏", MOD_ALT, ord("H"), dangerous=True),
+    GlobalHotkeySpec("remove_all_abilities", "Alt+J  技能全删", MOD_ALT, ord("J"), dangerous=True),
     GlobalHotkeySpec("ally_health_lock", "Alt+K  我方锁血", MOD_ALT, ord("K")),
     GlobalHotkeySpec("allied_cooldowns", "Alt+C  重置我方全部技能冷却", MOD_ALT, ord("C")),
     GlobalHotkeySpec("rapid_build", "Alt+V  持续快速建造/升级", MOD_ALT, ord("V")),
-    GlobalHotkeySpec("instant_victory", "Alt+B  直接胜利", MOD_ALT, ord("B")),
+    GlobalHotkeySpec("instant_victory", "Alt+B  直接胜利", MOD_ALT, ord("B"), dangerous=True),
     GlobalHotkeySpec("game_speed", "Alt+N  加速/恢复游戏", MOD_ALT, ord("N")),
     GlobalHotkeySpec("stat_hp_regen", "Ctrl+Alt+F1  生命值恢复", MOD_CONTROL | MOD_ALT, VK_F1),
     GlobalHotkeySpec("stat_mp_regen", "Ctrl+Alt+F2  法力恢复", MOD_CONTROL | MOD_ALT, VK_F1 + 1),

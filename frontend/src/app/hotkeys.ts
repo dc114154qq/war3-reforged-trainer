@@ -5,7 +5,7 @@ import { openChat } from './shell/Chat'
 /**
  * Window-level keys of the shell: Alt+1…7 switch chapters, Enter opens the chat box.
  * Command-card keys (Q…V) belong to <CommandCard>. These are local to the trainer window;
- * the 68 global hotkeys are registered by the backend and are not affected.
+ * global hotkeys are registered by the backend and are not affected.
  */
 export function useShellHotkeys() {
   useEffect(() => {

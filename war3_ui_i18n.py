@@ -521,6 +521,7 @@ _EN_TRANSLATIONS = {
     "暂停/恢复游戏": "Pause / Resume Game",
     "瞬间爆炸目标单位": "Instantly Explode Target Unit",
     "丢弃背包所有物品": "Drop All Inventory Items",
+    "秒杀选中单位": "Kill selected units",
     "秒杀玩家的所有单位": "Kill All Player Units",
     "增加经验获取率": "Increase Experience Gain Rate",
     "创建所有物品": "Create All Items",

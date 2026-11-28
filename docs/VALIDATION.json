@@ -1,19 +1,30 @@
 {
-  "version": "2.2.7",
-  "exe_sha256": "D0954D1C88466C719E28CF5F686B1F679AB16E3AA29096E90DF7409AAEC7A867",
-  "production_inputs": 521,
-  "packaged_modules": 201,
+  "version": "2.2.8",
+  "exe_sha256": "697cb3df070597db3ce6ce6d515a7676412ab0a345ffcfe6ea5e717fe8f596b3",
+  "production_inputs": 522,
+  "packaged_modules": 202,
   "native_dlls_sha256": {
     "tools\\war3_bridge_24268.dll": "03C1B40ABA21887649A370953B5AAC1D9ACCB398E105B334210662BAB89829CE",
     "tools\\war3_mpq.dll": "6CD644F3C091C2FFF6430CBF612DBBF6657D8508941FBA2E925CAADFA7A04DA6",
     "tools\\war3_speed_clock.dll": "91FB4F87344EBA12EB21759EF426437601EFB93C256F6F82ADB22B92BCC2685E",
     "tools\\war3_talent_icon_display.dll": "54C0EDD2D639EB4AFD203D5A4222F13814A3ABD27BD694AACBA52545586DE386"
   },
-  "regression_tests": 1132,
+  "filtering": {
+    "samples": 97,
+    "passed": 96,
+    "chapters": 1734,
+    "held_for_script_review": 10
+  },
+  "archives": {
+    "samples": 25,
+    "passed": 25,
+    "chapters": 304,
+    "scripts": 1067,
+    "assigned": 592
+  },
+  "regression_tests": 1151,
   "normal_safe_and_restricted_file_ui_verified": true,
-  "all_seven_game_profiles_preserved": true,
-  "resource_lock_selected_player_and_failure_isolation_verified": true,
-  "error_reporting_and_archive_scan_regressions_verified": true,
-  "live_gameplay_write_acceptance": false,
-  "external_machine_acceptance": false
+  "offline_definition_job_verified": true,
+  "selected_unit_hotkey_default_off_verified": true,
+  "live_gameplay_tested": false
 }

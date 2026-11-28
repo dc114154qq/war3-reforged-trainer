@@ -203,7 +203,7 @@ def _run_desktop(args, startup_log) -> int:
             assert [row['code'] for row in hero_catalog['rows']] == ['AHcr','ANcp','AHpa','AHcl']
             report['hero_catalog'] = hero_catalog
             hotkeys = bridge_api.get_all_hotkeys()
-            assert len(hotkeys) == 68
+            assert [h['name'] for h in hotkeys] == [spec.name for spec in bridge_api.services.hotkeys]
             assert len([h for h in hotkeys if h['category'] == 'stats']) == 17
             report['hotkeys'] = len(hotkeys)
             report['parameters'] = 17

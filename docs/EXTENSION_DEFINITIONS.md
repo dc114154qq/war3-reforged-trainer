@@ -33,3 +33,8 @@
 相关进度、整理前后字节数和脚本检查范围写入处理日志；整包解压和字节一致性校验
 仍与实际游戏加载结果分别记录。
 
+
+
+## Optional random slots for legacy gear
+
+In 3.0 Extensions, open Backpack definitions and select the random-slots mode. The trainer skips recognised quest items, consumables and item codes found in campaign or chapter scripts, including item placement and rewards. Eligible legacy gear gets a random slot per item type for the generated copy. The same item code uses the same slot across chapters. The processing report lists assigned and skipped items.

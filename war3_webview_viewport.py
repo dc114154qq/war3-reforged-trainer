@@ -288,9 +288,8 @@ class WebStateViewPort:
         self._values["hotkey_specs_by_name"] = {spec.name: spec for spec in hotkey_specs}
         self._values["elephant_hotkeys_enabled"] = ObservableVar(initial_hotkeys_enabled)
         self._values["elephant_hotkey_status"] = LocalizedObservableVar("快捷键未启用" if not initial_hotkeys_enabled else "快捷键已就绪", lambda: ui_lang["code"])
-        hotkey_dangerous = {"explode_unit", "drop_inventory", "kill_owner_units", "end_game", "remove_all_abilities", "instant_victory"}
         self._values["elephant_hotkey_checks"] = {
-            spec.name: ObservableVar(spec.name not in hotkey_dangerous) for spec in hotkey_specs
+            spec.name: ObservableVar(not spec.dangerous) for spec in hotkey_specs
         }
         self._values["hotkey_manager"] = self.services.hotkey_manager()
         self._values["hotkey_callbacks"] = {}

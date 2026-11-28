@@ -1,10 +1,10 @@
 """Product metadata, shared without loading UI or game backends."""
-APP_VERSION = "2.2.7"
+APP_VERSION = "2.2.8"
 APP_RELEASE_CHANNEL = "stable"
 GAME_BUILD = "3.0.0.24268"
 PRODUCT_READ_MODE = "normal"
 PRODUCT_EDITION_LABEL = "普通读取版"
-WIN10_COMPAT_REVISION = "2.2.7-resource-lock-and-errors-20261122"
+WIN10_COMPAT_REVISION = "2.2.8-random-equipment-20261128"
 
 
 def trainer_window_title(language='zh'):

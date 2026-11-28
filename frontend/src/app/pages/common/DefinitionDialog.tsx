@@ -1,7 +1,7 @@
 import { useViewState } from '../../state/viewMemory'
 import { useState } from 'react'
 import { Button, Dialog, DialogClose } from '../../../ds'
-import { api, type DefinitionProgress, type DefinitionResult } from '../../../lib/api'
+import { api, type DefinitionMode, type DefinitionProgress, type DefinitionResult } from '../../../lib/api'
 import { fill, useT } from '../../i18n'
 import { FileResults, JobProgress, PathFields, copyText, splitPaths, usePolledJob } from './Jobs'
 import s from './DefinitionDialog.module.css'
@@ -17,6 +17,7 @@ const STAGES: Record<string, string> = {
   verified: '准备完成输出', complete: '处理完成', script_function_order_verified: '章节脚本顺序检查完成', script_validation_failed: '发现章节脚本错误',
   archive_compaction_begin: '整理归档中的旧数据', archive_compaction_complete: '归档整理完成', archive_compaction_skipped: '归档无需整理',
   archive_compaction_failed: '归档整理出错',
+  legacy_equipment_scan: '检查旧装备和任务物品',
 }
 
 /**
@@ -46,18 +47,24 @@ function DefinitionJob({ paths, onPaths, folder, onFolder }: { paths: string; on
   const t = useT()
   const { progress, setProgress, poll, busy } = usePolledJob<DefinitionProgress>(id => api.getBackpackDefinitionProgress(id), { jobId: '', status: 'idle', elapsed: 0 })
   const [starting, setStarting] = useState(false)
+  const [mode, setMode] = useState<DefinitionMode>('backpack_only')
   const selected = splitPaths(paths)
   const working = starting || busy
+  const activeMode = busy ? progress.mode ?? mode : mode
 
   const result: DefinitionResult | null = progress.result
     ?? (progress.status === 'failed' ? { success: false, error: progress.error, logPath: progress.logPath } : null)
+  const equipmentCount = (count: number | null | undefined) => count == null ? null : (
+    <p>{count ? fill(t('已给 {n} 种旧装备随机分配部位。详情见处理报告。'), { n: count })
+      : t('没有为旧装备添加部位。跳过原因见处理报告。')}</p>
+  )
 
   const start = async () => {
     setStarting(true)
     try {
       const job = selected.length > 1
-        ? await api.startBackpackDefinitionsBatch(selected, folder)
-        : await api.startBackpackDefinitions(selected[0] ?? '', folder)
+        ? await api.startBackpackDefinitionsBatch(selected, folder, mode)
+        : await api.startBackpackDefinitions(selected[0] ?? '', folder, mode)
       if (job?.success) await poll(job.jobId)
     } catch {
       // reported by callApi
@@ -75,6 +82,24 @@ function DefinitionJob({ paths, onPaths, folder, onFolder }: { paths: string; on
 
   return (
     <>
+      <fieldset className={s.modes} disabled={working}>
+        <legend>{t('处理方式')}</legend>
+        <label className={s.mode}>
+          <input type="radio" name="backpack-definition-mode" checked={activeMode === 'backpack_only'} onChange={() => setMode('backpack_only')} />
+          <span>
+            <strong>{t('仅补齐 3.0 背包定义（默认）')}</strong>
+            <span className={s.modeDetail}>{t('补齐背包、装备栏和天赋所需的数据，保留原有物品的用途和部位。')}</span>
+          </span>
+        </label>
+        <label className={s.mode}>
+          <input type="radio" name="backpack-definition-mode" checked={activeMode === 'legacy_equipment'} onChange={() => setMode('legacy_equipment')} />
+          <span>
+            <strong>{t('补齐背包，并给旧装备随机分配部位')}</strong>
+            <span className={s.modeDetail}>{t('为可识别的旧装备随机分配一个 3.0 装备部位。同一份战役里，同一种装备在各章使用同一部位。')}</span>
+            <span className={s.modeDetail}>{t('跳过脚本中出现过的物品，以及识别出的任务物品、消耗品和用途不明的物品。')}</span>
+          </span>
+        </label>
+      </fieldset>
       <PathFields
         paths={paths}
         onPaths={onPaths}
@@ -97,6 +122,7 @@ function DefinitionJob({ paths, onPaths, folder, onFolder }: { paths: string; on
           ) : result.batch ? <p>{t(result.message ?? '')}</p> : (
             <>
               <p>{t(result.message ?? '')}</p>
+              {equipmentCount(result.report?.legacy_equipment_count)}
               {result.destination && (
                 <div className={s.output}>
                   <span className={s.path}>{result.destination}</span>
@@ -108,7 +134,7 @@ function DefinitionJob({ paths, onPaths, folder, onFolder }: { paths: string; on
           )}
         </div>
       )}
-      {progress.batchMode && !!progress.files?.length && <FileResults files={progress.files} />}
+      {progress.batchMode && !!progress.files?.length && <FileResults files={progress.files} extra={file => equipmentCount(file.legacyEquipmentCount)} />}
       <footer className={s.footer}>
         {working ? (
           <>

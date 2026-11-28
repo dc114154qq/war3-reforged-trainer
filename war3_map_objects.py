@@ -23,7 +23,7 @@ def decode_text(raw):
     return recovered
 
 
-def object_records(raw, *, extended=False):
+def object_records(raw, *, extended=False, positions=None):
     if len(raw)>64*1024*1024:
         raise DefinitionError('物编文件超过 64 MB，已停止读取该文件。')
     r=Reader(raw);version=r.integer();result=[];total=0
@@ -36,7 +36,10 @@ def object_records(raw, *, extended=False):
                 raise DefinitionError('物编对象代码含有无法识别的字节。')
             if version==3:r.take(r.count(1024)*4)
             changes=[]
+            count_at=r.at
+            spans=[]
             for _ in range(r.count(50000)):
+                start=r.at
                 total+=1
                 if total>500000:raise DefinitionError('物编字段数量超过读取上限。')
                 field=r.take(4).decode('latin1');kind=r.integer()
@@ -52,10 +55,14 @@ def object_records(raw, *, extended=False):
                 # Renamed objects may retain a source object's trailer. Consume
                 # its exact position, without guessed byte resynchronization.
                 trailer=r.take(4)
+                if positions is not None:
+                    spans.append((start,r.at))
                 changes.append(dict(field=field,type=kind,level=level,index=index,value=value,
                                     trailer=trailer.hex()))
             result.append(dict(rawcode=(new if new!=bytes(4) else old).decode('ascii'),
                 base=old.decode('ascii'),custom=table==1 or new!=bytes(4),changes=changes))
+            if positions is not None:
+                positions.append((count_at,r.at,spans))
     if r.at!=len(raw):raise DefinitionError('物编文件存在未识别的尾部数据。')
     return result
 

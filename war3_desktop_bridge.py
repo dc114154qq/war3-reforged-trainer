@@ -922,11 +922,11 @@ class DesktopBridgeApi:
         except Exception as err:
             return self._failure(err,'prepare_backpack_definitions')
 
-    def start_backpack_definitions(self,map_path: str,output_folder: str=''):
-        return self._definition_jobs.start(map_path,output_folder)
+    def start_backpack_definitions(self,map_path: str,output_folder: str='',mode: str='backpack_only'):
+        return self._definition_jobs.start(map_path,output_folder,mode)
 
-    def start_backpack_definitions_batch(self,map_paths: list[str],output_folder: str=''):
-        return self._definition_jobs.start_batch(map_paths,output_folder)
+    def start_backpack_definitions_batch(self,map_paths: list[str],output_folder: str='',mode: str='backpack_only'):
+        return self._definition_jobs.start_batch(map_paths,output_folder,mode)
 
     def get_backpack_definition_progress(self,job_id: str=''):
         return self._definition_jobs.snapshot(job_id)
@@ -1168,8 +1168,6 @@ class DesktopBridgeApi:
             "game_speed": ("elephant_game_speed", "倍速"),
         }
 
-        dangerous_set = {"explode_unit", "drop_inventory", "kill_owner_units", "end_game", "remove_all_abilities", "instant_victory"}
-
         result = []
         for spec in specs:
             name = spec.name
@@ -1195,7 +1193,7 @@ class DesktopBridgeApi:
                 category = "stats"
             elif name.startswith("fullscreen_"):
                 category = "fullscreen"
-            elif name in ("instant_move", "explode_unit", "clone_unit", "clone_to_self", "take_control", "mass_clone", "kill_owner_units"):
+            elif name in ("instant_move", "kill_unit", "explode_unit", "clone_unit", "clone_to_self", "take_control", "mass_clone", "kill_owner_units"):
                 category = "combat"
             elif name in ("reveal_map", "hide_map", "toggle_game_pause", "end_game", "rapid_build", "instant_victory", "game_speed", "add_resources"):
                 category = "world"
@@ -1208,7 +1206,7 @@ class DesktopBridgeApi:
                 "paramKey": param_key,
                 "paramLabel": param_label,
                 "paramValue": param_value,
-                "isDangerous": name in dangerous_set,
+                "isDangerous": spec.dangerous,
                 "category": category,
             })
         return result

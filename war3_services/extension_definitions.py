@@ -6,6 +6,10 @@ from pathlib import Path
 import hashlib, json, os, re, shutil, sys, tempfile, time, traceback, uuid, zipfile
 from war3_mpq import Archive, MpqError, STORAGE_FLAGS, canonical_name, unknown_member_name, normalize_classic_header
 from war3_jass_validation import check_function_order
+from war3_services.legacy_equipment import (
+    BACKPACK_ONLY, WITH_LEGACY_EQUIPMENT, Scope, item_scope, plan_legacy_equipment,
+    slot_table, validate_mode,
+)
 from war3_object_tables import (DefinitionError, parse_slk, parse_profile, merge_slk,
                                 merge_profile, map_data_mode, campaign_maps, object_ids, _value,
                                 validate_game_slk, make_extension_versions_compatible)
@@ -27,6 +31,7 @@ class DefinitionResult:
     added_entries: int
     source_sha256: str
     output_sha256: str
+    legacy_equipment_count: int | None = None
 
 
 def file_hash(path):
@@ -227,7 +232,7 @@ def _critical_check(name,raw,reference,manifest):
     return evidence
 
 
-def _plan(archive,members,mode,inherited,custom,manifest,files,journal):
+def _plan(archive,members,mode,inherited,custom,manifest,files,journal,equipment=None):
     critical=set(manifest['critical_abilities'])|set(manifest['critical_items'])
     conflicts=critical&custom
     if conflicts:raise DefinitionError('地图自定义对象占用了背包或天赋编号：'+', '.join(sorted(conflicts)))
@@ -250,6 +255,8 @@ def _plan(archive,members,mode,inherited,custom,manifest,files,journal):
                 versions={key:_value(compatible_rows[key].get('version','K-1'))
                           for key in required} if name in ('AbilityData.slk','ItemData.slk') else {})
             journal.event('object_availability_verified',path=path,**availability)
+        if name=='ItemData.slk' and equipment:
+            result=slot_table(result,equipment.slots)
         parsed=(parse_slk(result).rows if name.endswith('.slk') else parse_profile(result))
         layout={}
         if name.endswith('.slk'):
@@ -309,7 +316,7 @@ def _verify(path,before,expected,journal):
             raise DefinitionError('输出归档包含未预期的新增文件。')
 
 
-def _patch_map(path,inherited,parent_custom,manifest,files,journal):
+def _patch_map(path,inherited,parent_custom,manifest,files,journal,equipment=None):
     with Archive(path) as archive:
         archive.identify_names('Units\\'+name for name in manifest['required'])
         _identify_archive_names(archive,journal)
@@ -329,7 +336,13 @@ def _patch_map(path,inherited,parent_custom,manifest,files,journal):
             known_warcraft_names=list(archive.identified_names))
         custom=parent_custom|_custom_ids(archive,'war3map',journal)
         before=_fingerprints(archive,members,journal)
-        plan,details=_plan(archive,members,metadata['mode'],inherited,custom,manifest,files,journal)
+        plan,details=_plan(archive,members,metadata['mode'],inherited,custom,manifest,files,journal,equipment)
+        if equipment:
+            for name, raw in equipment.tables.items():
+                member=_neutral(members,name)
+                if member is None:
+                    raise DefinitionError('找不到要补写装备部位的原物品文件：'+name)
+                plan[name]=(raw,member)
     header_repair=normalize_classic_header(path,names=(key[0] for key in before),
         progress=lambda stage,data:journal.event(stage,**data),check=journal.check)
     with Archive(path,writable=True) as archive:
@@ -351,7 +364,9 @@ def _patch_map(path,inherited,parent_custom,manifest,files,journal):
                 added_entries=sum(len(row['added']) for row in details))
 
 
-def prepare_extension_definitions(source,output_folder,*,progress=None,cancel=None):
+def prepare_extension_definitions(source,output_folder,*,progress=None,cancel=None,mode=BACKPACK_ONLY):
+    add_equipment=validate_mode(mode)==WITH_LEGACY_EQUIPMENT
+    label='3.0背包与旧装备部位' if add_equipment else '3.0背包定义'
     try: source=Path(str(source).strip().strip('"')).expanduser().resolve(strict=True)
     except FileNotFoundError as exc: raise DefinitionError('找不到所选战役或地图。文件可能已经移动，请重新选择。') from exc
     except PermissionError as exc: raise DefinitionError('Windows 拒绝读取所选战役或地图，请检查文件权限。') from exc
@@ -361,11 +376,12 @@ def prepare_extension_definitions(source,output_folder,*,progress=None,cancel=No
     manifest,files=definition_pack()
     folder=Path(output_folder).expanduser().resolve()
     folder.mkdir(parents=True,exist_ok=True)
-    run_folder=folder/(source.stem[:70]+'-3.0背包定义-'+time.strftime('%Y%m%d-%H%M%S')+'-'+uuid.uuid4().hex[:6])
+    run_folder=folder/(source.stem[:70]+'-'+label+'-'+time.strftime('%Y%m%d-%H%M%S')+'-'+uuid.uuid4().hex[:6])
     run_folder.mkdir(exist_ok=False)
     journal=Journal(run_folder/'处理日志.jsonl',progress,cancel)
     pending=run_folder/('未完成.tmp')
     current_chapter = None
+    equipment_report = None
     current_step = '核对原文件'
     try:
         initial_stat=(source.stat().st_size,source.stat().st_mtime_ns)
@@ -373,7 +389,7 @@ def prepare_extension_definitions(source,output_folder,*,progress=None,cancel=No
         source_hash=file_hash(source)
         journal.event('start',source=str(source),source_sha256=source_hash,pack_id=manifest['pack_id'],
                       pack_sha256=PACK_SHA256,source_game=manifest['source_game'],original_edited=False,
-                      processing_revision=PROCESSING_REVISION)
+                      processing_revision=PROCESSING_REVISION,mode=mode)
         with tempfile.TemporaryDirectory(prefix='war3-definitions-') as temporary:
             work=Path(temporary);staged=work/('campaign'+source.suffix)
             current_step = '复制原文件'
@@ -397,17 +413,24 @@ def prepare_extension_definitions(source,output_folder,*,progress=None,cancel=No
                         path='Units\\'+name;member=_neutral(members,path)
                         if member:inherited[path.casefold()]=archive.read(member)
                     custom=_custom_ids(archive,'war3campaign',journal)
+                    campaign_items=item_scope(archive,'war3campaign') if add_equipment else None
                     for index,member in enumerate(chapters):
                         canonical_name(member.name)
                         chapter=work/('chapter-'+str(index)+'.w3x')
                         chapter.write_bytes(archive.read(member))
                         reports.append(dict(name=member.name,stage_path=str(chapter),original_flags=member.flags))
-                changes=[];expected={}
+                changes=[];expected={};campaign_tables={};equipment_plans={}
+                if campaign_items is not None:
+                    current_step = '识别旧装备和任务物品'
+                    campaign_tables,equipment_plans,equipment_report=plan_legacy_equipment(
+                        [(report['name'],Path(report['stage_path'])) for report in reports],
+                        campaign_items,inherited,files,journal)
+                    journal.event('legacy_equipment_plan',**equipment_report)
                 for index,report in enumerate(reports):
                     current_chapter=report['name']
                     journal.event('chapter_begin',index=index+1,total=len(reports),name=report['name'])
                     chapter=Path(report.pop('stage_path'))
-                    report.update(_patch_map(chapter,inherited,custom,manifest,files,journal))
+                    report.update(_patch_map(chapter,inherited,custom,manifest,files,journal,equipment_plans.get(current_chapter)))
                     journal.event('chapter_verified',**report)
                     if report['changed']:
                         member=members[(report['name'].casefold(),0)]
@@ -415,17 +438,29 @@ def prepare_extension_definitions(source,output_folder,*,progress=None,cancel=No
                 normalize_classic_header(staged,names=(key[0] for key in before),
                     progress=lambda stage,data:journal.event(stage,**data),check=journal.check)
                 with Archive(staged,writable=True) as archive:
-                    if changes:
+                    if changes or campaign_tables:
                         for member,chapter in changes:
                             journal.event('replace_chapter',name=member.name,original_flags=member.flags)
                             archive.write(member.name,chapter.read_bytes(),original=member)
+                        for name, raw in campaign_tables.items():
+                            journal.event('write_table',path=name,bytes=len(raw))
+                            member=_neutral(members,name)
+                            if member is None:
+                                raise DefinitionError('找不到战役共用的原物品文件：'+name)
+                            archive.write(name,raw,original=member)
+                            expected[(name.casefold(),0)]=hashlib.sha256(raw).hexdigest()
                         archive.flush()
                     archive.compact(progress=lambda stage,data:journal.event(stage,**data))
                 _verify(staged,before,expected,journal)
             else:
                 current_chapter=source.name
                 journal.event('chapter_begin',index=1,total=1,name=source.name)
-                reports=[dict(name=source.name,**_patch_map(staged,{},set(),manifest,files,journal))]
+                equipment_plans={}
+                if add_equipment:
+                    _,equipment_plans,equipment_report=plan_legacy_equipment(
+                        [(source.name,staged)],Scope(),{},files,journal)
+                    journal.event('legacy_equipment_plan',**equipment_report)
+                reports=[dict(name=source.name,**_patch_map(staged,{},set(),manifest,files,journal,equipment_plans.get(source.name)))]
                 journal.event('chapter_verified',**reports[0])
             journal.check()
             if (source.stat().st_size,source.stat().st_mtime_ns)!=initial_stat or file_hash(source)!=source_hash:
@@ -434,10 +469,11 @@ def prepare_extension_definitions(source,output_folder,*,progress=None,cancel=No
             journal.event('output_verify',path=source.name)
             digest=file_hash(staged);shutil.copyfile(staged,pending)
             if file_hash(pending)!=digest:raise DefinitionError('输出文件复制校验失败。')
-            output=run_folder/(source.stem+'_3.0背包定义'+source.suffix)
+            output=run_folder/(source.stem+'_'+label+source.suffix)
             report_path=run_folder/'处理报告.json'
             report=dict(schema=1,source=str(source),source_sha256=source_hash,output=str(output),
                         output_sha256=digest,pack_id=manifest['pack_id'],processing_revision=PROCESSING_REVISION,chapters=reports,
+                        mode=mode,legacy_equipment=equipment_report,
                         verification=dict(all_original_members_preserved=True,storage_flags_preserved=True,
                                           source_unchanged=True,added_definitions_reextracted=True,
                                           gameplay_tested=False,old_saved_games_updated=False,
@@ -449,7 +485,7 @@ def prepare_extension_definitions(source,output_folder,*,progress=None,cancel=No
             os.replace(pending,output)
             return DefinitionResult(str(source),str(output),str(report_path),str(journal.path),len(reports),
                                     sum(row['changed'] for row in reports),sum(row['added_entries'] for row in reports),
-                                    source_hash,digest)
+                                    source_hash,digest,len(equipment_report['converted']) if equipment_report is not None else None)
     except Exception as exc:
         pending.unlink(missing_ok=True)
         # Keep the diagnostic directory even when no campaign/map is published.

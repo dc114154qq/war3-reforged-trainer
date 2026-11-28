@@ -30,6 +30,7 @@ const en: Record<string, string> = {
   '获取控制权': 'Take control',
   '把选中的目标单位变成你的。': 'Make the selected target unit yours.',
   '删除单位': 'Remove unit',
+  '秒杀选中单位': 'Kill selected units',
   '秒杀该玩家全部单位': 'Kill all of that player’s units',
   '按住秒杀该玩家全部单位': 'Hold to kill all of that player’s units',
 

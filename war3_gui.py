@@ -404,9 +404,8 @@ def run_gui(initial_pid: int | None=None, initial_hotkeys_enabled: bool=False, *
     view.bind('hotkey_callbacks', hotkey_callbacks)
     hotkey_specs_by_name = {spec.name: spec for spec in ELEPHANT_HOTKEY_SPECS}
     view.bind('hotkey_specs_by_name', hotkey_specs_by_name)
-    hotkey_dangerous = {'explode_unit', 'drop_inventory', 'kill_owner_units', 'end_game', 'remove_all_abilities', 'instant_victory'}
     for name, variable in elephant_hotkey_checks.items():
-        variable.set(name in hotkey_callbacks and name not in hotkey_dangerous)
+        variable.set(name in hotkey_callbacks and not hotkey_specs_by_name[name].dangerous)
 
     def build_id_catalog_tab(kind: str, title: str) -> None:
         tab = ttk.Frame(notebook, padding=10)

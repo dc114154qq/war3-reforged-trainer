@@ -1,12 +1,12 @@
 [中文](README.md) | [English](README.en.md)
 
-# Warcraft III 3.0 Trainer · 2.2.7
+# Warcraft III 3.0 Trainer · 2.2.8
 
 A Warcraft-style desktop interface for editing units, abilities, items, and resources, with batch editing. Save and restore equipment, talents, and items from 30-slot backpacks for one hero or all selected heroes. Loadouts can be imported and exported. Prepare map definitions, extract saves, search and export custom objects and upgrades, or embed classic HKE menus into map copies for independent in-game use.
 
 ## Download and run
 
-Download the EXE from the [website](https://twomengxi.xyz/trainer/?lang=en) or [GitHub Release](https://github.com/dc114154qq/war3-reforged-trainer/releases/tag/v2.2.7). Enter a map, select a unit and connect.
+Download the EXE from the [website](https://twomengxi.xyz/trainer/?lang=en) or [GitHub Release](https://github.com/dc114154qq/war3-reforged-trainer/releases/tag/v2.2.8). Enter a map, select a unit and connect.
 
 Windows 10/11 x64. No Python, Node.js or separate frontend server is needed. Startup offers Microsoft WebView2 setup when it is missing or outdated; installation requires Internet access.
 
@@ -24,13 +24,13 @@ Windows x64, Python 3.12 and Node.js 22. The helper downloads and verifies pinne
 
 ```powershell
 python -m pip install -r requirements-build.txt
-python tools/prepare_build_baseline_227.py
+python tools/prepare_build_baseline_228.py
 npm ci --prefix frontend
 npm run build --prefix frontend
-python tools/build_modern_release_227.py
-python tools/build_modern_release_227.py --verify-only
+python tools/build_modern_release_228.py
+python tools/build_modern_release_228.py --verify-only
 ```
 
-Output: `dist-2.2.7-modern-verified/<hash-prefix>/War3ReforgedTrainer-v2.2.7-Web.exe`.
+Output: `dist-2.2.8-modern-verified/<hash-prefix>/War3ReforgedTrainer-v2.2.8-Web.exe`.
 
 [Validation](docs/VALIDATION.json)

@@ -156,8 +156,8 @@ export const api = {
   // 8. Elephant Actions
   getElephantParameters: () => callApi<Record<string,string>>('get_elephant_parameters'),
   setElephantParameter: (key:string,value:string) => callApi<{success:boolean;changedParameters:Record<string,string>}>('set_elephant_parameter',key,value),
-  startBackpackDefinitions: (path:string,folder='') => callApi<{success:boolean;jobId:string}>('start_backpack_definitions',path,folder),
-  startBackpackDefinitionsBatch: (paths:string[],folder='') => callApi<{success:boolean;jobId:string}>('start_backpack_definitions_batch',paths,folder),
+  startBackpackDefinitions: (path:string,folder='',mode:DefinitionMode='backpack_only') => callApi<{success:boolean;jobId:string}>('start_backpack_definitions',path,folder,mode),
+  startBackpackDefinitionsBatch: (paths:string[],folder='',mode:DefinitionMode='backpack_only') => callApi<{success:boolean;jobId:string}>('start_backpack_definitions_batch',paths,folder,mode),
   getBackpackDefinitionProgress: (id='') => callApi<DefinitionProgress>('get_backpack_definition_progress',id),
   cancelBackpackDefinitions: (id='') => callApi<{success:boolean}>('cancel_backpack_definitions',id),
   chooseDefinitionFile: () => callApi<{success:boolean;path:string;cancelled:boolean}>('choose_definition_file'),
@@ -198,8 +198,9 @@ export const api = {
 
 export interface ErrorDiagnosis { reason:string; recovery:string; category:string; business_error?:number|null; logSaveFailed?:boolean; }
 export interface UiNotice { details?:CatalogDiagnostic[];context?:string;id?:number;title?:string;message:string;logPath?:string;kind?:string;diagnosis?:ErrorDiagnosis;unit?:SelectedUnitData;candidates?:CandidateUnit[];parameters?:Record<string,string>; }
-export interface DefinitionFileResult {source:string;status:string;destination:string;message:string;error:string;logPath:string;reportPath:string;}
-export interface DefinitionResult {success?:boolean;batch?:boolean;cancelled?:boolean;files?:DefinitionFileResult[];destination?:string;report?:{report_path:string;log_path:string};message?:string;error?:string;logPath?:string;}
-export interface DefinitionProgress {jobId:string;status:string;stage?:string;chapter?:string;index?:number;total?:number;completed?:number;currentFile?:string;elapsed:number;result?:DefinitionResult;error?:string;logPath?:string;batchMode?:boolean;outputFolder?:string;fileTotal?:number;fileIndex?:number;fileCompleted?:number;fileSucceeded?:number;fileFailed?:number;fileSkipped?:number;files?:DefinitionFileResult[];}
+export type DefinitionMode = 'backpack_only' | 'legacy_equipment'
+export interface DefinitionFileResult {source:string;status:string;destination:string;message:string;error:string;logPath:string;reportPath:string;legacyEquipmentCount?:number|null;}
+export interface DefinitionResult {success?:boolean;batch?:boolean;cancelled?:boolean;files?:DefinitionFileResult[];destination?:string;report?:{report_path:string;log_path:string;legacy_equipment_count?:number|null};message?:string;error?:string;logPath?:string;}
+export interface DefinitionProgress {jobId:string;status:string;stage?:string;chapter?:string;index?:number;total?:number;completed?:number;currentFile?:string;elapsed:number;result?:DefinitionResult;error?:string;logPath?:string;batchMode?:boolean;mode?:DefinitionMode;outputFolder?:string;fileTotal?:number;fileIndex?:number;fileCompleted?:number;fileSucceeded?:number;fileFailed?:number;fileSkipped?:number;files?:DefinitionFileResult[];}
 export interface MapScriptOptions {prefix:string;features:string[];artifact_codes:string[];resource_amount:number;}
 export interface MapScriptProgress extends DefinitionProgress {files?:(DefinitionFileResult & {usagePath?:string})[];failures?:{source:string;reason:string;logPath:string}[];}

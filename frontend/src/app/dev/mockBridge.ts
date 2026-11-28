@@ -6,7 +6,7 @@ import type {
   AbilityFieldRow, BagItemRow, CandidateUnit, EquipmentItemRow, ExtensionsSnapshot, GoldMineData, HotkeyItem, ItemFieldRow, LockItem, ResourceGroup,
   ResourceSnapshot, SelectedUnitData, SystemStatus, TalentRow, UnitFieldRow,
 } from '../../lib/types'
-import type { DefinitionProgress, MapCatalogChange, MapCatalogProgress, MapCatalogRow, MapScriptOptions, MapScriptProgress } from '../../lib/api'
+import type { DefinitionMode, DefinitionProgress, MapCatalogChange, MapCatalogProgress, MapCatalogRow, MapScriptOptions, MapScriptProgress } from '../../lib/api'
 
 const params = new URLSearchParams(location.search)
 /** ?mock=connected starts already connected. */
@@ -201,7 +201,7 @@ function definitionProgress(): DefinitionProgress {
   if (completed >= total) {
     const destination = (defJob.currentFile ?? '').replace(/(\.\w+)$/, ' (背包定义)$1')
     defJob = { ...defJob, status: 'succeeded', stage: 'complete', elapsed, completed: total, total,
-      result: { success: true, message: '已补齐 4 个章节的背包定义并完成校验', destination, report: { report_path: destination + '.report.json', log_path: destination + '.log' } } }
+      result: { success: true, message: '已补齐 4 个章节的背包定义并完成校验', destination, report: { report_path: destination + '.report.json', log_path: destination + '.log', legacy_equipment_count: defJob.mode === 'legacy_equipment' ? 18 : null } } }
     return defJob
   }
   return { ...defJob, elapsed, total, completed, index: completed + 1, stage: 'write_table', chapter: `第 ${completed + 1} 章` }
@@ -214,11 +214,12 @@ const elephantParams: Record<string, string> = {
   hero_level: '10', unit_scale: '1.0', unit_rawcode: 'hfoo', item_rawcode: 'ckng', ability_rawcode: 'AOsh', ability_level: '3',
   tech_rawcode: 'Rhme', tech_level: '1', xp_rate: '1.0',
 }
-// The 68 global hotkeys of war3_backend.py, as get_all_hotkeys reports them.
+// The global hotkeys of war3_backend.py, as get_all_hotkeys reports them.
 const HOTKEY_SPECS: [string, string][] = [
   ['read_unit', 'Ctrl+F11  读取所有选中单位'],
   ['hero_level', 'Ctrl+Q  英雄等级'],
   ['instant_move', 'Ctrl+X  瞬间移动'],
+  ['kill_unit', 'Ctrl+Shift+K  秒杀选中单位'],
   ['explode_unit', 'Ctrl+W  瞬间爆炸目标单位'],
   ['reveal_map', 'Home  开图'],
   ['hide_map', 'End  关图'],
@@ -291,14 +292,14 @@ const PARAMS: Record<string, [string, string]> = {
   preset_tech: ['科技ID', 'Rhme'], hero_attributes: ['属性值', '100'], skill_points: ['点数', '5'], xp_rate: ['倍率', '2.0'], reset_ability: ['技能ID', 'AHbz'],
   fullscreen_auto: ['特效数', '8'], game_speed: ['倍速', '2'],
 }
-const DANGEROUS = new Set(['explode_unit', 'drop_inventory', 'kill_owner_units', 'end_game', 'remove_all_abilities', 'instant_victory'])
-const COMBAT = new Set(['instant_move', 'explode_unit', 'clone_unit', 'clone_to_self', 'take_control', 'mass_clone', 'kill_owner_units'])
+const DANGEROUS = new Set(['kill_unit', 'explode_unit', 'drop_inventory', 'kill_owner_units', 'end_game', 'remove_all_abilities', 'instant_victory'])
+const COMBAT = new Set(['instant_move', 'kill_unit', 'explode_unit', 'clone_unit', 'clone_to_self', 'take_control', 'mass_clone', 'kill_owner_units'])
 const WORLD = new Set(['reveal_map', 'hide_map', 'toggle_game_pause', 'end_game', 'rapid_build', 'instant_victory', 'game_speed', 'add_resources'])
 const hotkeys: HotkeyItem[] = HOTKEY_SPECS.map(([name, spec], i) => {
   const [key, ...rest] = spec.split(/\s+/)
   const param = name.startsWith('stat_') ? ['参数值', String(10 + i)] : PARAMS[name]
   return {
-    name, key, label: rest.join(' '), enabled: i % 3 !== 2,
+    name, key, label: rest.join(' '), enabled: !DANGEROUS.has(name),
     paramKey: param ? name : null, paramLabel: param?.[0] ?? null, paramValue: param?.[1] ?? null,
     isDangerous: DANGEROUS.has(name),
     category: name.startsWith('stat_') ? 'stats' : name.startsWith('fullscreen_') ? 'fullscreen' : COMBAT.has(name) ? 'combat' : WORLD.has(name) ? 'world' : 'general',
@@ -570,12 +571,12 @@ const handlers: Record<string, (...args: any[]) => unknown> = {
   },
 
   get_backpack_definition_progress: () => definitionProgress(),
-  start_backpack_definitions(path: string, folder: string) {
+  start_backpack_definitions(path: string, folder: string, mode: DefinitionMode = 'backpack_only') {
     defStarted = Date.now()
-    defJob = { jobId: 'def1', status: 'running', stage: 'queued', elapsed: 0, currentFile: path, logPath: `${folder || 'D:\\Maps'}\\definitions.log` }
+    defJob = { jobId: 'def1', status: 'running', stage: 'queued', elapsed: 0, currentFile: path, mode, logPath: `${folder || 'D:\\Maps'}\\definitions.log` }
     return { success: true, jobId: 'def1' }
   },
-  start_backpack_definitions_batch(paths: string[], folder: string) { return handlers.start_backpack_definitions(paths[0], folder) },
+  start_backpack_definitions_batch(paths: string[], folder: string, mode: DefinitionMode) { return handlers.start_backpack_definitions(paths[0], folder, mode) },
   cancel_backpack_definitions() { defJob = { ...defJob, status: 'cancelled', result: { success: false, cancelled: true, error: '处理已停止，原文件已保留。' } }; return { success: true } },
   choose_definition_files: () => ({ success: true, cancelled: false, paths: ['D:\\Warcraft III\\Maps\\Campaign\\HumanCampaign.w3n'] }),
   choose_definition_folder: () => ({ success: true, cancelled: false, path: 'D:\\Warcraft III\\Maps\\Output' }),
